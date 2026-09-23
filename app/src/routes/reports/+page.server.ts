@@ -1,5 +1,5 @@
 import { fiscalYear, lastFullMonth } from '$lib/server/periods';
-import { scheduleA, partnerPay, remoteMeter, nonBillable } from '$lib/server/reports';
+import { scheduleA, partnerPay, retainerMeter, nonBillable } from '$lib/server/reports';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -12,7 +12,7 @@ export const load: PageServerLoad = async () => {
 	const [a, pay, meter, given] = await Promise.all([
 		fy ? scheduleA(fy) : Promise.resolve(null),
 		partnerPay(month),
-		remoteMeter(month),
+		retainerMeter(month),
 		nonBillable(month)
 	]);
 

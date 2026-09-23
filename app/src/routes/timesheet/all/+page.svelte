@@ -34,15 +34,9 @@
 						<div class="rec-m">
 							<div class="rec-t">
 								{e.site ?? e.entity ?? e.service}
-								<span class="lt">
-									· {e.crew === 'team'
-										? 'both'
-										: e.billable
-											? e.delivery === 'remote'
-												? 'remote'
-												: 'on site'
-											: 'non-billable'}
-								</span>
+								{#if e.crew === 'team' || !e.billable}
+									<span class="lt">· {e.crew === 'team' ? 'both' : 'non-billable'}</span>
+								{/if}
 							</div>
 							<div class="rec-s">
 								{day(e.worked_on)} · {e.crew === 'team'

@@ -22,7 +22,7 @@
 			sub: 'Services, materials and recurring agreements'
 		},
 		{ href: '/clients', title: 'Entities', sub: 'Who you invoice, and where the work happens' },
-		{ href: '/reports', title: 'Reports', sub: 'Schedule A, partner pay and the remote meter' },
+		{ href: '/reports', title: 'Reports', sub: 'Schedule A, partner pay and the retainer meter' },
 		{
 			href: '/settings',
 			title: 'Settings',

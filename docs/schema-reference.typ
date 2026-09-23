@@ -24,7 +24,7 @@
 #v(6pt)
 
 #text(size: sz.small)[
-  Thirty-six tables across seven clusters. The eight `.drawio` files in
+  Thirty-eight tables across seven clusters. The eight `.drawio` files in
   `docs/schema/` carry the relationships; `docs/decisions.md` carries the
   decisions, verbatim, and is the authority. A table drawn in more than one
   cluster is listed once, under the first.
@@ -196,10 +196,11 @@
     [*PK*], [id], [uuid],
     [], [code], [text],
     [], [name], [text],
-    [], [unit], [hour | mile],
+    [], [unit], [hour | mile | each],
     [], [taxable], [bool],
-    [], [delivery], [on\_site | remote | null],
     [], [time\_tracked], [bool],
+    [], [bill\_to\_nearest\_seconds], [int · time only, null = exact],
+    [], [minimum\_charge], [numeric · null = none],
     [], [subscription\_basis], [none|capped|unlimited],
     [], [subscription\_hours], [numeric · capped only],
     [], [subscription\_period], [week|month|quarter|year],
@@ -218,26 +219,45 @@
     size: sz.micro,
     [*PK*], [id], [uuid],
     [*FK*], [service\_id], [uuid],
-    [*FK*], [entity\_id], [uuid · null = any],
-    [], [crew], [null | one | team],
-    [], [rate], [numeric],
+    [*FK*], [entity\_id], [uuid · null = every client],
+    [], [rate], [numeric · the first person],
+    [], [additional\_rate], [numeric · each one after],
     [], [effective\_from], [date],
   )
 ]
 #v(7pt)
 
 #block(breakable: false)[
-  #text(font: face-mono, size: sz.fine, weight: "bold")[person\_pay\_rate]
+  #text(font: face-mono, size: sz.fine, weight: "bold")[pay\_rule]
   #v(3pt)
   #sheet(
     (auto, auto, 1fr),
     ([], [Column], [Type]),
     size: sz.micro,
     [*PK*], [id], [uuid],
-    [*FK*], [user\_id], [uuid · null = everyone],
-    [*FK*], [service\_id], [uuid · null = any],
-    [], [rate], [numeric],
+    [*FK*], [service\_id], [uuid],
+    [*FK*], [role\_id], [uuid · a role, or],
+    [*FK*], [user\_id], [uuid · one person],
+    [*FK*], [entity\_id], [uuid · null = every client],
+    [], [pays\_for], [time | vehicle],
+    [], [method], [per\_hour|percent|fixed|nothing],
+    [], [amount], [numeric · none for nothing],
     [], [effective\_from], [date],
+    [], [created\_at], [timestamptz],
+  )
+]
+#v(7pt)
+
+#block(breakable: false)[
+  #text(font: face-mono, size: sz.fine, weight: "bold")[role]
+  #v(3pt)
+  #sheet(
+    (auto, auto, 1fr),
+    ([], [Column], [Type]),
+    size: sz.micro,
+    [*PK*], [id], [uuid],
+    [*UK*], [name], [text · the operator's word],
+    [], [created\_at], [timestamptz],
   )
 ]
 #v(7pt)
@@ -297,7 +317,7 @@
 ]
 #v(7pt)
 
-#callout(tone: "note")[On site: \$80.00 one person, \$130.00 both — 2 Sep. "both is still 100/hr even for bravo. the discount only applies to solo" — 1 Sep, which is why crew is part of the key and entity is not required.  "for bravo only its 50 vts payment and 50 gauranteed payment to the person" — 2 Sep, and \$50 each when both are on site.  "services are remote by nature not by an additional checkbox" — 9 Sep. service.delivery carries it, and remote services draw the remote allotment because that is what the allotment is.  "the interim solution should be a time-based toggle per service item that causes it to show/hide from the time service drop down" — 9 Sep. unit is how it is charged; time\_tracked is whether time is captured against it. Mileage may be timed and still billed per mile.  "Remote support settings should be a function of a service item" — 11 Sep. subscription\_hours and subscription\_overage moved here off operator; "the default remote support is 2 hours" — 9 Sep is one of them. Empty means not sold as a subscription, which is NOT what empty means on agreement.remote\_cap\_hours, where it means unlimited.  [claude] material\_lot is where stock enters, and where the Reg 1701 ex-tax purchase price is sourced. Weighted-average cost needs lots to average.]
+#callout(tone: "note")["the services should be universal in nature but allow for our specific requirements, not set in stone" — 23 Sep. A service is configured, not categorised: what it is charged per, how finely, at least what, and whom it pays.  On site: \$80.00 one person, \$130.00 both — 2 Sep. A price counts heads: rate is the first person and additional\_rate each one after, so \$80 and +\$50 is the \$130. Nothing extra per head prices the job; the two equal prices the person.  "gauranteed payments only work for people who have actually worked. that would mean a service is configured per user and per user level (partner, employee, etc) and payouts happens at a unit measurement (per hour but granular down to the minute/second) but also could be a percentage payout of the entire charge" — 23 Sep. pay\_rule is that: a role or one person, for their time or their vehicle, per hour, a percentage of the line, a fixed amount, or nothing. The narrowest rule that has started pays: one client's before every client's, one person's before their role's.  "personal mileage is 100% but company mileage would be 0% payout regardless who drove" — 23 Sep. A vehicle rule pays whoever owns the vehicle, so a company vehicle pays nobody.  "yes each can be a service charge, thats what allows flat rates as you pointed out per service item" — 23 Sep. unit each charges per entry, whatever its length.  "the interim solution should be a time-based toggle per service item that causes it to show/hide from the time service drop down" — 9 Sep. unit is how it is charged; time\_tracked is whether time is captured against it. Mileage may be timed and still billed per mile.  "Remote support settings should be a function of a service item" — 11 Sep. subscription\_hours and subscription\_overage are the terms coverage starts from; "the default remote support is 2 hours" — 9 Sep is one of them. Empty means not sold as a subscription, which is NOT what empty means on agreement\_service.included\_hours, where it means unlimited.  [claude] bill\_to\_nearest\_seconds and minimum\_charge were proposed, not asked for: the usual next question about an hourly price. Pay is never rounded to them; it is counted as worked.  [claude] material\_lot is where stock enters, and where the Reg 1701 ex-tax purchase price is sourced. Weighted-average cost needs lots to average.]
 #v(4pt)
 
 #v(6pt)
@@ -377,6 +397,7 @@
     [], [miles], [numeric],
     [*FK*], [entity\_id], [uuid · who caused it],
     [*FK*], [site\_id], [uuid],
+    [*FK*], [service\_id], [uuid · what it bills as],
     [], [rule], [text],
   )
 ]
@@ -394,7 +415,7 @@
     [*UK*], [email], [text],
     [], [credential], [text · argon2id],
     [], [active], [bool],
-    [], [on\_team], [bool · is paid],
+    [*FK*], [role\_id], [uuid · null = not paid],
     [], [failed\_attempts], [int],
     [], [locked\_until], [timestamptz],
     [], [last\_seen\_at], [timestamptz],
@@ -403,7 +424,7 @@
 ]
 #v(7pt)
 
-#callout(tone: "note")["there is only he creates or i do" — 3 Sep. worked\_by is paid for the hour and sets whether it bills at \$80 or \$130; created\_by is how the row is explained later.  "he is a full partner after all and can have his own clients and very much so is responsible for tracking his own time worked" — 18 Aug.  [claude] client\_uuid is made on the phone: the offline queue retries, and without it a retry that timed out enters the hour twice.  "wouldnt it just be simpler to log hours as both which get split at partner pay out time?" — 9 Sep. A team job is ONE entry carrying crew = team, so the billable quantity is stored rather than derived. If one stays on, that is a second entry at crew = one.  "worked\_by sounds misleading now" and "both should mean team" — 9 Sep. worked\_by is null on a team entry; created\_by ran the timer; app\_user.on\_team says who is paid.]
+#callout(tone: "note")["there is only he creates or i do" — 3 Sep. worked\_by is paid for the hour and sets whether it bills at \$80 or \$130; created\_by is how the row is explained later.  "he is a full partner after all and can have his own clients and very much so is responsible for tracking his own time worked" — 18 Aug.  [claude] client\_uuid is made on the phone: the offline queue retries, and without it a retry that timed out enters the hour twice.  "wouldnt it just be simpler to log hours as both which get split at partner pay out time?" — 9 Sep. A team job is ONE entry carrying crew = team, so the billable quantity is stored rather than derived. If one stays on, that is a second entry at crew = one.  "worked\_by sounds misleading now" and "both should mean team" — 9 Sep. worked\_by is null on a team entry; created\_by ran the timer; app\_user.role\_id says who is paid, and in what capacity.  [claude] Until entries name who worked, a team is everybody who holds a role: that is the head count a team entry is priced and paid at.  [claude] trip\_leg.service\_id is what a billed leg bills as. Every screen used to find it by assuming one service is charged per mile.]
 #v(4pt)
 
 #v(6pt)
@@ -422,16 +443,11 @@
     [], [billing\_interval], [weekly|monthly|quarterly|annually],
     [], [billing\_anchor\_day], [1–31 · from starts\_on],
     [], [final\_period\_proration], [none|daily],
-    [], [remote\_allotment], [none|capped|unlimited],
     [*FK*], [contact\_id], [uuid · agreed with],
     [*PK*], [id], [uuid],
     [*FK*], [entity\_id], [uuid],
     [], [basis], [flat | per\_location],
     [], [price], [numeric],
-    [], [remote\_cap\_hours], [numeric · null = ∞],
-    [], [allotment\_basis], [flat | per\_location],
-    [], [overage], [bill | no\_charge | deny],
-    [], [responder\_rate], [numeric · null = none],
     [], [starts\_on], [date],
     [], [ends\_on], [date],
   )
@@ -467,7 +483,25 @@
 ]
 #v(7pt)
 
-#callout(tone: "note")["per site and per client. we talked about this. reoccurings should be per site or client." — 18 Aug. One shape: a basis plus the locations it covers.  \$200 a month per site — "It's 200 for Traver and 200 for kettleman. (Per site)" — 2 Sep. Bravo hold two subscriptions, one per main site, and their agreement is unlimited: "\$400 a month for remote support (unlimited)".  "the default remote support is 2 hours" — 9 Sep, which is what a subscription carries otherwise. The pool is "set at the client level vs the site level", so the meter sits here rather than per location.  "allotment used and they call. bill per minute at the going rate. also can be set as no-charge or deny work" — 9 Sep.  "retainer does meter but bravo will show infinite right now" — 18 Aug.]
+#block(breakable: false)[
+  #text(font: face-mono, size: sz.fine, weight: "bold")[agreement\_service]
+  #v(3pt)
+  #sheet(
+    (auto, auto, 1fr),
+    ([], [Column], [Type]),
+    size: sz.micro,
+    [*PK*], [id], [uuid],
+    [*FK*], [agreement\_id], [uuid],
+    [*FK*], [service\_id], [uuid · once per agreement],
+    [], [allotment], [capped | unlimited],
+    [], [included\_hours], [numeric · capped only],
+    [], [allotment\_basis], [flat | per\_location],
+    [], [overage], [bill|no\_charge|deny · capped only],
+  )
+]
+#v(7pt)
+
+#callout(tone: "note")["per site and per client. we talked about this. reoccurings should be per site or client." — 18 Aug. One shape: a basis plus the locations it covers.  \$200 a month per site — "It's 200 for Traver and 200 for kettleman. (Per site)" — 2 Sep. Bravo hold two subscriptions, one per main site, and their agreement is unlimited: "\$400 a month for remote support (unlimited)".  "the default remote support is 2 hours" — 9 Sep, which is what a subscription carries otherwise. The pool is "set at the client level vs the site level", so the meter sits here rather than per location.  "allotment used and they call. bill per minute at the going rate. also can be set as no-charge or deny work" — 9 Sep.  "retainer does meter but bravo will show infinite right now" — 18 Aug.  "whats the difference between on-site and remote? why are they categorical instead of universal?" — 23 Sep. The split answered one question, which hours come out of a retainer, and answered it by kind. agreement\_service names the services an agreement covers, each with its own allotment, so an on-site retainer is as easy as a remote one and an hour on a service not named is billed.  [claude] The terms are the agreement's own. They start from the service's subscription terms when coverage is added, and a later change to the service does not reach into an agreement already made.]
 #v(4pt)
 
 #v(6pt)
@@ -794,7 +828,7 @@
 ]
 #v(7pt)
 
-#callout(tone: "note")["the whole platform is universal. user access is the only separation for now. there is no he sees or i see. there is only he creates or i do" — 3 Sep. So app\_user has no permission columns and there is no role table.  [claude] A session is a row, not a signed token: one server, one database, and every page reads it anyway, so a stateless token would save no round trip and cost revocation. Only the SHA-256 of the cookie is stored, so a copy of this table lets nobody in — the same reason credential is a hash.  [claude] migration is the applied-schema record db/apply.sh keeps, so re-running it applies only what a database has not seen.  "it should not detract from an operator supplied logo. we must create a settings page so eevrything required can be operator supplied" — 3 Sep. logo is nullable and the interface renders trading\_name in its place.  [claude] the subscription defaults left in 0017: a business does not have an included-hours figure, a thing it sells does. They are on service now, and what is paid to whoever answers is a dated person\_pay\_rate row.  [claude] record\_history is append-only and exists to explain a figure, not to police one.]
+#callout(tone: "note")["the whole platform is universal. user access is the only separation for now. there is no he sees or i see. there is only he creates or i do" — 3 Sep. So app\_user has no permission columns. role\_id is not access: it is the capacity someone is paid in, which pay rules are written against.  [claude] A session is a row, not a signed token: one server, one database, and every page reads it anyway, so a stateless token would save no round trip and cost revocation. Only the SHA-256 of the cookie is stored, so a copy of this table lets nobody in — the same reason credential is a hash.  [claude] migration is the applied-schema record db/apply.sh keeps, so re-running it applies only what a database has not seen.  "it should not detract from an operator supplied logo. we must create a settings page so eevrything required can be operator supplied" — 3 Sep. logo is nullable and the interface renders trading\_name in its place.  [claude] the subscription defaults left in 0017: a business does not have an included-hours figure, a thing it sells does. They are on service now, and what is paid to whoever answers is a dated pay\_rule.  [claude] record\_history is append-only and exists to explain a figure, not to police one.]
 #v(4pt)
 
 #v(6pt)

@@ -78,7 +78,7 @@ const ROUTES = [
 	'/reports',
 	'/reports/schedule-a',
 	'/reports/partner-pay',
-	'/reports/remote',
+	'/reports/retainers',
 	'/settings',
 	'/settings/business',
 	'/settings/invoicing',

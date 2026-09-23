@@ -2,47 +2,38 @@ import { sql } from '$lib/server/db';
 import type { PageServerLoad } from './$types';
 
 /**
- * Who works here, and what an hour pays them.
+ * Who works here, and the capacity each is paid in.
  *
- * A pay rate is (person?, service?, date) -> rate, most specific wins. Null on
- * either side means "anyone" or "any service", which is how both partners sit
- * on one rate today without that being baked into the shape.
+ * What a person is paid is not here: it is a service's pay rules, written
+ * against a role or against one person, and shown with the service they pay
+ * for. This screen says who holds which role -- which rules can reach them --
+ * and how many rules name a person or a role directly.
  */
 export const load: PageServerLoad = async () => {
-	const people = await sql<
-		{
-			id: string;
-			name: string;
-			email: string;
-			on_team: boolean;
-			active: boolean;
-			rate: string | null;
-		}[]
-	>`
-		select u.id, u.name, u.email, u.on_team, u.active,
-		       (select r.rate::text from person_pay_rate r
-		         where (r.user_id = u.id or r.user_id is null)
-		           and r.service_id is null
-		           and r.effective_from <= current_date
-		         order by (r.user_id is not null) desc, r.effective_from desc
-		         limit 1) as rate
-		  from app_user u
-		 order by u.active desc, u.name`;
+	const [people, roles] = await Promise.all([
+		sql<
+			{
+				id: string;
+				name: string;
+				email: string;
+				active: boolean;
+				role: string | null;
+				own_rules: number;
+			}[]
+		>`
+			select u.id, u.name, u.email, u.active, r.name as role,
+			       (select count(*) from pay_rule pr where pr.user_id = u.id)::int as own_rules
+			  from app_user u
+			  left join role r on r.id = u.role_id
+			 order by u.active desc, u.name`,
+		sql<{ id: string; name: string; holders: number; rules: number }[]>`
+			select r.id, r.name,
+			       (select count(*) from app_user u
+			         where u.role_id = r.id and u.active)::int as holders,
+			       (select count(*) from pay_rule pr where pr.role_id = r.id)::int as rules
+			  from role r
+			 order by holders desc, r.name`
+	]);
 
-	const rates = await sql<
-		{
-			id: string;
-			who: string | null;
-			service: string | null;
-			rate: string;
-			effective_from: string;
-		}[]
-	>`
-		select r.id, u.name as who, s.name as service, r.rate::text, r.effective_from::text
-		  from person_pay_rate r
-		  left join app_user u on u.id = r.user_id
-		  left join service s on s.id = r.service_id
-		 order by r.effective_from desc, u.name nulls first`;
-
-	return { people, rates };
+	return { people, roles };
 };

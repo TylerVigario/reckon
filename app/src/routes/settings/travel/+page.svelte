@@ -44,7 +44,7 @@
 					<div class="rec-m">
 						<div class="rec-t">{r.current ? 'Current' : 'Superseded'}</div>
 						<div class="rec-s">
-							Effective <Day iso={r.effective_from} />{r.current
+							{r.service} · effective <Day iso={r.effective_from} />{r.current
 								? ''
 								: ' · still priced on every line billed under it'}
 						</div>

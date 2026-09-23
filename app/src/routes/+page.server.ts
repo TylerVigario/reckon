@@ -110,23 +110,14 @@ export const load: PageServerLoad = async ({ locals }) => {
 		 limit 3`;
 
 	// Work done and not yet put on an invoice, by how long it has waited.
-	// Priced at what the service was worth on the day it was worked: the most
-	// specific price row that had taken effect by then, which is the same rule
-	// an invoice line will use when it is drawn.
+	// Worth what entry_worth says it bills: the price in force on the day it was
+	// worked, rounded to the service's increment and never below its minimum --
+	// the same rule an invoice line will use when it is drawn.
 	const ageing = await sql<{ bucket: string; n: string; worth: string; oldest: string | null }[]>`
 		with unbilled as (
-			select t.worked_on, t.minutes,
-			       (select sp.rate
-			          from service_price sp
-			         where sp.service_id = t.service_id
-			           and sp.effective_from <= t.worked_on
-			           and (sp.entity_id = t.entity_id or sp.entity_id is null)
-			           and (sp.crew = t.crew or sp.crew is null)
-			         order by (sp.entity_id is not null) desc,
-			                  (sp.crew is not null) desc,
-			                  sp.effective_from desc
-			         limit 1) as rate
+			select t.worked_on, w.billed
 			  from time_entry t
+			  join entry_worth w on w.time_entry_id = t.id
 			 where t.billable
 			   and not exists (select 1 from invoice_line il where il.time_entry_id = t.id)
 		)
@@ -136,7 +127,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		         else '31+ days'
 		       end as bucket,
 		       count(*)::text as n,
-		       coalesce(sum(minutes / 60.0 * rate), 0)::text as worth,
+		       coalesce(sum(billed), 0)::text as worth,
 		       max(current_date - worked_on)::text as oldest
 		  from unbilled
 		 group by 1`;

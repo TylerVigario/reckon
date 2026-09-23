@@ -27,7 +27,8 @@
 	// change what somebody has already picked.
 	let entityId = $state<string | null>(null);
 	let siteId = $state<string | null>(null);
-	// The same rule the manual form uses, for the same reason: alphabetical
+	// The same rule the manual form uses, for the same reason: a clock measures
+	// hours, so it opens on a priced service billed by the hour. Alphabetical
 	// order opens on "Emergency attendance", which nothing can be billed under,
 	// and a per-mile service opening by default starts a clock on driving.
 	let serviceId = $state<string>(
@@ -35,8 +36,7 @@
 			const priced = (s: { id: string }) => data.prices.some((p) => p.service_id === s.id);
 			return (
 				(
-					data.services.find((s) => s.delivery === 'on_site' && priced(s)) ??
-					data.services.find((s) => s.delivery && priced(s)) ??
+					data.services.find((s) => s.unit === 'hour' && priced(s)) ??
 					data.services.find(priced) ??
 					data.services[0]
 				)?.id ?? ''

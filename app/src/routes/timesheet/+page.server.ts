@@ -1,4 +1,5 @@
 import { sql } from '$lib/server/db';
+import { pricesToday } from '$lib/server/prices';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -31,7 +32,6 @@ export const load: PageServerLoad = async ({ locals }) => {
 			entity: string | null;
 			site: string | null;
 			service: string;
-			delivery: string | null;
 			at: string;
 			invoiced: boolean;
 		}[]
@@ -39,7 +39,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		select t.id, t.minutes, t.billable, t.note, t.crew,
 		       u.name as worked_by, e.name as entity,
 		       si.display as site,
-		       s.name as service, s.delivery,
+		       s.name as service,
 		       to_char(t.created_at, 'HH24:MI') as at,
 		       il.invoice_id is not null as invoiced
 		  from time_entry t
@@ -52,9 +52,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 		 order by t.created_at desc`;
 
 	// What a timer needs to describe itself, and to price what it is timing.
-	const [people, entities, services] = await Promise.all([
+	const [people, entities, services, prices] = await Promise.all([
 		sql<{ id: string; name: string }[]>`
-			select id, name from app_user where active and on_team order by name`,
+			select id, name from app_user where active and role_id is not null order by name`,
 		sql<{ id: string; name: string; sites: { id: string; label: string }[] }[]>`select e.id, e.name,
 		           coalesce(json_agg(json_build_object('id', si.id, 'label', si.display)
 		                             order by si.display)
@@ -62,16 +62,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 		      from entity e
 		      left join site si on si.entity_id = e.id and si.active
 		     where e.active group by e.id, e.name order by e.name`,
-		sql<
-			{ id: string; name: string; unit: string; delivery: string | null; rate: string | null }[]
-		>`select s.id, s.name, s.unit, s.delivery,
-		           (select rate from service_price sp
-		             where sp.service_id = s.id and sp.entity_id is null
-		               and sp.effective_from <= current_date
-		             order by (sp.crew is null) desc, sp.effective_from desc
-		             limit 1) as rate
-		      from service s
-		     where s.active and s.time_tracked order by s.name`
+		sql<{ id: string; name: string; unit: string; bill_to_nearest_seconds: number | null }[]>`
+			select id, name, unit, bill_to_nearest_seconds
+			  from service where active and time_tracked order by name`,
+		pricesToday()
 	]);
 
 	return {
@@ -81,6 +75,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		entries,
 		people,
 		entities,
-		services
+		services,
+		prices
 	};
 };

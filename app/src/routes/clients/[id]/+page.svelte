@@ -81,9 +81,7 @@
 				<span class="v sm">{money(data.agreement.price)}</span>
 				<span class="s">
 					per {data.agreement.interval === 'monthly' ? 'month' : data.agreement.interval},
-					{data.agreement.allotment === 'unlimited'
-						? 'unlimited'
-						: `${Number(data.agreement.hours).toFixed(0)} h`}
+					{data.agreement.covers ?? 'covers no service'}
 				</span>
 			</div>
 		{/if}

@@ -18,9 +18,13 @@
 --     psql -d reckon_demo -f db/seed/demo.sql
 --
 
-INSERT INTO app_user (id, name, email, credential, active, on_team) VALUES
-  ('11111111-0000-0000-0000-000000000001','Tyler Vigario','harness@invalid.test','unset',true,true),
-  ('11111111-0000-0000-0000-000000000002','Robin Vigario','robin@invalid.test','unset',true,true);
+-- Both partners, paid as partners. The roles themselves are the operator's list,
+-- which 0020 starts with Partner, Employee and Contractor.
+INSERT INTO app_user (id, name, email, credential, active, role_id) VALUES
+  ('11111111-0000-0000-0000-000000000001','Tyler Vigario','harness@invalid.test','unset',true,
+   (SELECT id FROM role WHERE name = 'Partner')),
+  ('11111111-0000-0000-0000-000000000002','Robin Vigario','robin@invalid.test','unset',true,
+   (SELECT id FROM role WHERE name = 'Partner'));
 
 INSERT INTO operator (trading_name, short_name, singleton, tax_rule_set, ageing_alert_days,
                       tax_agency, tax_registration, filing_basis, fiscal_year_end_month,
@@ -112,23 +116,21 @@ INSERT INTO site_contact (site_id, entity_id, contact_id, is_primary) VALUES
   ('cccccccc-0000-0000-0000-000000000004','eeeeeeee-0000-0000-0000-000000000002',
    'aaaaaaaa-0000-0000-0000-000000000003', true);
 
-INSERT INTO service (id, code, name, unit, delivery, subscription_basis,
+-- "the default remote support is 2 hours, 2 hours" -- 9 Sep 2026. The seed said
+-- four, from an earlier quote the register keeps for the pay split, not the cap.
+INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds, subscription_basis,
                      subscription_hours, subscription_overage, subscription_period) VALUES
-  ('55555555-0000-0000-0000-000000000001','onsite','On-site work','hour','on_site','none',NULL,NULL,NULL),
-  ('55555555-0000-0000-0000-000000000002','remote','Remote support','hour','remote','capped',4.00,'bill','month'),
+  ('55555555-0000-0000-0000-000000000001','onsite','On-site work','hour',60,'none',NULL,NULL,NULL),
+  ('55555555-0000-0000-0000-000000000002','remote','Remote support','hour',60,'capped',2.00,'bill','month'),
   ('55555555-0000-0000-0000-000000000003','mileage','Mileage','mile',NULL,'none',NULL,NULL,NULL),
-  ('55555555-0000-0000-0000-000000000004','emerg','Emergency attendance','hour','on_site','none',NULL,NULL,NULL);
+  ('55555555-0000-0000-0000-000000000004','emerg','Emergency attendance','hour',60,'none',NULL,NULL,NULL);
 
-INSERT INTO service_price (service_id, crew, rate, effective_from) VALUES
-  ('55555555-0000-0000-0000-000000000001','one',  80.00,'2026-09-02'),
-  ('55555555-0000-0000-0000-000000000001','team',130.00,'2026-09-02'),
-  ('55555555-0000-0000-0000-000000000001','one',  50.00,'2022-01-01'),
-  ('55555555-0000-0000-0000-000000000002',NULL,   50.00,'2026-01-01'),
-  ('55555555-0000-0000-0000-000000000003',NULL,    0.72,'2026-01-01');
+INSERT INTO service_price (service_id, rate, additional_rate, effective_from) VALUES
+  ('55555555-0000-0000-0000-000000000001', 80.00, 50.00,'2026-09-02'),
+  ('55555555-0000-0000-0000-000000000001', 50.00,  0.00,'2022-01-01'),
+  ('55555555-0000-0000-0000-000000000002', 50.00,  0.00,'2026-01-01'),
+  ('55555555-0000-0000-0000-000000000003',  0.72,  0.00,'2026-01-01');
 
-INSERT INTO person_pay_rate (user_id, service_id, rate, effective_from) VALUES
-  (NULL, NULL, 50.00,'2026-09-02'),
-  (NULL, '55555555-0000-0000-0000-000000000002', 25.00,'2026-09-01');
 
 -- An invoice that went out and has not been paid, well past the chase-after day.
 -- Built as a draft and then sent, because a sent invoice's lines are frozen --
@@ -175,13 +177,13 @@ VALUES ('77770000-0000-0000-0000-000000000001', current_date - 5,
 INSERT INTO trip_stop (trip_id, seq, site_id) VALUES
   ('77770000-0000-0000-0000-000000000001', 1, 'cccccccc-0000-0000-0000-000000000002'),
   ('77770000-0000-0000-0000-000000000001', 2, 'cccccccc-0000-0000-0000-000000000001');
-INSERT INTO trip_leg (trip_id, seq, miles, entity_id, site_id, rule) VALUES
+INSERT INTO trip_leg (trip_id, seq, miles, entity_id, site_id, rule, service_id) VALUES
   ('77770000-0000-0000-0000-000000000001', 1, 30.0,'eeeeeeee-0000-0000-0000-000000000001',
-   'cccccccc-0000-0000-0000-000000000002','house_to_a'),
+   'cccccccc-0000-0000-0000-000000000002','house_to_a','55555555-0000-0000-0000-000000000003'),
   ('77770000-0000-0000-0000-000000000001', 2,  2.2,'eeeeeeee-0000-0000-0000-000000000002',
-   'cccccccc-0000-0000-0000-000000000004','a_to_b'),
+   'cccccccc-0000-0000-0000-000000000004','a_to_b','55555555-0000-0000-0000-000000000003'),
   ('77770000-0000-0000-0000-000000000001', 3, 40.0,'eeeeeeee-0000-0000-0000-000000000001',
-   'cccccccc-0000-0000-0000-000000000002','b_to_house');
+   'cccccccc-0000-0000-0000-000000000002','b_to_house','55555555-0000-0000-0000-000000000003');
 
 -- A round trip that has already been billed.
 INSERT INTO trip (id, travelled_on, driven_by, created_by)
@@ -189,9 +191,10 @@ VALUES ('77770000-0000-0000-0000-000000000002', current_date - 12,
         '11111111-0000-0000-0000-000000000001','11111111-0000-0000-0000-000000000001');
 INSERT INTO trip_stop (trip_id, seq, site_id)
 VALUES ('77770000-0000-0000-0000-000000000002', 1, 'cccccccc-0000-0000-0000-000000000001');
-INSERT INTO trip_leg (id, trip_id, seq, miles, entity_id, site_id, rule)
+INSERT INTO trip_leg (id, trip_id, seq, miles, entity_id, site_id, rule, service_id)
 VALUES ('88880000-0000-0000-0000-000000000001','77770000-0000-0000-0000-000000000002', 1, 52.0,
-        'eeeeeeee-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000001','round_trip');
+        'eeeeeeee-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000001','round_trip',
+        '55555555-0000-0000-0000-000000000003');
 
 -- An invoice that went out and was paid, so "Paid, recently" has something.
 INSERT INTO invoice (id, number, entity_id, status, created_by)
@@ -245,11 +248,13 @@ UPDATE invoice SET status='sent', issued_on = current_date - 20, due_on = curren
 -- A retainer, so the meter has something to meter. Unlimited at $200 a site is
 -- the case the screen exists for: nobody is counting, and the hours used are
 -- the only way to tell whether $200 is anywhere near the work.
-INSERT INTO agreement (id, entity_id, basis, price, remote_allotment, responder_rate,
-                       starts_on, billing_interval, billing_anchor_day)
+INSERT INTO agreement (id, entity_id, basis, price, starts_on, billing_interval, billing_anchor_day)
 VALUES ('aaaa0000-0000-0000-0000-000000000001','eeeeeeee-0000-0000-0000-000000000001',
-        'per_location', 200.00, 'unlimited', null, date_trunc('year', current_date)::date,
-        'monthly', 1);
+        'per_location', 200.00, date_trunc('year', current_date)::date, 'monthly', 1);
+-- It covers Remote support, without limit -- by naming the service, not a kind.
+INSERT INTO agreement_service (agreement_id, service_id, allotment, allotment_basis)
+VALUES ('aaaa0000-0000-0000-0000-000000000001','55555555-0000-0000-0000-000000000002',
+        'unlimited','per_location');
 INSERT INTO agreement_site (agreement_id, site_id) VALUES
   ('aaaa0000-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000001'),
   ('aaaa0000-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000002');
@@ -270,20 +275,43 @@ INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, create
    'eeeeeeee-0000-0000-0000-000000000002','cccccccc-0000-0000-0000-000000000004',
    '55555555-0000-0000-0000-000000000002','Reset the guest network');
 
--- ===========================================================================
--- What a head is paid for an hour. A guaranteed payment is for the hour
--- worked, so the report resolves it at the rate in force on the day -- which
--- is why there is a long-standing house rate as well as the recent one.
-INSERT INTO person_pay_rate (user_id, service_id, rate, effective_from) VALUES
-  (null, null, 50.00, '2022-01-01'),
-  (null, '55555555-0000-0000-0000-000000000002', 25.00, '2026-09-11');
 
 -- Hours worked and not charged for. Given away on purpose is still given
 -- away, and the report prices it at what it would have been worth.
-INSERT INTO service (id, code, name, unit, active) VALUES
-  ('55555555-0000-0000-0000-000000000005','RND','Research and development','hour', true);
+INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds, active) VALUES
+  ('55555555-0000-0000-0000-000000000005','RND','Research and development','hour', 60, true);
 INSERT INTO service_price (service_id, rate, effective_from) VALUES
   ('55555555-0000-0000-0000-000000000005', 50.00, '2026-01-01');
+
+-- ===========================================================================
+-- Who each service pays. A partner is paid for the hour worked, at the rule in
+-- force on the day -- which is why there is a long-standing house rate as well as
+-- the recent one. Remote support pays $25 an hour worked, and nothing at Bravo:
+-- "nothing gauranteed for responder" -- 1 Sep 2026.
+INSERT INTO pay_rule (service_id, role_id, entity_id, pays_for, method, amount, effective_from)
+SELECT s.id, (SELECT id FROM role WHERE name = 'Partner'), NULL, 'time', 'per_hour', r.amount, r.day
+  FROM (VALUES
+    ('55555555-0000-0000-0000-000000000001'::uuid, 50.00, '2022-01-01'::date),
+    ('55555555-0000-0000-0000-000000000001'::uuid, 50.00, '2026-09-02'::date),
+    ('55555555-0000-0000-0000-000000000002'::uuid, 50.00, '2022-01-01'::date),
+    ('55555555-0000-0000-0000-000000000002'::uuid, 25.00, '2026-09-01'::date),
+    ('55555555-0000-0000-0000-000000000002'::uuid, 25.00, '2026-09-11'::date),
+    ('55555555-0000-0000-0000-000000000004'::uuid, 50.00, '2022-01-01'::date),
+    ('55555555-0000-0000-0000-000000000005'::uuid, 50.00, '2022-01-01'::date)
+  ) AS r(service, amount, day)
+  JOIN service s ON s.id = r.service;
+
+INSERT INTO pay_rule (service_id, role_id, entity_id, pays_for, method, amount, effective_from)
+VALUES ('55555555-0000-0000-0000-000000000002', (SELECT id FROM role WHERE name = 'Partner'),
+        'eeeeeeee-0000-0000-0000-000000000001', 'time', 'nothing', NULL,
+        date_trunc('year', current_date)::date);
+
+-- A partner's own vehicle is paid the whole mileage charge. Kept even though no
+-- trip can apply it yet -- a trip does not know its vehicle -- because it is the
+-- rule, and the rule is what the catalogue shows.
+INSERT INTO pay_rule (service_id, role_id, pays_for, method, amount, effective_from)
+VALUES ('55555555-0000-0000-0000-000000000003', (SELECT id FROM role WHERE name = 'Partner'),
+        'vehicle', 'percent', 100, '2026-09-23');
 
 INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, created_by,
                         service_id, billable, note) VALUES

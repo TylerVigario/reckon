@@ -15,10 +15,11 @@
  * figure; a thing it sells does.
  *
  * NULL HERE IS NOT NULL ON AN AGREEMENT. `subscription_hours` empty means this
- * service is not sold as a subscription. `agreement.remote_cap_hours` empty
- * means unlimited -- which is what Bravo has. The two are different facts and
- * the database keeps them apart; so does this file, by refusing half a set of
- * terms rather than quietly treating one as the other.
+ * service is not sold as a subscription. `agreement_service.included_hours`
+ * empty means unlimited -- which is what Bravo has. The two are different facts
+ * and the database keeps them apart; so does this file, by refusing half a set
+ * of terms rather than quietly treating one as the other. A service's terms are
+ * where an agreement's coverage starts from, not what it goes on reading.
  */
 import { decimal, oneOf, optional, parseIn, type Parsed } from './field-rules';
 

@@ -15,9 +15,9 @@ export const load: PageServerLoad = async () => {
 
 	const [counts] = await sql<{ people: string; mileage: string | null; integrations: string }[]>`
 		select (select count(*) from app_user where active)::text as people,
-		       (select sp.rate::text from service_price sp join service s on s.id = sp.service_id
-		         where s.unit = 'mile' and sp.effective_from <= current_date
-		         order by sp.effective_from desc limit 1) as mileage,
+		       (select job_rate(s.id, null, 1, current_date)::text from service s
+		         where s.unit = 'mile' and s.active
+		           and (select count(*) from service where unit = 'mile' and active) = 1) as mileage,
 		       (select count(*) from integration where connected)::text as integrations`;
 
 	return { operator: operator ?? null, counts };

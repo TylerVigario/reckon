@@ -6,9 +6,16 @@
 
 	let { data }: PageProps = $props();
 
-	const hrs = (v: string | null) => (v === null ? '—' : `${Number(v).toFixed(2)} h`);
+	const hrs = (v: string | null | undefined) => (v ? `${Number(v).toFixed(2)} h` : '—');
 	const per = (i: string) =>
 		i === 'monthly' ? '/mo' : i === 'annually' ? '/yr' : i === 'quarterly' ? '/qtr' : '/wk';
+
+	const pays = (r: { method: string; amount: string | null }) =>
+		r.method === 'nothing'
+			? 'nothing'
+			: r.method === 'percent'
+				? `${Number(r.amount)}% of the line`
+				: `${money(r.amount)} ${r.method === 'per_hour' ? 'an hour' : 'an entry'}`;
 
 	const sub = $derived(
 		[
@@ -37,21 +44,28 @@
 					<div class="rec">
 						<div class="rec-m">
 							<div class="rec-t">{a.who}</div>
-							<div class="rec-s">
-								{a.basis}{a.sites ? ` · ${a.sites}` : ''}
-								<br />Remote {a.allotment === 'unlimited'
-									? 'unlimited'
-									: `${hrs(a.pooled ?? a.cap)} included`} · {hrs(a.used)} used this month
-							</div>
+							<div class="rec-s">{a.basis}{a.sites ? ` · ${a.sites}` : ''}</div>
+							{#each a.covers as c (c.service)}
+								<div class="rec-s">
+									{c.service}
+									{c.allotment === 'unlimited' ? 'unlimited' : `${hrs(c.hours)} included`} · {hrs(
+										c.used
+									)} used this month
+								</div>
+							{:else}
+								<div class="rec-s">Covers no service — everything is billed</div>
+							{/each}
 							<div class="rec-c">
-								{#if a.allotment === 'unlimited'}
-									<span class="chip acc">∞ uncapped</span>
-								{:else}
-									<span class="chip acc">{hrs(a.pooled ?? a.cap)}</span>
-								{/if}
-								<span class="chip">
-									{a.responder ? `${money(a.responder)} to the responder` : 'no responder pay'}
-								</span>
+								{#each a.covers as c (c.service)}
+									{#if c.allotment === 'unlimited'}
+										<span class="chip acc">∞ {c.service}</span>
+									{:else}
+										<span class="chip acc">{hrs(c.hours)} {c.service}</span>
+									{/if}
+								{/each}
+								{#each a.pay as r (r.service + r.payee)}
+									<span class="chip">{r.payee} paid {pays(r)} for {r.service}</span>
+								{/each}
 							</div>
 						</div>
 						<div class="rec-n">
@@ -73,28 +87,23 @@
 	{#if data.uncovered.length}
 		<div class="sec">
 			<div class="sec-h">
-				<h2>
-					{data.fallback?.hours
-						? `On the ${Number(data.fallback.hours).toFixed(0)}-hour cap instead`
-						: 'No agreement'}
-				</h2>
+				<h2>{data.subscriptions.length ? 'On the service’s own terms instead' : 'No agreement'}</h2>
 			</div>
 			<div class="rows">
 				{#each data.uncovered as e (e.id)}
 					<div class="rec">
 						<div class="rec-m">
 							<div class="rec-t">{e.name}</div>
-							<div class="rec-s">
-								{data.fallback?.hours
-									? `Whatever the service includes, per ${data.fallback.period}`
-									: 'Nothing included'}
-							</div>
-						</div>
-						<div class="rec-n">
-							<span class="rec-v mut">
-								{data.fallback?.hours ? hrs(data.fallback.hours) : '—'}
-							</span>
-							<span class="rec-x">{hrs(e.used)} used</span>
+							{#each data.subscriptions as s (s.id)}
+								<div class="rec-s">
+									{s.name}
+									{s.basis === 'unlimited'
+										? 'unlimited'
+										: `${hrs(s.hours)} included per ${s.period}`} · {hrs(e.used[s.id] ?? '0')} used
+								</div>
+							{:else}
+								<div class="rec-s">Nothing included</div>
+							{/each}
 						</div>
 					</div>
 				{/each}

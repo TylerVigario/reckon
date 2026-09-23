@@ -183,18 +183,23 @@ T["integration"] = [("PK","name","stripe|beancount|press|email"),
     ("","connected","bool"),("","detail","text"),("","checked_at","timestamptz")]
 
 T["service"] = [("PK","id","uuid"),("","code","text"),("","name","text"),
-    ("","unit","hour | mile"),("","taxable","bool"),
-    ("","delivery","on_site | remote | null"),("","time_tracked","bool"),
+    ("","unit","hour | mile | each"),("","taxable","bool"),("","time_tracked","bool"),
+    ("","bill_to_nearest_seconds","int · time only, null = exact"),
+    ("","minimum_charge","numeric · null = none"),
     ("","subscription_basis","none|capped|unlimited"),
     ("","subscription_hours","numeric · capped only"),
     ("","subscription_period","week|month|quarter|year"),
     ("","subscription_overage","bill|no_charge|deny"),("","active","bool")]
 T["service_price"] = [("PK","id","uuid"),("FK","service_id","uuid"),
-    ("FK","entity_id","uuid · null = any"),("","crew","null | one | team"),
-    ("","rate","numeric"),("","effective_from","date")]
-T["person_pay_rate"] = [("PK","id","uuid"),("FK","user_id","uuid · null = everyone"),
-    ("FK","service_id","uuid · null = any"),("","rate","numeric"),
-    ("","effective_from","date")]
+    ("FK","entity_id","uuid · null = every client"),("","rate","numeric · the first person"),
+    ("","additional_rate","numeric · each one after"),("","effective_from","date")]
+T["pay_rule"] = [("PK","id","uuid"),("FK","service_id","uuid"),
+    ("FK","role_id","uuid · a role, or"),("FK","user_id","uuid · one person"),
+    ("FK","entity_id","uuid · null = every client"),("","pays_for","time | vehicle"),
+    ("","method","per_hour|percent|fixed|nothing"),("","amount","numeric · none for nothing"),
+    ("","effective_from","date"),("","created_at","timestamptz")]
+T["role"] = [("PK","id","uuid"),("UK","name","text · the operator's word"),
+    ("","created_at","timestamptz")]
 T["material"] = [("PK","id","uuid"),("","sku","text"),("","name","text"),
     ("","brand","text"),("","unit","each | foot"),("","markup_pct","numeric"),
     ("","taxable","bool"),("","reorder_level","numeric"),("","active","bool")]
@@ -219,17 +224,18 @@ T["trip_stop"] = [("PK","id","uuid"),("FK","trip_id","uuid"),("","seq","int"),
     ("","departed_at","timestamptz"),("","address","text · somewhere that is nobody's site")]
 T["trip_leg"] = [("PK","id","uuid"),("FK","trip_id","uuid"),("","seq","int"),
     ("","miles","numeric"),("FK","entity_id","uuid · who caused it"),
-    ("FK","site_id","uuid"),("","rule","text")]
+    ("FK","site_id","uuid"),("FK","service_id","uuid · what it bills as"),("","rule","text")]
 
 T["agreement"] = [("","billing_interval","weekly|monthly|quarterly|annually"),
     ("","billing_anchor_day","1–31 · from starts_on"),
-    ("","final_period_proration","none|daily"),("","remote_allotment","none|capped|unlimited"),("FK","contact_id","uuid · agreed with"),("PK","id","uuid"),("FK","entity_id","uuid"),
-    ("","basis","flat | per_location"),("","price","numeric"),
-    ("","remote_cap_hours","numeric · null = ∞"),
-    ("","allotment_basis","flat | per_location"),
-    ("","overage","bill | no_charge | deny"),
-    ("","responder_rate","numeric · null = none"),("","starts_on","date"),
+    ("","final_period_proration","none|daily"),("FK","contact_id","uuid · agreed with"),("PK","id","uuid"),("FK","entity_id","uuid"),
+    ("","basis","flat | per_location"),("","price","numeric"),("","starts_on","date"),
     ("","ends_on","date")]
+T["agreement_service"] = [("PK","id","uuid"),("FK","agreement_id","uuid"),
+    ("FK","service_id","uuid · once per agreement"),("","allotment","capped | unlimited"),
+    ("","included_hours","numeric · capped only"),
+    ("","allotment_basis","flat | per_location"),
+    ("","overage","bill|no_charge|deny · capped only")]
 T["agreement_site"] = [("FK","agreement_id","uuid"),("FK","site_id","uuid")]
 T["agreement_period"] = [("PK","id","uuid"),("FK","agreement_id","uuid"),
     ("","period_start","date"),("","period_end","date"),
@@ -292,7 +298,7 @@ T["operator"] = [("PK","id","uuid"),("","singleton","bool · one row only"),("",
     ("","mileage_assignment","actual|round_trip_per_client")]
 T["app_user"] = [("PK","id","uuid"),("","name","text"),("UK","email","text"),
     ("","credential","text · argon2id"),("","active","bool"),
-    ("","on_team","bool · is paid"),("","failed_attempts","int"),
+    ("FK","role_id","uuid · null = not paid"),("","failed_attempts","int"),
     ("","locked_until","timestamptz"),("","last_seen_at","timestamptz"),
     ("","created_at","timestamptz")]
 T["session"] = [("PK","token_hash","text · sha256"),("FK","user_id","uuid"),
@@ -397,33 +403,55 @@ c += [note("n2", "\"wild jacks is completely seperate. only shared infra\" — 1
 files.append(write("02-who-and-where.drawio", "Who and where", c, 1560, 1040))
 
 # 03 -- catalogue
-c = at("service",40,60) + at("service_price",440,60) + at("person_pay_rate",440,260) \
+c = at("service",40,60) + at("service_price",440,60) + at("pay_rule",440,280) \
+  + at("role",840,400) \
   + at("material",840,60) + at("material_lot",1240,60) + at("material_price",1240,320)
 c += [edge("e30","service","service_price","priced by"),
-      edge("e31","service","person_pay_rate","pays by"),
+      edge("e31","service","pay_rule","pays by"),
+      edge("e34","role","pay_rule","is paid by",
+           S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1")),
       edge("e32","material","material_lot","received as"),
       edge("e33","material","material_price","may pin")]
-c += [note("n3", "On site: $80.00 one person, $130.00 both — 2 Sep. \"both is still "
-                 "100/hr even for bravo. the discount only applies to solo\" — 1 Sep, "
-                 "which is why crew is part of the key and entity is not required.\n\n"
-                 "\"for bravo only its 50 vts payment and 50 gauranteed payment to the "
-                 "person\" — 2 Sep, and $50 each when both are on site.\n\n"
-                 "\"services are remote by nature not by an additional checkbox\" — "
-                 "9 Sep. service.delivery carries it, and remote services draw the "
-                 "remote allotment because that is what the allotment is.\n\n"
+c += [note("n3", "\"the services should be universal in nature but allow for our "
+                 "specific requirements, not set in stone\" — 23 Sep. A service is "
+                 "configured, not categorised: what it is charged per, how finely, at "
+                 "least what, and whom it pays.\n\n"
+                 "On site: $80.00 one person, $130.00 both — 2 Sep. A price counts heads: "
+                 "rate is the first person and additional_rate each one after, so $80 and "
+                 "+$50 is the $130. Nothing extra per head prices the job; the two equal "
+                 "prices the person.\n\n"
+                 "\"gauranteed payments only work for people who have actually worked. "
+                 "that would mean a service is configured per user and per user level "
+                 "(partner, employee, etc) and payouts happens at a unit measurement (per "
+                 "hour but granular down to the minute/second) but also could be a "
+                 "percentage payout of the entire charge\" — 23 Sep. pay_rule is that: "
+                 "a role or one person, for their time or their vehicle, per hour, a "
+                 "percentage of the line, a fixed amount, or nothing. The narrowest rule "
+                 "that has started pays: one client's before every client's, one "
+                 "person's before their role's.\n\n"
+                 "\"personal mileage is 100% but company mileage would be 0% payout "
+                 "regardless who drove\" — 23 Sep. A vehicle rule pays whoever owns the "
+                 "vehicle, so a company vehicle pays nobody.\n\n"
+                 "\"yes each can be a service charge, thats what allows flat rates as "
+                 "you pointed out per service item\" — 23 Sep. unit each charges per "
+                 "entry, whatever its length.\n\n"
                  "\"the interim solution should be a time-based toggle per service item "
                  "that causes it to show/hide from the time service drop down\" — 9 Sep. "
                  "unit is how it is charged; time_tracked is whether time is captured "
                  "against it. Mileage may be timed and still billed per mile.\n\n"
                  "\"Remote support settings should be a function of a service item\" — "
-                 "11 Sep. subscription_hours and subscription_overage moved here off "
-                 "operator; \"the default remote support is 2 hours\" — 9 Sep is one of "
-                 "them. Empty means not sold as a subscription, which is NOT what empty "
-                 "means on agreement.remote_cap_hours, where it means unlimited.\n\n"
+                 "11 Sep. subscription_hours and subscription_overage are the terms "
+                 "coverage starts from; \"the default remote support is 2 hours\" — 9 Sep "
+                 "is one of them. Empty means not sold as a subscription, which is NOT "
+                 "what empty means on agreement_service.included_hours, where it means "
+                 "unlimited.\n\n"
+                 "[claude] bill_to_nearest_seconds and minimum_charge were proposed, not "
+                 "asked for: the usual next question about an hourly price. Pay is never "
+                 "rounded to them; it is counted as worked.\n\n"
                  "[claude] material_lot is where stock enters, and where the Reg 1701 "
                  "ex-tax purchase price is sourced. Weighted-average cost needs lots to "
-                 "average.", 40, 580, 1540, 230)]
-files.append(write("03-catalogue.drawio", "What you sell", c, 1620, 850))
+                 "average.", 40, 580, 1540, 330)]
+files.append(write("03-catalogue.drawio", "What you sell", c, 1620, 950))
 
 # 04 -- work captured
 c = at("time_entry",40,60) + at("trip",480,60) + at("trip_stop",480,220) \
@@ -451,14 +479,19 @@ c += [note("n4", "\"there is only he creates or i do\" — 3 Sep. worked_by is p
                  "one stays on, that is a second entry at crew = one.\n\n"
                  "\"worked_by sounds misleading now\" and \"both should mean team\" — "
                  "9 Sep. worked_by is null on a team entry; created_by ran the timer; "
-                 "app_user.on_team says who is paid.",
-           40, 700, 1180, 230)]
-files.append(write("04-work-captured.drawio", "Work as it is captured", c, 1340, 960))
+                 "app_user.role_id says who is paid, and in what capacity.\n\n"
+                 "[claude] Until entries name who worked, a team is everybody who holds a "
+                 "role: that is the head count a team entry is priced and paid at.\n\n"
+                 "[claude] trip_leg.service_id is what a billed leg bills as. Every screen "
+                 "used to find it by assuming one service is charged per mile.",
+           40, 700, 1180, 290)]
+files.append(write("04-work-captured.drawio", "Work as it is captured", c, 1340, 1020))
 
 # 05 -- agreements
 c = at("entity",40,60) + at("agreement",440,60) + at("agreement_site",840,60) \
-  + at("agreement_period",840,200) + at("site",1240,60)
+  + at("agreement_period",840,200) + at("agreement_service",840,370) + at("site",1240,60)
 c += [edge("e50","entity","agreement","signed"),
+      edge("e54","agreement","agreement_service","names what it covers"),
       edge("e51","agreement","agreement_site","covers"),
       edge("e52","agreement","agreement_period","throws off monthly"),
       edge("e53","site","agreement_site","covered by",
@@ -475,9 +508,18 @@ c += [note("n5", "\"per site and per client. we talked about this. reoccurings s
                  "vs the site level\", so the meter sits here rather than per location.\n\n"
                  "\"allotment used and they call. bill per minute at the going rate. also "
                  "can be set as no-charge or deny work\" — 9 Sep.\n\n"
-                 "\"retainer does meter but bravo will show infinite right now\" — 18 Aug.",
-           40, 600, 1540, 260)]
-files.append(write("05-agreements.drawio", "Agreements", c, 1620, 880))
+                 "\"retainer does meter but bravo will show infinite right now\" — 18 Aug.\n\n"
+                 "\"whats the difference between on-site and remote? why are they "
+                 "categorical instead of universal?\" — 23 Sep. The split answered one "
+                 "question, which hours come out of a retainer, and answered it by kind. "
+                 "agreement_service names the services an agreement covers, each with its "
+                 "own allotment, so an on-site retainer is as easy as a remote one and an "
+                 "hour on a service not named is billed.\n\n"
+                 "[claude] The terms are the agreement's own. They start from the "
+                 "service's subscription terms when coverage is added, and a later change "
+                 "to the service does not reach into an agreement already made.",
+           40, 600, 1540, 330)]
+files.append(write("05-agreements.drawio", "Agreements", c, 1620, 950))
 
 # 06 -- money out
 c = at("invoice",40,60) + at("invoice_line",440,60) + at("credit_note",880,60) \
@@ -540,8 +582,9 @@ c += [edge("e80","operator","account_map","maps"),
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=0"))]
 c += [note("n8", "\"the whole platform is universal. user access is the only separation "
                  "for now. there is no he sees or i see. there is only he creates or i "
-                 "do\" — 3 Sep. So app_user has no permission columns and there is no "
-                 "role table.\n\n"
+                 "do\" — 3 Sep. So app_user has no permission columns. role_id is not "
+                 "access: it is the capacity someone is paid in, which pay rules are "
+                 "written against.\n\n"
                  "[claude] A session is a row, not a signed token: one server, one "
                  "database, and every page reads it anyway, so a stateless token would "
                  "save no round trip and cost revocation. Only the SHA-256 of the cookie "
@@ -556,7 +599,7 @@ c += [note("n8", "\"the whole platform is universal. user access is the only sep
                  "[claude] the subscription defaults left in 0017: a business does not "
                  "have an included-hours figure, a thing it sells does. They are on "
                  "service now, and what is paid to whoever answers is a dated "
-                 "person_pay_rate row.\n\n"
+                 "pay_rule.\n\n"
                  "[claude] record_history is append-only and exists to explain a figure, "
                  "not to police one.", 40, 1000, 1300, 280)]
 files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 1320))

@@ -7,9 +7,6 @@
 
 	let { data }: PageProps = $props();
 
-	const place = (d: string | null) =>
-		d === 'remote' ? 'remote' : d === 'on_site' ? 'on site' : '';
-
 	// Who was there. A one-person entry names them; a team entry names the team,
 	// because the entry itself deliberately does not.
 	const worked = (crew: string, by: string | null) =>
@@ -34,12 +31,12 @@
 				key: `t${w.id}`,
 				href: null,
 				title: w.who,
-				aside: place(w.delivery),
+				aside: w.service,
 				detail: [worked(w.crew, w.worked_by), day(w.worked_on), w.site ?? 'no address on file']
 					.filter(Boolean)
 					.join(' · '),
 				worth: w.worth,
-				measure: `${Number(w.hours).toFixed(4)} h${w.crew === 'team' ? ' ×2' : ''}`,
+				measure: `${Number(w.hours).toFixed(4)} h${w.heads > 1 ? ` ×${w.heads}` : ''}`,
 				days: w.days
 			})),
 			...data.mileage.map((m) => ({
@@ -124,13 +121,7 @@
 								{g.service}{#if g.who}&nbsp;<span class="lt">· {g.who}</span>{/if}
 							</div>
 							<div class="rec-s">
-								{[
-									worked('one', g.worked_by),
-									day(g.worked_on),
-									[g.site, place(g.delivery)].filter(Boolean).join(', ')
-								]
-									.filter(Boolean)
-									.join(' · ')}
+								{[worked('one', g.worked_by), day(g.worked_on), g.site].filter(Boolean).join(' · ')}
 							</div>
 						</div>
 						<div class="rec-n">

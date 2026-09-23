@@ -31,12 +31,6 @@ export const load: PageServerLoad = async ({ url }) => {
 	>`
 		with bounds as (
 			select coalesce(${month}::date, date_trunc('month', current_date)::date) as from_day
-		),
-		rate as (
-			select sp.rate
-			  from service_price sp join service s on s.id = sp.service_id
-			 where s.unit = 'mile' and sp.effective_from <= current_date
-			 order by sp.effective_from desc limit 1
 		)
 		select t.id, t.travelled_on::text, u.name as driver,
 		       -- Where it went, by town: p3 titles a trip "Kettleman", not by
@@ -54,8 +48,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		       count(tl.id)::int as legs,
 		       coalesce(sum(tl.miles), 0)::text as miles,
 		       coalesce(sum(tl.miles) filter (where tl.entity_id is not null), 0)::text as assigned,
-		       (coalesce(sum(tl.miles) filter (where tl.entity_id is not null), 0)
-		        * (select rate from rate))::text as value,
+		       -- Each leg at its own service's price on the day, from leg_worth.
+		       coalesce(sum(lw.billed), 0)::text as value,
 		       bool_and(il.invoice_id is not null) filter (where tl.entity_id is not null) as billed,
 		       -- Never more miles billed than were driven.
 		       coalesce(sum(tl.miles) filter (where tl.entity_id is not null), 0)
@@ -64,6 +58,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		  cross join bounds b
 		  left join app_user u on u.id = t.driven_by
 		  left join trip_leg tl on tl.trip_id = t.id
+		  left join leg_worth lw on lw.trip_leg_id = tl.id
 		  left join invoice_line il on il.trip_leg_id = tl.id
 		 where t.travelled_on >= b.from_day
 		   and t.travelled_on < b.from_day + interval '1 month'
@@ -79,9 +74,12 @@ export const load: PageServerLoad = async ({ url }) => {
 		select to_char(b.from_day, 'FMMonth YYYY') as month,
 		       coalesce(sum(tl.miles), 0)::text as miles,
 		       count(distinct t.id)::text as trips,
-		       (select sp.rate::text from service_price sp join service s on s.id = sp.service_id
-		         where s.unit = 'mile' and sp.effective_from <= current_date
-		         order by sp.effective_from desc limit 1) as rate
+		       -- "The" mileage rate only while one service is charged per mile.
+		       -- With two, a leg's own service says which, and a headline figure
+		       -- would be one of them passed off as both.
+		       (select job_rate(s.id, null, 1, current_date)::text from service s
+		         where s.unit = 'mile' and s.active
+		           and (select count(*) from service where unit = 'mile' and active) = 1) as rate
 		  from bounds b
 		  left join trip t on t.travelled_on >= b.from_day
 		                  and t.travelled_on < b.from_day + interval '1 month'

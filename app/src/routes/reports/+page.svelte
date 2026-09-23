@@ -58,9 +58,9 @@
 				<span class="arw" aria-hidden="true">›</span>
 			</a>
 
-			<a class="rec link" href={resolve('/reports/remote')}>
+			<a class="rec link" href={resolve('/reports/retainers')}>
 				<div class="rec-m">
-					<div class="rec-t">Remote meter</div>
+					<div class="rec-t">Retainer meter</div>
 					<div class="rec-s">What the retainer covered, and what it was worth</div>
 				</div>
 				<div class="rec-n"><span class="rec-v mut">{money(data.meter.charged)}</span></div>

@@ -21,13 +21,12 @@
 	let serviceId = $state<string | null>(
 		untrack(() => {
 			const priced = (s: { id: string }) => data.prices.some((p) => p.service_id === s.id);
-			// Attendance first: this form records time, and a per-mile service
+			// Hourly first: this form records time, and a per-mile service
 			// opening by default asks for a duration of driving. Alphabetical
 			// order gave Emergency attendance (unpriced), then Mileage.
 			return (
 				(
-					data.services.find((s) => s.delivery === 'on_site' && priced(s)) ??
-					data.services.find((s) => s.delivery && priced(s)) ??
+					data.services.find((s) => s.unit === 'hour' && priced(s)) ??
 					data.services.find(priced) ??
 					data.services[0]
 				)?.id ?? null

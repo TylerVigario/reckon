@@ -99,8 +99,8 @@ stored rather than derived. If one of them stays on, that is a second entry at
 > *"both should mean team, yes"* — 9 Sep 2026
 
 `worked_by` is null on a team entry, because both worked it. Who ran the timer is
-`created_by`. The team is `app_user.on_team`, so a login that is not on the team
-is not paid for a job.
+`created_by`. The team is everybody who holds a role (`app_user.role_id`, since
+0020), so a login that holds none is not paid for a job.
 
 **Whether a service takes a timer is set per service, and is not the same
 question as how it is charged.**
@@ -118,9 +118,10 @@ row rather than a schema change.
 **Remoteness belongs to the service.**
 > *"services are remote by nature not by an additional checkbox"* — 9 Sep 2026
 
-So `service.delivery` is `on_site` or `remote`, and nothing beside it repeats
-the fact. Remote services draw the remote allotment, because that is what the
-allotment is.
+So `service.delivery` was `on_site` or `remote`, and remote services drew the
+remote allotment. **Superseded 23 Sep 2026** — there is no delivery any more;
+an agreement names the services it covers. See *A service is configured, not
+categorised*.
 
 ---
 
@@ -521,16 +522,17 @@ does.**
 The move splits three ways, because the three were never one kind of fact:
 
 - **`subscription_hours` and `subscription_overage` are terms of sale.** They go
-  on the service, beside `delivery` and `time_tracked`, which are also
-  statements about what the thing *is* rather than about what it costs.
+  on the service, beside `time_tracked`, which is also a statement about what
+  the thing *is* rather than about what it costs.
 - **The responder rate was pay, and pay already had a home.** `person_pay_rate`
-  is (service, date) → rate, so "paid to whoever answers a remote call" is a row
-  in it and always was. A second copy on `operator` meant two answers to one
-  question, and the undated one would have won by being easier to reach.
+  was (service, date) → rate, so "paid to whoever answers a remote call" was a
+  row in it and always had been. A second copy on `operator` meant two answers
+  to one question, and the undated one would have won by being easier to reach.
+  Since 0020 that home is `pay_rule`.
 
 **Empty means something different here than on an agreement.** On
-`agreement.remote_cap_hours`, empty means *unlimited* — Bravo's two
-subscriptions carry no cap. On `service.subscription_hours`, empty means *this
+`agreement_service.included_hours` (`agreement.remote_cap_hours` before 0020),
+empty means *unlimited* — Bravo's two subscriptions carry no cap. On `service.subscription_hours`, empty means *this
 service is not sold as a subscription at all*. The two are set together or
 neither is, so no row offers a rule for exceeding an allotment that does not
 exist.
@@ -598,6 +600,69 @@ markers appear in that ledger or anywhere in its history.
 the day — an unapplied credit, a refund owed, an invoice not yet paid. That is a
 balance a client can still draw on rather than history, and
 `entity.opening_balance` was reserved for it in 0018.
+
+---
+
+## A service is configured, not categorised
+
+> *"weve paid too much attention to my specific requirements for services which makes it less universal. the services should be universal in nature but allow for our specific requirements, not set in stone. what type of configuration per service is required to meet all our criteria (i.e. rate to customer, static payout rate per person, percentage payout rate per person, fixed person payout, etc)?"* — 23 Sep 2026
+
+**Pay is a set of rules, per person and per role, not one rate.**
+> *"the current arrangement is too fixed. gauranteed payments only work for people who have actually worked. that would mean a service is configured per user and per user level (partner, employee, etc) and payouts happens at a unit measurement (per hour but granular down to the minute/second) but also could be a percentage payout of the entire charge (personal mileage is 100% but company mileage would be 0% payout regardless who drove, leaving room for in the future an hourly rate to be paid out to the employee(s)). do you see where i am going with this?"* — 23 Sep 2026
+
+So `pay_rule` names a role or one person, what it pays for — their time or
+their vehicle — and how: per hour worked, a percentage of the line, a fixed
+amount, or nothing. `role` is the operator's own list; Partner, Employee and
+Contractor are where it starts.
+
+**There is no on-site and remote.**
+> *"whats the difference between on-site and remote? why are they categorical instead of universal?"* — 23 Sep 2026
+> *"mock logic looks good services are simply configurable services right? and items and services should be categorically seperated"* — 23 Sep 2026
+
+An agreement names the services it covers, each with its own allotment
+(`agreement_service`), so an on-site retainer is as easy as a remote one and an
+hour on a service it does not name is billed.
+
+**A service charged per entry is how a flat rate is sold.**
+> *"yes each can be a service charge, thats what allows flat rates as you pointed out per service item"* — 23 Sep 2026
+
+**[claude]** How the mock he approved works, as built in 0020:
+
+- **A price counts heads.** `rate` is the first person, `additional_rate` each
+  one after: $80 and +$50 is the $130 for two. Nothing extra prices the job;
+  the two equal prices the person.
+- **The narrowest rule that has started pays.** One client's rule before every
+  client's; then one person's before their role's; then the newest. Bravo's
+  *"nothing gauranteed for responder"* is a rule for Bravo that pays nothing,
+  carried over from the null responder rate — without it the partners' $25
+  would reach Bravo's calls.
+- **Coverage is the agreement's own.** It starts from the service's
+  subscription terms when a service is added to an agreement, and a later change
+  to the service does not reach into an agreement already made.
+- **Time bills to the nearest minute** (`bill_to_nearest_seconds` = 60 on every
+  hourly service), which is *"bill per minute at the going rate"* — 9 Sep.
+  `minimum_charge` exists and is unset. Both were proposals in the mock, not
+  requests. Pay is never rounded to them.
+- **One place works out what an entry is worth.** `entry_worth` and
+  `leg_worth`, from `billed_amount()` and `time_pay()`; every screen that showed
+  a value read its own copy of the price lookup before.
+
+**[claude]** What is interim, and why:
+
+- **A team is everybody who holds a role**, until entries name who worked. With
+  two partners that is the two of them; with a third person it would count them
+  too. *A team entry names nobody* is the decision this will reopen.
+- **Pay is counted to the minute**, because entries store minutes. The
+  functions take seconds, so storing seconds changes no rule.
+- **Vehicle rules are stored and shown but pay nobody yet.** A trip does not
+  record which vehicle, so there is no owner to pay.
+- **Coverage is not applied to an entry's value.** `entry_worth` prices every
+  entry by the hour, covered or not; which hours an allotment absorbs is decided
+  when an invoice is drawn, and the app does not draw invoices yet. Partner pay
+  and the unbilled screen count covered hours at the hourly price, as they did
+  before.
+- **Pay is worked out live.** Until a payout is recorded when it is paid, a
+  role change or a new rule moves what the reports say unpaid work pays.
 
 ---
 

@@ -100,11 +100,18 @@ export const load: PageServerLoad = async ({ params }) => {
 		 group by 1
 		 order by 1`;
 
+	// What the retainer covers, service by service, in the words the tile
+	// prints: "Remote support unlimited", "On-site work 4 h".
 	const [agreement] = await sql<
-		{ price: string; basis: string; allotment: string; interval: string; hours: string | null }[]
+		{ price: string; basis: string; interval: string; covers: string | null }[]
 	>`
-		select a.price::text, a.basis, a.remote_allotment as allotment,
-		       a.billing_interval as interval, a.remote_cap_hours::text as hours
+		select a.price::text, a.basis, a.billing_interval as interval,
+		       (select string_agg(s.name || ' ' || case when al.allotment = 'unlimited'
+		                                                then 'unlimited'
+		                                                else round(al.pooled_hours)::text || ' h'
+		                                           end, ', ' order by s.name)
+		          from agreement_allotment al join service s on s.id = al.service_id
+		         where al.agreement_id = a.id) as covers
 		  from agreement a
 		 where a.entity_id = ${id}
 		   and (a.ends_on is null or a.ends_on >= current_date)

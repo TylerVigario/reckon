@@ -11,32 +11,18 @@
 	// start date can be any year, so it says which.
 
 	const who = (j: { crew: string; who: string | null }) =>
-		j.crew === 'team' ? 'Both of you' : (j.who ?? 'nobody recorded');
-
-	const label = (crew: string) => (crew === 'team' ? 'Both of you' : 'One of you');
+		j.crew === 'team' ? 'The team' : (j.who ?? 'nobody recorded');
 
 	// Built here rather than in the markup: a template that interleaves text
 	// with {#if} blocks loses the space between them.
-	const terms = (r: {
-		billed: string | null;
-		paid: string | null;
-		crew: string;
-		from: string | null;
-	}) =>
+	const terms = (r: { billed: string; paid: string | null; since: string | null }) =>
 		[
 			`${money(r.billed)} billed`,
-			`${money(r.paid)}${r.crew === 'team' ? ' a head' : ' paid'}`,
-			r.from ? `since ${dated(r.from)}` : null
+			r.paid === null ? 'no rule pays it' : `${money(r.paid)} paid`,
+			r.since ? `since ${dated(r.since)}` : null
 		]
 			.filter(Boolean)
 			.join(' · ');
-
-	// A rate pair only makes sense when both halves are known: a billed rate
-	// with no pay rate behind it cannot say what is kept.
-	const kept = (r: { billed: string | null; paid: string | null; crew: string }) =>
-		r.billed === null || r.paid === null
-			? null
-			: (Number(r.billed) - Number(r.paid) * (r.crew === 'team' ? 2 : 1)).toFixed(2);
 </script>
 
 <Top
@@ -55,8 +41,8 @@
 					<div class="rec-m">
 						<div class="rec-t">{j.job} · {day(j.worked_on)}</div>
 						<div class="rec-s">
-							{who(j)} · {Number(j.hours).toFixed(4)} h{#if j.crew === 'team' && j.paid}
-								· {money(Number(j.paid) / 2)} each{/if}
+							{who(j)} · {Number(j.hours).toFixed(4)} h{#if j.heads > 1}
+								· {j.heads} on the job{/if}
 						</div>
 					</div>
 					<div class="rec-n">
@@ -87,29 +73,22 @@
 	<div class="sec">
 		<div class="sec-h"><h2>An hour now</h2></div>
 		<div class="rows">
-			{#each data.rates as r (r.service + r.crew)}
-				<div class="rec">
+			{#each data.rates as r (r.service_id + r.crew + r.who)}
+				<div class="rec" class:warn={r.unpaid}>
 					<div class="rec-m">
-						<div class="rec-t">{r.service} · {label(r.crew).toLowerCase()}</div>
+						<div class="rec-t">{r.service} · {r.who}</div>
 						<div class="rec-s">{terms(r)}</div>
 					</div>
 					<div class="rec-n">
-						{#if kept(r) !== null}
-							<span class="rec-v" class:good={Number(kept(r)) > 0}>{money(kept(r))}</span>
-							<span class="rec-x">kept</span>
-						{:else}
-							<span class="rec-v mut">—</span>
-							<span class="rec-x">no rate set</span>
-						{/if}
+						<span class="rec-v" class:good={!r.unpaid && Number(r.kept) > 0}>{money(r.kept)}</span>
+						<span class="rec-x">kept</span>
 					</div>
 				</div>
 			{:else}
 				<div class="rec">
 					<div class="rec-m">
-						<div class="rec-t"><span class="lt">No rates set</span></div>
-						<div class="rec-s">
-							An hour needs both a price and a rate of pay to say what it keeps
-						</div>
+						<div class="rec-t"><span class="lt">Nothing priced by the hour</span></div>
+						<div class="rec-s">An hour needs a price before it can say what it keeps</div>
 					</div>
 				</div>
 			{/each}

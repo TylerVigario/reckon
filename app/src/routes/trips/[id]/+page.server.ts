@@ -21,33 +21,29 @@ export const load: PageServerLoad = async ({ params }) => {
 			stops: string | null;
 			miles: string;
 			billed: string;
-			rate: string | null;
 			round_trips: string | null;
 		}[]
 	>`
-		with rate as (
-			select sp.rate from service_price sp join service s on s.id = sp.service_id
-			 where s.unit = 'mile' and sp.effective_from <= current_date
-			 order by sp.effective_from desc limit 1
-		)
 		select t.id, t.travelled_on::text, u.name as driver,
 		       (select string_agg(distinct coalesce(si.city, si.label, ts.address), ' and '
 		                          order by coalesce(si.city, si.label, ts.address))
 		          from trip_stop ts left join site si on si.id = ts.site_id
 		         where ts.trip_id = t.id) as stops,
 		       coalesce(sum(tl.miles), 0)::text as miles,
-		       (coalesce(sum(tl.miles) filter (where tl.entity_id is not null), 0)
-		        * (select rate from rate))::text as billed,
-		       (select rate::text from rate) as rate,
+		       coalesce(sum(lw.billed), 0)::text as billed,
 		       -- What each client would have been charged driving out and back
-		       -- alone, which is what most systems would have billed.
-		       (select (sum(si.round_trip_miles) * (select rate from rate))::text
-		          from (select distinct tl2.site_id from trip_leg tl2
+		       -- alone, which is what most systems would have billed -- at the
+		       -- same service and price its leg bills at.
+		       (select sum(billed_amount(d.service_id, d.entity_id, 1, t.travelled_on,
+		                                 si.round_trip_miles))::text
+		          from (select distinct tl2.site_id, tl2.entity_id, tl2.service_id
+		                  from trip_leg tl2
 		                 where tl2.trip_id = t.id and tl2.entity_id is not null) d
 		          join site si on si.id = d.site_id) as round_trips
 		  from trip t
 		  left join app_user u on u.id = t.driven_by
 		  left join trip_leg tl on tl.trip_id = t.id
+		  left join leg_worth lw on lw.trip_leg_id = tl.id
 		 where t.id = ${params.id}
 		 group by t.id, t.travelled_on, u.name`;
 
@@ -74,15 +70,11 @@ export const load: PageServerLoad = async ({ params }) => {
 			value: string;
 		}[]
 	>`
-		with rate as (
-			select sp.rate from service_price sp join service s on s.id = sp.service_id
-			 where s.unit = 'mile' and sp.effective_from <= current_date
-			 order by sp.effective_from desc limit 1
-		)
 		select tl.id, tl.seq, e.name as who, tl.rule,
 		       tl.miles::text,
-		       (tl.miles * (select rate from rate))::text as value
+		       lw.billed::text as value
 		  from trip_leg tl
+		  join leg_worth lw on lw.trip_leg_id = tl.id
 		  left join entity e on e.id = tl.entity_id
 		 where tl.trip_id = ${params.id}
 		 order by tl.seq`;
