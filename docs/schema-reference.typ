@@ -24,7 +24,7 @@
 #v(6pt)
 
 #text(size: sz.small)[
-  Thirty-two tables across seven clusters. The eight `.drawio` files in
+  Thirty-six tables across seven clusters. The eight `.drawio` files in
   `docs/schema/` carry the relationships; `docs/decisions.md` carries the
   decisions, verbatim, and is the authority. A table drawn in more than one
   cluster is listed once, under the first.
@@ -53,6 +53,7 @@
     [], [exemption\_certificate], [text],
     [], [exemption\_expires\_on], [date],
     [], [active], [bool],
+    [], [created\_at], [timestamptz],
   )
 ]
 #v(7pt)
@@ -84,6 +85,7 @@
     [], [round\_trip\_miles], [numeric],
     [], [drive\_minutes], [int],
     [], [active], [bool],
+    [], [created\_at], [timestamptz],
   )
 ]
 #v(7pt)
@@ -149,6 +151,7 @@
     [], [state\_rate\_pct], [numeric],
     [], [district\_rate\_pct], [numeric],
     [], [changed], [bool],
+    [], [note], [text],
   )
 ]
 #v(7pt)
@@ -168,6 +171,8 @@
     [], [amount], [numeric],
     [], [reference], [text],
     [*FK*], [created\_by], [uuid],
+    [], [note], [text],
+    [], [created\_at], [timestamptz],
   )
 ]
 #v(7pt)
@@ -199,6 +204,7 @@
     [], [subscription\_hours], [numeric · capped only],
     [], [subscription\_period], [week|month|quarter|year],
     [], [subscription\_overage], [bill|no\_charge|deny],
+    [], [active], [bool],
   )
 ]
 #v(7pt)
@@ -251,6 +257,7 @@
     [], [markup\_pct], [numeric],
     [], [taxable], [bool],
     [], [reorder\_level], [numeric],
+    [], [active], [bool],
   )
 ]
 #v(7pt)
@@ -318,6 +325,7 @@
     [*FK*], [service\_id], [uuid],
     [], [billable], [bool],
     [], [note], [text],
+    [], [created\_at], [timestamptz],
   )
 ]
 #v(7pt)
@@ -333,6 +341,7 @@
     [], [travelled\_on], [date],
     [*FK*], [driven\_by], [uuid],
     [*FK*], [created\_by], [uuid],
+    [], [created\_at], [timestamptz],
   )
 ]
 #v(7pt)
@@ -350,6 +359,7 @@
     [*FK*], [site\_id], [uuid],
     [], [arrived\_at], [timestamptz],
     [], [departed\_at], [timestamptz],
+    [], [address], [text · somewhere that is nobody's site],
   )
 ]
 #v(7pt)
@@ -388,6 +398,7 @@
     [], [failed\_attempts], [int],
     [], [locked\_until], [timestamptz],
     [], [last\_seen\_at], [timestamptz],
+    [], [created\_at], [timestamptz],
   )
 ]
 #v(7pt)
@@ -411,6 +422,7 @@
     [], [billing\_interval], [weekly|monthly|quarterly|annually],
     [], [billing\_anchor\_day], [1–31 · from starts\_on],
     [], [final\_period\_proration], [none|daily],
+    [], [remote\_allotment], [none|capped|unlimited],
     [*FK*], [contact\_id], [uuid · agreed with],
     [*PK*], [id], [uuid],
     [*FK*], [entity\_id], [uuid],
@@ -484,6 +496,7 @@
     [], [sent\_at], [timestamptz],
     [*FK*], [created\_by], [uuid],
     [], [void\_reason], [text],
+    [], [created\_at], [timestamptz],
   )
 ]
 #v(7pt)
@@ -533,6 +546,8 @@
     [], [amount], [numeric],
     [], [kind], [reg1700b|correction],
     [], [reason], [text],
+    [*FK*], [created\_by], [uuid],
+    [], [created\_at], [timestamptz],
   )
 ]
 #v(7pt)
@@ -544,6 +559,7 @@
     (auto, auto, 1fr),
     ([], [Column], [Type]),
     size: sz.micro,
+    [*PK*], [id], [uuid],
     [*FK*], [credit\_note\_id], [uuid],
     [*FK*], [invoice\_id], [uuid],
     [], [amount], [numeric],
@@ -575,6 +591,7 @@
     [], [method], [card|transfer|cheque],
     [], [processor\_ref], [text],
     [*FK*], [payout\_id], [uuid · null until it lands],
+    [], [created\_at], [timestamptz],
   )
 ]
 #v(7pt)
@@ -586,6 +603,7 @@
     (auto, auto, 1fr),
     ([], [Column], [Type]),
     size: sz.micro,
+    [*PK*], [id], [uuid],
     [*FK*], [payment\_id], [uuid],
     [*FK*], [invoice\_id], [uuid],
     [], [amount], [numeric],
@@ -644,9 +662,11 @@
     ([], [Column], [Type]),
     size: sz.micro,
     [*PK*], [id], [uuid],
+    [], [singleton], [bool · one row only],
     [], [trading\_name], [text],
     [], [short\_name], [text],
     [], [logo], [bytea · null → name],
+    [], [logo\_media\_type], [text],
     [], [accent\_colour], [text],
     [], [address], [text],
     [], [google\_place\_id], [text · the place it is],
@@ -664,9 +684,10 @@
     [], [default\_terms\_days], [int],
     [], [ageing\_alert\_days], [int],
     [], [default\_markup\_pct], [numeric · 20],
-    [*FK*], [base\_location\_id], [uuid],
     [], [invoice\_footer], [text],
     [], [auto\_send], [bool],
+    [], [email\_attaches\_pdf], [bool],
+    [], [email\_includes\_payment\_link], [bool],
     [], [tax\_registration], [text],
     [], [tax\_agency], [text],
     [], [filing\_basis], [annual|quarterly|monthly],
@@ -741,6 +762,21 @@
     [], [dated\_on], [date],
     [], [exported\_at], [timestamptz],
     [], [transaction\_text], [text],
+  )
+]
+#v(7pt)
+
+#block(breakable: false)[
+  #text(font: face-mono, size: sz.fine, weight: "bold")[integration]
+  #v(3pt)
+  #sheet(
+    (auto, auto, 1fr),
+    ([], [Column], [Type]),
+    size: sz.micro,
+    [*PK*], [name], [stripe|beancount|press|email],
+    [], [connected], [bool],
+    [], [detail], [text · never a key],
+    [], [checked\_at], [timestamptz],
   )
 ]
 #v(7pt)

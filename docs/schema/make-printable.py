@@ -117,7 +117,7 @@ HEAD = r'''// The reckon schema, as a printed reference.
 #v(6pt)
 
 #text(size: sz.small)[
-  Thirty-two tables across seven clusters. The eight `.drawio` files in
+  @@N_TABLES@@ tables across @@N_CLUSTERS@@ clusters. The @@N_FILES@@ `.drawio` files in
   `docs/schema/` carry the relationships; `docs/decisions.md` carries the
   decisions, verbatim, and is the authority. A table drawn in more than one
   cluster is listed once, under the first.
@@ -184,7 +184,15 @@ TAIL = r'''
 #stamp[Generated from `docs/schema/`. Change a diagram and regenerate.]
 '''
 
-OUT.write_text(HEAD + "#columns(2, gutter: 16pt)[\n" + "\n".join(parts) + "\n]\n" + TAIL)
+WORDS = {2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six", 7: "Seven", 8: "Eight",
+         9: "Nine", 10: "Ten", 32: "Thirty-two", 34: "Thirty-four", 35: "Thirty-five",
+         36: "Thirty-six", 37: "Thirty-seven", 38: "Thirty-eight"}
+word = lambda n: WORDS.get(n, str(n))
+head = (HEAD.replace("@@N_TABLES@@", word(len(seen)))
+            .replace("@@N_CLUSTERS@@", word(len(CLUSTERS)).lower())
+            .replace("@@N_FILES@@", word(len(list(HERE.glob("*.drawio")))).lower()))
+
+OUT.write_text(head + "#columns(2, gutter: 16pt)[\n" + "\n".join(parts) + "\n]\n" + TAIL)
 print(f"{OUT}")
 print(f"  {len(seen)} tables from {len(CLUSTERS)} clusters")
 print("  build:  just build docs/schema-reference.typ")

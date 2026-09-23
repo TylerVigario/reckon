@@ -13,6 +13,7 @@ Usage:  python3 regenerate.py
 """
 
 import pathlib
+import re
 from xml.sax.saxutils import escape as _escape
 
 
@@ -91,7 +92,38 @@ def note(nid, text, x, y, w, h=40):
     return cell(nid, "1", text, S_NOTE, x, y, w, h)
 
 
+def refuse_overlaps(filename, cells, w, h):
+    """A layout that prints text over text is not a diagram.
+
+    Nothing caught these while the files were only ever opened in draw.io. They
+    surfaced the first time a printable was built from them and press reported
+    text on text -- seven collisions across six diagrams, and two canvases the
+    content already ran past. The check belongs where the layout is decided.
+
+    Rows and cells are skipped: they are meant to sit inside their table.
+    """
+    boxes = []
+    for c in cells:
+        if "shape=tableRow" in c or "partialRectangle" in c:
+            continue
+        m = re.search(r'<mxGeometry x="(-?\d+)" y="(-?\d+)" width="(\d+)" height="(\d+)"', c)
+        if m:
+            boxes.append(tuple(int(g) for g in m.groups()))
+    for i in range(len(boxes)):
+        for j in range(i + 1, len(boxes)):
+            (ax, ay, aw, ah), (bx, by, bw, bh) = boxes[i], boxes[j]
+            if (min(ax + aw, bx + bw) - max(ax, bx) > 1
+                    and min(ay + ah, by + bh) - max(ay, by) > 1):
+                raise SystemExit(f"{filename}: two boxes overlap — "
+                                 f"({ax},{ay},{aw},{ah}) and ({bx},{by},{bw},{bh})")
+    for x, y, bw, bh in boxes:
+        if x + bw > w or y + bh > h:
+            raise SystemExit(f"{filename}: a box at ({x},{y},{bw},{bh}) "
+                             f"runs past the {w}x{h} canvas")
+
+
 def write(filename, title, cells, w=1600, h=1100):
+    refuse_overlaps(filename, cells, w, h)
     body = "\n".join(cells)
     (HERE / filename).write_text(f'''<mxfile host="reckon" agent="regenerate.py" type="device">
   <diagram id="{filename.replace('.drawio','')}" name="{escape(title)}">
@@ -116,7 +148,8 @@ T = {}
 T["entity"] = [("PK","id","uuid"),("UK","slug","text · in the URL"),("","name","text"),("","terms_days","int"),
     ("","payment_method","text"),("","opening_balance","numeric"),
     ("","tax_exempt","bool"),("","exemption_certificate","text"),
-    ("","exemption_expires_on","date"),("","active","bool")]
+    ("","exemption_expires_on","date"),("","active","bool"),
+    ("","created_at","timestamptz")]
 T["site"] = [("PK","id","uuid"),("FK","entity_id","uuid · one client"),
     ("UK","slug","text · in the URL, per client"),
     ("","label","text · this client's name for it"),("","display","text · generated"),
@@ -128,7 +161,8 @@ T["site"] = [("PK","id","uuid"),("FK","entity_id","uuid · one client"),
     ("","tax_rate_pct","numeric · CDTFA's rate, NOT NULL"),
     ("","state_rate_pct","numeric · the state's share"),
     ("","district_rate_pct","numeric · the districts on top"),
-    ("","round_trip_miles","numeric"),("","drive_minutes","int"),("","active","bool")]
+    ("","round_trip_miles","numeric"),("","drive_minutes","int"),("","active","bool"),
+    ("","created_at","timestamptz")]
 T["contact"] = [("PK","id","uuid"),("","name","text"),("","email","text"),
     ("","phone","text"),("","note","text")]
 T["entity_contact"] = [("FK","entity_id","uuid"),("FK","contact_id","uuid"),
@@ -139,10 +173,14 @@ T["site_tax_check"] = [("PK","id","uuid"),("FK","site_id","uuid"),
     ("","checked_at","timestamptz"),("","tax_area_code","text · CDTFA TAC"),
     ("","tax_jurisdiction","text"),("","rate_pct","numeric"),
     ("","state_rate_pct","numeric"),("","district_rate_pct","numeric"),
-    ("","changed","bool")]
+    ("","changed","bool"),("","note","text")]
 T["tax_remittance"] = [("PK","id","uuid"),("","period_start","date"),
     ("","period_end","date"),("","filed_on","date"),("","paid_on","date"),
-    ("","amount","numeric"),("","reference","text"),("FK","created_by","uuid")]
+    ("","amount","numeric"),("","reference","text"),("FK","created_by","uuid"),
+    ("","note","text"),("","created_at","timestamptz")]
+
+T["integration"] = [("PK","name","stripe|beancount|press|email"),
+    ("","connected","bool"),("","detail","text"),("","checked_at","timestamptz")]
 
 T["service"] = [("PK","id","uuid"),("","code","text"),("","name","text"),
     ("","unit","hour | mile"),("","taxable","bool"),
@@ -150,7 +188,7 @@ T["service"] = [("PK","id","uuid"),("","code","text"),("","name","text"),
     ("","subscription_basis","none|capped|unlimited"),
     ("","subscription_hours","numeric · capped only"),
     ("","subscription_period","week|month|quarter|year"),
-    ("","subscription_overage","bill|no_charge|deny")]
+    ("","subscription_overage","bill|no_charge|deny"),("","active","bool")]
 T["service_price"] = [("PK","id","uuid"),("FK","service_id","uuid"),
     ("FK","entity_id","uuid · null = any"),("","crew","null | one | team"),
     ("","rate","numeric"),("","effective_from","date")]
@@ -159,7 +197,7 @@ T["person_pay_rate"] = [("PK","id","uuid"),("FK","user_id","uuid · null = every
     ("","effective_from","date")]
 T["material"] = [("PK","id","uuid"),("","sku","text"),("","name","text"),
     ("","brand","text"),("","unit","each | foot"),("","markup_pct","numeric"),
-    ("","taxable","bool"),("","reorder_level","numeric")]
+    ("","taxable","bool"),("","reorder_level","numeric"),("","active","bool")]
 T["material_lot"] = [("PK","id","uuid"),("FK","material_id","uuid"),
     ("","received_on","date"),("","supplier","text"),("","document_ref","text"),
     ("","qty_received","numeric"),("","qty_remaining","numeric"),
@@ -173,19 +211,19 @@ T["time_entry"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the phon
     ("FK","worked_by","uuid · null when team"),("FK","created_by","uuid · ran the timer"),
     ("FK","entity_id","uuid · null = internal"),
     ("FK","site_id","uuid"),("FK","service_id","uuid"),("","billable","bool"),
-    ("","note","text")]
+    ("","note","text"),("","created_at","timestamptz")]
 T["trip"] = [("PK","id","uuid"),("","travelled_on","date"),("FK","driven_by","uuid"),
-    ("FK","created_by","uuid")]
+    ("FK","created_by","uuid"),("","created_at","timestamptz")]
 T["trip_stop"] = [("PK","id","uuid"),("FK","trip_id","uuid"),("","seq","int"),
     ("FK","site_id","uuid"),("","arrived_at","timestamptz"),
-    ("","departed_at","timestamptz")]
+    ("","departed_at","timestamptz"),("","address","text · somewhere that is nobody's site")]
 T["trip_leg"] = [("PK","id","uuid"),("FK","trip_id","uuid"),("","seq","int"),
     ("","miles","numeric"),("FK","entity_id","uuid · who caused it"),
     ("FK","site_id","uuid"),("","rule","text")]
 
 T["agreement"] = [("","billing_interval","weekly|monthly|quarterly|annually"),
     ("","billing_anchor_day","1–31 · from starts_on"),
-    ("","final_period_proration","none|daily"),("FK","contact_id","uuid · agreed with"),("PK","id","uuid"),("FK","entity_id","uuid"),
+    ("","final_period_proration","none|daily"),("","remote_allotment","none|capped|unlimited"),("FK","contact_id","uuid · agreed with"),("PK","id","uuid"),("FK","entity_id","uuid"),
     ("","basis","flat | per_location"),("","price","numeric"),
     ("","remote_cap_hours","numeric · null = ∞"),
     ("","allotment_basis","flat | per_location"),
@@ -201,7 +239,7 @@ T["invoice"] = [("PK","id","uuid"),("UK","number","text"),("FK","entity_id","uui
     ("","status","draft|sent|paid|void"),("","issued_on","date"),("","due_on","date"),
     ("","period_start","date"),("","period_end","date"),("UK","public_token","text"),
     ("","token_expires_on","date"),("","sent_at","timestamptz"),
-    ("FK","created_by","uuid"),("","void_reason","text")]
+    ("FK","created_by","uuid"),("","void_reason","text"),("","created_at","timestamptz")]
 T["invoice_line"] = [("PK","id","uuid"),("FK","invoice_id","uuid"),("","seq","int"),
     ("","kind","service|material|recurring"),("","description","text"),
     ("","qty","numeric"),("","unit","hour|mile|each|foot|month"),
@@ -214,14 +252,15 @@ T["invoice_line"] = [("PK","id","uuid"),("FK","invoice_id","uuid"),("","seq","in
     ("FK","agreement_period_id","uuid"),("FK","material_lot_id","uuid")]
 T["credit_note"] = [("PK","id","uuid"),("UK","number","text"),("FK","entity_id","uuid"),
     ("","issued_on","date"),("","amount","numeric"),
-    ("","kind","reg1700b|correction"),("","reason","text")]
-T["credit_application"] = [("FK","credit_note_id","uuid"),("FK","invoice_id","uuid"),
+    ("","kind","reg1700b|correction"),("","reason","text"),
+    ("FK","created_by","uuid"),("","created_at","timestamptz")]
+T["credit_application"] = [("PK","id","uuid"),("FK","credit_note_id","uuid"),("FK","invoice_id","uuid"),
     ("","amount","numeric"),("","applied_on","date")]
 
 T["payment"] = [("PK","id","uuid"),("FK","entity_id","uuid"),("","received_on","date"),
     ("","gross","numeric"),("","method","card|transfer|cheque"),
-    ("","processor_ref","text"),("FK","payout_id","uuid · null until it lands")]
-T["payment_allocation"] = [("FK","payment_id","uuid"),("FK","invoice_id","uuid"),
+    ("","processor_ref","text"),("FK","payout_id","uuid · null until it lands"),("","created_at","timestamptz")]
+T["payment_allocation"] = [("PK","id","uuid"),("FK","payment_id","uuid"),("FK","invoice_id","uuid"),
     ("","amount","numeric")]
 T["refund"] = [("PK","id","uuid"),("FK","payment_id","uuid"),("","amount","numeric"),
     ("","refunded_on","date"),("","reason","text")]
@@ -232,8 +271,8 @@ T["payout"] = [("PK","id","uuid"),("","processor","text"),("","arrived_on","date
 T["integration"] = [("PK","name","stripe|beancount|press|email"),
     ("","connected","bool"),("","detail","text · never a key"),
     ("","checked_at","timestamptz")]
-T["operator"] = [("PK","id","uuid"),("","trading_name","text"),("","short_name","text"),
-    ("","logo","bytea · null → name"),("","accent_colour","text"),("","address","text"),
+T["operator"] = [("PK","id","uuid"),("","singleton","bool · one row only"),("","trading_name","text"),("","short_name","text"),
+    ("","logo","bytea · null → name"),("","logo_media_type","text"),("","accent_colour","text"),("","address","text"),
     ("","google_place_id","text · the place it is"),
     ("","address_verified_on","date"),
     ("","tax_number","text"),("","tax_number_label","EIN | VAT | ABN"),
@@ -243,8 +282,8 @@ T["operator"] = [("PK","id","uuid"),("","trading_name","text"),("","short_name",
     ("","next_invoice_number","int"),
     ("","default_terms_days","int"),("","ageing_alert_days","int"),
     ("","default_markup_pct","numeric · 20"),
-    ("FK","base_location_id","uuid"),
     ("","invoice_footer","text"),("","auto_send","bool"),
+    ("","email_attaches_pdf","bool"),("","email_includes_payment_link","bool"),
     ("","tax_registration","text"),("","tax_agency","text"),
     ("","filing_basis","annual|quarterly|monthly"),
     ("","fiscal_year_end_month","1–12"),
@@ -254,7 +293,8 @@ T["operator"] = [("PK","id","uuid"),("","trading_name","text"),("","short_name",
 T["app_user"] = [("PK","id","uuid"),("","name","text"),("UK","email","text"),
     ("","credential","text · argon2id"),("","active","bool"),
     ("","on_team","bool · is paid"),("","failed_attempts","int"),
-    ("","locked_until","timestamptz"),("","last_seen_at","timestamptz")]
+    ("","locked_until","timestamptz"),("","last_seen_at","timestamptz"),
+    ("","created_at","timestamptz")]
 T["session"] = [("PK","token_hash","text · sha256"),("FK","user_id","uuid"),
     ("","created_at","timestamptz"),("","expires_at","timestamptz"),
     ("","last_used","timestamptz"),("","user_agent","text")]
@@ -300,9 +340,9 @@ files.append(write("01-overview.drawio", "Overview", c, 1100, 580))
 
 # 02 -- who and where
 c = at("entity",40,60) + at("site",800,60) \
-  + at("contact",800,340) + at("entity_contact",440,240) \
+  + at("contact",800,580) + at("entity_contact",440,240) \
   + at("site_contact",440,460) \
-  + at("site_tax_check",1200,60) + at("tax_remittance",1200,400)
+  + at("site_tax_check",1200,60) + at("tax_remittance",1200,340)
 c += [edge("e22","entity","entity_contact","is reached via"),
       edge("e23","contact","entity_contact","acts for",
            S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1")),
@@ -353,8 +393,8 @@ c += [note("n2", "\"wild jacks is completely seperate. only shared infra\" — 1
                  "\"Bravo Farms is a client, and the sites are Traver, Kettleman, etc\" "
                  "\u2014 9 Sep. A site belongs to exactly one client; two clients at one "
                  "address are two sites.",
-           1200, 340, 340, 620)]
-files.append(write("02-who-and-where.drawio", "Who and where", c, 1560, 620))
+           40, 720, 1480, 280)]
+files.append(write("02-who-and-where.drawio", "Who and where", c, 1560, 1040))
 
 # 03 -- catalogue
 c = at("service",40,60) + at("service_price",440,60) + at("person_pay_rate",440,260) \
@@ -382,8 +422,8 @@ c += [note("n3", "On site: $80.00 one person, $130.00 both — 2 Sep. \"both is 
                  "means on agreement.remote_cap_hours, where it means unlimited.\n\n"
                  "[claude] material_lot is where stock enters, and where the Reg 1701 "
                  "ex-tax purchase price is sourced. Weighted-average cost needs lots to "
-                 "average.", 40, 320, 360, 230)]
-files.append(write("03-catalogue.drawio", "What you sell", c, 1620, 620))
+                 "average.", 40, 580, 1540, 230)]
+files.append(write("03-catalogue.drawio", "What you sell", c, 1620, 850))
 
 # 04 -- work captured
 c = at("time_entry",40,60) + at("trip",480,60) + at("trip_stop",480,220) \
@@ -412,8 +452,8 @@ c += [note("n4", "\"there is only he creates or i do\" — 3 Sep. worked_by is p
                  "\"worked_by sounds misleading now\" and \"both should mean team\" — "
                  "9 Sep. worked_by is null on a team entry; created_by ran the timer; "
                  "app_user.on_team says who is paid.",
-           480, 420, 680, 230)]
-files.append(write("04-work-captured.drawio", "Work as it is captured", c, 1340, 700))
+           40, 700, 1180, 230)]
+files.append(write("04-work-captured.drawio", "Work as it is captured", c, 1340, 960))
 
 # 05 -- agreements
 c = at("entity",40,60) + at("agreement",440,60) + at("agreement_site",840,60) \
@@ -436,8 +476,8 @@ c += [note("n5", "\"per site and per client. we talked about this. reoccurings s
                  "\"allotment used and they call. bill per minute at the going rate. also "
                  "can be set as no-charge or deny work\" — 9 Sep.\n\n"
                  "\"retainer does meter but bravo will show infinite right now\" — 18 Aug.",
-           40, 400, 720, 260)]
-files.append(write("05-agreements.drawio", "Agreements", c, 1620, 700))
+           40, 600, 1540, 260)]
+files.append(write("05-agreements.drawio", "Agreements", c, 1620, 880))
 
 # 06 -- money out
 c = at("invoice",40,60) + at("invoice_line",440,60) + at("credit_note",880,60) \
@@ -465,8 +505,8 @@ c += [note("n6", "\"your right i meant per site but can even be overriden as the
                  "\"agreed, add unit type\" — 9 Sep. unit is what qty counts, frozen at "
                  "issue like tax_rate_pct, so a line reads 41.20 mi @ $0.72 without asking "
                  "the service what it is called today. Null where a quantity names "
-                 "nothing: a flat charge, an adjustment.", 880, 430, 640, 270)]
-files.append(write("06-money-out.drawio", "Money out", c, 1600, 760))
+                 "nothing: a flat charge, an adjustment.", 880, 480, 640, 270)]
+files.append(write("06-money-out.drawio", "Money out", c, 1600, 1090))
 
 # 07 -- money in
 c = at("payment",40,60) + at("payment_allocation",440,60) + at("refund",440,220) \
@@ -484,13 +524,13 @@ c += [note("n7", "[claude] Stripe pays one deposit covering several invoices, ne
                  "[claude] payment_allocation carries partial payments, and it is why a "
                  "refund never makes an invoice look unpaid: the refund reverses the "
                  "payment, and the invoice is closed by a credit note against the entity.",
-           440, 380, 660, 170)]
+           440, 420, 660, 170)]
 files.append(write("07-money-in.drawio", "Money in", c, 1260, 620))
 
 # 08 -- operator and record
-c = at("operator",40,60) + at("app_user",480,60) + at("session",480,300) \
-  + at("record_history",900,300) + at("account_map",900,60) \
-  + at("ledger_export",900,180) + at("migration",40,420)
+c = at("operator",40,60) + at("app_user",480,60) + at("session",480,350) \
+  + at("record_history",900,410) + at("account_map",900,60) \
+  + at("ledger_export",900,180) + at("integration",480,560) + at("migration",40,880)
 c += [edge("e80","operator","account_map","maps"),
       edge("e82","app_user","session","is signed in by",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=1")
@@ -518,8 +558,8 @@ c += [note("n8", "\"the whole platform is universal. user access is the only sep
                  "service now, and what is paid to whoever answers is a dated "
                  "person_pay_rate row.\n\n"
                  "[claude] record_history is append-only and exists to explain a figure, "
-                 "not to police one.", 40, 560, 720, 250)]
-files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 860))
+                 "not to police one.", 40, 1000, 1300, 280)]
+files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 1320))
 
 for f in files:
     print(f"  {f}")
