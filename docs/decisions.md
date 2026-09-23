@@ -359,6 +359,11 @@ job. Nothing names a path, a service manager or a distribution.
 
 > *"mock is pure static as a pure display of what the shape will look like so i can iterate and give you a real target to do the bulk work, then ill go back over everything you did in bulk to ensure its done properly."* — 18 Aug 2026
 
+**Fundamentals before the end goal.** Export to the ledger waits until what the
+ledger needs is known and the application can record it.
+> *"we have no idea about beancount export requirements. for example: how will we track service charge for stripe? that must be recorded in the ledger"* — 23 Sep 2026
+> *"it would be NICE for it to show within the webapp as well. but the point still remians. why waste time on an end goal matter when the fundamentals still require so much work"* — 23 Sep 2026
+
 ---
 
 ## Publishing
@@ -583,13 +588,11 @@ edited. `CONTRIBUTING.md` says so.
 **The application writes to a new ledger, the partnership's, and never to the one that exists today.**
 > *"the ledger will be creaed anew once we finish the app as well. the current ledger should not be connected or written to with this application. the old ledger is sole prop, the new ledger and this application will be under the partner ein"* — 23 Sep 2026
 
-**[claude]** The ledger poster had been written against the sole proprietorship's
-ledger: its usage pointed there and its default account names were that
-ledger's chart. It now carries no account names at all. Every one comes from
-`account_map`, and it refuses to post until each role it needs is mapped — so
-nothing it writes can land in someone else's chart by default. It had never
-posted anything there; none of its transaction markers appear in that ledger or
-its history.
+**[claude]** There was a ledger poster, written against the sole
+proprietorship's ledger: its usage pointed there and its default account names
+were that ledger's chart. It has been removed rather than corrected — see *How
+the work is sequenced*. It never posted anything there; none of its transaction
+markers appear in that ledger or anywhere in its history.
 
 **[claude]** *"almost no need"* leaves one exception: whatever is still open on
 the day — an unapplied credit, a refund owed, an invoice not yet paid. That is a

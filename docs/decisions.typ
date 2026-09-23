@@ -511,6 +511,15 @@ Asked to add service units, a reverse-proxy configuration and a fail2ban jail he
 ]
 #v(4pt)
 
+*Fundamentals before the end goal.* Export to the ledger waits until what the ledger needs is known and the application can record it.
+#v(4pt)
+
+#callout(tone: "note")[
+  _"we have no idea about beancount export requirements. for example: how will we track service charge for stripe? that must be recorded in the ledger"_ — 23 Sep 2026 \
+  _"it would be NICE for it to show within the webapp as well. but the point still remians. why waste time on an end goal matter when the fundamentals still require so much work"_ — 23 Sep 2026
+]
+#v(4pt)
+
 #band[Publishing]
 #v(4pt)
 
@@ -686,7 +695,7 @@ Folding was available only because nothing had been released and the remote had 
 ]
 #v(4pt)
 
-*#text(fill: warn, weight: 700)[\[claude\]]* The ledger poster had been written against the sole proprietorship's ledger: its usage pointed there and its default account names were that ledger's chart. It now carries no account names at all. Every one comes from `account_map`, and it refuses to post until each role it needs is mapped — so nothing it writes can land in someone else's chart by default. It had never posted anything there; none of its transaction markers appear in that ledger or its history.
+*#text(fill: warn, weight: 700)[\[claude\]]* There was a ledger poster, written against the sole proprietorship's ledger: its usage pointed there and its default account names were that ledger's chart. It has been removed rather than corrected — see _How the work is sequenced_. It never posted anything there; none of its transaction markers appear in that ledger or anywhere in its history.
 #v(4pt)
 
 *#text(fill: warn, weight: 700)[\[claude\]]* _"almost no need"_ leaves one exception: whatever is still open on the day — an unapplied credit, a refund owed, an invoice not yet paid. That is a balance a client can still draw on rather than history, and `entity.opening_balance` was reserved for it in 0018.

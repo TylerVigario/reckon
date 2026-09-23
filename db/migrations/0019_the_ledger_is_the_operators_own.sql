@@ -1,20 +1,27 @@
--- The ledger is the operator's own, and the schema should not suggest one.
+-- The ledger is the operator's own, and nothing here writes to one yet.
 --
 -- "the ledger will be creaed anew once we finish the app as well. the current
 --  ledger should not be connected or written to with this application. the old
 --  ledger is sole prop, the new ledger and this application will be under the
 --  partner ein"  -- 23 Sep 2026
 --
--- integration.detail gave "books/" as its example of what a ledger integration
--- points at. That was one operator's directory -- and, as of that note, the one
--- ledger this application must never write to. An example in the schema is a
--- suggestion, so it goes.
+-- "we have no idea about beancount export requirements. for example: how will
+--  we track service charge for stripe? that must be recorded in the ledger"
+--  -- 23 Sep 2026
 --
--- account_map had no comment at all, and it is now the only place an account
--- name comes from. The poster used to carry its own defaults, which were the
--- chart of the ledger above; it now refuses to post until every role it needs
--- is mapped here. The roles themselves are listed once, in the poster, rather
--- than restated in a comment that would drift from it.
+-- The ledger poster is gone. It had been written against the one ledger that
+-- existed -- a sole proprietorship's -- and the ledger this application writes
+-- to does not exist yet, nor do the requirements of writing to it. An export
+-- built before either is guesswork that has to be unpicked, so there is none.
+--
+-- What that leaves wrong in the schema's own descriptions:
+--
+--   integration.detail  gave "books/" as its example of where a ledger lives.
+--                       That was one operator's directory, and the one ledger
+--                       this application must never write to.
+--   ledger_export       said the poster answered its question by reading the
+--                       ledger file. Nothing answers it now.
+--   account_map         had no comment at all.
 
 BEGIN;
 
@@ -22,15 +29,16 @@ COMMENT ON COLUMN integration.detail IS
   'What it points at, in the operator''s terms: where the operator''s ledger '
   'file lives, the from-address for email. Not a secret.';
 
+COMMENT ON TABLE ledger_export IS
+  'UNUSED, PLANNED. Meant to record what has been handed to the operator''s '
+  'ledger. Nothing is handed over yet: an export waits until that ledger exists '
+  'and what it needs from this application is known.';
+
 COMMENT ON TABLE account_map IS
-  'Which account in the operator''s own ledger each kind of posting goes to. '
-  'Nothing supplies a default: a default would be one business''s chart applied '
-  'to every other. scripts/post-to-ledger.mjs names the roles it needs and '
-  'refuses to post until each is mapped.';
-COMMENT ON COLUMN account_map.role IS
-  'What the account is for, in the poster''s words -- receivable, bank, and so '
-  'on. A role the poster does not know is reported as a likely typo rather than '
-  'ignored.';
+  'UNUSED, PLANNED. Which account in the operator''s own ledger each kind of '
+  'posting goes to. Nothing supplies a default: a default would be one '
+  'business''s chart applied to every other.';
+COMMENT ON COLUMN account_map.role IS 'What the account is for.';
 COMMENT ON COLUMN account_map.account IS
   'The account name exactly as the operator''s ledger has it.';
 
