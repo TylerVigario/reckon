@@ -14,6 +14,17 @@ export default {
 		// No inherited default exists for this one.
 		'scope-case': [2, 'always', 'lower-case'],
 
+		// Sentence case allowed; Title Case and UPPER CASE still refused.
+		//
+		// config-conventional forbids all four, and under rule 3 the pull request
+		// title IS the commit -- so the rule runs against titles this repository
+		// does not write. Dependabot's are sentence-case ("Bump the application
+		// group in /app with 4 updates") and cannot be configured otherwise, and
+		// `Validate PR title` is a required context. Inherited, the rule makes
+		// every dependency update unmergeable for ever, which is rule 12's
+		// updates switched on and then gated shut.
+		'subject-case': [2, 'never', ['start-case', 'pascal-case', 'upper-case']],
+
 		// 120 rather than the inherited 100. Under squash the pull request title
 		// becomes the whole commit, and a type and scope eat the budget before
 		// the subject starts.
