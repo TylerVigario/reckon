@@ -302,7 +302,7 @@ T["migration"] = [("PK","filename","text"),("","applied_at","timestamptz")]
 T["record_history"] = [("PK","id","uuid"),("","table_name","text"),("","row_id","uuid"),
     ("","field","text"),("","old_value","text"),("","new_value","text"),
     ("FK","changed_by","uuid"),("","changed_at","timestamptz")]
-T["account_map"] = [("PK","role","text"),("","account","text · beancount path")]
+T["account_map"] = [("PK","role","text · what it is for"),("","account","text · as the ledger names it")]
 T["ledger_export"] = [("PK","id","uuid"),("","event","text"),("","source_table","text"),
     ("","source_id","uuid"),("","dated_on","date"),("","exported_at","timestamptz"),
     ("","transaction_text","text")]

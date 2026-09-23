@@ -1422,7 +1422,7 @@ SELECT must_fail($$
 $$, 'an integration nobody wired up');
 
 SELECT must_pass($$
-  INSERT INTO integration (name, connected, detail) VALUES ('beancount', true, 'books/')
+  INSERT INTO integration (name, connected, detail) VALUES ('beancount', true, 'ledger/main.beancount')
 $$, 'the ledger, and where it lives');
 
 -- An agreement may only name its own client's contact -- the same fault a

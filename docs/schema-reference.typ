@@ -742,8 +742,8 @@
     (auto, auto, 1fr),
     ([], [Column], [Type]),
     size: sz.micro,
-    [*PK*], [role], [text],
-    [], [account], [text · beancount path],
+    [*PK*], [role], [text · what it is for],
+    [], [account], [text · as the ledger names it],
   )
 ]
 #v(7pt)
@@ -838,8 +838,8 @@
 #v(5pt)
 
 #text(size: sz.fine)[
-  From `docs/decisions.md`. These are questions, not gaps to be filled in by
-  reasoning.
+  From `docs/decisions.md`, read at generation. These are questions, not gaps
+  to be filled in by reasoning.
 ]
 #v(4pt)
 
@@ -847,11 +847,11 @@
   (auto, 1fr),
   ([], [Open]),
   size: sz.micro,
-  [Emergency attendance], [unpriced],
-  [Migration cutover], [which date, whether historical invoices cross, where opening balances land],
-  [Token lifetime], [how long the public invoice link lives, and whether it is revocable],
-  [Decimal library], [Postgres does exact arithmetic; the application layer still needs a type],
-  [Three data gaps], [Valley Sky has no address, Esmeralda no district, Daniel's surname is inferred],
+  [Emergency attendance is unpriced], [],
+  [What is open at cutover], [whether any credit, refund or unpaid invoice is still outstanding on the day FreshBooks is retired, and so whether an opening balance is needed at all. Known on the day.],
+  [Token lifetime], [on the public invoice link.],
+  [The decimal library], [for the application layer.],
+  [Three data gaps], [Valley Sky Farms has no address on file, Esmeralda has no district recorded, and Daniel's surname is inferred from his email address rather than confirmed.],
 )
 
 #v(12pt)

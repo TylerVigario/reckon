@@ -359,6 +359,11 @@ job. Nothing names a path, a service manager or a distribution.
 
 > *"mock is pure static as a pure display of what the shape will look like so i can iterate and give you a real target to do the bulk work, then ill go back over everything you did in bulk to ensure its done properly."* — 18 Aug 2026
 
+**Fundamentals before the end goal.** Export to the ledger waits until what the
+ledger needs is known and the application can record it.
+> *"we have no idea about beancount export requirements. for example: how will we track service charge for stripe? that must be recorded in the ledger"* — 23 Sep 2026
+> *"it would be NICE for it to show within the webapp as well. but the point still remians. why waste time on an end goal matter when the fundamentals still require so much work"* — 23 Sep 2026
+
 ---
 
 ## Publishing
@@ -575,14 +580,36 @@ edited. `CONTRIBUTING.md` says so.
 
 ---
 
+## Leaving FreshBooks, and a ledger of the partnership's own
+
+**Nothing is carried over from FreshBooks.**
+> *"this application is forward looking. robin is now a partner. once this application is done we will export freshbooks one last time for this years filing and retire freshbooks completely. there is almost no need to keep historic data from freshbooks in this system and only complicates matters."* — 23 Sep 2026
+
+**The application writes to a new ledger, the partnership's, and never to the one that exists today.**
+> *"the ledger will be creaed anew once we finish the app as well. the current ledger should not be connected or written to with this application. the old ledger is sole prop, the new ledger and this application will be under the partner ein"* — 23 Sep 2026
+
+**[claude]** There was a ledger poster, written against the sole
+proprietorship's ledger: its usage pointed there and its default account names
+were that ledger's chart. It has been removed rather than corrected — see *How
+the work is sequenced*. It never posted anything there; none of its transaction
+markers appear in that ledger or anywhere in its history.
+
+**[claude]** *"almost no need"* leaves one exception: whatever is still open on
+the day — an unapplied credit, a refund owed, an invoice not yet paid. That is a
+balance a client can still draw on rather than history, and
+`entity.opening_balance` was reserved for it in 0018.
+
+---
+
 ## Not decided
 
 These have never been answered. They are questions, not gaps to be filled in by
 reasoning.
 
 - **Emergency attendance is unpriced.**
-- **Migration cutover** — which date, whether historical invoices cross, where
-  opening balances land.
+- **What is open at cutover** — whether any credit, refund or unpaid invoice is
+  still outstanding on the day FreshBooks is retired, and so whether an opening
+  balance is needed at all. Known on the day.
 - **Token lifetime** on the public invoice link.
 - **The decimal library** for the application layer.
 - **Three data gaps** — Valley Sky Farms has no address on file, Esmeralda has
