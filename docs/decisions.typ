@@ -667,16 +667,41 @@ Twenty-two migrations became `db/migrations/0001_the_schema.sql`, verified by bu
 Folding was available only because nothing had been released and the remote had been wiped. After a release, a schema somebody else is running cannot be rewritten under them, and a change becomes a migration that is added and never edited. `CONTRIBUTING.md` says so.
 #v(4pt)
 
+#band[Leaving FreshBooks, and a ledger of the partnership's own]
+#v(4pt)
+
+*Nothing is carried over from FreshBooks.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"this application is forward looking. robin is now a partner. once this application is done we will export freshbooks one last time for this years filing and retire freshbooks completely. there is almost no need to keep historic data from freshbooks in this system and only complicates matters."_ — 23 Sep 2026
+]
+#v(4pt)
+
+*The application writes to a new ledger, the partnership's, and never to the one that exists today.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"the ledger will be creaed anew once we finish the app as well. the current ledger should not be connected or written to with this application. the old ledger is sole prop, the new ledger and this application will be under the partner ein"_ — 23 Sep 2026
+]
+#v(4pt)
+
+*#text(fill: warn, weight: 700)[\[claude\]]* The ledger poster had been written against the sole proprietorship's ledger: its usage pointed there and its default account names were that ledger's chart. It now carries no account names at all. Every one comes from `account_map`, and it refuses to post until each role it needs is mapped — so nothing it writes can land in someone else's chart by default. It had never posted anything there; none of its transaction markers appear in that ledger or its history.
+#v(4pt)
+
+*#text(fill: warn, weight: 700)[\[claude\]]* _"almost no need"_ leaves one exception: whatever is still open on the day — an unapplied credit, a refund owed, an invoice not yet paid. That is a balance a client can still draw on rather than history, and `entity.opening_balance` was reserved for it in 0018.
+#v(4pt)
+
 #band[Not decided]
 #v(4pt)
 
 These have never been answered. They are questions, not gaps to be filled in by reasoning.
 #v(4pt)
 
-#list([*Emergency attendance is unpriced.*], [*Migration cutover* — which date, whether historical invoices cross, where])
+#list([*Emergency attendance is unpriced.*], [*What is open at cutover* — whether any credit, refund or unpaid invoice is])
 #v(4pt)
 
-opening balances land.
+still outstanding on the day FreshBooks is retired, and so whether an opening balance is needed at all. Known on the day.
 #v(4pt)
 
 #list([*Token lifetime* on the public invoice link.], [*The decimal library* for the application layer.], [*Three data gaps* — Valley Sky Farms has no address on file, Esmeralda has])

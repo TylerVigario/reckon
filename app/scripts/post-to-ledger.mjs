@@ -2,7 +2,7 @@
 /**
  * Write what happened into the beancount ledger.
  *
- *   node scripts/post-to-ledger.mjs --ledger ~/vts/books/ledger/vts.beancount
+ *   node scripts/post-to-ledger.mjs --ledger <the operator's beancount file>
  *   node scripts/post-to-ledger.mjs --dry-run       (stdout, writes nothing)
  *
  * ON DEMAND, DELIBERATELY. Nothing calls this: not a send, not a cron. While
@@ -17,17 +17,24 @@
  * already there -- the worst it can do is add a transaction, which a diff
  * shows and git reverts.
  *
- * It does NOT commit. books/ is its own repository precisely so bookkeeping
- * can be reverted on its own, and deciding what belongs in a commit is the
- * bookkeeper's.
+ * It does NOT commit. A ledger kept in git is best kept in a repository of its
+ * own, so bookkeeping can be reverted without disturbing anything else, and
+ * deciding what belongs in a commit is the bookkeeper's.
+ *
+ * WHOSE LEDGER. The operator's, and nobody else's. Every account name comes from
+ * account_map, which belongs to the operator -- so there is no default that
+ * happens to match a chart kept for some other taxpayer, and nothing this
+ * writes can land in one by accident. A business that changes hands, or a
+ * sole proprietor who becomes a partnership, starts a new ledger and maps it;
+ * the old one is not this program's to touch.
  *
  * THREE THINGS GET POSTED, and the third is the reason this exists:
  *
- *   an invoice going out   Assets:AR  ->  income, and the tax to whoever it is
+ *   an invoice going out   receivable  ->  income, and the tax to whoever it is
  *                          owed to. Tax charged is not income. It is somebody
  *                          else's money held briefly, and it posts to a
  *                          liability the moment it is billed.
- *   a payment arriving     the bank  ->  Assets:AR. Nothing about tax: the
+ *   a payment arriving     the bank  ->  receivable. Nothing about tax: the
  *                          obligation arose when the invoice was raised.
  *   a return being paid    the liability  ->  the bank. This is what closes
  *                          the loop, and without it the payable only ever
@@ -38,8 +45,8 @@
  * lumped SalesTaxPayable cannot answer what a return allocates.
  *
  * ACCOUNTS ARE OPENED IF THEY ARE MISSING. beancount refuses a posting to an
- * account with no open directive, and the tax liabilities did not exist before
- * this. The open goes in at the date of the earliest transaction using it.
+ * account with no open directive, and a ledger started fresh has none. The open
+ * goes in at the date of the earliest transaction using it.
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import postgres from 'postgres';
@@ -78,29 +85,6 @@ if (ledgerPath && !existsSync(ledgerPath)) {
 	process.exit(2);
 }
 
-// Defaults are the names already in use in the ledger at ~/vts/books, so the
-// output drops in rather than opening a second set of accounts beside the
-// first. The tax liabilities are the only new ones, because there were none.
-const ACCOUNTS = {
-	receivable: arg('--receivable', 'Assets:AR'),
-	bank: arg('--bank', 'Assets:Bank:Noble'),
-	fees: arg('--fees', 'Expenses:Overhead:Merchant-Fees'),
-	state: arg('--state-tax', 'Liabilities:SalesTaxPayable:State'),
-	district: arg('--district-tax', 'Liabilities:SalesTaxPayable:District')
-};
-
-// Income by what the line is, because a ledger that lumps labour with goods
-// cannot answer the one question a sales tax return asks.
-const INCOME = {
-	// A retainer is payment for labour being available, and the ledger has no
-	// account of its own for it. Worth one if the retainers grow.
-	recurring: arg('--retainer-income', 'Income:Labor'),
-	material: arg('--goods-income', 'Income:Goods'),
-	mileage: arg('--mileage-income', 'Income:Mileage'),
-	service: arg('--labour-income', 'Income:Labor'),
-	adjustment: arg('--adjustment-income', 'Expenses:Refunds-And-Credits')
-};
-
 const sql = process.env.DATABASE_URL
 	? postgres(process.env.DATABASE_URL, { onnotice: () => {} })
 	: postgres({
@@ -108,6 +92,73 @@ const sql = process.env.DATABASE_URL
 			database: process.env.PGDATABASE ?? 'reckon_dev',
 			onnotice: () => {}
 		});
+
+/**
+ * The accounts this posts to, by what each one is for. The names are the
+ * operator's -- set in account_map, shown on the integrations page -- and never
+ * a literal here: "Assets:AR" is a business fact like the trading name, and a
+ * default would be one business's chart quietly applied to every other.
+ */
+const ROLES = {
+	receivable: 'what clients owe',
+	bank: 'where payments land, and returns are paid from',
+	merchant_fees: 'what the card processor keeps',
+	sales_tax_state: "sales tax collected for the state's share",
+	sales_tax_district: 'sales tax collected for the districts',
+	income_labour: 'labour billed',
+	income_recurring: 'retainers and recurring charges',
+	income_goods: 'materials sold',
+	income_mileage: 'mileage charged',
+	adjustments: 'credits and corrections'
+};
+
+const mapped = new Map(
+	(await sql`select role, account from account_map`).map((r) => [String(r.role), String(r.account)])
+);
+
+// A role nothing reads is almost always a typo of one that is missing, so it is
+// reported first -- before the refusal it usually explains. Left unreported it
+// would sit on the integrations page looking configured.
+for (const r of mapped.keys())
+	if (!(r in ROLES)) console.error(`account_map has '${r}', which nothing posts to. A typo?`);
+
+// Refused rather than defaulted, and every missing role named at once, so the
+// operator maps them in one pass instead of meeting them one run at a time.
+const missing = Object.entries(ROLES).filter(([role]) => !mapped.has(role));
+if (missing.length) {
+	console.error('No account is mapped for:\n');
+	for (const [role, what] of missing) console.error(`  ${role.padEnd(20)} ${what}`);
+	console.error(
+		"\nMap each in account_map -- role, then the account in the operator's ledger:\n" +
+			"  insert into account_map (role, account) values ('receivable', 'Assets:AR');\n" +
+			'Nothing was written.'
+	);
+	await sql.end();
+	process.exit(2);
+}
+
+// Only reached once every role is known to be mapped.
+const accountFor = (/** @type {keyof typeof ROLES} */ role) =>
+	/** @type {string} */ (mapped.get(role));
+
+const ACCOUNTS = {
+	receivable: accountFor('receivable'),
+	bank: accountFor('bank'),
+	fees: accountFor('merchant_fees'),
+	state: accountFor('sales_tax_state'),
+	district: accountFor('sales_tax_district')
+};
+
+// Income by what the line is, because a ledger that lumps labour with goods
+// cannot answer the one question a sales tax return asks. Keyed by the line's
+// own kind, which is what chooses between them below.
+const INCOME = {
+	recurring: accountFor('income_recurring'),
+	material: accountFor('income_goods'),
+	mileage: accountFor('income_mileage'),
+	service: accountFor('income_labour'),
+	adjustment: accountFor('adjustments')
+};
 
 // beancount account names take letters, digits and dashes per component.
 const account = (/** @type {string} */ s) => s.replace(/[^A-Za-z0-9:-]+/g, '-').replace(/-+/g, '-');
@@ -336,6 +387,6 @@ if (dry) {
 		`Appended to ${ledgerPath}` +
 			(opens.length ? `\n  opened ${opens.length} new account(s)` : '') +
 			`\n  ${skipped} already there, skipped` +
-			`\n\nNot committed. Review the diff in books/ and commit it there.`
+			`\n\nNot committed. Review the diff where the ledger is kept, and commit it there.`
 	);
 }

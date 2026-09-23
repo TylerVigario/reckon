@@ -164,8 +164,8 @@ TAIL = r'''
 #v(5pt)
 
 #text(size: sz.fine)[
-  From `docs/decisions.md`. These are questions, not gaps to be filled in by
-  reasoning.
+  From `docs/decisions.md`, read at generation. These are questions, not gaps
+  to be filled in by reasoning.
 ]
 #v(4pt)
 
@@ -173,21 +173,41 @@ TAIL = r'''
   (auto, 1fr),
   ([], [Open]),
   size: sz.micro,
-  [Emergency attendance], [unpriced],
-  [Migration cutover], [which date, whether historical invoices cross, where opening balances land],
-  [Token lifetime], [how long the public invoice link lives, and whether it is revocable],
-  [Decimal library], [Postgres does exact arithmetic; the application layer still needs a type],
-  [Three data gaps], [Valley Sky has no address, Esmeralda no district, Daniel's surname is inferred],
+@@NOT_DECIDED@@
 )
 
 #v(12pt)
 #stamp[Generated from `docs/schema/`. Change a diagram and regenerate.]
 '''
 
+def not_decided():
+    """The register's own list of open questions, as rows.
+
+    Read rather than restated: this table was a hand copy, and it went on
+    listing the migration cutover as open after the register had it decided.
+    Each bullet is **title** then, optionally, a dash and what is open about it.
+    """
+    md = (HERE.parent / "decisions.md").read_text()
+    section = md.split("## Not decided", 1)[1].split("\n## ", 1)[0]
+    rows = []
+    for item in re.split(r"\n- ", "\n" + section.split("\n\n", 1)[1].split("\n---", 1)[0]):
+        item = " ".join(item.split())
+        if not item.startswith("**"):
+            continue
+        m = re.match(r"\*\*(.+?)\*\*\s*(?:—\s*)?(.*)", item)
+        title, rest = m.group(1).rstrip("."), m.group(2).strip()
+        rest = re.sub(r"`([^`]+)`", r"\1", rest)
+        rows.append(f"  [{esc(title)}], [{esc(rest)}],")
+    if not rows:
+        raise SystemExit("decisions.md has no Not decided list to read")
+    return "\n".join(rows)
+
+
 WORDS = {2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six", 7: "Seven", 8: "Eight",
          9: "Nine", 10: "Ten", 32: "Thirty-two", 34: "Thirty-four", 35: "Thirty-five",
          36: "Thirty-six", 37: "Thirty-seven", 38: "Thirty-eight"}
 word = lambda n: WORDS.get(n, str(n))
+TAIL = TAIL.replace("@@NOT_DECIDED@@", not_decided())
 head = (HEAD.replace("@@N_TABLES@@", word(len(seen)))
             .replace("@@N_CLUSTERS@@", word(len(CLUSTERS)).lower())
             .replace("@@N_FILES@@", word(len(list(HERE.glob("*.drawio")))).lower()))
