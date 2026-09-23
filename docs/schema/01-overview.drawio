@@ -1,0 +1,44 @@
+<mxfile host="reckon" agent="regenerate.py" type="device">
+  <diagram id="01-overview" name="Overview">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1"
+        connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100"
+        pageHeight="580" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="b_time" value="time_entry
+worked_by · created_by" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#4a5468;fontColor=#2e3a68;fontSize=13;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="40" y="60" width="220" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b_trip" value="trip → trip_leg
+miles, assigned by cause" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#4a5468;fontColor=#2e3a68;fontSize=13;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="40" y="150" width="220" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b_agr" value="agreement_period
+materialised when generated" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#4a5468;fontColor=#2e3a68;fontSize=13;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="40" y="240" width="220" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b_lot" value="material_lot
+ex-tax cost, tax paid" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#4a5468;fontColor=#2e3a68;fontSize=13;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="40" y="330" width="220" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b_inv" value="invoice
+immutable once sent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#4a5468;fontColor=#2e3a68;fontSize=13;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="400" y="60" width="240" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b_line" value="invoice_line
+price as billed · rate as applied
+one source" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#2382b3;strokeWidth=2;fontColor=#2e3a68;fontSize=13;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="400" y="170" width="240" height="100" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b_cn" value="credit_note
+how a sent invoice is corrected" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#4a5468;fontColor=#2e3a68;fontSize=13;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="400" y="320" width="240" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b_pay" value="payment
+allocated, may be partial" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#4a5468;fontColor=#2e3a68;fontSize=13;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="780" y="60" width="220" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b_pout" value="payout
+one deposit, many payments" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#4a5468;fontColor=#2e3a68;fontSize=13;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="780" y="150" width="220" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b_led" value="ledger_export
+beancount, one way" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#4a5468;fontColor=#2e3a68;fontSize=13;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="780" y="240" width="220" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b_base" value="operator · app_user · record_history" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#4a5468;fontColor=#2e3a68;fontSize=13;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="40" y="430" width="960" height="44" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="e10" value="becomes a line" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;strokeColor=#4a5468;fontColor=#4a5468;" edge="1" parent="1" source="b_time" target="b_line"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;strokeColor=#4a5468;fontColor=#4a5468;" edge="1" parent="1" source="b_trip" target="b_line"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;strokeColor=#4a5468;fontColor=#4a5468;" edge="1" parent="1" source="b_agr" target="b_line"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e13" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;strokeColor=#4a5468;fontColor=#4a5468;" edge="1" parent="1" source="b_lot" target="b_line"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e14" value="belongs to" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;strokeColor=#4a5468;fontColor=#4a5468;" edge="1" parent="1" source="b_line" target="b_inv"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e15" value="corrected by" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;strokeColor=#4a5468;fontColor=#4a5468;" edge="1" parent="1" source="b_line" target="b_cn"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e16" value="settles" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;strokeColor=#4a5468;fontColor=#4a5468;" edge="1" parent="1" source="b_inv" target="b_pay"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e17" value="batched into" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;strokeColor=#4a5468;fontColor=#4a5468;" edge="1" parent="1" source="b_pay" target="b_pout"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e18" value="posts" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;endArrow=blockThin;endFill=1;strokeColor=#4a5468;fontColor=#4a5468;" edge="1" parent="1" source="b_line" target="b_led"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="n1" value="[claude] Nothing flows backwards. A sent invoice never reaches back and changes the time entry that fed it; the only arrow the other way is credit_note." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;fontSize=11;fontColor=#7b8698;whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="40" y="490" width="960" height="40" as="geometry"></mxGeometry></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

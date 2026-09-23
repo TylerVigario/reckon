@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: A security vulnerability
+    url: https://github.com/TylerVigario/reckon/security/advisories/new
+    about: Report privately. Not as an issue.

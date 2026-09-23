@@ -1,0 +1,19 @@
+{
+	"name": "reckon-repo",
+	"version": "0.1.0",
+	"description": "Repository tooling. The application is in app/.",
+	"license": "AGPL-3.0-or-later",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"prepare": "husky",
+		"ci": "npm run ci:schema && npm --prefix app run ci",
+		"ci:schema": "db/apply.sh --test",
+		"release": "node scripts/make-release.mjs"
+	},
+	"devDependencies": {
+		"@commitlint/cli": "^21.2.2",
+		"@commitlint/config-conventional": "^21.2.2",
+		"husky": "^9.1.7"
+	}
+}

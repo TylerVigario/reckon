@@ -1,0 +1,19 @@
+# Generated. press renders into here and it is never committed.
+print/
+
+# Dependencies, at the root and in the application.
+node_modules/
+
+# Python bytecode from the diagram and import tooling.
+__pycache__/
+*.pyc
+
+# Build output.
+app/build/
+app/.svelte-kit/
+
+# Local environment. Nothing here is a secret worth having, and that is the
+# point: if it were, it would not be in a file next to the source.
+.env
+.env.*
+!.env.example

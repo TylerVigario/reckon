@@ -1,0 +1,57 @@
+{
+	"name": "reckon",
+	"version": "0.0.0",
+	"description": "Invoicing and time tracking for a two-person low-voltage consultancy.",
+	"license": "AGPL-3.0-or-later",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/TylerVigario/reckon.git"
+	},
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"lint": "eslint .",
+		"lint:fix": "eslint . --fix",
+		"format": "prettier --check .",
+		"format:fix": "prettier --write .",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"ci": "npm run format && npm run lint && npm run check && npm run test && npm run test:tz && npm run build",
+		"check:schema": "node --import ./scripts/ts-resolve.mjs scripts/schema-check.mjs",
+		"test:tz": "TZ=Pacific/Kiritimati vitest run src/lib/format.test.ts && TZ=Pacific/Midway vitest run src/lib/format.test.ts"
+	},
+	"devDependencies": {
+		"@eslint/js": "^10.0.1",
+		"@sveltejs/adapter-node": "^5.5.7",
+		"@sveltejs/kit": "^2.63.0",
+		"@sveltejs/vite-plugin-svelte": "^7.1.2",
+		"@types/google.maps": "^3.66.3",
+		"@types/node": "^24.13.4",
+		"eslint": "^10.11.0",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-svelte": "^3.23.0",
+		"globals": "^17.12.0",
+		"prettier": "^3.9.8",
+		"prettier-plugin-svelte": "^4.1.1",
+		"svelte": "^5.56.1",
+		"svelte-check": "^4.6.0",
+		"svelte-eslint-parser": "^1.8.1",
+		"typescript": "^6.0.3",
+		"typescript-eslint": "^8.70.1",
+		"vite": "^8.0.16",
+		"vitest": "^5.0.1"
+	},
+	"dependencies": {
+		"@node-rs/argon2": "^2.2.0",
+		"postgres": "^3.4.9"
+	},
+	"overrides": {
+		"cookie": "^0.7.2"
+	}
+}

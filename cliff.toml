@@ -1,0 +1,81 @@
+[changelog]
+header = "# Changelog\n"
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}](https://github.com/TylerVigario/reckon/{% if previous.version %}compare/{{ previous.version }}...{{ version }}{% else %}releases/tag/{{ version }}{% endif %}) ({{ timestamp | date(format="%Y-%m-%d") }})
+
+{% else %}\
+## [Unreleased]
+
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}\
+### {{ group | striptags | trim }}
+
+{% for commit in commits %}\
+* {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message | upper_first }}
+{% endfor %}
+{% endfor %}\
+"""
+trim = true
+render_always = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+protect_breaking_commits = false
+filter_commits = true
+topo_order = false
+sort_commits = "oldest"
+tag_pattern = "v[0-9].*"
+commit_preprocessors = [
+  { pattern = '\(#\d+\)', replace = "" },
+]
+# Angular Conventional Commits. The line these parsers draw is DID THE
+# ARTIFACT CHANGE — because the version names a tarball, and two
+# tarballs with different bytes should not answer to the same number.
+#
+# `feat` / `fix` / `revert` change what the site does. `build` changes
+# how the tarball is assembled, `perf` and `refactor` change the code
+# that gets compiled into it — all five produce different bytes, so all
+# five appear in the changelog and drive a bump.
+#
+# `ci` / `docs` / `test` / `chore` / `style` cannot reach the artifact.
+# They stay skipped: no bump, no changelog entry, and a dispatch with
+# nothing but these reports "nothing to release" rather than shipping a
+# version that is byte-identical to the one before it.
+#
+# ONE LIST DRIVES BOTH. git-cliff computes --bumped-version from these
+# same parsers, so a type cannot appear in the changelog without also
+# bumping — measured, not assumed: moving `ci` from skip to a group
+# turned `v1.0.0` into `v1.0.1` on a scratch repo. That coupling is why
+# "put every commit in the changelog" is not available; it would make
+# every docs typo ship a release.
+#
+# `chore` covers `chore(release)` too, which keeps the release commits
+# out of the changelog they generate.
+#
+# `style` is skipped like the rest of that set. It is a valid type —
+# .commitlintrc.js inherits the eleven Angular types from
+# config-conventional rather than declaring a subset — it simply cannot
+# reach the artifact, so it neither bumps nor appears.
+#
+# See .commitlintrc.js for the matching type-enum + rationale.
+commit_parsers = [
+  { message = "^feat",     group = "<!-- 0 -->Features" },
+  { message = "^fix",      group = "<!-- 1 -->Bug Fixes" },
+  { message = "^revert",   group = "<!-- 1 -->Bug Fixes" },
+  { message = "^perf",     group = "<!-- 2 -->Performance" },
+  { message = "^refactor", group = "<!-- 3 -->Refactoring" },
+  { message = "^build",    group = "<!-- 4 -->Build & Packaging" },
+  { message = "^style",    skip = true },
+  { message = "^ci",       skip = true },
+  { message = "^docs",     skip = true },
+  { message = "^test",     skip = true },
+  { message = "^chore",    skip = true },
+]
+
+[bump]
+features_always_bump_minor = true
+breaking_always_bump_major = true
+initial_tag = "v0.1.0"

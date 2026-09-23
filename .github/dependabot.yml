@@ -1,0 +1,64 @@
+# Dependency updates.
+#
+# Three ecosystems and two manifests: the repository's tooling at the root, the
+# application's under app/, and the actions the workflows pin. Actions are the
+# one people forget, and they are code a pull request chooses to run.
+#
+# Grouped for minor and patch only. Grouping everything looked tidier and was
+# worse: the first run put @types/node and a TypeScript major in one pull
+# request, svelte-check refused to resolve against TypeScript 7, and a bump that
+# was perfectly fine was held back by one that was not. A major is where the
+# breakage lives, so a major arrives on its own and can be refused on its own.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      tooling:
+        patterns: ['*']
+        update-types: [minor, patch]
+    commit-message:
+      prefix: build
+
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: weekly
+    groups:
+      application:
+        patterns: ['*']
+        update-types: [minor, patch]
+    ignore:
+      # svelte-check is the typecheck this repository gates on, and its peer
+      # range is typescript ^5 || ^6 -- at its own latest, 4.7.6. So TypeScript 7
+      # cannot be installed here at all: npm refuses to resolve it, and the
+      # proposal comes back red every week until somebody reads why.
+      #
+      # Remove this the moment svelte-check accepts 7. It is a note about
+      # somebody else's release schedule, not a decision about this repository.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+
+      # @types/node describes a Node major, and this one is chosen in .nvmrc
+      # rather than by whatever DefinitelyTyped published last. Types ahead of
+      # the runtime are worse than none: the code typechecks against APIs the
+      # host does not have, and finds out when it runs.
+      #
+      # Its major moves when .nvmrc does, deliberately and in the same change.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+    commit-message:
+      prefix: build
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+        update-types: [minor, patch]
+    commit-message:
+      prefix: ci

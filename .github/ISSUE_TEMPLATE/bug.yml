@@ -1,0 +1,60 @@
+name: Something is wrong
+description: Report behaviour that does not match what the code says it does.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem rather than a proposed fix. The fix is usually
+        somewhere other than where the symptom appeared.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The `version=` line in `RELEASE`, or a commit SHA.
+      placeholder: 0.1.0, or 6471e81
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Exact error text beats a description of it.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: The smallest way to reproduce it
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - The schema or a migration
+        - Capturing time
+        - Clients and sites
+        - Signing in
+        - Settings
+        - Building or releasing
+        - Somewhere else
+    validations:
+      required: true
+  - type: textarea
+    id: guard
+    attributes:
+      label: If this is a schema problem — which guard should have caught it?
+      description: >-
+        `db/test/constraints.sql` asserts each rule both ways. A bug that got
+        past it usually means a guard is missing or passes for the wrong reason,
+        and that is more useful to know than the symptom.
+    validations:
+      required: false

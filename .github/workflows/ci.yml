@@ -1,0 +1,254 @@
+name: CI
+
+# One job per assertion, because a required check names a job: a red context
+# then says which claim failed rather than that something did. Adding an
+# assertion means adding its job and its required context; removing one wedges
+# the branch until the ruleset is edited too, which is what makes coverage hard
+# to lose quietly.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  HUSKY: 0
+  CI: true
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  schema:
+    name: Schema
+    runs-on: ubuntu-latest
+
+    # The version this actually runs on. A guard suite that passes against a
+    # different major proves less than it appears to -- the schema uses
+    # UNIQUE NULLS NOT DISTINCT, which did not exist before 15.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    env:
+      # The runner owns this cluster outright, so there is no postgres role to
+      # sudo to and nothing to sudo with.
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Every guard, both ways
+        # Builds a scratch database, applies every migration in order, proves
+        # all twenty-one guard groups, drops it. This asserts the migrations
+        # apply cleanly from nothing as much as it asserts the guards.
+        run: db/apply.sh --test
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+      - run: npm run check --prefix app
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+      - run: npm run format --prefix app
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+      # Type-aware, so it needs the types svelte-kit sync writes. `npm ci` runs
+      # prepare, which runs sync -- but say so, because a lint that silently
+      # loses its type information reports nothing and passes.
+      - run: npm run lint --prefix app
+
+  unit:
+    name: Unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+      - name: The rules, the formatters and the CDTFA contract
+        run: npm run test --prefix app
+      # The date helpers parse at noon so that no timezone can move a date onto
+      # the day before. One run, in one zone, cannot show that -- so the same
+      # tests run again at UTC+14 and UTC-11, which are the two ends it breaks
+      # at. This has caught it: parsing at midnight renders 1 Jan 2026 as 31
+      # Dec 2025 at UTC-11.
+      - name: And again at both ends of the date line
+        run: npm run test:tz --prefix app
+
+  behaviour:
+    name: Behaviour
+    runs-on: ubuntu-latest
+
+    # THE JOB THAT SIGNS IN. Build proves a page renders to a signed-out
+    # visitor; every other assertion this repository makes about the running
+    # app was, until now, something a person ran by hand. /api/time spent eight
+    # days inserting into a column that had been dropped -- typecheck passed,
+    # the build passed, the login page rendered, and nothing had tried to save
+    # anything.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: reckon_ci
+      ORIGIN: http://127.0.0.1:5178
+      PORT: '5178'
+      HOST: 127.0.0.1
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+      - run: npm run build --prefix app
+
+      - name: A business to run the checks against
+        run: |
+          createdb reckon_ci
+          db/apply.sh reckon_ci
+          psql -q -v ON_ERROR_STOP=1 -d reckon_ci -f db/seed/demo.sql
+          printf 'ci-only-password\nci-only-password\n' \
+            | node app/scripts/set-password.mjs harness@invalid.test
+
+      - name: Start it
+        run: |
+          node app/build/index.js &
+          echo $! > /tmp/reckon.pid
+          for _ in $(seq 1 30); do
+            curl -sf -o /dev/null "http://127.0.0.1:5178/login" && exit 0
+            sleep 1
+          done
+          echo "::error::the server never answered"; exit 1
+
+      - name: The registries and the schema agree
+        # Validation has one source of truth for the page and the endpoint --
+        # they import the same registry. The database is the third, and this
+        # is what stops it drifting into "The database refused that value".
+        run: npm run check:schema --prefix app
+
+      - name: Every route answers, signed in
+        run: node app/scripts/smoke.mjs "$ORIGIN" harness@invalid.test ci-only-password
+
+      - name: Every screen renders, with nothing on the console
+        # A page can answer 200 with its body already doomed: SvelteKit renders
+        # on the client, so a component that throws leaves the URL changed, the
+        # previous screen's header on show and nothing else. The server sees a
+        # 200 either way.
+        run: |
+          google-chrome --headless --disable-gpu --no-sandbox \
+            --remote-debugging-port=9222 --user-data-dir=/tmp/chrome about:blank &
+          for _ in $(seq 1 20); do
+            curl -sf -o /dev/null http://127.0.0.1:9222/json && break
+            sleep 1
+          done
+          node app/scripts/console-check.mjs "$ORIGIN" harness@invalid.test ci-only-password
+
+      - name: Every write works, and the wrong ones are refused
+        # Needs the network: creating a site is a CDTFA lookup, and the check
+        # reports that as skipped rather than failed if they cannot be reached.
+        run: node app/scripts/write-check.mjs "$ORIGIN" harness@invalid.test ci-only-password
+
+      - name: Stop it
+        if: always()
+        run: kill "$(cat /tmp/reckon.pid)" 2>/dev/null || true
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    # The built server is served a real schema rather than none. Every page
+    # reads the database -- the sign-in page loads the operator row like any
+    # other -- so a smoke test without one asserts that the process starts and
+    # nothing more.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: reckon_ci
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
+      - run: npm run build --prefix app
+
+      - name: Give it a schema to serve
+        run: |
+          createdb reckon_ci
+          db/apply.sh reckon_ci
+
+      - name: The build produced a server that serves a page
+        # A build that emits files nobody runs is not a proven build. This is
+        # the cheapest thing that would have caught an adapter which could not
+        # detect its environment -- and ORIGIN is set because without it every
+        # form POST is refused, sign-in included.
+        env:
+          ORIGIN: http://127.0.0.1:5177
+          PORT: '5177'
+          HOST: 127.0.0.1
+        run: |
+          node app/build/index.js &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+          for _ in $(seq 1 20); do
+            if curl -sf -o /dev/null "http://127.0.0.1:5177/login"; then
+              echo "the sign-in page rendered"
+              # Signed out, everything else redirects to it. If this ever
+              # answers 200, the guard in hooks.server.ts has stopped running.
+              code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:5177/timesheet")
+              [ "$code" = "303" ] || { echo "::error::/timesheet answered $code, expected 303"; exit 1; }
+              echo "and an unauthenticated page redirected to it"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::the server did not answer on /login within 20s"
+          exit 1
