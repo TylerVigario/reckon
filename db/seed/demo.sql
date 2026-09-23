@@ -286,8 +286,9 @@ INSERT INTO service_price (service_id, rate, effective_from) VALUES
 -- ===========================================================================
 -- Who each service pays. A partner is paid for the hour worked, at the rule in
 -- force on the day -- which is why there is a long-standing house rate as well as
--- the recent one. Remote support pays $25 an hour worked, and nothing at Bravo:
--- "nothing gauranteed for responder" -- 1 Sep 2026.
+-- the recent one. Remote support pays $25 an hour worked. Bravo's calls are
+-- covered by their retainer, and covered time pays a share of the retainer --
+-- "bravo would effectively be 0% payout to responder" -- 23 Sep 2026.
 INSERT INTO pay_rule (service_id, role_id, entity_id, pays_for, method, amount, effective_from)
 SELECT s.id, (SELECT id FROM role WHERE name = 'Partner'), NULL, 'time', 'per_hour', r.amount, r.day
   FROM (VALUES
@@ -303,7 +304,7 @@ SELECT s.id, (SELECT id FROM role WHERE name = 'Partner'), NULL, 'time', 'per_ho
 
 INSERT INTO pay_rule (service_id, role_id, entity_id, pays_for, method, amount, effective_from)
 VALUES ('55555555-0000-0000-0000-000000000002', (SELECT id FROM role WHERE name = 'Partner'),
-        'eeeeeeee-0000-0000-0000-000000000001', 'time', 'nothing', NULL,
+        'eeeeeeee-0000-0000-0000-000000000001', 'covered_time', 'percent', 0,
         date_trunc('year', current_date)::date);
 
 -- A partner's own vehicle is paid the whole mileage charge. Kept even though no

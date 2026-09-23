@@ -10,11 +10,11 @@
 	const per = (i: string) =>
 		i === 'monthly' ? '/mo' : i === 'annually' ? '/yr' : i === 'quarterly' ? '/qtr' : '/wk';
 
-	const pays = (r: { method: string; amount: string | null }) =>
+	const pays = (r: { pays_for: string; method: string; amount: string | null }) =>
 		r.method === 'nothing'
 			? 'nothing'
 			: r.method === 'percent'
-				? `${Number(r.amount)}% of the line`
+				? `${Number(r.amount)}% of ${r.pays_for === 'covered_time' ? 'the retainer' : 'the line'}`
 				: `${money(r.amount)} ${r.method === 'per_hour' ? 'an hour' : 'an entry'}`;
 
 	const sub = $derived(
@@ -64,7 +64,10 @@
 									{/if}
 								{/each}
 								{#each a.pay as r (r.service + r.payee)}
-									<span class="chip">{r.payee} paid {pays(r)} for {r.service}</span>
+									<span class="chip">
+										{r.payee} paid {pays(r)} for {r.pays_for === 'covered_time' ? 'covered' : ''}
+										{r.service}
+									</span>
 								{/each}
 							</div>
 						</div>

@@ -112,13 +112,15 @@ export const load: PageServerLoad = async ({ locals }) => {
 	// Work done and not yet put on an invoice, by how long it has waited.
 	// Worth what entry_worth says it bills: the price in force on the day it was
 	// worked, rounded to the service's increment and never below its minimum --
-	// the same rule an invoice line will use when it is drawn.
+	// the same rule an invoice line will use when it is drawn. An hour a retainer
+	// covers is not waiting on anything: the retainer has charged for it.
 	const ageing = await sql<{ bucket: string; n: string; worth: string; oldest: string | null }[]>`
 		with unbilled as (
 			select t.worked_on, w.billed
 			  from time_entry t
 			  join entry_worth w on w.time_entry_id = t.id
 			 where t.billable
+			   and (w.covered_minutes is null or w.covered_minutes < t.minutes)
 			   and not exists (select 1 from invoice_line il where il.time_entry_id = t.id)
 		)
 		select case

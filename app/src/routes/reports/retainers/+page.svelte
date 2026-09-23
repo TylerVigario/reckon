@@ -38,6 +38,14 @@
 						{:else}
 							<div class="rec-s">The agreement names no service to meter</div>
 						{/each}
+						{#each r.responders as who (who.person)}
+							<div class="rec-s">
+								{who.person} · {hours(who.hours)}, {who.share}% of the covered time · {who.paid ===
+								null
+									? 'pay not known until the month is charged'
+									: `${money(who.paid)} for it`}
+							</div>
+						{/each}
 						{#if r.services.some((m) => m.allotment === 'unlimited')}
 							<div class="rec-c"><span class="chip acc">∞</span></div>
 						{/if}
@@ -45,7 +53,9 @@
 					<div class="rec-n">
 						<span class="rec-v" class:mut={Number(r.charged) === 0}>{money(r.charged)}</span>
 						<span class="rec-x">
-							{#if Number(r.paid) > 0}
+							{#if r.paid === null}
+								pay not known yet
+							{:else if Number(r.paid) > 0}
 								{money(r.paid)} paid out
 							{:else}
 								all kept
@@ -68,7 +78,9 @@
 					<div class="rec-m"><div class="rec-t">Retainers</div></div>
 					<div class="rec-n">
 						<span class="rec-v">{money(data.charged)}</span>
-						<span class="rec-x">{money(data.kept)} kept</span>
+						<span class="rec-x">
+							{data.kept === null ? 'what is kept is not known yet' : `${money(data.kept)} kept`}
+						</span>
 					</div>
 				</div>
 			{/if}

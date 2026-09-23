@@ -17,6 +17,9 @@ import type { PageServerLoad } from './$types';
  * minimum. That is the rule an invoice line will use when it is drawn, so this
  * screen and the invoice it becomes cannot disagree. Pricing it at today's rate
  * would quietly re-price August.
+ *
+ * AN HOUR A RETAINER COVERS IS NOT HERE. The retainer has charged for it, so
+ * there is nothing to ask for; only what falls past its allotment is.
  */
 export const load: PageServerLoad = async () => {
 	const work = await sql<
@@ -41,7 +44,9 @@ export const load: PageServerLoad = async () => {
 		       t.crew,
 		       t.worked_on::text,
 		       si.display as site,
-		       (t.minutes / 60.0)::numeric(10,4)::text as hours,
+		       -- The hours still to be asked for: a retainer has charged for any
+		       -- it covered.
+		       ((t.minutes - coalesce(w.covered_minutes, 0)) / 60.0)::numeric(10,4)::text as hours,
 		       w.billed::text as worth,
 		       w.heads,
 		       (current_date - t.worked_on)::int as days
@@ -52,6 +57,7 @@ export const load: PageServerLoad = async () => {
 		  left join app_user u on u.id = t.worked_by
 		  left join site si on si.id = t.site_id
 		 where t.billable
+		   and (w.covered_minutes is null or w.covered_minutes < t.minutes)
 		   and not exists (select 1 from invoice_line il where il.time_entry_id = t.id)
 		 order by t.worked_on, e.name`;
 

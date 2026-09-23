@@ -192,7 +192,7 @@ export type PayJob = {
 	who: string | null;
 	heads: number;
 	hours: string;
-	billed: string | null;
+	earned: string | null;
 	paid: string | null;
 	kept: string | null;
 };
@@ -210,11 +210,12 @@ export type PartnerPay = {
  * Every figure is entry_worth's: each entry priced and paid by the price and
  * the rules in force ON THE DAY it was worked, not today's. Re-pricing August
  * at September's rates is how somebody gets paid the wrong figure and nobody
- * can say why. A job's figures are the sum of its entries', which is what the
- * invoice lines drawn from them will add up to.
+ * can say why. A job's figures are the sum of its entries'.
  *
- * Pay is per head: a team entry pays everybody on it, each by their own rule,
- * so subtracting it from the billed figure gives what the business keeps.
+ * What a job EARNED is what it bills by the hour plus, for hours a retainer
+ * covered, its share of what the retainer charged -- so a covered job is not a
+ * job that brought in nothing. Pay is per head: a team entry pays everybody on
+ * it, each by their own rule, so subtracting it gives what the business keeps.
  */
 export async function partnerPay(p: Period): Promise<PartnerPay> {
 	const jobs = await sql<PayJob[]>`
@@ -228,7 +229,7 @@ export async function partnerPay(p: Period): Promise<PartnerPay> {
 			       u.name as who,
 			       max(w.heads) as heads,
 			       sum(t.minutes) / 60.0 as hours,
-			       sum(w.billed) as billed,
+			       sum(w.earned) as earned,
 			       sum(w.paid) as paid
 			  from time_entry t
 			  join entry_worth w on w.time_entry_id = t.id
@@ -242,9 +243,9 @@ export async function partnerPay(p: Period): Promise<PartnerPay> {
 		)
 		select job, worked_on::text, crew, who, heads,
 		       hours::numeric(10,4)::text as hours,
-		       billed::numeric(12,2)::text as billed,
+		       earned::numeric(12,2)::text as earned,
 		       paid::numeric(12,2)::text as paid,
-		       (billed - paid)::numeric(12,2)::text as kept
+		       (earned - paid)::numeric(12,2)::text as kept
 		  from worked
 		 order by worked_on, job`;
 
@@ -348,19 +349,27 @@ export type MeteredService = {
 	hours_left: string | null;
 };
 
+export type Responder = {
+	person: string;
+	hours: string;
+	share: string;
+	paid: string | null;
+};
+
 export type MeterRow = {
 	entity_id: string;
 	client: string;
 	services: MeteredService[];
+	responders: Responder[];
 	charged: string;
-	paid: string;
+	paid: string | null;
 };
 
 export type RetainerMeter = {
 	rows: MeterRow[];
 	charged: string;
-	paid: string;
-	kept: string;
+	paid: string | null;
+	kept: string | null;
 };
 
 /**
@@ -376,6 +385,11 @@ export type RetainerMeter = {
  * appears for a service sold as a subscription, against the service's own
  * terms, because "how much has this client had" is the same question whether
  * or not they signed anything; what they worked is then billed by the hour.
+ *
+ * WHO ANSWERED, AND WHAT SHARE. Covered time pays a percentage of the retainer,
+ * split by each person's share of the covered hours -- so the share is shown,
+ * because it is what their pay was worked out from. Pay that depends on a
+ * period not yet charged is not known, and says so rather than reading $0.
  */
 export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 	const rows = await sql<MeterRow[]>`
@@ -395,7 +409,8 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 			select t.entity_id, t.service_id,
 			       sum(t.minutes) / 60.0 as hours,
 			       coalesce(sum(w.billed) filter (where t.billable), 0) as billed,
-			       coalesce(sum(w.paid), 0) as paid
+			       coalesce(sum(w.paid), 0) as paid,
+			       bool_or(w.paid is null and w.covered_minutes > 0) as pay_unknown
 			  from time_entry t
 			  join entry_worth w on w.time_entry_id = t.id
 			 where t.entity_id is not null
@@ -403,11 +418,10 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 			 group by t.entity_id, t.service_id
 		),
 		metered as (
-			select c.entity_id, c.service_id, c.allotment, c.pooled_hours as cap,
-			       true as covered
+			select c.entity_id, c.service_id, c.allotment, c.pooled_hours as cap
 			  from covered c
 			union all
-			select wk.entity_id, s.id, s.subscription_basis, s.subscription_hours, false
+			select wk.entity_id, s.id, s.subscription_basis, s.subscription_hours
 			  from worked wk
 			  join service s on s.id = wk.service_id
 			 where s.subscription_basis <> 'none'
@@ -416,10 +430,11 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 			                      and c.service_id = wk.service_id)
 		),
 		lines as (
-			select m.entity_id, s.name as service, m.allotment, m.cap, m.covered,
+			select m.entity_id, s.name as service, m.allotment, m.cap,
 			       coalesce(wk.hours, 0) as hours,
 			       coalesce(wk.billed, 0) as billed,
-			       coalesce(wk.paid, 0) as paid
+			       coalesce(wk.paid, 0) as paid,
+			       coalesce(wk.pay_unknown, false) as pay_unknown
 			  from metered m
 			  join service s on s.id = m.service_id
 			  left join worked wk on wk.entity_id = m.entity_id
@@ -451,10 +466,32 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 		                                            ::numeric(10,2)::text end)
 		                order by l.service) filter (where l.service is not null),
 		                '[]') as services,
-		       (coalesce(rt.amount, 0)
-		        + coalesce(sum(l.billed) filter (where not l.covered), 0))
+		       -- Everyone who worked covered time for this client this month, and
+		       -- their share of it in person-hours: a team hour is one each.
+		       coalesce((
+		         select json_agg(json_build_object(
+		                  'person', r.person,
+		                  'hours', (r.minutes / 60.0)::numeric(10,2)::text,
+		                  'share', r.share::numeric(5,1)::text,
+		                  'paid', case when r.unknown then null else r.paid::text end)
+		                order by r.minutes desc, r.person)
+		           from (select g.*, 100.0 * g.minutes / sum(g.minutes) over () as share
+		                   from (select u.name as person,
+		                                sum(ep.covered_minutes) as minutes,
+		                                sum(ep.covered_paid) as paid,
+		                                bool_or(ep.covered_paid is null) as unknown
+		                           from entry_pay ep
+		                           join time_entry t on t.id = ep.time_entry_id
+		                           join app_user u on u.id = ep.user_id
+		                          where t.entity_id = e.id and ep.covered_minutes > 0
+		                            and t.worked_on between ${p.start} and ${p.end}
+		                          group by u.name) g) r), '[]') as responders,
+		       -- The retainer, plus whatever was billed by the hour: services it
+		       -- does not cover, and time past an allotment.
+		       (coalesce(rt.amount, 0) + coalesce(sum(l.billed), 0))
 		         ::numeric(12,2)::text as charged,
-		       coalesce(sum(l.paid), 0)::numeric(12,2)::text as paid
+		       case when bool_or(l.pay_unknown) then null
+		            else coalesce(sum(l.paid), 0)::numeric(12,2)::text end as paid
 		  from clients c
 		  join entity e on e.id = c.entity_id
 		  left join lines l on l.entity_id = c.entity_id
@@ -464,12 +501,15 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 		 order by e.name`;
 
 	const charged = rows.reduce((n, r) => n + Number(r.charged), 0);
-	const paid = rows.reduce((n, r) => n + Number(r.paid), 0);
+	// One client's pay not known yet is the total's not known yet: a sum that
+	// quietly counts it as nothing overstates what was kept.
+	const known = rows.every((r) => r.paid !== null);
+	const paid = rows.reduce((n, r) => n + Number(r.paid ?? 0), 0);
 	return {
 		rows,
 		charged: charged.toFixed(2),
-		paid: paid.toFixed(2),
-		kept: (charged - paid).toFixed(2)
+		paid: known ? paid.toFixed(2) : null,
+		kept: known ? (charged - paid).toFixed(2) : null
 	};
 }
 

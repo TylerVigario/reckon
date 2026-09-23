@@ -71,7 +71,7 @@ export const load: PageServerLoad = async () => {
 				payee: string;
 				is_role: boolean;
 				client: string | null;
-				pays_for: 'time' | 'vehicle';
+				pays_for: 'time' | 'covered_time' | 'vehicle';
 				method: 'per_hour' | 'percent' | 'fixed' | 'nothing';
 				amount: string | null;
 				effective_from: string;

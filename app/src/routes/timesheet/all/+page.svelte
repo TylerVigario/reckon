@@ -46,14 +46,16 @@
 							</div>
 						</div>
 						<div class="rec-n">
-							{#if e.value}
+							{#if e.covered}
+								<span class="rec-v mut">retainer</span>
+							{:else if e.value}
 								<span class="rec-v">{money(e.value)}</span>
 							{:else}
 								<span class="rec-v mut">—</span>
 							{/if}
 							<span class="rec-x">
-								{hours(e.minutes)} h{#if e.crew === 'team'}
-									×2{/if}
+								{hours(e.minutes)} h{#if e.heads > 1}
+									×{e.heads}{/if}
 							</span>
 						</div>
 					</div>

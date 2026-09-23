@@ -52,13 +52,23 @@
 		return bits.join(' · ');
 	}
 
+	/** What a rule pays for. Covered time is paid as a share of the retainer. */
+	const FOR = {
+		time: 'for their time',
+		covered_time: 'for time a retainer covers',
+		vehicle: 'for their vehicle'
+	} as const;
+
 	/** What a rule pays, in the words the rule would be read aloud in. */
 	function pays(r: Rule): { v: string; x: string } {
 		switch (r.method) {
 			case 'per_hour':
 				return { v: money(r.amount), x: 'an hour' };
 			case 'percent':
-				return { v: pct(r.amount, 0), x: 'of the line' };
+				return {
+					v: pct(r.amount, 0),
+					x: r.pays_for === 'covered_time' ? 'of the retainer' : 'of the line'
+				};
 			case 'fixed':
 				return { v: money(r.amount), x: 'an entry' };
 			default:
@@ -143,9 +153,7 @@
 						>
 							<div class="rec-m">
 								<div class="rec-t">
-									{r.payee}<span class="lt">
-										· {r.pays_for === 'vehicle' ? 'for their vehicle' : 'for their time'}</span
-									>
+									{r.payee}<span class="lt"> · {FOR[r.pays_for]}</span>
 								</div>
 								<div class="rec-s">{r.client ?? 'Every client'} · {when(r)}</div>
 								<div class="rec-c">

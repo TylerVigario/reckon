@@ -626,6 +626,18 @@ hour on a service it does not name is billed.
 **A service charged per entry is how a flat rate is sold.**
 > *"yes each can be a service charge, thats what allows flat rates as you pointed out per service item"* — 23 Sep 2026
 
+**Hours a retainer covers are paid as a percentage, and Bravo's is 0%.**
+> *"retainer covered hours should be percentage based payouts (can be more than one responder each month and that too should be percentage) and bravo would effectively be 0% payout to responder"* — 23 Sep 2026
+
+**[claude]** Built in 0021 as I read it: the percentage is of what the retainer
+charged for the period, and it is split among whoever worked its covered hours
+by their share of them, counted in person-hours so a team hour is one each.
+Under a 20% rule on $400, responders at 3 h and 1 h are paid $60 and $20; the
+retainer pays out 20% however many answered. It is a pay rule for
+`covered_time`, which can only be a percentage or nothing, so a person's own
+rule or a client's still wins the way every rule does. A covered hour bills
+nothing by the hour, and what it *earned* is its share of the retainer.
+
 **[claude]** How the mock he approved works, as built in 0020:
 
 - **A price counts heads.** `rate` is the first person, `additional_rate` each
@@ -636,6 +648,10 @@ hour on a service it does not name is billed.
   *"nothing gauranteed for responder"* is a rule for Bravo that pays nothing,
   carried over from the null responder rate — without it the partners' $25
   would reach Bravo's calls.
+- **Coverage is drawn in the order worked.** An unlimited allotment covers
+  every billable hour on the services it names. A capped one covers the first
+  hours of the period up to its pool; past that, the allotment's overage says
+  whether they bill at the going rate or not at all.
 - **Coverage is the agreement's own.** It starts from the service's
   subscription terms when a service is added to an agreement, and a later change
   to the service does not reach into an agreement already made.
@@ -656,11 +672,13 @@ hour on a service it does not name is billed.
   functions take seconds, so storing seconds changes no rule.
 - **Vehicle rules are stored and shown but pay nobody yet.** A trip does not
   record which vehicle, so there is no owner to pay.
-- **Coverage is not applied to an entry's value.** `entry_worth` prices every
-  entry by the hour, covered or not; which hours an allotment absorbs is decided
-  when an invoice is drawn, and the app does not draw invoices yet. Partner pay
-  and the unbilled screen count covered hours at the hourly price, as they did
-  before.
+- **A capped pool is drawn within a charged period.** Periods are written when
+  a retainer is charged, and the app does not charge them yet, so an hour in an
+  uncharged period of a capped retainer has no value until it is — null, not a
+  guess. What covered time pays waits on the charge the same way; a 0% rule pays
+  0 regardless, so Bravo's is always known.
+- **Past a `deny` allotment, an hour is valued as billed.** The work should not
+  have happened, and capture does not refuse it yet.
 - **Pay is worked out live.** Until a payout is recorded when it is paid, a
   role change or a new rule moves what the reports say unpaid work pays.
 
@@ -672,6 +690,9 @@ These have never been answered. They are questions, not gaps to be filled in by
 reasoning.
 
 - **Emergency attendance is unpriced.**
+- **What share of a retainer is paid for covered time, away from Bravo.** Bravo
+  is the only retainer; another would pay nobody for covered time until a rule
+  says what share.
 - **What is open at cutover** — whether any credit, refund or unpaid invoice is
   still outstanding on the day FreshBooks is retired, and so whether an opening
   balance is needed at all. Known on the day.

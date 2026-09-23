@@ -30,8 +30,14 @@ export const load: PageServerLoad = async () => {
 				used: string;
 			}[];
 			// The rules that pay differently for this client than for any other --
-			// what used to be the responder rate, and whatever else is written here.
-			pay: { service: string; payee: string; method: string; amount: string | null }[];
+			// the share of the retainer paid for covered time, and whatever else.
+			pay: {
+				service: string;
+				payee: string;
+				pays_for: string;
+				method: string;
+				amount: string | null;
+			}[];
 		}[]
 	>`
 		select a.id, e.name as who,
@@ -58,11 +64,11 @@ export const load: PageServerLoad = async () => {
 		       coalesce((
 		         select json_agg(json_build_object(
 		                  'service', cur.service, 'payee', cur.payee,
-		                  'method', cur.method, 'amount', cur.amount)
+		                  'pays_for', cur.pays_for, 'method', cur.method, 'amount', cur.amount)
 		                order by cur.service, cur.payee)
 		           from (select distinct on (pr.service_id, pr.role_id, pr.user_id, pr.pays_for)
 		                        s.name as service, coalesce(r.name, u.name) as payee,
-		                        pr.method, pr.amount::text as amount
+		                        pr.pays_for, pr.method, pr.amount::text as amount
 		                   from pay_rule pr
 		                   join service s on s.id = pr.service_id
 		                   left join role r on r.id = pr.role_id

@@ -195,7 +195,7 @@ T["service_price"] = [("PK","id","uuid"),("FK","service_id","uuid"),
     ("","additional_rate","numeric · each one after"),("","effective_from","date")]
 T["pay_rule"] = [("PK","id","uuid"),("FK","service_id","uuid"),
     ("FK","role_id","uuid · a role, or"),("FK","user_id","uuid · one person"),
-    ("FK","entity_id","uuid · null = every client"),("","pays_for","time | vehicle"),
+    ("FK","entity_id","uuid · null = every client"),("","pays_for","time|covered_time|vehicle"),
     ("","method","per_hour|percent|fixed|nothing"),("","amount","numeric · none for nothing"),
     ("","effective_from","date"),("","created_at","timestamptz")]
 T["role"] = [("PK","id","uuid"),("UK","name","text · the operator's word"),
@@ -432,6 +432,11 @@ c += [note("n3", "\"the services should be universal in nature but allow for our
                  "\"personal mileage is 100% but company mileage would be 0% payout "
                  "regardless who drove\" — 23 Sep. A vehicle rule pays whoever owns the "
                  "vehicle, so a company vehicle pays nobody.\n\n"
+                 "\"retainer covered hours should be percentage based payouts (can be "
+                 "more than one responder each month and that too should be percentage) "
+                 "and bravo would effectively be 0% payout to responder\" — 23 Sep. A "
+                 "covered_time rule is a percentage of what the retainer charged for the "
+                 "period, split by each person's share of its covered hours.\n\n"
                  "\"yes each can be a service charge, thats what allows flat rates as "
                  "you pointed out per service item\" — 23 Sep. unit each charges per "
                  "entry, whatever its length.\n\n"
@@ -517,7 +522,10 @@ c += [note("n5", "\"per site and per client. we talked about this. reoccurings s
                  "hour on a service not named is billed.\n\n"
                  "[claude] The terms are the agreement's own. They start from the "
                  "service's subscription terms when coverage is added, and a later change "
-                 "to the service does not reach into an agreement already made.",
+                 "to the service does not reach into an agreement already made.\n\n"
+                 "[claude] A capped pool is drawn in the order hours were worked, within "
+                 "an agreement_period \u2014 a charged period. Hours it covers bill nothing "
+                 "by the hour and are paid as a share of that period's charge.",
            40, 600, 1540, 330)]
 files.append(write("05-agreements.drawio", "Agreements", c, 1620, 950))
 

@@ -28,6 +28,8 @@ export const load: PageServerLoad = async ({ url }) => {
 			site: string | null;
 			service: string;
 			value: string | null;
+			covered: boolean;
+			heads: number;
 			invoiced: boolean;
 			stale: boolean;
 		}[]
@@ -44,6 +46,10 @@ export const load: PageServerLoad = async ({ url }) => {
 		       si.display as site,
 		       s.name as service,
 		       case when t.billable then w.billed end::text as value,
+		       -- Wholly inside a retainer: it bills nothing by the hour because
+		       -- the retainer has already charged for it.
+		       coalesce(w.covered_minutes = t.minutes, false) as covered,
+		       w.heads,
 		       il.invoice_id is not null as invoiced,
 		       (il.invoice_id is null and t.billable
 		        and current_date - t.worked_on
