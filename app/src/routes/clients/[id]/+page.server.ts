@@ -100,18 +100,27 @@ export const load: PageServerLoad = async ({ params }) => {
 		 group by 1
 		 order by 1`;
 
-	// What the retainer covers, service by service, in the words the tile
-	// prints: "Remote support unlimited", "On-site work 4 h".
+	// What the retainer charges a period, and what it covers, service by service,
+	// with this month's use against it: "Remote support 1.50 h of unlimited".
 	const [agreement] = await sql<
-		{ price: string; basis: string; interval: string; covers: string | null }[]
+		{ charge: string; basis: string; interval: string; covers: string | null; given: boolean }[]
 	>`
-		select a.price::text, a.basis, a.billing_interval as interval,
-		       (select string_agg(s.name || ' ' || case when al.allotment = 'unlimited'
-		                                                then 'unlimited'
-		                                                else round(al.pooled_hours)::text || ' h'
-		                                           end, ', ' order by s.name)
+		select agreement_charge(a.id)::text as charge, a.basis, a.billing_interval as interval,
+		       (select string_agg(
+		                 s.name || ' ' ||
+		                 coalesce((select sum(t.minutes) / 60.0 from time_entry t
+		                            where t.entity_id = a.entity_id and t.service_id = al.service_id
+		                              and t.worked_on >= date_trunc('month', current_date)), 0)
+		                   ::numeric(10,2)::text || ' h of ' ||
+		                 case when al.allotment = 'unlimited' then 'unlimited'
+		                      else al.pooled_hours::numeric(10,2)::text || ' h' end,
+		                 ', ' order by s.name)
 		          from agreement_allotment al join service s on s.id = al.service_id
-		         where al.agreement_id = a.id) as covers
+		         where al.agreement_id = a.id) as covers,
+		       -- Charged in advance, so this month either has its charge or was given.
+		       exists (select 1 from agreement_period ap
+		                where ap.agreement_id = a.id and ap.given
+		                  and current_date between ap.period_start and ap.period_end) as given
 		  from agreement a
 		 where a.entity_id = ${id}
 		   and (a.ends_on is null or a.ends_on >= current_date)

@@ -7,6 +7,12 @@
 	let { data }: PageProps = $props();
 
 	const hrs = (v: string | null | undefined) => (v ? `${Number(v).toFixed(2)} h` : '—');
+	const PERIOD: Record<string, string> = {
+		weekly: 'week',
+		monthly: 'month',
+		quarterly: 'quarter',
+		annually: 'year'
+	};
 	const per = (i: string) =>
 		i === 'monthly' ? '/mo' : i === 'annually' ? '/yr' : i === 'quarterly' ? '/qtr' : '/wk';
 
@@ -44,35 +50,44 @@
 					<div class="rec">
 						<div class="rec-m">
 							<div class="rec-t">{a.who}</div>
-							<div class="rec-s">{a.basis}{a.sites ? ` · ${a.sites}` : ''}</div>
+							<div class="rec-s">
+								{a.basis === 'per_location'
+									? `${money(a.price)} a site, ${a.site_count} ${a.site_count === 1 ? 'site' : 'sites'}`
+									: 'Flat'}{a.sites ? ` · ${a.sites}` : ''}
+							</div>
 							{#each a.covers as c (c.service)}
 								<div class="rec-s">
-									{c.service}
-									{c.allotment === 'unlimited' ? 'unlimited' : `${hrs(c.hours)} included`} · {hrs(
-										c.used
-									)} used this month
+									{c.service} · {hrs(c.used)} used this month of {c.allotment === 'unlimited'
+										? 'unlimited'
+										: hrs(c.hours)}
 								</div>
 							{:else}
 								<div class="rec-s">Covers no service — everything is billed</div>
+							{/each}
+							{#each a.pay as r (r.service + r.payee + r.pays_for)}
+								<div class="rec-s">
+									{r.payee} paid {pays(r)} for {r.pays_for === 'covered_time'
+										? 'covered '
+										: ''}{r.service}
+								</div>
 							{/each}
 							<div class="rec-c">
 								{#each a.covers as c (c.service)}
 									{#if c.allotment === 'unlimited'}
 										<span class="chip acc">∞ {c.service}</span>
-									{:else}
-										<span class="chip acc">{hrs(c.hours)} {c.service}</span>
 									{/if}
 								{/each}
-								{#each a.pay as r (r.service + r.payee)}
-									<span class="chip">
-										{r.payee} paid {pays(r)} for {r.pays_for === 'covered_time' ? 'covered' : ''}
-										{r.service}
-									</span>
-								{/each}
+								{#if a.now.state === 'given'}
+									<span class="chip good">this {PERIOD[a.interval] ?? 'period'} given freely</span>
+								{:else if a.now.state === 'uncharged'}
+									<span class="chip warn"
+										>this {PERIOD[a.interval] ?? 'period'} not charged yet</span
+									>
+								{/if}
 							</div>
 						</div>
 						<div class="rec-n">
-							<span class="rec-v">{money(a.price)}</span>
+							<span class="rec-v">{money(a.charge)}</span>
 							<span class="rec-x">{per(a.interval)}</span>
 						</div>
 					</div>

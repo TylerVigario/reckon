@@ -167,7 +167,7 @@ INSERT INTO time_entry (client_uuid, worked_on, minutes, worked_by, created_by, 
    'cccccccc-0000-0000-0000-000000000002','55555555-0000-0000-0000-000000000001', true,'one'),
   (gen_random_uuid(), current_date - 24,  90,'11111111-0000-0000-0000-000000000002',
    '11111111-0000-0000-0000-000000000001','eeeeeeee-0000-0000-0000-000000000001',
-   'cccccccc-0000-0000-0000-000000000001','55555555-0000-0000-0000-000000000002', true,'one');
+   'cccccccc-0000-0000-0000-000000000001','55555555-0000-0000-0000-000000000001', true,'one');
 
 -- One drive, two clients: the case the leg rules exist for. 72.2 miles driven,
 -- and never more than that billed.
@@ -248,9 +248,13 @@ UPDATE invoice SET status='sent', issued_on = current_date - 20, due_on = curren
 -- A retainer, so the meter has something to meter. Unlimited at $200 a site is
 -- the case the screen exists for: nobody is counting, and the hours used are
 -- the only way to tell whether $200 is anywhere near the work.
+--
+-- "its from the 1st of a the month til the end of a month. billed for upcoming
+-- months usage. this month will be given freely" -- 23 Sep 2026. So it began on
+-- the 1st of this month, its periods are calendar months, and this one is given.
 INSERT INTO agreement (id, entity_id, basis, price, starts_on, billing_interval, billing_anchor_day)
 VALUES ('aaaa0000-0000-0000-0000-000000000001','eeeeeeee-0000-0000-0000-000000000001',
-        'per_location', 200.00, date_trunc('year', current_date)::date, 'monthly', 1);
+        'per_location', 200.00, date_trunc('month', current_date)::date, 'monthly', 1);
 -- It covers Remote support, without limit -- by naming the service, not a kind.
 INSERT INTO agreement_service (agreement_id, service_id, allotment, allotment_basis)
 VALUES ('aaaa0000-0000-0000-0000-000000000001','55555555-0000-0000-0000-000000000002',
@@ -258,18 +262,24 @@ VALUES ('aaaa0000-0000-0000-0000-000000000001','55555555-0000-0000-0000-00000000
 INSERT INTO agreement_site (agreement_id, site_id) VALUES
   ('aaaa0000-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000001'),
   ('aaaa0000-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000002');
-INSERT INTO agreement_period (agreement_id, period_start, period_end, amount)
+INSERT INTO agreement_period (agreement_id, period_start, period_end, amount, given)
 VALUES ('aaaa0000-0000-0000-0000-000000000001',
-        (date_trunc('month', current_date) - interval '1 month')::date,
-        (date_trunc('month', current_date) - interval '1 day')::date, 400.00);
+        date_trunc('month', current_date)::date,
+        (date_trunc('month', current_date) + interval '1 month - 1 day')::date, 0.00, true);
 
--- Remote hours against that retainer, and one against a client who has none.
+-- Remote hours against that retainer this month -- one each, so its meter has
+-- two responders to split between -- and one against a client who has none.
+-- LEAST keeps a call early in a month from landing in the future.
 INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, created_by,
                         entity_id, site_id, service_id, note) VALUES
-  (gen_random_uuid(), (date_trunc('month', current_date) - interval '18 days')::date, 212,
+  (gen_random_uuid(), LEAST(date_trunc('month', current_date)::date + 2, current_date), 212,
    'one','11111111-0000-0000-0000-000000000001','11111111-0000-0000-0000-000000000001',
    'eeeeeeee-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000001',
    '55555555-0000-0000-0000-000000000002','Till printer, over the phone'),
+  (gen_random_uuid(), LEAST(date_trunc('month', current_date)::date + 9, current_date), 90,
+   'one','11111111-0000-0000-0000-000000000002','11111111-0000-0000-0000-000000000002',
+   'eeeeeeee-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000002',
+   '55555555-0000-0000-0000-000000000002','Kettleman card reader'),
   (gen_random_uuid(), (date_trunc('month', current_date) - interval '9 days')::date, 12,
    'one','11111111-0000-0000-0000-000000000001','11111111-0000-0000-0000-000000000001',
    'eeeeeeee-0000-0000-0000-000000000002','cccccccc-0000-0000-0000-000000000004',

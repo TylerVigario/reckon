@@ -3,7 +3,7 @@ import { sql } from './db';
 export type Period = { start: string; end: string; label: string; spans: string };
 
 /**
- * The two windows every report is cut to, computed in Postgres so that a report
+ * The windows every report is cut to, computed in Postgres so that a report
  * and the rows behind it agree about where a day falls. `new Date()` on a
  * server running UTC calls a Californian evening tomorrow, and a report that
  * moves an invoice into the next quarter is a filing problem.
@@ -14,7 +14,8 @@ export type Period = { start: string; end: string; label: string; spans: string 
  *
  * THE MONTH is the last COMPLETE one. Pay and usage are settled after a month
  * closes, and a report that includes a month still being worked reads as
- * finished when it is not.
+ * finished when it is not -- which is why the one report that shows the month
+ * in progress, the retainer meter, says "so far" in its label.
  */
 export async function fiscalYear(): Promise<Period | null> {
 	const [row] = await sql<{ start: string; end: string; label: string; spans: string }[]>`
@@ -44,6 +45,25 @@ export async function lastFullMonth(): Promise<Period> {
 		       to_char(first_day, 'FMMonth YYYY') as label,
 		       to_char(first_day, 'FMDD Mon') || ' to '
 		         || to_char(first_day + interval '1 month - 1 day', 'FMDD Mon YYYY') as spans
+		  from m`;
+	return row;
+}
+
+/**
+ * THIS MONTH, SO FAR -- from the 1st to today. Not settled, and labelled so.
+ *
+ * A retainer is charged in advance for the month it covers, so its charge is
+ * known on the 1st while its usage builds all month. Waiting for the month to
+ * close to show that usage hides the only month that is still happening.
+ */
+export async function thisMonth(): Promise<Period> {
+	const [row] = await sql<{ start: string; end: string; label: string; spans: string }[]>`
+		with m as (select date_trunc('month', current_date)::date as first_day)
+		select first_day::text as start,
+		       current_date::text as end,
+		       to_char(first_day, 'FMMonth YYYY') || ' so far' as label,
+		       to_char(first_day, 'FMDD Mon') || ' to '
+		         || to_char(current_date, 'FMDD Mon YYYY') as spans
 		  from m`;
 	return row;
 }

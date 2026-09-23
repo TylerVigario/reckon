@@ -239,7 +239,7 @@ T["agreement_service"] = [("PK","id","uuid"),("FK","agreement_id","uuid"),
 T["agreement_site"] = [("FK","agreement_id","uuid"),("FK","site_id","uuid")]
 T["agreement_period"] = [("PK","id","uuid"),("FK","agreement_id","uuid"),
     ("","period_start","date"),("","period_end","date"),
-    ("","amount","numeric · as charged")]
+    ("","amount","numeric · as charged"),("","given","bool · charged nothing, on purpose")]
 
 T["invoice"] = [("PK","id","uuid"),("UK","number","text"),("FK","entity_id","uuid"),
     ("","status","draft|sent|paid|void"),("","issued_on","date"),("","due_on","date"),
@@ -514,6 +514,10 @@ c += [note("n5", "\"per site and per client. we talked about this. reoccurings s
                  "\"allotment used and they call. bill per minute at the going rate. also "
                  "can be set as no-charge or deny work\" — 9 Sep.\n\n"
                  "\"retainer does meter but bravo will show infinite right now\" — 18 Aug.\n\n"
+                 "\"its from the 1st of a the month til the end of a month. billed for "
+                 "upcoming months usage. this month will be given freely\" — 23 Sep. A "
+                 "period is charged when it begins, and can be given: covered, charged "
+                 "nothing, on purpose.\n\n"
                  "\"whats the difference between on-site and remote? why are they "
                  "categorical instead of universal?\" — 23 Sep. The split answered one "
                  "question, which hours come out of a retainer, and answered it by kind. "

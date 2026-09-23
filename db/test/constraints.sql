@@ -2076,4 +2076,41 @@ BEGIN
   RAISE NOTICE '  zero      Bravo, not yet charged: 0%% of anything is $%', bravo;
 END $$;
 
+\echo ''
+\echo '=== 34. a month can be given, and a given month is known ==='
+
+-- "its from the 1st of a the month til the end of a month. billed for upcoming
+-- months usage. this month will be given freely" -- 23 Sep 2026.
+SELECT must_fail($$
+  INSERT INTO agreement_period (agreement_id, period_start, period_end, amount, given)
+  VALUES ('bbbbbbbb-0000-0000-0000-0000000000a1','2026-12-01','2026-12-31',300.00,true)
+$$, 'a given month that charges something');
+
+SELECT must_pass($$
+  INSERT INTO agreement_period (agreement_id, period_start, period_end, amount, given)
+  VALUES ('bbbbbbbb-0000-0000-0000-0000000000a1','2026-11-01','2026-11-30',0.00,true)
+$$, 'November given freely');
+
+DO $$
+DECLARE paid numeric; earned numeric; bravo numeric; flat numeric;
+BEGIN
+  -- The 45 minutes in November had no charge to take a share of. Given, they do:
+  -- nothing, and 20% of nothing is known.
+  SELECT w.paid, w.earned INTO paid, earned
+    FROM entry_worth w WHERE w.time_entry_id = 'd3300000-0000-0000-0000-000000000006';
+  IF paid IS DISTINCT FROM 0.00 OR earned IS DISTINCT FROM 0.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: a given month should pay and earn 0.00, got % and %', paid, earned;
+  END IF;
+  RAISE NOTICE '  given     a covered hour in a given month pays $% and earns $% -- known, not pending',
+               paid, earned;
+
+  bravo := agreement_charge('bbbbbbbb-0000-0000-0000-000000000001');
+  flat  := agreement_charge('bbbbbbbb-0000-0000-0000-0000000000a1');
+  IF bravo IS DISTINCT FROM 400.00 OR flat IS DISTINCT FROM 300.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: Bravo charges $200 a site for two sites, and a flat $300 is $300; got % and %',
+                    bravo, flat;
+  END IF;
+  RAISE NOTICE '  charge    Bravo, $200 a site at two sites: $% a month; a flat $300: $%', bravo, flat;
+END $$;
+
 \echo 'All guards hold.'

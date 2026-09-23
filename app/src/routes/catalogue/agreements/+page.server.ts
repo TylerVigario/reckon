@@ -19,6 +19,11 @@ export const load: PageServerLoad = async () => {
 			sites: string | null;
 			basis: string;
 			price: string;
+			// What a period charges at the price: per site, times the sites.
+			charge: string;
+			site_count: number;
+			// This period's charge, made in advance -- or given, or not made yet.
+			now: { state: 'charged' | 'given' | 'uncharged'; amount: string | null };
 			interval: string;
 			agreed_with: string | null;
 			anchor: number;
@@ -41,10 +46,20 @@ export const load: PageServerLoad = async () => {
 		}[]
 	>`
 		select a.id, e.name as who,
-		       (select string_agg(si.display, ', ' order by si.display)
+		       (select string_agg(si.display, ' and ' order by si.display)
 		          from agreement_site ags join site si on si.id = ags.site_id
 		         where ags.agreement_id = a.id) as sites,
-		       a.basis, a.price::text, a.billing_interval as interval,
+		       a.basis, a.price::text, agreement_charge(a.id)::text as charge,
+		       (select count(*) from agreement_site s where s.agreement_id = a.id)::int as site_count,
+		       coalesce((
+		         select json_build_object(
+		                  'state', case when ap.given then 'given' else 'charged' end,
+		                  'amount', ap.amount::text)
+		           from agreement_period ap
+		          where ap.agreement_id = a.id
+		            and current_date between ap.period_start and ap.period_end
+		          limit 1), json_build_object('state', 'uncharged', 'amount', null)) as now,
+		       a.billing_interval as interval,
 		       c.name as agreed_with, a.billing_anchor_day as anchor,
 		       coalesce((
 		         select json_agg(json_build_object(
@@ -112,7 +127,7 @@ export const load: PageServerLoad = async () => {
 
 	const recurring = live
 		.filter((a) => a.interval === 'monthly')
-		.reduce((n, a) => n + Number(a.price), 0)
+		.reduce((n, a) => n + Number(a.charge), 0)
 		.toFixed(2);
 
 	return { live, uncovered, subscriptions, recurring };

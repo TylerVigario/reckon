@@ -157,6 +157,17 @@ So the allotment carries its own basis, which need not match how the money is ch
 ]
 #v(4pt)
 
+*Bravo's month runs from the 1st to the end of the month, billed in advance, and September 2026 is given.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"bravo should show usage against unlimited. its from the 1st of a the month til the end of a month. billed for upcoming months usage. this month will be given freely"_ — 23 Sep 2026
+]
+#v(4pt)
+
+*#text(fill: warn, weight: 700)[\[claude\]]* Built in 0022. Bravo's agreement anchors on the 1st, so its periods are calendar months, and each is charged when it begins for the month ahead. A period can be marked `given`: covered, and deliberately charged nothing. It is not a \$0 period that could be a mistake, or a month nobody has charged yet, and the screens say "given freely" rather than "\$0.00". `agreement_charge()` is what a period charges at the price, \$200 a site times two sites, so every screen now shows Bravo's \$400 rather than the \$200 of one site. The retainer meter shows the month under way beside the last one closed, because a retainer's charge is known on the 1st and its usage builds all month.
+#v(4pt)
+
 *The retainer meters whether or not there is a limit.*
 #v(4pt)
 

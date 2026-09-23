@@ -361,6 +361,14 @@ export type MeterRow = {
 	client: string;
 	services: MeteredService[];
 	responders: Responder[];
+	// The retainer's own charge for the month: made, given, or not made yet.
+	// Null for a client with no retainer running.
+	retainer: {
+		state: 'charged' | 'given' | 'uncharged';
+		amount: string;
+		// What it charges at its price -- what a given month was worth.
+		charge: string;
+	} | null;
 	charged: string;
 	paid: string | null;
 };
@@ -442,13 +450,21 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 		),
 		-- A retainer's own charge for the period, which is what the client pays
 		-- whether they call or not. Once per client, however many services it
-		-- covers.
+		-- covers. It is charged in advance, so a month under way already has
+		-- one -- unless it was given, or nobody has charged it yet.
 		retained as (
-			select r.entity_id, coalesce(sum(ap.amount), 0) as amount
+			select r.entity_id,
+			       sum(pd.amount) as amount,
+			       sum(pd.periods) as periods,
+			       coalesce(bool_and(pd.given), false) as given,
+			       sum(agreement_charge(r.id)) as charge
 			  from running r
-			  left join agreement_period ap on ap.agreement_id = r.id
-			                               and ap.period_start <= ${p.end}
-			                               and ap.period_end >= ${p.start}
+			  cross join lateral (
+			    select coalesce(sum(ap.amount), 0) as amount, count(ap.id) as periods,
+			           bool_and(ap.given) as given
+			      from agreement_period ap
+			     where ap.agreement_id = r.id
+			       and ap.period_start <= ${p.end} and ap.period_end >= ${p.start}) pd
 			 group by r.entity_id
 		),
 		clients as (
@@ -486,6 +502,14 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 		                          where t.entity_id = e.id and ep.covered_minutes > 0
 		                            and t.worked_on between ${p.start} and ${p.end}
 		                          group by u.name) g) r), '[]') as responders,
+		       case when rt.entity_id is null then null
+		            else json_build_object(
+		                   'state', case when rt.periods = 0 then 'uncharged'
+		                                 when rt.given then 'given'
+		                                 else 'charged' end,
+		                   'amount', rt.amount::numeric(12,2)::text,
+		                   'charge', rt.charge::numeric(12,2)::text)
+		       end as retainer,
 		       -- The retainer, plus whatever was billed by the hour: services it
 		       -- does not cover, and time past an allotment.
 		       (coalesce(rt.amount, 0) + coalesce(sum(l.billed), 0))
@@ -497,7 +521,7 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 		  left join lines l on l.entity_id = c.entity_id
 		  left join retained rt on rt.entity_id = c.entity_id
 		 where e.active
-		 group by e.id, e.name, rt.amount
+		 group by e.id, e.name, rt.entity_id, rt.amount, rt.periods, rt.given, rt.charge
 		 order by e.name`;
 
 	const charged = rows.reduce((n, r) => n + Number(r.charged), 0);

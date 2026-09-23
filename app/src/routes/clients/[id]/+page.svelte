@@ -78,10 +78,19 @@
 		{#if data.agreement}
 			<div class="tile">
 				<span class="k">Retainer</span>
-				<span class="v sm">{money(data.agreement.price)}</span>
+				<span class="v sm">{money(data.agreement.charge)}</span>
 				<span class="s">
-					per {data.agreement.interval === 'monthly' ? 'month' : data.agreement.interval},
-					{data.agreement.covers ?? 'covers no service'}
+					{[
+						`per ${data.agreement.interval === 'monthly' ? 'month' : data.agreement.interval}`,
+						`this month ${[
+							data.agreement.given ? 'given freely' : null,
+							data.agreement.covers ?? 'covers no service'
+						]
+							.filter(Boolean)
+							.join(', ')}`
+					]
+						.filter(Boolean)
+						.join(' · ')}
 				</span>
 			</div>
 		{/if}

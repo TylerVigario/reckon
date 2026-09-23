@@ -84,6 +84,20 @@ first minute. Asked directly, 9 Sep 2026.
 site draw on another's share. Asked directly, 9 Sep 2026:
 > *"pooled because its set at the client level vs the site level"*
 
+**Bravo's month runs from the 1st to the end of the month, billed in advance,
+and September 2026 is given.**
+> *"bravo should show usage against unlimited. its from the 1st of a the month til the end of a month. billed for upcoming months usage. this month will be given freely"* — 23 Sep 2026
+
+**[claude]** Built in 0022. Bravo's agreement anchors on the 1st, so its
+periods are calendar months, and each is charged when it begins for the month
+ahead. A period can be marked `given`: covered, and deliberately charged
+nothing. It is not a $0 period that could be a mistake, or a month nobody has
+charged yet, and the screens say "given freely" rather than "$0.00".
+`agreement_charge()` is what a period charges at the price, $200 a site times
+two sites, so every screen now shows Bravo's $400 rather than the $200 of one
+site. The retainer meter shows the month under way beside the last one closed,
+because a retainer's charge is known on the 1st and its usage builds all month.
+
 **The retainer meters whether or not there is a limit.**
 > *"retainer does meter but bravo will show infinite right now. its preperation for honest tellings to when it does matter"* — 18 Aug 2026
 
