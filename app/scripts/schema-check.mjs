@@ -86,15 +86,17 @@ for (const [table, registry] of registries) {
 			);
 		}
 
-		// Every value the registry offers has to be one the column allows.
-		const enumeration = checks.find(
-			(c) =>
-				c.table_name === table &&
-				new RegExp(`\\b${field}\\b`).test(c.def) &&
-				c.def.includes('ANY (ARRAY[')
-		);
+		// Every value the registry offers has to be one the column allows. The
+		// list read is the one that constrains THIS column -- `field = ANY
+		// (ARRAY[...])` -- not every quoted word in a check that mentions it:
+		// pay_rule's amount check names the methods, and they are not amounts.
+		const own = new RegExp(`\\(${field} = ANY \\(ARRAY\\[([^\\]]*)\\]`);
+		const enumeration = checks
+			.filter((c) => c.table_name === table)
+			.map((c) => own.exec(c.def)?.[1])
+			.find(Boolean);
 		if (enumeration) {
-			const allowed = [...enumeration.def.matchAll(/'([^']+)'::text/g)].map((m) => m[1]);
+			const allowed = [...enumeration.matchAll(/'([^']+)'::text/g)].map((m) => m[1]);
 			for (const candidate of allowed) {
 				// Anything the column allows, the registry should too -- or the
 				// screen cannot offer a value the data already contains.
