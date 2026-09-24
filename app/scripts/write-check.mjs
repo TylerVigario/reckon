@@ -310,6 +310,195 @@ console.log('\n  one save must not erase another');
 	}
 }
 
+console.log('\n  services — made, priced, and taken away again');
+
+// Days far from today on purpose: the harness's clock and the database's can
+// sit either side of midnight, and "today" or "yesterday" would then test the
+// wrong rule.
+const dayFrom = (/** @type {number} */ n) =>
+	new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+const ahead = dayFrom(30);
+const behind = dayFrom(-7);
+const stamp = Date.now().toString(36);
+
+await check(
+	'a service with no name is refused',
+	'POST',
+	'/api/services',
+	{ fields: { name: '', unit: 'hour' } },
+	400
+);
+const svc = await check(
+	'a service is made',
+	'POST',
+	'/api/services',
+	{ fields: { name: `Write check ${stamp}`, unit: 'hour' } },
+	201
+);
+const sid = svc.body?.id;
+if (sid) {
+	const at = `/api/services/${sid}`;
+	await check('it renames', 'PATCH', at, { fields: { name: `Checked ${stamp}` } }, 200);
+	await check(
+		'moving it off hours clears its increment',
+		'PATCH',
+		at,
+		{ fields: { unit: 'each' } },
+		(r) => r.status === 200 && r.body?.saved?.bill_to_nearest_seconds === null
+	);
+	await check(
+		'an increment on a flat rate is refused',
+		'PATCH',
+		at,
+		{ fields: { bill_to_nearest_seconds: '60' } },
+		400
+	);
+	await check(
+		'back to hours, billed to the minute',
+		'PATCH',
+		at,
+		{ fields: { unit: 'hour' } },
+		(r) => r.status === 200 && r.body?.saved?.bill_to_nearest_seconds === 60
+	);
+	await check(
+		'a cap with no hours is refused',
+		'PUT',
+		`${at}/subscription`,
+		{
+			fields: {
+				subscription_basis: 'capped',
+				subscription_period: 'month',
+				subscription_overage: 'bill'
+			}
+		},
+		400
+	);
+	await check(
+		'a whole cap saves',
+		'PUT',
+		`${at}/subscription`,
+		{
+			fields: {
+				subscription_basis: 'capped',
+				subscription_hours: '2',
+				subscription_period: 'month',
+				subscription_overage: 'bill'
+			}
+		},
+		200
+	);
+	await check(
+		'no cap drops its terms',
+		'PUT',
+		`${at}/subscription`,
+		{ fields: { subscription_basis: 'none', subscription_hours: '2' } },
+		(r) => r.status === 200 && r.body?.saved?.subscription_hours === null
+	);
+
+	const prices = `${at}/prices`;
+	await check(
+		'a price on a day that does not exist is refused',
+		'POST',
+		prices,
+		{ fields: { rate: '60.00', effective_from: '2026-02-30' } },
+		400
+	);
+	await check(
+		'a price from a week ago saves',
+		'POST',
+		prices,
+		{ fields: { rate: '60.00', effective_from: behind } },
+		201
+	);
+	await check(
+		'that day has passed, so it is not rewritten',
+		'POST',
+		prices,
+		{ fields: { rate: '61.00', effective_from: behind } },
+		400
+	);
+	const next = await check(
+		'a price scheduled a month out saves',
+		'POST',
+		prices,
+		{ fields: { rate: '70.00', additional_rate: '40.00', effective_from: ahead } },
+		201
+	);
+	await check(
+		'and is corrected, not doubled, before its day',
+		'POST',
+		prices,
+		{ fields: { rate: '72.00', effective_from: ahead } },
+		(r) => r.status === 200 && r.body?.replaced === true && r.body?.id === next.body?.id
+	);
+	if (next.body?.id)
+		await check(
+			'a scheduled price is taken back',
+			'DELETE',
+			`${prices}/${next.body.id}`,
+			undefined,
+			200
+		);
+
+	const rules = `${at}/rules`;
+	const nobody = '00000000-0000-0000-0000-000000000000';
+	await check(
+		'a rule paying nobody is refused',
+		'POST',
+		rules,
+		{ fields: { pays_for: 'time', method: 'per_hour', amount: '30', effective_from: ahead } },
+		400
+	);
+	await check(
+		'a rule paying a role and a person is refused',
+		'POST',
+		rules,
+		{
+			fields: {
+				role_id: nobody,
+				user_id: nobody,
+				pays_for: 'time',
+				method: 'per_hour',
+				amount: '30',
+				effective_from: ahead
+			}
+		},
+		400
+	);
+	await check(
+		'retainer time paid by the hour is refused',
+		'POST',
+		rules,
+		{
+			fields: {
+				role_id: nobody,
+				pays_for: 'covered_time',
+				method: 'per_hour',
+				amount: '30',
+				effective_from: ahead
+			}
+		},
+		400
+	);
+	await check(
+		'a rule for a role that does not exist is refused',
+		'POST',
+		rules,
+		{
+			fields: {
+				role_id: nobody,
+				pays_for: 'time',
+				method: 'per_hour',
+				amount: '30',
+				effective_from: ahead
+			}
+		},
+		400
+	);
+
+	await check('a service nothing used is removed', 'DELETE', at, undefined, 200);
+}
+
 console.log('');
 if (failures.length) {
 	console.error(`${failures.length} write path(s) failed, ${passed} passed:`);

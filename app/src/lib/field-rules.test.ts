@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+	anId,
 	cap,
 	decimal,
 	flag,
+	isoDate,
 	oneOf,
 	optional,
 	orDefault,
 	phone,
+	parseAll,
 	required,
 	whole
 } from './field-rules';
@@ -152,5 +155,45 @@ describe('the wrappers', () => {
 	it('cap refuses past its length', () => {
 		expect(cap(3)('abc').ok).toBe(true);
 		expect(cap(3)('abcd').ok).toBe(false);
+	});
+});
+
+describe('isoDate', () => {
+	it('takes a day as a date input sends it', () => {
+		expect(isoDate('2026-09-01')).toEqual({ ok: true, value: '2026-09-01' });
+	});
+
+	// Date() would roll 30 February into 2 March and call it valid. A price
+	// that starts on a day that does not exist is a typo, not March.
+	it('refuses a day that does not exist', () => {
+		expect(isoDate('2026-02-30').ok).toBe(false);
+		expect(isoDate('2026-13-01').ok).toBe(false);
+	});
+
+	it('refuses anything that is not YYYY-MM-DD', () => {
+		for (const v of ['1/9/2026', '2026-9-1', 'yesterday']) expect(isoDate(v).ok).toBe(false);
+	});
+});
+
+describe('anId', () => {
+	it('takes a uuid and nothing else', () => {
+		expect(anId('55555555-0000-0000-0000-000000000001').ok).toBe(true);
+		expect(anId('bravo-farms').ok).toBe(false);
+	});
+});
+
+describe('parseAll', () => {
+	const registry = { name: required('A name.'), rate: optional(decimal(12, 2)) };
+
+	it('parses every field of the registry, sent or not', () => {
+		const { values, errors } = parseAll(registry, { rate: '80.00' });
+		expect(values).toEqual({ rate: '80.00' });
+		expect(errors).toEqual({ name: 'A name.' });
+	});
+
+	it('refuses a structure where a value belongs, by name', () => {
+		expect(parseAll(registry, { name: ['x'] }).errors.name).toBe(
+			'Expected a value, not a structure.'
+		);
 	});
 });

@@ -664,10 +664,10 @@ Per-field saving plus a two-column constraint makes a state nobody can get to: f
 #text(size: sz.small, weight: 700, fill: steel)[What this does not do]
 #v(3pt)
 
-*There is still no way to create a service.* The settings page can edit the terms of services that exist and says so plainly when there are none, which is what a fresh install sees — production has zero services today and no screen that makes one. Hiding the section would only make the gap harder to see.
+*There is still no way to create a service.* The settings page can edit the terms of services that exist and says so plainly when there are none, which is what a fresh install sees — production has zero services today and no screen that makes one. Hiding the section would only make the gap harder to see. _Superseded 23 Sep 2026: a service is created, and edited, on the services screen — see "A service is configured, not categorised"._
 #v(4pt)
 
-*A pay rate has no editor.* It is dated, so changing one appends a row rather than overwriting today's figure, and that is a different interaction from a field that saves itself. The current rate is shown and labelled as read-only.
+*A pay rate has no editor.* It is dated, so changing one appends a row rather than overwriting today's figure, and that is a different interaction from a field that saves itself. The current rate is shown and labelled as read-only. _Superseded 23 Sep 2026: pay rules and prices are edited on the service's screen, as dated rows._
 #v(4pt)
 
 #band[The schema was folded into one file]
@@ -749,6 +749,49 @@ An agreement names the services it covers, each with its own allotment (`agreeme
 #callout(tone: "note")[
   _"yes each can be a service charge, thats what allows flat rates as you pointed out per service item"_ — 23 Sep 2026
 ]
+#v(4pt)
+
+*A service is edited where it is shown, and is known by what it charges.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"getting closer but services are not editable. and the display could be improved by a single card and better placement of values. the biggest thing on them is payout to members but thats not the most important thing for a service"_ — 23 Sep 2026
+]
+#v(4pt)
+
+The services list is one card, a row a service: its name, how it is charged, and its price as the figure on the right. Who it pays, what it keeps and which clients differ are small notes beneath. Each row opens the service, where everything is editable, as the approved mock laid it out.
+#v(4pt)
+
+*#text(fill: warn, weight: 700)[\[claude\]]* How editing works:
+#v(4pt)
+
+#list([*What it is* saves field by field as it is left, like a setting. Moving a])
+#v(4pt)
+
+service off hours clears its billing increment; moving it onto hours starts it at the minute.
+#v(4pt)
+
+#list([*Its subscription* saves as one, because the four terms are one decision.], [*A price or a pay rule is a dated row.* A change adds a row from a day, so])
+#v(4pt)
+
+work before it keeps the figure it was worth. A day already past can be given, since a price agreed last week was true last week. A row can be corrected or taken back until its day has passed; after that it is history, and it changes by a row from another day.
+#v(4pt)
+
+#list([*A service can be removed only if nothing has used it* — no time, no trip])
+#v(4pt)
+
+leg, no agreement covering it. Otherwise it is retired, and stays under its name on everything it billed.
+#v(4pt)
+
+*What a service used to cost is on its own screen, shown when asked for.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"the historic rates are nice and i like the idea however we shouldnt crowd the service display. it should be hidden in a seperate screen only shown upon request"_ — 23 Sep 2026
+]
+#v(4pt)
+
+The services screen shows what is in force and what is scheduled. Each service with anything superseded links to its history, which lists every price and pay rule it has had, with the period each was true for. Travel settings does the same for the mileage rate.
 #v(4pt)
 
 *Hours a retainer covers are paid as a percentage, and Bravo's is 0%.*

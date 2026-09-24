@@ -567,10 +567,14 @@ endpoints take a set rather than a field.
 terms of services that exist and says so plainly when there are none, which is
 what a fresh install sees — production has zero services today and no screen
 that makes one. Hiding the section would only make the gap harder to see.
+*Superseded 23 Sep 2026: a service is created, and edited, on the services
+screen — see "A service is configured, not categorised".*
 
 **A pay rate has no editor.** It is dated, so changing one appends a row rather
 than overwriting today's figure, and that is a different interaction from a
 field that saves itself. The current rate is shown and labelled as read-only.
+*Superseded 23 Sep 2026: pay rules and prices are edited on the service's
+screen, as dated rows.*
 
 ---
 
@@ -639,6 +643,37 @@ hour on a service it does not name is billed.
 
 **A service charged per entry is how a flat rate is sold.**
 > *"yes each can be a service charge, thats what allows flat rates as you pointed out per service item"* — 23 Sep 2026
+
+**A service is edited where it is shown, and is known by what it charges.**
+> *"getting closer but services are not editable. and the display could be improved by a single card and better placement of values. the biggest thing on them is payout to members but thats not the most important thing for a service"* — 23 Sep 2026
+
+The services list is one card, a row a service: its name, how it is charged,
+and its price as the figure on the right. Who it pays, what it keeps and which
+clients differ are small notes beneath. Each row opens the service, where
+everything is editable, as the approved mock laid it out.
+
+**[claude]** How editing works:
+
+- **What it is** saves field by field as it is left, like a setting. Moving a
+  service off hours clears its billing increment; moving it onto hours starts
+  it at the minute.
+- **Its subscription** saves as one, because the four terms are one decision.
+- **A price or a pay rule is a dated row.** A change adds a row from a day, so
+  work before it keeps the figure it was worth. A day already past can be
+  given, since a price agreed last week was true last week. A row can be
+  corrected or taken back until its day has passed; after that it is history,
+  and it changes by a row from another day.
+- **A service can be removed only if nothing has used it** — no time, no trip
+  leg, no agreement covering it. Otherwise it is retired, and stays under its
+  name on everything it billed.
+
+**What a service used to cost is on its own screen, shown when asked for.**
+> *"the historic rates are nice and i like the idea however we shouldnt crowd the service display. it should be hidden in a seperate screen only shown upon request"* — 23 Sep 2026
+
+The services screen shows what is in force and what is scheduled. Each service
+with anything superseded links to its history, which lists every price and pay
+rule it has had, with the period each was true for. Travel settings does the
+same for the mileage rate.
 
 **Hours a retainer covers are paid as a percentage, and Bravo's is 0%.**
 > *"retainer covered hours should be percentage based payouts (can be more than one responder each month and that too should be percentage) and bravo would effectively be 0% payout to responder"* — 23 Sep 2026

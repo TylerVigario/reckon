@@ -48,6 +48,16 @@ const DETAIL = [
 		path: (id) => `/invoices/${id}`,
 		pick: (h) => first(h, /\/invoices\/([0-9a-f-]{36})/g)
 	},
+	{
+		list: '/services',
+		path: (id) => `/services/${id}`,
+		pick: (h) => first(h, /\/services\/([0-9a-f-]{36})"/g)
+	},
+	{
+		list: '/services/55555555-0000-0000-0000-000000000001',
+		path: (id) => `/services/${id}/history`,
+		pick: (h) => first(h, /\/services\/([0-9a-f-]{36})\/history/g)
+	},
 	{ list: '/clients', path: (id) => `/clients/${id}`, pick: aClient },
 	{ list: '/clients', path: (id) => `/clients/${id}/sites`, pick: aClient },
 	{ list: '/clients', path: (id) => `/clients/${id}/sites/new`, pick: aClient },
@@ -75,6 +85,7 @@ const ROUTES = [
 	'/catalogue/materials',
 	'/catalogue/agreements',
 	'/services',
+	'/services/new',
 	'/reports',
 	'/reports/schedule-a',
 	'/reports/partner-pay',

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Top from '$lib/Top.svelte';
 	import { money } from '$lib/money.svelte';
+	import { paysWhat } from '$lib/pay-words';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -16,12 +17,10 @@
 	const per = (i: string) =>
 		i === 'monthly' ? '/mo' : i === 'annually' ? '/yr' : i === 'quarterly' ? '/qtr' : '/wk';
 
-	const pays = (r: { pays_for: string; method: string; amount: string | null }) =>
-		r.method === 'nothing'
-			? 'nothing'
-			: r.method === 'percent'
-				? `${Number(r.amount)}% of ${r.pays_for === 'covered_time' ? 'the retainer' : 'the line'}`
-				: `${money(r.amount)} ${r.method === 'per_hour' ? 'an hour' : 'an entry'}`;
+	const pays = (r: { pays_for: string; method: string; amount: string | null }) => {
+		const w = paysWhat(r, money);
+		return w.x ? `${w.v} ${w.x}` : w.v;
+	};
 
 	const sub = $derived(
 		[

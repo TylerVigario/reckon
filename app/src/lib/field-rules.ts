@@ -166,6 +166,25 @@ export const flag: Parse = (v) => {
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** A row's id, as the page was given it. Anything else is not a reference. */
+export const anId: Parse = (v) =>
+	UUID.test(v) ? ok(v.toLowerCase()) : no('That is not one of ours.');
+
+/**
+ * A calendar day, as a date input sends it: YYYY-MM-DD, and a day that exists.
+ * 2026-02-30 is refused here rather than rolled into March by whatever parses
+ * it next.
+ */
+export const isoDate: Parse = (v) => {
+	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+	if (!m) return no('A date, as YYYY-MM-DD.');
+	const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+	const day = new Date(Date.UTC(y, mo - 1, d));
+	if (day.getUTCFullYear() !== y || day.getUTCMonth() !== mo - 1 || day.getUTCDate() !== d)
+		return no('There is no such day.');
+	return ok(v);
+};
+
 /**
  * Parse one field of one registry. An unknown name is refused, never guessed at.
  *
@@ -179,4 +198,28 @@ export function parseIn(registry: Registry, name: string, raw: string): Parsed {
 	if (raw.length > ABSURD) return no('That is far longer than this field is for.');
 	if (CONTROL.test(raw)) return no('That contains a control character.');
 	return parse(raw.replace(INVISIBLE, ''));
+}
+
+/**
+ * Every field of a registry, from one submission. Fields not sent are parsed as
+ * empty, so a required one answers "this is needed" rather than passing
+ * unmentioned; anything that is not text or a number is refused by name.
+ */
+export function parseAll(
+	registry: Registry,
+	fields: Record<string, unknown>
+): { values: Record<string, string | number | boolean | null>; errors: Record<string, string> } {
+	const values: Record<string, string | number | boolean | null> = {};
+	const errors: Record<string, string> = {};
+	for (const name of Object.keys(registry)) {
+		const raw = fields[name];
+		if (raw !== null && raw !== undefined && typeof raw !== 'string' && typeof raw !== 'number') {
+			errors[name] = 'Expected a value, not a structure.';
+			continue;
+		}
+		const parsed = parseIn(registry, name, raw === null || raw === undefined ? '' : String(raw));
+		if (parsed.ok) values[name] = parsed.value;
+		else errors[name] = parsed.why;
+	}
+	return { values, errors };
 }

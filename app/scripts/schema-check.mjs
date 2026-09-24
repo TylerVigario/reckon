@@ -39,14 +39,18 @@ const sql = process.env.DATABASE_URL
 const { SITE_FIELDS } = await import('../src/lib/site-fields.ts');
 const { CLIENT_FIELDS } = await import('../src/lib/client-fields.ts');
 const { FIELDS: SETTINGS_FIELDS } = await import('../src/lib/settings-fields.ts');
-const { SERVICE_FIELDS } = await import('../src/lib/service-fields.ts');
+const { SERVICE_FIELDS, SUBSCRIPTION_FIELDS, PRICE_FIELDS, RULE_FIELDS } =
+	await import('../src/lib/service-fields.ts');
 
 /** @type {[string, import('../src/lib/field-rules.ts').Registry][]} */
 const registries = [
 	['site', SITE_FIELDS],
 	['entity', CLIENT_FIELDS],
 	['operator', SETTINGS_FIELDS],
-	['service', SERVICE_FIELDS]
+	['service', SERVICE_FIELDS],
+	['service', SUBSCRIPTION_FIELDS],
+	['service_price', PRICE_FIELDS],
+	['pay_rule', RULE_FIELDS]
 ];
 
 const columns = await sql`

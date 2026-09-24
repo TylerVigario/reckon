@@ -40,13 +40,12 @@
 		<div class="sec-h"><h2>Rate</h2></div>
 		<div class="rows">
 			{#each data.rates as r (r.id)}
-				<div class="rec" class:gone={!r.current}>
+				<div class="rec" class:acc={r.state === 'scheduled'}>
 					<div class="rec-m">
-						<div class="rec-t">{r.current ? 'Current' : 'Superseded'}</div>
+						<div class="rec-t">{r.state === 'scheduled' ? 'Scheduled' : 'Current'}</div>
 						<div class="rec-s">
-							{r.service} · effective <Day iso={r.effective_from} />{r.current
-								? ''
-								: ' · still priced on every line billed under it'}
+							{r.service} · {r.state === 'scheduled' ? 'takes over' : 'effective'}
+							<Day iso={r.effective_from} />
 						</div>
 					</div>
 					<div class="rec-n">
@@ -61,6 +60,17 @@
 					</div>
 					<div class="rec-n"><span class="rec-v mut">—</span></div>
 				</div>
+			{/each}
+			{#each data.history as h (h.id)}
+				<a class="rec link" href={resolve('/services/[id]/history', { id: h.id })}>
+					<div class="rec-m">
+						<div class="rec-t"><span class="lt">Earlier rates</span></div>
+						<div class="rec-s">
+							{h.name} · {h.earlier} no longer in force, still priced on every line billed under them
+						</div>
+					</div>
+					<span class="arw" aria-hidden="true">›</span>
+				</a>
 			{/each}
 		</div>
 	</div>
