@@ -1,14 +1,26 @@
 <script lang="ts">
 	import Top from '$lib/Top.svelte';
 	import { money } from '$lib/money.svelte';
+	import { paysWhat } from '$lib/pay-words';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
 
-	const hrs = (v: string | null) => (v === null ? '—' : `${Number(v).toFixed(2)} h`);
+	const hrs = (v: string | null | undefined) => (v ? `${Number(v).toFixed(2)} h` : '—');
+	const PERIOD: Record<string, string> = {
+		weekly: 'week',
+		monthly: 'month',
+		quarterly: 'quarter',
+		annually: 'year'
+	};
 	const per = (i: string) =>
 		i === 'monthly' ? '/mo' : i === 'annually' ? '/yr' : i === 'quarterly' ? '/qtr' : '/wk';
+
+	const pays = (r: { pays_for: string; method: string; amount: string | null }) => {
+		const w = paysWhat(r, money);
+		return w.x ? `${w.v} ${w.x}` : w.v;
+	};
 
 	const sub = $derived(
 		[
@@ -38,24 +50,43 @@
 						<div class="rec-m">
 							<div class="rec-t">{a.who}</div>
 							<div class="rec-s">
-								{a.basis}{a.sites ? ` · ${a.sites}` : ''}
-								<br />Remote {a.allotment === 'unlimited'
-									? 'unlimited'
-									: `${hrs(a.pooled ?? a.cap)} included`} · {hrs(a.used)} used this month
+								{a.basis === 'per_location'
+									? `${money(a.price)} a site, ${a.site_count} ${a.site_count === 1 ? 'site' : 'sites'}`
+									: 'Flat'}{a.sites ? ` · ${a.sites}` : ''}
 							</div>
+							{#each a.covers as c (c.service)}
+								<div class="rec-s">
+									{c.service} · {hrs(c.used)} used this month of {c.allotment === 'unlimited'
+										? 'unlimited'
+										: hrs(c.hours)}
+								</div>
+							{:else}
+								<div class="rec-s">Covers no service — everything is billed</div>
+							{/each}
+							{#each a.pay as r (r.service + r.payee + r.pays_for)}
+								<div class="rec-s">
+									{r.payee} paid {pays(r)} for {r.pays_for === 'covered_time'
+										? 'covered '
+										: ''}{r.service}
+								</div>
+							{/each}
 							<div class="rec-c">
-								{#if a.allotment === 'unlimited'}
-									<span class="chip acc">∞ uncapped</span>
-								{:else}
-									<span class="chip acc">{hrs(a.pooled ?? a.cap)}</span>
+								{#each a.covers as c (c.service)}
+									{#if c.allotment === 'unlimited'}
+										<span class="chip acc">∞ {c.service}</span>
+									{/if}
+								{/each}
+								{#if a.now.state === 'given'}
+									<span class="chip good">this {PERIOD[a.interval] ?? 'period'} given freely</span>
+								{:else if a.now.state === 'uncharged'}
+									<span class="chip warn"
+										>this {PERIOD[a.interval] ?? 'period'} not charged yet</span
+									>
 								{/if}
-								<span class="chip">
-									{a.responder ? `${money(a.responder)} to the responder` : 'no responder pay'}
-								</span>
 							</div>
 						</div>
 						<div class="rec-n">
-							<span class="rec-v">{money(a.price)}</span>
+							<span class="rec-v">{money(a.charge)}</span>
 							<span class="rec-x">{per(a.interval)}</span>
 						</div>
 					</div>
@@ -73,28 +104,23 @@
 	{#if data.uncovered.length}
 		<div class="sec">
 			<div class="sec-h">
-				<h2>
-					{data.fallback?.hours
-						? `On the ${Number(data.fallback.hours).toFixed(0)}-hour cap instead`
-						: 'No agreement'}
-				</h2>
+				<h2>{data.subscriptions.length ? 'On the service’s own terms instead' : 'No agreement'}</h2>
 			</div>
 			<div class="rows">
 				{#each data.uncovered as e (e.id)}
 					<div class="rec">
 						<div class="rec-m">
 							<div class="rec-t">{e.name}</div>
-							<div class="rec-s">
-								{data.fallback?.hours
-									? `Whatever the service includes, per ${data.fallback.period}`
-									: 'Nothing included'}
-							</div>
-						</div>
-						<div class="rec-n">
-							<span class="rec-v mut">
-								{data.fallback?.hours ? hrs(data.fallback.hours) : '—'}
-							</span>
-							<span class="rec-x">{hrs(e.used)} used</span>
+							{#each data.subscriptions as s (s.id)}
+								<div class="rec-s">
+									{s.name}
+									{s.basis === 'unlimited'
+										? 'unlimited'
+										: `${hrs(s.hours)} included per ${s.period}`} · {hrs(e.used[s.id] ?? '0')} used
+								</div>
+							{:else}
+								<div class="rec-s">Nothing included</div>
+							{/each}
 						</div>
 					</div>
 				{/each}

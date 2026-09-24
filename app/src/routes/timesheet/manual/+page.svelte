@@ -21,13 +21,12 @@
 	let serviceId = $state<string | null>(
 		untrack(() => {
 			const priced = (s: { id: string }) => data.prices.some((p) => p.service_id === s.id);
-			// Attendance first: this form records time, and a per-mile service
+			// Hourly first: this form records time, and a per-mile service
 			// opening by default asks for a duration of driving. Alphabetical
 			// order gave Emergency attendance (unpriced), then Mileage.
 			return (
 				(
-					data.services.find((s) => s.delivery === 'on_site' && priced(s)) ??
-					data.services.find((s) => s.delivery && priced(s)) ??
+					data.services.find((s) => s.unit === 'hour' && priced(s)) ??
 					data.services.find(priced) ??
 					data.services[0]
 				)?.id ?? null
@@ -256,22 +255,6 @@
 		margin: 0;
 		font-size: 12.5px;
 		color: var(--ink-3);
-	}
-	/* The platform's arrow ignores the padding above it; drawn here it lines up
-	   with the text, the same way the settings selects do. */
-	select.inp {
-		appearance: none;
-		padding-right: 2.4rem;
-		background-image:
-			linear-gradient(45deg, transparent 50%, currentColor 50%),
-			linear-gradient(135deg, currentColor 50%, transparent 50%);
-		background-size:
-			0.36rem 0.36rem,
-			0.36rem 0.36rem;
-		background-position:
-			right 1.2rem center,
-			right 0.85rem center;
-		background-repeat: no-repeat;
 	}
 	select.inp:disabled {
 		color: var(--ink-3);

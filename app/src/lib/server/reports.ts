@@ -190,8 +190,9 @@ export type PayJob = {
 	worked_on: string;
 	crew: string;
 	who: string | null;
+	heads: number;
 	hours: string;
-	billed: string | null;
+	earned: string | null;
 	paid: string | null;
 	kept: string | null;
 };
@@ -200,26 +201,21 @@ export type PartnerPay = {
 	jobs: PayJob[];
 	due: string;
 	kept: string;
-	rates: {
-		service: string;
-		crew: string;
-		billed: string | null;
-		paid: string | null;
-		from: string | null;
-	}[];
+	rates: HourNow[];
 };
 
 /**
- * What the partnership owes its partners for a month, resolved per job per day.
+ * What the partnership owes for a month's work, resolved per job per day.
  *
- * A guaranteed payment is for the hour worked, so it is priced at the pay rate
- * in force ON THE DAY -- not at today's. Re-pricing August at September's rates
- * is how a partner gets paid the wrong figure and nobody can say why.
+ * Every figure is entry_worth's: each entry priced and paid by the price and
+ * the rules in force ON THE DAY it was worked, not today's. Re-pricing August
+ * at September's rates is how somebody gets paid the wrong figure and nobody
+ * can say why. A job's figures are the sum of its entries'.
  *
- * A TEAM HOUR PAYS TWICE. The billed rate for `team` is per hour of the job,
- * not per person; the pay is per head, so two heads are paid for the one hour.
- * Subtracting one from the other without doubling the pay reports a margin the
- * partnership does not have.
+ * What a job EARNED is what it bills by the hour plus, for hours a retainer
+ * covered, its share of what the retainer charged -- so a covered job is not a
+ * job that brought in nothing. Pay is per head: a team entry pays everybody on
+ * it, each by their own rule, so subtracting it gives what the business keeps.
  */
 export async function partnerPay(p: Period): Promise<PartnerPay> {
 	const jobs = await sql<PayJob[]>`
@@ -231,9 +227,12 @@ export async function partnerPay(p: Period): Promise<PartnerPay> {
 			select coalesce(si.display, e.name) as job,
 			       t.worked_on, t.crew,
 			       u.name as who,
+			       max(w.heads) as heads,
 			       sum(t.minutes) / 60.0 as hours,
-			       t.service_id, t.entity_id, t.worked_by
+			       sum(w.earned) as earned,
+			       sum(w.paid) as paid
 			  from time_entry t
+			  join entry_worth w on w.time_entry_id = t.id
 			  join entity e on e.id = t.entity_id
 			  left join site si on si.id = t.site_id
 			  left join app_user u on u.id = t.worked_by
@@ -242,181 +241,299 @@ export async function partnerPay(p: Period): Promise<PartnerPay> {
 			 group by coalesce(si.display, e.name), t.worked_on, t.crew, u.name,
 			          t.service_id, t.entity_id, t.worked_by
 		)
-		select w.job, w.worked_on::text, w.crew, w.who,
-		       w.hours::numeric(10,4)::text as hours,
-		       (w.hours * price.rate)::numeric(12,2)::text as billed,
-		       (w.hours * pay.rate * case when w.crew = 'team' then 2 else 1 end)
-		         ::numeric(12,2)::text as paid,
-		       (w.hours * price.rate
-		        - w.hours * pay.rate * case when w.crew = 'team' then 2 else 1 end)
-		         ::numeric(12,2)::text as kept
-		  from worked w
-		  left join lateral (
-		         select sp.rate from service_price sp
-		          where sp.service_id = w.service_id
-		            and sp.effective_from <= w.worked_on
-		            and (sp.entity_id = w.entity_id or sp.entity_id is null)
-		            and (sp.crew = w.crew or sp.crew is null)
-		          order by (sp.entity_id is not null) desc,
-		                   (sp.crew is not null) desc,
-		                   sp.effective_from desc
-		          limit 1) price on true
-		  left join lateral (
-		         select ppr.rate from person_pay_rate ppr
-		          where ppr.effective_from <= w.worked_on
-		            and (ppr.user_id = w.worked_by or ppr.user_id is null)
-		            and (ppr.service_id = w.service_id or ppr.service_id is null)
-		          order by (ppr.user_id is not null) desc,
-		                   (ppr.service_id is not null) desc,
-		                   ppr.effective_from desc
-		          limit 1) pay on true
-		 order by w.worked_on, w.job`;
-
-	// What an hour is worth now, for every way an hour is ACTUALLY worked --
-	// which is a pair, a service and a crew, not a service. Crossing every
-	// hourly service with both crews invents rows nobody works: a remote call
-	// taken by two people at once, or a margin on research that is never
-	// billed to anyone. A pair earns its row by having a price of its own or
-	// by having been worked and charged for.
-	const rates = await sql<
-		{
-			service: string;
-			crew: string;
-			billed: string | null;
-			paid: string | null;
-			from: string | null;
-		}[]
-	>`
-		select s.name as service, c.crew, price.rate::text as billed,
-		       pay.rate::text as paid,
-		       greatest(price.effective_from, pay.effective_from)::text as from
-		  from service s
-		  cross join (values ('one'), ('team')) as c(crew)
-		  join lateral (
-		         select sp.rate, sp.effective_from from service_price sp
-		          where sp.service_id = s.id and sp.entity_id is null
-		            and (sp.crew = c.crew or sp.crew is null)
-		            and sp.effective_from <= current_date
-		          order by (sp.crew is not null) desc, sp.effective_from desc
-		          limit 1) price on true
-		  join lateral (
-		         select ppr.rate, ppr.effective_from from person_pay_rate ppr
-		          where ppr.user_id is null
-		            and (ppr.service_id = s.id or ppr.service_id is null)
-		            and ppr.effective_from <= current_date
-		          order by (ppr.service_id is not null) desc, ppr.effective_from desc
-		          limit 1) pay on true
-		 where s.active and s.unit = 'hour'
-		   and (exists (select 1 from service_price sp2
-		                 where sp2.service_id = s.id and sp2.crew = c.crew)
-		     or exists (select 1 from time_entry t
-		                 where t.service_id = s.id and t.billable and t.crew = c.crew))
-		 order by s.name, c.crew desc`;
+		select job, worked_on::text, crew, who, heads,
+		       hours::numeric(10,4)::text as hours,
+		       earned::numeric(12,2)::text as earned,
+		       paid::numeric(12,2)::text as paid,
+		       (earned - paid)::numeric(12,2)::text as kept
+		  from worked
+		 order by worked_on, job`;
 
 	const due = jobs.reduce((n, j) => n + Number(j.paid ?? 0), 0).toFixed(2);
 	const kept = jobs.reduce((n, j) => n + Number(j.kept ?? 0), 0).toFixed(2);
-	return { jobs, due, kept, rates };
+	return { jobs, due, kept, rates: await anHourNow() };
 }
 
-export type MeterRow = {
-	entity_id: string;
-	client: string;
-	site: string | null;
+export type HourNow = {
+	service_id: string;
+	service: string;
+	crew: 'one' | 'team';
+	who: string;
+	billed: string;
+	paid: string | null;
+	kept: string;
+	unpaid: boolean;
+	since: string | null;
+};
+
+/**
+ * What an hour of each hourly service is worth now, at the every-client price,
+ * and what it leaves the business once its rules have paid.
+ *
+ * One person first, grouped by what they are paid: everybody paid alike is
+ * one row, and a person whose own rule sets them apart gets their own. A
+ * person no rule reaches is marked unpaid rather than shown as keeping it all,
+ * which is what an unpaid person looks like from the business's side.
+ *
+ * Then the team, where there is one and the service has a team to price: an
+ * additional-person rate of its own, or team entries already worked. Crossing
+ * every hourly service with a team invents rows nobody works -- a margin on
+ * research that is never billed to anyone.
+ *
+ * Every figure is billed_amount() and time_pay(), the functions an entry is
+ * worked out by, so this cannot tell a different story from the entries.
+ */
+export async function anHourNow(): Promise<HourNow[]> {
+	return sql<HourNow[]>`
+		with people as (
+		  select id, name from app_user where active and role_id is not null
+		),
+		priced as (
+		  select s.id, s.name, sp.effective_from as priced_from, sp.additional_rate
+		    from service s
+		    cross join lateral service_price_on(s.id, null, current_date) sp
+		   where s.active and s.unit = 'hour' and sp.id is not null
+		),
+		one as (
+		  select pr.id as service_id, pr.name as service, p.name as person, b.billed,
+		         time_pay(pr.id, p.id, null, current_date, 3600, b.billed) as paid,
+		         greatest(pr.priced_from, r.effective_from) as since
+		    from priced pr
+		    cross join people p
+		    cross join lateral (
+		      select billed_amount(pr.id, null, 1, current_date, 1) as billed) b
+		    cross join lateral pay_rule_on(pr.id, p.id, null, 'time', current_date) r
+		),
+		team as (
+		  select pr.id as service_id, pr.name as service, b.billed,
+		         sum(tp.paid) as paid,
+		         count(tp.paid) < count(*) as unpaid,
+		         greatest(pr.priced_from, max(tp.since)) as since
+		    from priced pr
+		    cross join lateral (
+		      select billed_amount(pr.id, null, (select count(*)::int from people),
+		                           current_date, 1) as billed) b
+		    cross join people p
+		    cross join lateral (
+		      select time_pay(pr.id, p.id, null, current_date, 3600, b.billed) as paid,
+		             (pay_rule_on(pr.id, p.id, null, 'time', current_date)).effective_from
+		               as since) tp
+		   where (select count(*) from people) > 1
+		     and (pr.additional_rate > 0
+		          or exists (select 1 from time_entry t
+		                      where t.service_id = pr.id and t.crew = 'team'))
+		   group by pr.id, pr.name, b.billed, pr.priced_from
+		)
+		select service_id, service, 'one' as crew,
+		       string_agg(person, ' and ' order by person) as who,
+		       billed::text, paid::text,
+		       (billed - coalesce(paid, 0))::numeric(12,2)::text as kept,
+		       paid is null as unpaid,
+		       max(since)::text as since
+		  from one
+		 group by service_id, service, billed, paid
+		union all
+		select service_id, service, 'team', 'the team',
+		       billed::text, paid::text,
+		       (billed - coalesce(paid, 0))::numeric(12,2)::text,
+		       unpaid, since::text
+		  from team
+		 order by service, crew, who`;
+}
+
+export type MeteredService = {
+	service: string;
 	allotment: string;
 	cap_hours: string | null;
 	hours_used: string;
 	hours_left: string | null;
-	charged: string;
-	to_responder: string;
 };
 
-export type RemoteMeter = {
+export type Responder = {
+	person: string;
+	hours: string;
+	share: string;
+	paid: string | null;
+};
+
+export type MeterRow = {
+	entity_id: string;
+	client: string;
+	services: MeteredService[];
+	responders: Responder[];
+	// The retainer's own charge for the month: made, given, or not made yet.
+	// Null for a client with no retainer running.
+	retainer: {
+		state: 'charged' | 'given' | 'uncharged';
+		amount: string;
+		// What it charges at its price -- what a given month was worth.
+		charge: string;
+	} | null;
+	charged: string;
+	paid: string | null;
+};
+
+export type RetainerMeter = {
 	rows: MeterRow[];
 	charged: string;
-	toResponder: string;
-	toOperator: string;
+	paid: string | null;
+	kept: string | null;
 };
 
 /**
- * What remote support cost and what it earned, per client, for a month.
+ * What each client's retainer covered in a month, and what it earned.
  *
  * A retainer meters even when it is unlimited. That is the whole point of the
  * screen: at a flat price per site, hours used is the only way to tell whether
  * the retainer is priced anywhere near the work, and an unlimited allotment is
  * exactly the case where nobody is counting.
  *
- * A client with no agreement still appears, against the remote service's own
- * cap -- because "how much free support has this client had" is the same
- * question whether or not they signed anything.
+ * What is metered is what the agreement names, service by service -- nothing
+ * is inferred from what kind of work it was. A client with no agreement still
+ * appears for a service sold as a subscription, against the service's own
+ * terms, because "how much has this client had" is the same question whether
+ * or not they signed anything; what they worked is then billed by the hour.
+ *
+ * WHO ANSWERED, AND WHAT SHARE. Covered time pays a percentage of the retainer,
+ * split by each person's share of the covered hours -- so the share is shown,
+ * because it is what their pay was worked out from. Pay that depends on a
+ * period not yet charged is not known, and says so rather than reading $0.
  */
-export async function remoteMeter(p: Period): Promise<RemoteMeter> {
+export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 	const rows = await sql<MeterRow[]>`
-		with remote as (
-			select id, subscription_basis, subscription_hours from service
-			 where delivery = 'remote' and active order by name limit 1
-		),
-		used as (
-			select t.entity_id,
-			       sum(t.minutes) / 60.0 as hours,
-			       sum(t.minutes / 60.0 * (
-			         select sp.rate from service_price sp
-			          where sp.service_id = t.service_id
-			            and sp.effective_from <= t.worked_on
-			            and (sp.entity_id = t.entity_id or sp.entity_id is null)
-			          order by (sp.entity_id is not null) desc, sp.effective_from desc
-			          limit 1)) as billed
-			  from time_entry t, remote r
-			 where t.service_id = r.id
-			   and t.worked_on between ${p.start} and ${p.end}
-			 group by t.entity_id
-		),
-		-- A retainer's own charge for the period, which is what the client pays
-		-- whether they call or not.
-		retained as (
-			select a.entity_id,
-			       a.remote_allotment,
-			       a.remote_cap_hours,
-			       a.responder_rate,
-			       coalesce(sum(ap.amount), 0) as amount
-			  from agreement a
-			  left join agreement_period ap on ap.agreement_id = a.id
-			                               and ap.period_start <= ${p.end}
-			                               and ap.period_end >= ${p.start}
+		with running as (
+			select a.id, a.entity_id from agreement a
 			 where a.starts_on <= ${p.end}
 			   and (a.ends_on is null or a.ends_on >= ${p.start})
-			 group by a.entity_id, a.remote_allotment, a.remote_cap_hours, a.responder_rate
+		),
+		covered as (
+			select r.entity_id, al.service_id, al.allotment, al.pooled_hours
+			  from running r
+			  join agreement_allotment al on al.agreement_id = r.id
+		),
+		worked as (
+			-- Every hour counts toward what was used, billable or not: an hour
+			-- given away is still an hour the retainer's price has to carry.
+			select t.entity_id, t.service_id,
+			       sum(t.minutes) / 60.0 as hours,
+			       coalesce(sum(w.billed) filter (where t.billable), 0) as billed,
+			       coalesce(sum(w.paid), 0) as paid,
+			       bool_or(w.paid is null and w.covered_minutes > 0) as pay_unknown
+			  from time_entry t
+			  join entry_worth w on w.time_entry_id = t.id
+			 where t.entity_id is not null
+			   and t.worked_on between ${p.start} and ${p.end}
+			 group by t.entity_id, t.service_id
+		),
+		metered as (
+			select c.entity_id, c.service_id, c.allotment, c.pooled_hours as cap
+			  from covered c
+			union all
+			select wk.entity_id, s.id, s.subscription_basis, s.subscription_hours
+			  from worked wk
+			  join service s on s.id = wk.service_id
+			 where s.subscription_basis <> 'none'
+			   and not exists (select 1 from covered c
+			                    where c.entity_id = wk.entity_id
+			                      and c.service_id = wk.service_id)
+		),
+		lines as (
+			select m.entity_id, s.name as service, m.allotment, m.cap,
+			       coalesce(wk.hours, 0) as hours,
+			       coalesce(wk.billed, 0) as billed,
+			       coalesce(wk.paid, 0) as paid,
+			       coalesce(wk.pay_unknown, false) as pay_unknown
+			  from metered m
+			  join service s on s.id = m.service_id
+			  left join worked wk on wk.entity_id = m.entity_id
+			                     and wk.service_id = m.service_id
+		),
+		-- A retainer's own charge for the period, which is what the client pays
+		-- whether they call or not. Once per client, however many services it
+		-- covers. It is charged in advance, so a month under way already has
+		-- one -- unless it was given, or nobody has charged it yet.
+		retained as (
+			select r.entity_id,
+			       sum(pd.amount) as amount,
+			       sum(pd.periods) as periods,
+			       coalesce(bool_and(pd.given), false) as given,
+			       sum(agreement_charge(r.id)) as charge
+			  from running r
+			  cross join lateral (
+			    select coalesce(sum(ap.amount), 0) as amount, count(ap.id) as periods,
+			           bool_and(ap.given) as given
+			      from agreement_period ap
+			     where ap.agreement_id = r.id
+			       and ap.period_start <= ${p.end} and ap.period_end >= ${p.start}) pd
+			 group by r.entity_id
+		),
+		clients as (
+			select entity_id from lines union select entity_id from retained
 		)
 		select e.id as entity_id,
 		       e.name as client,
-		       null::text as site,
-		       coalesce(rt.remote_allotment, r.subscription_basis) as allotment,
-		       coalesce(rt.remote_cap_hours, r.subscription_hours)::text as cap_hours,
-		       coalesce(u.hours, 0)::numeric(10,2)::text as hours_used,
-		       case when coalesce(rt.remote_allotment, r.subscription_basis) = 'unlimited'
-		            then null
-		            else greatest(coalesce(rt.remote_cap_hours, r.subscription_hours, 0)
-		                          - coalesce(u.hours, 0), 0)::numeric(10,2)::text
-		       end as hours_left,
-		       (coalesce(rt.amount, 0) + case when rt.entity_id is null
-		                                      then coalesce(u.billed, 0) else 0 end)
+		       coalesce(json_agg(json_build_object(
+		                  'service', l.service,
+		                  'allotment', l.allotment,
+		                  'cap_hours', l.cap::numeric(10,2)::text,
+		                  'hours_used', l.hours::numeric(10,2)::text,
+		                  'hours_left', case when l.allotment = 'unlimited' then null
+		                                     else greatest(coalesce(l.cap, 0) - l.hours, 0)
+		                                            ::numeric(10,2)::text end)
+		                order by l.service) filter (where l.service is not null),
+		                '[]') as services,
+		       -- Everyone who worked covered time for this client this month, and
+		       -- their share of it in person-hours: a team hour is one each.
+		       coalesce((
+		         select json_agg(json_build_object(
+		                  'person', r.person,
+		                  'hours', (r.minutes / 60.0)::numeric(10,2)::text,
+		                  'share', r.share::numeric(5,1)::text,
+		                  'paid', case when r.unknown then null else r.paid::text end)
+		                order by r.minutes desc, r.person)
+		           from (select g.*, 100.0 * g.minutes / sum(g.minutes) over () as share
+		                   from (select u.name as person,
+		                                sum(ep.covered_minutes) as minutes,
+		                                sum(ep.covered_paid) as paid,
+		                                bool_or(ep.covered_paid is null) as unknown
+		                           from entry_pay ep
+		                           join time_entry t on t.id = ep.time_entry_id
+		                           join app_user u on u.id = ep.user_id
+		                          where t.entity_id = e.id and ep.covered_minutes > 0
+		                            and t.worked_on between ${p.start} and ${p.end}
+		                          group by u.name) g) r), '[]') as responders,
+		       case when rt.entity_id is null then null
+		            else json_build_object(
+		                   'state', case when rt.periods = 0 then 'uncharged'
+		                                 when rt.given then 'given'
+		                                 else 'charged' end,
+		                   'amount', rt.amount::numeric(12,2)::text,
+		                   'charge', rt.charge::numeric(12,2)::text)
+		       end as retainer,
+		       -- The retainer, plus whatever was billed by the hour: services it
+		       -- does not cover, and time past an allotment.
+		       (coalesce(rt.amount, 0) + coalesce(sum(l.billed), 0))
 		         ::numeric(12,2)::text as charged,
-		       (coalesce(u.hours, 0) * coalesce(rt.responder_rate, 0))
-		         ::numeric(12,2)::text as to_responder
-		  from entity e
-		  cross join remote r
-		  left join used u on u.entity_id = e.id
-		  left join retained rt on rt.entity_id = e.id
+		       case when bool_or(l.pay_unknown) then null
+		            else coalesce(sum(l.paid), 0)::numeric(12,2)::text end as paid
+		  from clients c
+		  join entity e on e.id = c.entity_id
+		  left join lines l on l.entity_id = c.entity_id
+		  left join retained rt on rt.entity_id = c.entity_id
 		 where e.active
-		   and (u.entity_id is not null or rt.entity_id is not null)
+		 group by e.id, e.name, rt.entity_id, rt.amount, rt.periods, rt.given, rt.charge
 		 order by e.name`;
 
 	const charged = rows.reduce((n, r) => n + Number(r.charged), 0);
-	const toResponder = rows.reduce((n, r) => n + Number(r.to_responder), 0);
+	// One client's pay not known yet is the total's not known yet: a sum that
+	// quietly counts it as nothing overstates what was kept.
+	const known = rows.every((r) => r.paid !== null);
+	const paid = rows.reduce((n, r) => n + Number(r.paid ?? 0), 0);
 	return {
 		rows,
 		charged: charged.toFixed(2),
-		toResponder: toResponder.toFixed(2),
-		toOperator: (charged - toResponder).toFixed(2)
+		paid: known ? paid.toFixed(2) : null,
+		kept: known ? (charged - paid).toFixed(2) : null
 	};
 }
 
@@ -424,20 +541,17 @@ export type GivenRow = { service: string; hours: string; worth: string | null };
 
 /**
  * What the business costs itself: hours worked and not charged for, priced at
- * what they would have been worth. Given away on purpose is still given away,
- * and a decision nobody can see was never made.
+ * what they would have billed -- entry_worth's figure, the client's own price
+ * where it has one. Given away on purpose is still given away, and a decision
+ * nobody can see was never made.
  */
 export async function nonBillable(p: Period) {
 	const rows = await sql<GivenRow[]>`
 		select s.name as service,
 		       (sum(t.minutes) / 60.0)::numeric(10,4)::text as hours,
-		       sum(t.minutes / 60.0 * (
-		         select sp.rate from service_price sp
-		          where sp.service_id = t.service_id
-		            and sp.entity_id is null
-		            and sp.effective_from <= t.worked_on
-		          order by sp.effective_from desc limit 1))::numeric(12,2)::text as worth
+		       sum(w.billed)::numeric(12,2)::text as worth
 		  from time_entry t
+		  join entry_worth w on w.time_entry_id = t.id
 		  join service s on s.id = t.service_id
 		 where not t.billable
 		   and t.worked_on between ${p.start} and ${p.end}

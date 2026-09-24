@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dated, day, formatMoney, fullDay, hours, pct } from './format';
+import { dated, day, formatMoney, fullDay, hours, increment, pct } from './format';
 
 /**
  * How a figure or a date is written.
@@ -108,5 +108,25 @@ describe('the dates', () => {
 		// 1 January is the case that would roll into the previous YEAR.
 		expect(dated('2026-01-01')).toBe('1 Jan 2026');
 		expect(dated('2026-12-31')).toBe('31 Dec 2026');
+	});
+});
+
+describe('increment', () => {
+	it('names a whole unit plainly', () => {
+		expect(increment(1)).toBe('to the second');
+		expect(increment(60)).toBe('to the minute');
+		expect(increment(3600)).toBe('to the hour');
+	});
+
+	it('counts anything coarser in the largest unit it divides into', () => {
+		expect(increment(900)).toBe('to the nearest 15 minutes');
+		expect(increment(30)).toBe('to the nearest 30 seconds');
+		expect(increment(7200)).toBe('to the nearest 2 hours');
+		expect(increment(90)).toBe('to the nearest 90 seconds');
+	});
+
+	// Null is not "unset": the column says a null bills the time as worked.
+	it('says a null bills the exact time', () => {
+		expect(increment(null)).toBe('the exact time');
 	});
 });

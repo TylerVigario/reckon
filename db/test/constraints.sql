@@ -54,12 +54,12 @@ INSERT INTO entity (id, name) VALUES
   ('44444444-0000-0000-0000-000000000002','Wild Jacks');
 
 
-INSERT INTO service (id, code, name, unit, delivery, subscription_basis,
+INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds, subscription_basis,
                      subscription_hours, subscription_overage, subscription_period)
 VALUES
-  ('55555555-5555-5555-5555-555555555555','onsite','On-site work','hour','on_site',
+  ('55555555-5555-5555-5555-555555555555','onsite','On-site work','hour',60,
    'none',NULL,NULL,NULL),
-  ('55555555-5555-5555-5555-555555555556','remote','Remote support','hour','remote',
+  ('55555555-5555-5555-5555-555555555556','remote','Remote support','hour',60,
    'capped',2.00,'bill','month'),
   ('55555555-5555-5555-5555-555555555557','mileage','Mileage','mile',NULL,
    'none',NULL,NULL,NULL);
@@ -189,9 +189,9 @@ $$, 'tax on a line marked untaxable');
 INSERT INTO trip (id, travelled_on, driven_by, created_by)
 VALUES ('88888888-8888-8888-8888-888888888888','2026-08-17',
         '11111111-1111-1111-1111-111111111111','11111111-1111-1111-1111-111111111111');
-INSERT INTO trip_leg (id, trip_id, seq, miles, entity_id)
+INSERT INTO trip_leg (id, trip_id, seq, miles, entity_id, service_id)
 VALUES ('99999999-9999-9999-9999-999999999999','88888888-8888-8888-8888-888888888888',
-        1, 36, '44444444-4444-4444-4444-444444444444');
+        1, 36, '44444444-4444-4444-4444-444444444444','55555555-5555-5555-5555-555555555557');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
@@ -291,20 +291,22 @@ $$, 'a rate below zero');
 
 \echo '=== 9. two "any entity" prices cannot both be true ==='
 
+-- One row is the whole price, whatever the crew: the first person, and what
+-- each person after adds. There is no team row beside it to disagree.
 SELECT must_pass($$
-  INSERT INTO service_price (service_id, crew, rate, effective_from)
-  VALUES ('55555555-5555-5555-5555-555555555555','one',80,'2026-09-02')
-$$, 'on site, one person, $80.00');
-
-SELECT must_pass($$
-  INSERT INTO service_price (service_id, crew, rate, effective_from)
-  VALUES ('55555555-5555-5555-5555-555555555555','team',130,'2026-09-02')
-$$, 'on site, the team, $130.00');
+  INSERT INTO service_price (service_id, rate, additional_rate, effective_from)
+  VALUES ('55555555-5555-5555-5555-555555555555',80,50,'2026-09-02')
+$$, 'on site, $80.00 for one person and $50.00 for each after');
 
 SELECT must_fail($$
-  INSERT INTO service_price (service_id, crew, rate, effective_from)
-  VALUES ('55555555-5555-5555-5555-555555555555','one',95,'2026-09-02')
-$$, 'a second price for the same service, crew and day');
+  INSERT INTO service_price (service_id, rate, additional_rate, effective_from)
+  VALUES ('55555555-5555-5555-5555-555555555555',95,0,'2026-09-02')
+$$, 'a second price for the same service, client and day');
+
+SELECT must_fail($$
+  INSERT INTO service_price (service_id, rate, additional_rate, effective_from)
+  VALUES ('55555555-5555-5555-5555-555555555555',80,-10,'2026-09-03')
+$$, 'a second person who takes money off the job');
 
 \echo ''
 \echo '=== 10. history records who changed what ==='
@@ -331,45 +333,68 @@ END $$;
 INSERT INTO operator (trading_name, tax_rule_set)
 VALUES ('Vigario Technology Solutions','us_ca');
 
--- What is paid to whoever answers is a dated pay row for the remote service,
+-- Both partners are paid as partners. Pay is written against the role, so the
+-- two of them are one rule rather than one each.
+UPDATE app_user SET role_id = (SELECT id FROM role WHERE name = 'Partner')
+ WHERE id IN ('11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222');
+
+-- What is paid to whoever answers is a dated pay rule on the remote service,
 -- not a column on the business.
-INSERT INTO person_pay_rate (service_id, rate, effective_from)
-VALUES ('55555555-5555-5555-5555-555555555556', 25.00, '2026-09-01');
+INSERT INTO pay_rule (service_id, role_id, pays_for, method, amount, effective_from)
+VALUES ('55555555-5555-5555-5555-555555555556',(SELECT id FROM role WHERE name = 'Partner'),
+        'time','per_hour', 25.00, '2026-09-01');
 
 -- Bravo: two subscriptions, one per main site, $400 a month, unlimited.
-INSERT INTO agreement (id, entity_id, basis, price, remote_allotment,
-                       remote_cap_hours, responder_rate, starts_on)
+INSERT INTO agreement (id, entity_id, basis, price, starts_on)
 VALUES ('bbbbbbbb-0000-0000-0000-000000000001','44444444-4444-4444-4444-444444444444',
-        'per_location', 200.00, 'unlimited', NULL, NULL, '2026-09-01');
+        'per_location', 200.00, '2026-09-01');
 INSERT INTO agreement_site (agreement_id, site_id) VALUES
   ('bbbbbbbb-0000-0000-0000-000000000001','33333333-3333-3333-3333-333333333333'),
   ('bbbbbbbb-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000001');
+-- What it covers is named service by service, and remote support is the one.
+INSERT INTO agreement_service (agreement_id, service_id, allotment, allotment_basis)
+VALUES ('bbbbbbbb-0000-0000-0000-000000000001','55555555-5555-5555-5555-555555555556',
+        'unlimited','per_location');
+
+-- "bravo would effectively be 0% payout to responder" -- 23 Sep. A Bravo call is
+-- covered by the retainer, and covered time pays a share of the retainer: 0%.
+INSERT INTO pay_rule (service_id, role_id, entity_id, pays_for, method, amount, effective_from)
+VALUES ('55555555-5555-5555-5555-555555555556',(SELECT id FROM role WHERE name = 'Partner'),
+        '44444444-4444-4444-4444-444444444444','covered_time','percent',0,'2026-09-01');
 
 -- Wild Jacks: no subscription.
 INSERT INTO entity (id, name) VALUES
   ('bbbbbbbb-0000-0000-0000-000000000002','Wild Jacks (no subscription)');
 
 DO $$
-DECLARE pool numeric; ovr text; pay numeric; n int;
+DECLARE kind text; pool numeric; pay numeric; elsewhere numeric; n int;
 BEGIN
-  SELECT pooled_hours, overage INTO pool, ovr FROM agreement_allotment
+  SELECT allotment, pooled_hours INTO kind, pool FROM agreement_allotment
    WHERE entity_id = '44444444-4444-4444-4444-444444444444';
-  SELECT responder_rate INTO pay FROM agreement
-   WHERE entity_id = '44444444-4444-4444-4444-444444444444';
+  -- An hour answering Bravo, covered by the $400 retainer, and the same hour
+  -- answering Wild Jacks, billed.
+  pay := covered_pay('55555555-5555-5555-5555-555555555556','11111111-1111-1111-1111-111111111111',
+                     '44444444-4444-4444-4444-444444444444','2026-09-09', 400.00);
+  elsewhere := time_pay('55555555-5555-5555-5555-555555555556','11111111-1111-1111-1111-111111111111',
+                        '44444444-0000-0000-0000-000000000002','2026-09-09', 3600, NULL);
   SELECT count(*) INTO n FROM agreement
    WHERE entity_id = 'bbbbbbbb-0000-0000-0000-000000000002';
 
-  IF pool IS NOT NULL THEN
-    RAISE EXCEPTION 'GUARD MISSING: Bravo is unlimited, got %', pool;
+  IF kind IS DISTINCT FROM 'unlimited' OR pool IS NOT NULL THEN
+    RAISE EXCEPTION 'GUARD MISSING: Bravo is unlimited, got % / %', kind, pool;
   END IF;
-  IF pay IS NOT NULL THEN
+  IF pay IS DISTINCT FROM 0.00 THEN
     RAISE EXCEPTION 'GUARD MISSING: a Bravo call carries no guaranteed payment, got %', pay;
+  END IF;
+  IF elsewhere IS DISTINCT FROM 25.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: Bravo''s rule reached past Bravo, got %', elsewhere;
   END IF;
   IF n <> 0 THEN
     RAISE EXCEPTION 'GUARD MISSING: Wild Jacks should hold no subscription';
   END IF;
 
-  RAISE NOTICE '  unlimited Bravo: two subscriptions, $400/mo, overage %, no responder pay', ovr;
+  RAISE NOTICE '  unlimited Bravo: two subscriptions, $400/mo, and 0%% of it pays $% to whoever answers', pay;
+  RAISE NOTICE '  paid      the same hour for anyone else pays $%', elsewhere;
   RAISE NOTICE '  none      Wild Jacks: no subscription, so nothing included';
 END $$;
 
@@ -385,10 +410,13 @@ INSERT INTO site (id, entity_id, label, street, city, region, postcode,
   ('cccccccc-0000-0000-0000-000000000003','bbbbbbbb-0000-0000-0000-000000000003','Site two',
    '2 Second St','Hanford','CA','93230',
    'UNINCORPORATED AREA-KINGS', 7.2500, 7.2500, 0.0000, '169980000000', current_date);
-INSERT INTO agreement (id, entity_id, basis, price, remote_allotment,
-                       remote_cap_hours, responder_rate, starts_on)
+INSERT INTO agreement (id, entity_id, basis, price, starts_on)
 VALUES ('bbbbbbbb-0000-0000-0000-000000000004','bbbbbbbb-0000-0000-0000-000000000003',
-        'per_location', 200.00, 'capped', 2.00, 25.00, '2026-09-01');
+        'per_location', 200.00, '2026-09-01');
+INSERT INTO agreement_service (agreement_id, service_id, allotment, included_hours,
+                               allotment_basis, overage)
+VALUES ('bbbbbbbb-0000-0000-0000-000000000004','55555555-5555-5555-5555-555555555556',
+        'capped', 2.00, 'per_location', 'bill');
 INSERT INTO agreement_site (agreement_id, site_id) VALUES
   ('bbbbbbbb-0000-0000-0000-000000000004','cccccccc-0000-0000-0000-000000000002');
 
@@ -418,18 +446,18 @@ BEGIN
 END $$;
 
 SELECT must_fail($$
-  UPDATE agreement SET overage = 'absorb'
-   WHERE id = 'bbbbbbbb-0000-0000-0000-000000000004'
+  UPDATE agreement_service SET overage = 'absorb'
+   WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-000000000004'
 $$, 'an overage rule nobody named');
 
 SELECT must_pass($$
-  UPDATE agreement SET overage = 'deny'
-   WHERE id = 'bbbbbbbb-0000-0000-0000-000000000004'
+  UPDATE agreement_service SET overage = 'deny'
+   WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-000000000004'
 $$, 'overage set to deny work');
 
 SELECT must_pass($$
-  UPDATE agreement SET overage = 'no_charge'
-   WHERE id = 'bbbbbbbb-0000-0000-0000-000000000004'
+  UPDATE agreement_service SET overage = 'no_charge'
+   WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-000000000004'
 $$, 'overage set to no charge');
 
 -- "bill per minute at the going rate" -- the rate does not change past the
@@ -447,41 +475,47 @@ BEGIN
 END $$;
 
 \echo ''
-\echo '=== 12. remoteness is the service, not a checkbox ==='
+\echo '=== 12. an agreement names what it covers; nothing is inferred ==='
 
+-- A service was once on site or remote, and an allotment drew on whatever was
+-- remote. The agreement names its services now, so a service is only what it
+-- is charged per -- and an on-site retainer is as easy to sell as a remote one.
 SELECT must_fail($$
-  INSERT INTO service (code, name, unit, delivery)
-  VALUES ('bad','Something','hour','wherever')
-$$, 'a delivery nobody named');
+  INSERT INTO service (code, name, unit)
+  VALUES ('bad','Something','day')
+$$, 'a unit nobody named');
 
 SELECT must_pass($$
-  INSERT INTO service (code, name, unit, delivery)
-  VALUES ('emergency','Emergency attendance','hour','on_site')
-$$, 'a service that says how it is delivered');
+  INSERT INTO service (code, name, unit)
+  VALUES ('emergency','Emergency attendance','hour')
+$$, 'a service that says nothing about where it is done');
 
 SELECT must_pass($$
-  INSERT INTO service (code, name, unit, delivery)
-  VALUES ('travel','Travel time','mile',NULL)
-$$, 'a service that is not attendance at all');
+  INSERT INTO service (code, name, unit)
+  VALUES ('setup','Workstation setup','each')
+$$, 'a flat charge, counted each');
 
 DO $$
 DECLARE n int;
 BEGIN
   SELECT count(*) INTO n FROM information_schema.columns
    WHERE (table_name='time_entry' AND column_name='remote')
-      OR (table_name='service'    AND column_name='counts_against_cap');
+      OR (table_name='service'    AND column_name IN ('counts_against_cap','delivery'));
   IF n > 0 THEN
-    RAISE EXCEPTION 'GUARD MISSING: remoteness is recorded in two places again';
+    RAISE EXCEPTION 'GUARD MISSING: remoteness is recorded on the work again';
   END IF;
-  RAISE NOTICE '  absent    no time_entry.remote, no service.counts_against_cap';
+  RAISE NOTICE '  absent    no time_entry.remote, no service.counts_against_cap, no service.delivery';
 END $$;
 
 DO $$
 DECLARE r text;
 BEGIN
-  SELECT string_agg(name || ' → ' || coalesce(delivery,'—'), ', ' ORDER BY name)
-    INTO r FROM service WHERE code IN ('onsite','remote','mileage');
-  RAISE NOTICE '  derived   %', r;
+  SELECT string_agg(e.name || ' → ' || s.name, ', ' ORDER BY e.name) INTO r
+    FROM agreement_service asv
+    JOIN agreement a ON a.id = asv.agreement_id
+    JOIN entity e    ON e.id = a.entity_id
+    JOIN service s   ON s.id = asv.service_id;
+  RAISE NOTICE '  covered   %', r;
 END $$;
 
 \echo ''
@@ -527,25 +561,33 @@ END $$;
 \echo '=== 14. every price has one home ==='
 
 DO $$
-DECLARE n int;
+DECLARE n int; t int;
 BEGIN
   SELECT count(*) INTO n FROM information_schema.columns
    WHERE (table_name='operator'        AND column_name='mileage_rate')
-      OR (table_name='person_pay_rate' AND column_name='crew')
+      OR (table_name='service_price'   AND column_name='crew')
       OR (table_name='agreement_period' AND column_name='remote_hours_used')
       OR (table_name='operator'        AND column_name IN ('default_subscription_hours',
                                                            'default_responder_rate',
-                                                           'default_overage'));
-  IF n > 0 THEN
+                                                           'default_overage'))
+      OR (table_name='agreement'       AND column_name IN ('remote_allotment',
+                                                           'remote_cap_hours',
+                                                           'allotment_basis',
+                                                           'overage',
+                                                           'responder_rate'));
+  SELECT count(*) INTO t FROM information_schema.tables
+   WHERE table_schema = 'public' AND table_name = 'person_pay_rate';
+  IF n > 0 OR t > 0 THEN
     RAISE EXCEPTION 'GUARD MISSING: a price or a counter has two homes again';
   END IF;
-  RAISE NOTICE '  absent    no operator.mileage_rate, no pay-rate crew split, no stored counter';
-  RAISE NOTICE '  absent    and no subscription terms on the business';
+  RAISE NOTICE '  absent    no operator.mileage_rate, no crew-split price, no stored counter';
+  RAISE NOTICE '  absent    no subscription terms on the business, nor on the agreement row';
+  RAISE NOTICE '  absent    no pay-rate table beside the pay rules';
 END $$;
 
 SELECT must_pass($$
-  INSERT INTO service (id, code, name, unit, delivery)
-  VALUES ('55555555-5555-5555-5555-55555555555a','miles','Mileage','mile',NULL)
+  INSERT INTO service (id, code, name, unit)
+  VALUES ('55555555-5555-5555-5555-55555555555a','miles','Mileage','mile')
 $$, 'mileage is a service');
 
 SELECT must_pass($$
@@ -565,13 +607,13 @@ $$, 'and one item may override it');
 DO $$
 DECLARE flat numeric; per numeric;
 BEGIN
-  UPDATE agreement SET allotment_basis = 'flat'
-   WHERE id = 'bbbbbbbb-0000-0000-0000-000000000004';
+  UPDATE agreement_service SET allotment_basis = 'flat'
+   WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-000000000004';
   SELECT pooled_hours INTO flat FROM agreement_allotment
    WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-000000000004';
 
-  UPDATE agreement SET allotment_basis = 'per_location'
-   WHERE id = 'bbbbbbbb-0000-0000-0000-000000000004';
+  UPDATE agreement_service SET allotment_basis = 'per_location'
+   WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-000000000004';
   SELECT pooled_hours INTO per FROM agreement_allotment
    WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-000000000004';
 
@@ -592,14 +634,28 @@ VALUES ('dddddddd-0000-0000-0000-000000000004','2026-09-09',90,'one',
         '44444444-4444-4444-4444-444444444444','55555555-5555-5555-5555-555555555556');
 
 DO $$
-DECLARE used numeric;
+DECLARE used numeric; n int; onsite numeric;
 BEGIN
   SELECT hours_used INTO used FROM agreement_period_usage
+   WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-000000000001'
+     AND service_id = '55555555-5555-5555-5555-555555555556';
+  SELECT count(*) INTO n FROM agreement_period_usage
    WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-000000000001';
+  -- Guard 13's team entry: on site, for Bravo, the same week.
+  SELECT sum(minutes) / 60.0 INTO onsite FROM time_entry
+   WHERE entity_id = '44444444-4444-4444-4444-444444444444'
+     AND service_id = '55555555-5555-5555-5555-555555555555'
+     AND worked_on BETWEEN '2026-09-01' AND '2026-09-30';
   IF used <> 1.5 THEN
     RAISE EXCEPTION 'GUARD MISSING: 90 remote minutes should read 1.5 hours, got %', used;
   END IF;
+  IF n <> 1 OR COALESCE(onsite, 0) = 0 THEN
+    RAISE EXCEPTION 'GUARD MISSING: one covered service and some on-site time expected, got % / %',
+                    n, onsite;
+  END IF;
   RAISE NOTICE '  derived   90 remote minutes read as 1.50 hours used, from the entry itself';
+  RAISE NOTICE '  ignored   % on-site hours the same month -- the agreement covers remote only',
+               round(onsite, 2);
 END $$;
 
 \echo ''
@@ -720,15 +776,17 @@ SELECT must_pass($$
 $$, 'invoice 0000035, an entry against Wild Jacks'' own Traver site');
 
 SELECT must_pass($$
-  INSERT INTO trip_leg (trip_id, seq, miles, entity_id, site_id)
+  INSERT INTO trip_leg (trip_id, seq, miles, entity_id, site_id, service_id)
   VALUES ((SELECT id FROM trip LIMIT 1),98,52.0,
-          '44444444-0000-0000-0000-000000000002','cccccccc-0000-0000-0000-00000000000b')
+          '44444444-0000-0000-0000-000000000002','cccccccc-0000-0000-0000-00000000000b',
+          '55555555-5555-5555-5555-555555555557')
 $$, 'and the miles that got there');
 
 SELECT must_fail($$
-  INSERT INTO trip_leg (trip_id, seq, miles, entity_id, site_id)
+  INSERT INTO trip_leg (trip_id, seq, miles, entity_id, site_id, service_id)
   VALUES ((SELECT id FROM trip LIMIT 1),97,52.0,
-          '44444444-0000-0000-0000-000000000002','cccccccc-0000-0000-0000-000000000001')
+          '44444444-0000-0000-0000-000000000002','cccccccc-0000-0000-0000-000000000001',
+          '55555555-5555-5555-5555-555555555557')
 $$, 'charging one client for miles to another client''s site');
 
 -- This assertion used to run the other way: it required that NOTHING confine a
@@ -1317,7 +1375,7 @@ $$, 'terms on a service that is not sold as a subscription');
 DO $$
 DECLARE b text; pool numeric;
 BEGIN
-  SELECT remote_allotment, pooled_hours INTO b, pool FROM agreement_allotment
+  SELECT allotment, pooled_hours INTO b, pool FROM agreement_allotment
    WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-000000000001';
   IF b <> 'unlimited' OR pool IS NOT NULL THEN
     RAISE EXCEPTION 'GUARD MISSING: Bravo is unlimited, got % / %', b, pool;
@@ -1326,48 +1384,64 @@ BEGIN
 END $$;
 
 SELECT must_fail($$
-  UPDATE agreement SET remote_allotment = 'unlimited'
-   WHERE id = 'bbbbbbbb-0000-0000-0000-000000000004'
+  UPDATE agreement_service SET allotment = 'unlimited'
+   WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-000000000004'
 $$, 'unlimited while a cap is still recorded');
 
--- Pay has a person. Both partners are on one rate today, which is a row with
--- no person on it -- and the day that stops being true is one row, not a
+SELECT must_fail($$
+  UPDATE agreement_service SET allotment = 'capped'
+   WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-000000000001'
+$$, 'capped with no hours to cap it at');
+
+-- Pay has a person. Both partners are paid by one rule today, written against
+-- the role they hold -- and the day that stops being true is one row, not a
 -- rebuild.
 DO $$
 DECLARE everyone numeric; mine numeric;
 BEGIN
-  INSERT INTO person_pay_rate (user_id, service_id, rate, effective_from)
-  VALUES ('22222222-2222-2222-2222-222222222222',
-          '55555555-5555-5555-5555-555555555556', 40.00, '2026-09-01');
+  INSERT INTO pay_rule (service_id, user_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-555555555556','22222222-2222-2222-2222-222222222222',
+          'time','per_hour', 40.00, '2026-09-01');
 
-  SELECT rate INTO everyone FROM person_pay_rate
-   WHERE user_id IS NULL AND service_id = '55555555-5555-5555-5555-555555555556';
-  SELECT rate INTO mine FROM person_pay_rate
-   WHERE user_id = '22222222-2222-2222-2222-222222222222';
+  everyone := (pay_rule_on('55555555-5555-5555-5555-555555555556',
+                           '11111111-1111-1111-1111-111111111111',
+                           '44444444-0000-0000-0000-000000000002','time','2026-09-09')).amount;
+  mine     := (pay_rule_on('55555555-5555-5555-5555-555555555556',
+                           '22222222-2222-2222-2222-222222222222',
+                           '44444444-0000-0000-0000-000000000002','time','2026-09-09')).amount;
 
   IF everyone <> 25.00 OR mine <> 40.00 THEN
-    RAISE EXCEPTION 'GUARD MISSING: one rate for everyone and one for a person, got % / %',
+    RAISE EXCEPTION 'GUARD MISSING: one rule for the partners and one for a person, got % / %',
                     everyone, mine;
   END IF;
-  RAISE NOTICE '  and pay says who   $25.00 to anyone who answers, $40.00 to Robin';
+  RAISE NOTICE '  and pay says who   $25.00 to any partner who answers, $40.00 to Robin';
 END $$;
 
 SELECT must_fail($$
-  INSERT INTO person_pay_rate (user_id, service_id, rate, effective_from)
-  VALUES ('22222222-2222-2222-2222-222222222222',
-          '55555555-5555-5555-5555-555555555556', 45.00, '2026-09-01')
-$$, 'two rates for one person, one service, one day');
+  INSERT INTO pay_rule (service_id, user_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-555555555556','22222222-2222-2222-2222-222222222222',
+          'time','per_hour', 45.00, '2026-09-01')
+$$, 'two rules for one person, one service, one day');
+
+-- The partners' rule names no person and no client. Two of those on one day
+-- are the same two answers -- blanks are not a way round the key.
+SELECT must_fail($$
+  INSERT INTO pay_rule (service_id, role_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-555555555556',(SELECT id FROM role WHERE name = 'Partner'),
+          'time','per_hour', 30.00, '2026-09-01')
+$$, 'a second rule for the partners, same service and day');
 
 DO $$
 DECLARE n int;
 BEGIN
   INSERT INTO app_user (id, name, email, credential)
   VALUES ('aaaaaaaa-0000-0000-0000-00000000000b','Leaver','leaver@example.com','x');
-  INSERT INTO person_pay_rate (user_id, rate, effective_from)
-  VALUES ('aaaaaaaa-0000-0000-0000-00000000000b', 60.00, '2026-09-01');
+  INSERT INTO pay_rule (service_id, user_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-555555555556','aaaaaaaa-0000-0000-0000-00000000000b',
+          'time','per_hour', 60.00, '2026-09-01');
 
   DELETE FROM app_user WHERE id = 'aaaaaaaa-0000-0000-0000-00000000000b';
-  SELECT count(*) INTO n FROM person_pay_rate
+  SELECT count(*) INTO n FROM pay_rule
    WHERE user_id = 'aaaaaaaa-0000-0000-0000-00000000000b';
   IF n <> 0 THEN
     RAISE EXCEPTION 'GUARD MISSING: a departed person left % pay row(s)', n;
@@ -1563,4 +1637,480 @@ SELECT must_fail($$
 $$, 'a proration rule that is neither whole nor by the day');
 
 \echo ''
+\echo '=== 26. a pay rule pays somebody, in a way that adds up ==='
+
+INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds) VALUES
+  ('55555555-5555-5555-5555-55555555555c','callout','Call-out','hour',60),
+  ('55555555-5555-5555-5555-55555555555d','standby','Standby','hour',60);
+
+SELECT must_fail($$
+  INSERT INTO pay_rule (service_id, role_id, user_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-55555555555c',(SELECT id FROM role WHERE name = 'Partner'),
+          '22222222-2222-2222-2222-222222222222','time','per_hour',50,'2026-10-01')
+$$, 'a rule naming both a role and a person');
+
+SELECT must_fail($$
+  INSERT INTO pay_rule (service_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-55555555555c','time','per_hour',50,'2026-10-01')
+$$, 'a rule naming nobody');
+
+SELECT must_fail($$
+  INSERT INTO pay_rule (service_id, role_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-55555555555c',(SELECT id FROM role WHERE name = 'Partner'),
+          'time','percent',101,'2026-10-01')
+$$, 'more than the whole line');
+
+SELECT must_fail($$
+  INSERT INTO pay_rule (service_id, role_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-55555555555c',(SELECT id FROM role WHERE name = 'Partner'),
+          'time','nothing',5,'2026-10-01')
+$$, 'nothing, with an amount');
+
+SELECT must_fail($$
+  INSERT INTO pay_rule (service_id, role_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-55555555555c',(SELECT id FROM role WHERE name = 'Partner'),
+          'time','per_hour',NULL,'2026-10-01')
+$$, 'an hourly rate with no amount');
+
+-- Each method, properly formed. Guard 30 pays from these.
+SELECT must_pass($$
+  INSERT INTO pay_rule (service_id, user_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-55555555555c','11111111-1111-1111-1111-111111111111',
+          'time','per_hour',50,'2026-10-01')
+$$, 'per hour: $50.00 an hour to Tyler');
+
+SELECT must_pass($$
+  INSERT INTO pay_rule (service_id, user_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-55555555555c','22222222-2222-2222-2222-222222222222',
+          'time','percent',100,'2026-10-01')
+$$, 'percent: the whole line to Robin');
+
+SELECT must_pass($$
+  INSERT INTO pay_rule (service_id, role_id, entity_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-55555555555c',(SELECT id FROM role WHERE name = 'Partner'),
+          '44444444-0000-0000-0000-000000000002','time','fixed',15,'2026-10-01')
+$$, 'fixed: $15.00 an entry to a partner, at Wild Jacks');
+
+SELECT must_pass($$
+  INSERT INTO pay_rule (service_id, user_id, entity_id, pays_for, method, effective_from)
+  VALUES ('55555555-5555-5555-5555-55555555555c','22222222-2222-2222-2222-222222222222',
+          '44444444-0000-0000-0000-000000000002','time','nothing','2026-10-01')
+$$, 'nothing: to Robin, at Wild Jacks');
+
+\echo ''
+\echo '=== 27. the narrowest rule that has started is the one that pays ==='
+
+-- Standby, for partners: $30.00 from September, $35.00 from October, $99.00
+-- from January. Robin has his own $40.00, and Bravo its own $20.00.
+INSERT INTO pay_rule (service_id, role_id, user_id, entity_id, pays_for, method, amount,
+                      effective_from) VALUES
+  ('55555555-5555-5555-5555-55555555555d',(SELECT id FROM role WHERE name = 'Partner'),
+   NULL, NULL, 'time','per_hour', 30, '2026-09-01'),
+  ('55555555-5555-5555-5555-55555555555d',(SELECT id FROM role WHERE name = 'Partner'),
+   NULL, NULL, 'time','per_hour', 35, '2026-10-01'),
+  ('55555555-5555-5555-5555-55555555555d',(SELECT id FROM role WHERE name = 'Partner'),
+   NULL, NULL, 'time','per_hour', 99, '2027-01-01'),
+  ('55555555-5555-5555-5555-55555555555d', NULL,
+   '22222222-2222-2222-2222-222222222222', NULL, 'time','per_hour', 40, '2026-09-01'),
+  ('55555555-5555-5555-5555-55555555555d',(SELECT id FROM role WHERE name = 'Partner'),
+   NULL, '44444444-4444-4444-4444-444444444444', 'time','per_hour', 20, '2026-09-01');
+
+DO $$
+DECLARE
+  standby uuid := '55555555-5555-5555-5555-55555555555d';
+  tyler   uuid := '11111111-1111-1111-1111-111111111111';
+  robin   uuid := '22222222-2222-2222-2222-222222222222';
+  bravo   uuid := '44444444-4444-4444-4444-444444444444';
+  jacks   uuid := '44444444-0000-0000-0000-000000000002';
+  a numeric;
+BEGIN
+  a := (pay_rule_on(standby, robin, bravo, 'time', '2026-10-15')).amount;
+  IF a IS DISTINCT FROM 20 THEN
+    RAISE EXCEPTION 'GUARD MISSING: Bravo''s own rule should beat every client''s, got %', a;
+  END IF;
+  RAISE NOTICE '  client    at Bravo, Bravo''s $20.00 -- over even Robin''s own';
+
+  a := (pay_rule_on(standby, robin, jacks, 'time', '2026-10-15')).amount;
+  IF a IS DISTINCT FROM 40 THEN
+    RAISE EXCEPTION 'GUARD MISSING: Robin''s own rule should beat his role''s, got %', a;
+  END IF;
+  RAISE NOTICE '  person    elsewhere, Robin''s own $40.00 over the partners'' newer $35.00';
+
+  a := (pay_rule_on(standby, tyler, jacks, 'time', '2026-09-15')).amount;
+  IF a IS DISTINCT FROM 30 THEN
+    RAISE EXCEPTION 'GUARD MISSING: September should pay $30.00, got %', a;
+  END IF;
+  a := (pay_rule_on(standby, tyler, jacks, 'time', '2026-10-15')).amount;
+  IF a IS DISTINCT FROM 35 THEN
+    RAISE EXCEPTION 'GUARD MISSING: the newest rule should pay from October, got %', a;
+  END IF;
+  RAISE NOTICE '  newest    Tyler, $30.00 in September and $35.00 from October';
+
+  a := (pay_rule_on(standby, tyler, jacks, 'time', '2026-12-31')).amount;
+  IF a IS DISTINCT FROM 35 THEN
+    RAISE EXCEPTION 'GUARD MISSING: a rule that has not started paid, got %', a;
+  END IF;
+  RAISE NOTICE '  started   and not the $99.00 that begins in January';
+END $$;
+
+\echo ''
+\echo '=== 28. a price counts heads ==='
+
+DO $$
+DECLARE one numeric; two numeric; three numeric;
+BEGIN
+  one   := job_rate('55555555-5555-5555-5555-555555555555',
+                    '44444444-4444-4444-4444-444444444444', 1, '2026-09-09');
+  two   := job_rate('55555555-5555-5555-5555-555555555555',
+                    '44444444-4444-4444-4444-444444444444', 2, '2026-09-09');
+  three := job_rate('55555555-5555-5555-5555-555555555555',
+                    '44444444-4444-4444-4444-444444444444', 3, '2026-09-09');
+  IF one IS DISTINCT FROM 80.00 OR two IS DISTINCT FROM 130.00
+     OR three IS DISTINCT FROM 180.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: $80.00 and +$50.00 should be 80 / 130 / 180, got % / % / %',
+                    one, two, three;
+  END IF;
+  RAISE NOTICE '  per head  on site, $80.00 and +$50.00: $% alone, $% for two, $% for three',
+               one, two, three;
+END $$;
+
+\echo ''
+\echo '=== 29. an entry bills to the increment, and never below the minimum ==='
+
+-- 22 min 40 s is 1,360 seconds. To the nearest minute that is 23 minutes.
+DO $$
+DECLARE billed numeric; floored numeric;
+BEGIN
+  billed := billed_amount('55555555-5555-5555-5555-555555555555',
+                          '44444444-4444-4444-4444-444444444444', 1, '2026-09-09',
+                          1360 / 3600.0);
+  IF billed IS DISTINCT FROM 30.67 THEN
+    RAISE EXCEPTION 'GUARD MISSING: 22 min 40 s at $80.00, to the minute, should be 30.67, got %',
+                    billed;
+  END IF;
+  RAISE NOTICE '  rounded   22 min 40 s at $80.00, to the nearest minute: 23 min, $%', billed;
+
+  UPDATE service SET minimum_charge = 50.00 WHERE code = 'onsite';
+  floored := billed_amount('55555555-5555-5555-5555-555555555555',
+                           '44444444-4444-4444-4444-444444444444', 1, '2026-09-09',
+                           1360 / 3600.0);
+  UPDATE service SET minimum_charge = NULL WHERE code = 'onsite';
+  IF floored IS DISTINCT FROM 50.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: a $50.00 minimum should floor it, got %', floored;
+  END IF;
+  RAISE NOTICE '  floored   the same visit under a $50.00 minimum bills $%', floored;
+END $$;
+
+SELECT must_fail($$
+  UPDATE service SET bill_to_nearest_seconds = 60 WHERE code = 'mileage'
+$$, 'a mile billed to the nearest minute');
+
+SELECT must_pass($$
+  UPDATE service SET bill_to_nearest_seconds = 900 WHERE code = 'emergency'
+$$, 'an hour billed to the nearest quarter');
+
+\echo ''
+\echo '=== 30. time pays by the second, by the line, by the entry, or not ==='
+
+INSERT INTO app_user (id, name, email, credential)
+VALUES ('aaaaaaaa-0000-0000-0000-00000000000c','Visitor','visitor@example.com','x');
+
+DO $$
+DECLARE
+  callout uuid := '55555555-5555-5555-5555-55555555555c';
+  tyler   uuid := '11111111-1111-1111-1111-111111111111';
+  robin   uuid := '22222222-2222-2222-2222-222222222222';
+  bravo   uuid := '44444444-4444-4444-4444-444444444444';
+  jacks   uuid := '44444444-0000-0000-0000-000000000002';
+  hourly numeric; cut numeric; flat numeric; zero numeric; unpaid numeric;
+BEGIN
+  hourly := time_pay(callout, tyler, bravo, '2026-10-15', 1360, 30.67);
+  cut    := time_pay(callout, robin, bravo, '2026-10-15', 1360, 28.80);
+  flat   := time_pay(callout, tyler, jacks, '2026-10-15', 1360, 30.67);
+  zero   := time_pay(callout, robin, jacks, '2026-10-15', 1360, 30.67);
+  -- Remote support pays the partners $25.00. The visitor holds no role.
+  unpaid := time_pay('55555555-5555-5555-5555-555555555556',
+                     'aaaaaaaa-0000-0000-0000-00000000000c', jacks, '2026-10-15', 3600, 50.00);
+
+  IF hourly IS DISTINCT FROM 18.89 THEN
+    RAISE EXCEPTION 'GUARD MISSING: 1,360 s at $50.00 an hour should pay 18.89, got %', hourly;
+  END IF;
+  RAISE NOTICE '  per hour  1,360 s at $50.00 pays $% -- as worked, not to the billed minute', hourly;
+
+  IF cut IS DISTINCT FROM 28.80 THEN
+    RAISE EXCEPTION 'GUARD MISSING: 100%% of a 28.80 line should pay 28.80, got %', cut;
+  END IF;
+  RAISE NOTICE '  percent   100%% of a $28.80 line pays $%', cut;
+
+  IF flat IS DISTINCT FROM 15.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: a fixed rule should pay its amount, got %', flat;
+  END IF;
+  RAISE NOTICE '  fixed     $% for the entry, however long it ran', flat;
+
+  IF zero IS DISTINCT FROM 0.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: nothing should pay 0.00, got %', zero;
+  END IF;
+  RAISE NOTICE '  nothing   $%, because a rule says so', zero;
+
+  IF unpaid IS NOT NULL THEN
+    RAISE EXCEPTION 'GUARD MISSING: no rule reaches someone with no role, yet it paid %', unpaid;
+  END IF;
+  RAISE NOTICE '  no rule   someone who holds no role is paid null -- no answer, not a zero';
+END $$;
+
+\echo ''
+\echo '=== 31. a role is the operator''s own word, said once ==='
+
+SELECT must_fail($$
+  INSERT INTO role (name) VALUES ('   ')
+$$, 'a role with no name');
+
+SELECT must_fail($$
+  INSERT INTO role (name) VALUES ('Partner')
+$$, 'a second Partner');
+
+SELECT must_pass($$
+  INSERT INTO role (name) VALUES ('Apprentice')
+$$, 'a role the business names for itself');
+
+DO $$
+DECLARE n int;
+BEGIN
+  SELECT count(*) INTO n FROM information_schema.columns
+   WHERE table_name = 'app_user' AND column_name = 'on_team';
+  IF n > 0 THEN
+    RAISE EXCEPTION 'GUARD MISSING: on_team is back; who is paid is the role they hold';
+  END IF;
+  RAISE NOTICE '  absent    no app_user.on_team -- holding a role is what being paid means';
+END $$;
+
+\echo ''
+\echo '=== 32. a billed leg says what it bills as ==='
+
+SELECT must_fail($$
+  INSERT INTO trip_leg (trip_id, seq, miles, entity_id)
+  VALUES ('88888888-8888-8888-8888-888888888888', 50, 10.0,
+          '44444444-4444-4444-4444-444444444444')
+$$, 'a leg billed to Bravo with no service to price it');
+
+SELECT must_pass($$
+  INSERT INTO trip_leg (trip_id, seq, miles)
+  VALUES ('88888888-8888-8888-8888-888888888888', 51, 10.0)
+$$, 'a leg billed to nobody, and so no service');
+
+\echo ''
+\echo ''
+\echo '=== 33. a retainer pays a share of itself, split by the hours each spent ==='
+
+-- "retainer covered hours should be percentage based payouts (can be more than
+-- one responder each month and that too should be percentage) and bravo would
+-- effectively be 0% payout to responder" -- 23 Sep 2026.
+INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds)
+VALUES ('55555555-5555-5555-5555-5555555555a1','retained','Retained work','hour',60);
+INSERT INTO service_price (service_id, rate, effective_from)
+VALUES ('55555555-5555-5555-5555-5555555555a1', 60.00, '2026-01-01');
+INSERT INTO pay_rule (service_id, role_id, pays_for, method, amount, effective_from)
+VALUES ('55555555-5555-5555-5555-5555555555a1',(SELECT id FROM role WHERE name = 'Partner'),
+        'time','per_hour',30.00,'2026-01-01');
+
+SELECT must_fail($$
+  INSERT INTO pay_rule (service_id, role_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-5555555555a1',(SELECT id FROM role WHERE name = 'Partner'),
+          'covered_time','per_hour',25.00,'2026-01-01')
+$$, 'covered time paid by the hour -- it is paid as a share of the retainer');
+
+SELECT must_fail($$
+  INSERT INTO pay_rule (service_id, role_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-5555555555a1',(SELECT id FROM role WHERE name = 'Partner'),
+          'covered_time','fixed',25.00,'2026-01-01')
+$$, 'covered time paid a fixed amount');
+
+SELECT must_pass($$
+  INSERT INTO pay_rule (service_id, role_id, pays_for, method, amount, effective_from)
+  VALUES ('55555555-5555-5555-5555-5555555555a1',(SELECT id FROM role WHERE name = 'Partner'),
+          'covered_time','percent',20,'2026-01-01')
+$$, 'covered time paid 20% of the retainer');
+
+-- Unlimited, $300 for October, charged. Tyler answers alone for an hour, then
+-- the two of them together for half an hour.
+INSERT INTO entity (id, name) VALUES
+  ('44444444-0000-0000-0000-0000000000a1','Retained Co'),
+  ('44444444-0000-0000-0000-0000000000a2','Capped Co');
+INSERT INTO agreement (id, entity_id, basis, price, starts_on) VALUES
+  ('bbbbbbbb-0000-0000-0000-0000000000a1','44444444-0000-0000-0000-0000000000a1','flat',300.00,'2026-10-01'),
+  ('bbbbbbbb-0000-0000-0000-0000000000a2','44444444-0000-0000-0000-0000000000a2','flat',200.00,'2026-10-01');
+INSERT INTO agreement_service (agreement_id, service_id, allotment, included_hours, overage) VALUES
+  ('bbbbbbbb-0000-0000-0000-0000000000a1','55555555-5555-5555-5555-5555555555a1','unlimited',NULL,NULL),
+  ('bbbbbbbb-0000-0000-0000-0000000000a2','55555555-5555-5555-5555-5555555555a1','capped',2,'bill');
+INSERT INTO agreement_period (agreement_id, period_start, period_end, amount) VALUES
+  ('bbbbbbbb-0000-0000-0000-0000000000a1','2026-10-01','2026-10-31',300.00),
+  ('bbbbbbbb-0000-0000-0000-0000000000a2','2026-10-01','2026-10-31',200.00);
+
+INSERT INTO time_entry (id, client_uuid, worked_on, minutes, crew, worked_by, created_by,
+                        entity_id, service_id) VALUES
+  ('d3300000-0000-0000-0000-000000000001', gen_random_uuid(), '2026-10-05', 60, 'one',
+   '11111111-1111-1111-1111-111111111111','11111111-1111-1111-1111-111111111111',
+   '44444444-0000-0000-0000-0000000000a1','55555555-5555-5555-5555-5555555555a1'),
+  ('d3300000-0000-0000-0000-000000000002', gen_random_uuid(), '2026-10-06', 30, 'team',
+   NULL,'11111111-1111-1111-1111-111111111111',
+   '44444444-0000-0000-0000-0000000000a1','55555555-5555-5555-5555-5555555555a1'),
+  -- Capped at two hours: 90 minutes, then 60, then 30, in that order.
+  ('d3300000-0000-0000-0000-000000000003', gen_random_uuid(), '2026-10-02', 90, 'one',
+   '11111111-1111-1111-1111-111111111111','11111111-1111-1111-1111-111111111111',
+   '44444444-0000-0000-0000-0000000000a2','55555555-5555-5555-5555-5555555555a1'),
+  ('d3300000-0000-0000-0000-000000000004', gen_random_uuid(), '2026-10-03', 60, 'one',
+   '22222222-2222-2222-2222-222222222222','22222222-2222-2222-2222-222222222222',
+   '44444444-0000-0000-0000-0000000000a2','55555555-5555-5555-5555-5555555555a1'),
+  ('d3300000-0000-0000-0000-000000000005', gen_random_uuid(), '2026-10-04', 30, 'one',
+   '11111111-1111-1111-1111-111111111111','11111111-1111-1111-1111-111111111111',
+   '44444444-0000-0000-0000-0000000000a2','55555555-5555-5555-5555-5555555555a1'),
+  -- November has not been charged, for either. And a Bravo call in October,
+  -- whose retainer was charged for September only.
+  ('d3300000-0000-0000-0000-000000000006', gen_random_uuid(), '2026-11-03', 45, 'one',
+   '11111111-1111-1111-1111-111111111111','11111111-1111-1111-1111-111111111111',
+   '44444444-0000-0000-0000-0000000000a1','55555555-5555-5555-5555-5555555555a1'),
+  ('d3300000-0000-0000-0000-000000000007', gen_random_uuid(), '2026-11-03', 45, 'one',
+   '11111111-1111-1111-1111-111111111111','11111111-1111-1111-1111-111111111111',
+   '44444444-0000-0000-0000-0000000000a2','55555555-5555-5555-5555-5555555555a1'),
+  ('d3300000-0000-0000-0000-000000000008', gen_random_uuid(), '2026-10-10', 30, 'one',
+   '11111111-1111-1111-1111-111111111111','11111111-1111-1111-1111-111111111111',
+   '44444444-4444-4444-4444-444444444444','55555555-5555-5555-5555-555555555556');
+
+DO $$
+DECLARE
+  tyler numeric; robin numeric; billed numeric; earned numeric; heads int;
+BEGIN
+  SELECT sum(paid) FILTER (WHERE user_id = '11111111-1111-1111-1111-111111111111'),
+         sum(paid) FILTER (WHERE user_id = '22222222-2222-2222-2222-222222222222')
+    INTO tyler, robin
+    FROM entry_pay
+   WHERE time_entry_id IN ('d3300000-0000-0000-0000-000000000001',
+                           'd3300000-0000-0000-0000-000000000002');
+  SELECT sum(w.billed), sum(w.earned), max(w.heads) INTO billed, earned, heads
+    FROM entry_worth w
+   WHERE w.time_entry_id IN ('d3300000-0000-0000-0000-000000000001',
+                             'd3300000-0000-0000-0000-000000000002');
+
+  IF heads <> 2 THEN
+    RAISE EXCEPTION 'fixture: a team should be the two partners here, got %', heads;
+  END IF;
+  -- 120 person-minutes: Tyler 60 + 30, Robin 30. 20% of $300 is $60.
+  IF tyler IS DISTINCT FROM 45.00 OR robin IS DISTINCT FROM 15.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: 20%% of $300 split 90:30 should pay 45.00 and 15.00, got % and %',
+                    tyler, robin;
+  END IF;
+  RAISE NOTICE '  split     20%% of a $300 retainer: $% for 90 person-minutes, $% for 30', tyler, robin;
+
+  IF billed IS DISTINCT FROM 0.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: covered hours billed %, not nothing', billed;
+  END IF;
+  IF earned IS DISTINCT FROM 300.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: the covered hours should earn the whole $300 between them, got %',
+                    earned;
+  END IF;
+  RAISE NOTICE '  covered   billed $0.00 by the hour; between them they earned the $% charged', earned;
+END $$;
+
+DO $$
+DECLARE c3 int; c4 int; c5 int; b4 numeric; b5 numeric; p4 numeric; p5 numeric; given numeric;
+BEGIN
+  SELECT covered_minutes INTO c3 FROM entry_coverage WHERE time_entry_id = 'd3300000-0000-0000-0000-000000000003';
+  SELECT covered_minutes INTO c4 FROM entry_coverage WHERE time_entry_id = 'd3300000-0000-0000-0000-000000000004';
+  SELECT covered_minutes INTO c5 FROM entry_coverage WHERE time_entry_id = 'd3300000-0000-0000-0000-000000000005';
+  SELECT billed, paid INTO b4, p4 FROM entry_worth WHERE time_entry_id = 'd3300000-0000-0000-0000-000000000004';
+  SELECT billed, paid INTO b5, p5 FROM entry_worth WHERE time_entry_id = 'd3300000-0000-0000-0000-000000000005';
+
+  IF (c3, c4, c5) IS DISTINCT FROM (90, 30, 0) THEN
+    RAISE EXCEPTION 'GUARD MISSING: a 2 h pool drawn 90, 60, 30 should cover 90, 30, 0, got %, %, %',
+                    c3, c4, c5;
+  END IF;
+  RAISE NOTICE '  drawn     a 2 h pool, worked 90 + 60 + 30 min, covers 90, 30 and 0 -- in the order worked';
+
+  -- Robin's hour: 30 min covered (a quarter of $200 is $50, 20% of it $10) and
+  -- 30 min past the pool, billed at $60 and paid at $30 an hour ($15).
+  IF b4 IS DISTINCT FROM 30.00 OR p4 IS DISTINCT FROM 25.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: half covered, half billed should bill 30.00 and pay 25.00, got % and %',
+                    b4, p4;
+  END IF;
+  IF b5 IS DISTINCT FROM 30.00 OR p5 IS DISTINCT FROM 15.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: past the pool should bill 30.00 and pay 15.00, got % and %', b5, p5;
+  END IF;
+  RAISE NOTICE '  overage   past the pool bills at the going rate and pays by the hour: $% billed, $% paid', b5, p5;
+
+  UPDATE agreement_service SET overage = 'no_charge'
+   WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-0000000000a2';
+  SELECT billed INTO given FROM entry_worth WHERE time_entry_id = 'd3300000-0000-0000-0000-000000000005';
+  UPDATE agreement_service SET overage = 'bill'
+   WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-0000000000a2';
+  IF given IS DISTINCT FROM 0.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: a no-charge overage still billed %', given;
+  END IF;
+  RAISE NOTICE '  no_charge past the pool bills $%', given;
+END $$;
+
+DO $$
+DECLARE u_cov int; u_bill numeric; u_paid numeric; c_cov int; c_bill numeric; bravo numeric;
+BEGIN
+  SELECT w.covered_minutes, w.billed, w.paid INTO u_cov, u_bill, u_paid
+    FROM entry_worth w WHERE w.time_entry_id = 'd3300000-0000-0000-0000-000000000006';
+  SELECT w.covered_minutes, w.billed INTO c_cov, c_bill
+    FROM entry_worth w WHERE w.time_entry_id = 'd3300000-0000-0000-0000-000000000007';
+  SELECT w.paid INTO bravo
+    FROM entry_worth w WHERE w.time_entry_id = 'd3300000-0000-0000-0000-000000000008';
+
+  IF u_cov IS DISTINCT FROM 45 OR u_bill IS DISTINCT FROM 0.00 OR u_paid IS NOT NULL THEN
+    RAISE EXCEPTION 'GUARD MISSING: unlimited, uncharged: expected 45 covered, 0.00 billed, pay unknown; got %, %, %',
+                    u_cov, u_bill, u_paid;
+  END IF;
+  RAISE NOTICE '  unknown   unlimited but not yet charged: covered, billed $0.00, and 20%% of nothing yet is null';
+
+  IF c_cov IS NOT NULL OR c_bill IS NOT NULL THEN
+    RAISE EXCEPTION 'GUARD MISSING: a capped pool in an uncharged period cannot be drawn, got % / %',
+                    c_cov, c_bill;
+  END IF;
+  RAISE NOTICE '  unknown   capped and not yet charged: no pool to draw from, so no value -- null, not a guess';
+
+  IF bravo IS DISTINCT FROM 0.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: 0%% of an uncharged Bravo period should still be 0.00, got %', bravo;
+  END IF;
+  RAISE NOTICE '  zero      Bravo, not yet charged: 0%% of anything is $%', bravo;
+END $$;
+
+\echo ''
+\echo '=== 34. a month can be given, and a given month is known ==='
+
+-- "its from the 1st of a the month til the end of a month. billed for upcoming
+-- months usage. this month will be given freely" -- 23 Sep 2026.
+SELECT must_fail($$
+  INSERT INTO agreement_period (agreement_id, period_start, period_end, amount, given)
+  VALUES ('bbbbbbbb-0000-0000-0000-0000000000a1','2026-12-01','2026-12-31',300.00,true)
+$$, 'a given month that charges something');
+
+SELECT must_pass($$
+  INSERT INTO agreement_period (agreement_id, period_start, period_end, amount, given)
+  VALUES ('bbbbbbbb-0000-0000-0000-0000000000a1','2026-11-01','2026-11-30',0.00,true)
+$$, 'November given freely');
+
+DO $$
+DECLARE paid numeric; earned numeric; bravo numeric; flat numeric;
+BEGIN
+  -- The 45 minutes in November had no charge to take a share of. Given, they do:
+  -- nothing, and 20% of nothing is known.
+  SELECT w.paid, w.earned INTO paid, earned
+    FROM entry_worth w WHERE w.time_entry_id = 'd3300000-0000-0000-0000-000000000006';
+  IF paid IS DISTINCT FROM 0.00 OR earned IS DISTINCT FROM 0.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: a given month should pay and earn 0.00, got % and %', paid, earned;
+  END IF;
+  RAISE NOTICE '  given     a covered hour in a given month pays $% and earns $% -- known, not pending',
+               paid, earned;
+
+  bravo := agreement_charge('bbbbbbbb-0000-0000-0000-000000000001');
+  flat  := agreement_charge('bbbbbbbb-0000-0000-0000-0000000000a1');
+  IF bravo IS DISTINCT FROM 400.00 OR flat IS DISTINCT FROM 300.00 THEN
+    RAISE EXCEPTION 'GUARD MISSING: Bravo charges $200 a site for two sites, and a flat $300 is $300; got % and %',
+                    bravo, flat;
+  END IF;
+  RAISE NOTICE '  charge    Bravo, $200 a site at two sites: $% a month; a flat $300: $%', bravo, flat;
+END $$;
+
 \echo 'All guards hold.'

@@ -74,3 +74,16 @@ export function hours(v: string | number | null | undefined): string {
 	if (v === null || v === undefined || v === '') return ABSENT;
 	return `${Number(v).toFixed(4)} h`;
 }
+
+/**
+ * How finely a service bills time, from service.bill_to_nearest_seconds:
+ * "to the minute", "to the nearest 15 minutes". Null bills the time exactly.
+ */
+export function increment(seconds: number | null | undefined): string {
+	if (seconds === null || seconds === undefined) return 'the exact time';
+	const unit = (n: number, one: string) =>
+		n === 1 ? `to the ${one}` : `to the nearest ${n} ${one}s`;
+	if (seconds % 3600 === 0) return unit(seconds / 3600, 'hour');
+	if (seconds % 60 === 0) return unit(seconds / 60, 'minute');
+	return unit(seconds, 'second');
+}

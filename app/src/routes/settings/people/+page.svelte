@@ -1,16 +1,16 @@
 <script lang="ts">
 	import Top from '$lib/Top.svelte';
-	import { dated } from '$lib/format';
-	import { money } from '$lib/money.svelte';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
+
+	const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 </script>
 
 <Top
 	title="People and pay"
-	sub="Who works here, and what an hour pays"
+	sub="Who is paid, and under which rules"
 	back={resolve('/settings')}
 	backLabel="Settings"
 />
@@ -24,12 +24,13 @@
 					<div class="rec-m">
 						<div class="rec-t">{p.name}</div>
 						<div class="rec-s">
-							{p.email} · {p.on_team ? 'paid for work' : 'signs in, is not paid for work'}
+							{p.email} · {p.role ? 'paid for work' : 'signs in, is not paid for work'}{p.own_rules
+								? ` · ${count(p.own_rules, 'rule')} of their own`
+								: ''}
 						</div>
 					</div>
 					<div class="rec-n">
-						<span class="rec-v">{money(p.rate)}</span>
-						{#if p.rate}<span class="rec-x">/hr</span>{/if}
+						{#if p.role}<span class="chip acc">{p.role}</span>{/if}
 					</div>
 				</div>
 			{/each}
@@ -37,37 +38,43 @@
 	</div>
 
 	<div class="sec">
-		<div class="sec-h"><h2>How an hour is paid</h2></div>
+		<div class="sec-h"><h2>Roles</h2></div>
 		<div class="rows">
-			{#each data.rates as r (r.id)}
+			{#each data.roles as r (r.id)}
 				<div class="rec">
 					<div class="rec-m">
-						<div class="rec-t">{r.who ?? 'Everyone'}</div>
+						<div class="rec-t">{r.name}</div>
 						<div class="rec-s">
-							{r.service ?? 'any service'} · since {dated(r.effective_from)}
+							{r.rules ? `Named by ${count(r.rules, 'pay rule')}` : 'No pay rule names it yet'}
 						</div>
 					</div>
 					<div class="rec-n">
-						<span class="rec-v">{money(r.rate)}</span><span class="rec-x">/hr</span>
+						<span class="rec-x" class:mut={!r.holders}>
+							{r.holders ? count(r.holders, 'person', 'people') : 'nobody yet'}
+						</span>
 					</div>
-				</div>
-			{:else}
-				<div class="rec warn">
-					<div class="rec-m">
-						<div class="rec-t">Nothing recorded</div>
-						<div class="rec-s">Without a rate, no partner pay can be worked out</div>
-					</div>
-					<div class="rec-n"><span class="rec-v mut">—</span></div>
 				</div>
 			{/each}
 			<div class="rec">
 				<div class="rec-m">
 					<div class="rec-t">
-						<span class="lt">A rate for one person beats a rate for everyone</span>
+						<span class="lt">Roles are the business's own list</span>
 					</div>
 					<div class="rec-s">
-						And a rate for one service beats a rate for any. Both partners sit on one row today; the
-						day that stops being true is one more row, not a rebuild.
+						A service's pay rules are written against them, or against one person. The narrowest
+						rule that has started pays: one client's before every client's, one person's before
+						their role's.
+					</div>
+				</div>
+			</div>
+			<div class="rec">
+				<div class="rec-m">
+					<div class="rec-t">
+						<span class="lt">A role is who someone is now</span>
+					</div>
+					<div class="rec-s">
+						Pay is not yet recorded when it is paid, so until it is, changing someone's role changes
+						what the reports say their unpaid work pays.
 					</div>
 				</div>
 			</div>

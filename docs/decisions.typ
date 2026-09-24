@@ -157,6 +157,17 @@ So the allotment carries its own basis, which need not match how the money is ch
 ]
 #v(4pt)
 
+*Bravo's month runs from the 1st to the end of the month, billed in advance, and September 2026 is given.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"bravo should show usage against unlimited. its from the 1st of a the month til the end of a month. billed for upcoming months usage. this month will be given freely"_ — 23 Sep 2026
+]
+#v(4pt)
+
+*#text(fill: warn, weight: 700)[\[claude\]]* Built in 0022. Bravo's agreement anchors on the 1st, so its periods are calendar months, and each is charged when it begins for the month ahead. A period can be marked `given`: covered, and deliberately charged nothing. It is not a \$0 period that could be a mistake, or a month nobody has charged yet, and the screens say "given freely" rather than "\$0.00". `agreement_charge()` is what a period charges at the price, \$200 a site times two sites, so every screen now shows Bravo's \$400 rather than the \$200 of one site. The retainer meter shows the month under way beside the last one closed, because a retainer's charge is known on the 1st and its usage builds all month.
+#v(4pt)
+
 *The retainer meters whether or not there is a limit.*
 #v(4pt)
 
@@ -185,7 +196,7 @@ So an entry carries `crew` — `one` or `team` — and the billable quantity is 
 ]
 #v(4pt)
 
-`worked_by` is null on a team entry, because both worked it. Who ran the timer is `created_by`. The team is `app_user.on_team`, so a login that is not on the team is not paid for a job.
+`worked_by` is null on a team entry, because both worked it. Who ran the timer is `created_by`. The team is everybody who holds a role (`app_user.role_id`, since 0020), so a login that holds none is not paid for a job.
 #v(4pt)
 
 *Whether a service takes a timer is set per service, and is not the same question as how it is charged.*
@@ -210,7 +221,7 @@ So an entry carries `crew` — `one` or `team` — and the billable quantity is 
 ]
 #v(4pt)
 
-So `service.delivery` is `on_site` or `remote`, and nothing beside it repeats the fact. Remote services draw the remote allotment, because that is what the allotment is.
+So `service.delivery` was `on_site` or `remote`, and remote services drew the remote allotment. *Superseded 23 Sep 2026* — there is no delivery any more; an agreement names the services it covers. See _A service is configured, not categorised_.
 #v(4pt)
 
 #band[What the platform is]
@@ -632,16 +643,16 @@ The move splits three ways, because the three were never one kind of fact:
 #list([*`subscription_hours` and `subscription_overage` are terms of sale.* They go])
 #v(4pt)
 
-on the service, beside `delivery` and `time_tracked`, which are also statements about what the thing _is_ rather than about what it costs.
+on the service, beside `time_tracked`, which is also a statement about what the thing _is_ rather than about what it costs.
 #v(4pt)
 
 #list([*The responder rate was pay, and pay already had a home.* `person_pay_rate`])
 #v(4pt)
 
-is (service, date) → rate, so "paid to whoever answers a remote call" is a row in it and always was. A second copy on `operator` meant two answers to one question, and the undated one would have won by being easier to reach.
+was (service, date) → rate, so "paid to whoever answers a remote call" was a row in it and always had been. A second copy on `operator` meant two answers to one question, and the undated one would have won by being easier to reach. Since 0020 that home is `pay_rule`.
 #v(4pt)
 
-*Empty means something different here than on an agreement.* On `agreement.remote_cap_hours`, empty means _unlimited_ — Bravo's two subscriptions carry no cap. On `service.subscription_hours`, empty means _this service is not sold as a subscription at all_. The two are set together or neither is, so no row offers a rule for exceeding an allotment that does not exist.
+*Empty means something different here than on an agreement.* On `agreement_service.included_hours` (`agreement.remote_cap_hours` before 0020), empty means _unlimited_ — Bravo's two subscriptions carry no cap. On `service.subscription_hours`, empty means _this service is not sold as a subscription at all_. The two are set together or neither is, so no row offers a rule for exceeding an allotment that does not exist.
 #v(4pt)
 
 #text(size: sz.small, weight: 700, fill: steel)[The pair travels together, or the state is unreachable]
@@ -653,10 +664,10 @@ Per-field saving plus a two-column constraint makes a state nobody can get to: f
 #text(size: sz.small, weight: 700, fill: steel)[What this does not do]
 #v(3pt)
 
-*There is still no way to create a service.* The settings page can edit the terms of services that exist and says so plainly when there are none, which is what a fresh install sees — production has zero services today and no screen that makes one. Hiding the section would only make the gap harder to see.
+*There is still no way to create a service.* The settings page can edit the terms of services that exist and says so plainly when there are none, which is what a fresh install sees — production has zero services today and no screen that makes one. Hiding the section would only make the gap harder to see. _Superseded 23 Sep 2026: a service is created, and edited, on the services screen — see "A service is configured, not categorised"._
 #v(4pt)
 
-*A pay rate has no editor.* It is dated, so changing one appends a row rather than overwriting today's figure, and that is a different interaction from a field that saves itself. The current rate is shown and labelled as read-only.
+*A pay rate has no editor.* It is dated, so changing one appends a row rather than overwriting today's figure, and that is a different interaction from a field that saves itself. The current rate is shown and labelled as read-only. _Superseded 23 Sep 2026: pay rules and prices are edited on the service's screen, as dated rows._
 #v(4pt)
 
 #band[The schema was folded into one file]
@@ -701,13 +712,190 @@ Folding was available only because nothing had been released and the remote had 
 *#text(fill: warn, weight: 700)[\[claude\]]* _"almost no need"_ leaves one exception: whatever is still open on the day — an unapplied credit, a refund owed, an invoice not yet paid. That is a balance a client can still draw on rather than history, and `entity.opening_balance` was reserved for it in 0018.
 #v(4pt)
 
+#band[A service is configured, not categorised]
+#v(4pt)
+
+#callout(tone: "note")[
+  _"weve paid too much attention to my specific requirements for services which makes it less universal. the services should be universal in nature but allow for our specific requirements, not set in stone. what type of configuration per service is required to meet all our criteria (i.e. rate to customer, static payout rate per person, percentage payout rate per person, fixed person payout, etc)?"_ — 23 Sep 2026
+]
+#v(4pt)
+
+*Pay is a set of rules, per person and per role, not one rate.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"the current arrangement is too fixed. gauranteed payments only work for people who have actually worked. that would mean a service is configured per user and per user level (partner, employee, etc) and payouts happens at a unit measurement (per hour but granular down to the minute/second) but also could be a percentage payout of the entire charge (personal mileage is 100% but company mileage would be 0% payout regardless who drove, leaving room for in the future an hourly rate to be paid out to the employee(s)). do you see where i am going with this?"_ — 23 Sep 2026
+]
+#v(4pt)
+
+So `pay_rule` names a role or one person, what it pays for — their time or their vehicle — and how: per hour worked, a percentage of the line, a fixed amount, or nothing. `role` is the operator's own list; Partner, Employee and Contractor are where it starts.
+#v(4pt)
+
+*There is no on-site and remote.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"whats the difference between on-site and remote? why are they categorical instead of universal?"_ — 23 Sep 2026 \
+  _"mock logic looks good services are simply configurable services right? and items and services should be categorically seperated"_ — 23 Sep 2026
+]
+#v(4pt)
+
+An agreement names the services it covers, each with its own allotment (`agreement_service`), so an on-site retainer is as easy as a remote one and an hour on a service it does not name is billed.
+#v(4pt)
+
+*A service charged per entry is how a flat rate is sold.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"yes each can be a service charge, thats what allows flat rates as you pointed out per service item"_ — 23 Sep 2026
+]
+#v(4pt)
+
+*A service is edited where it is shown, and is known by what it charges.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"getting closer but services are not editable. and the display could be improved by a single card and better placement of values. the biggest thing on them is payout to members but thats not the most important thing for a service"_ — 23 Sep 2026
+]
+#v(4pt)
+
+The services list is one card, a row a service: its name, how it is charged, and its price as the figure on the right. Who it pays, what it keeps and which clients differ are small notes beneath. Each row opens the service, where everything is editable, as the approved mock laid it out.
+#v(4pt)
+
+*#text(fill: warn, weight: 700)[\[claude\]]* How editing works:
+#v(4pt)
+
+#list([*What it is* saves field by field as it is left, like a setting. Moving a])
+#v(4pt)
+
+service off hours clears its billing increment; moving it onto hours starts it at the minute.
+#v(4pt)
+
+#list([*Its subscription* saves as one, because the four terms are one decision.], [*A price or a pay rule is a dated row.* A change adds a row from a day, so])
+#v(4pt)
+
+work before it keeps the figure it was worth. A day already past can be given, since a price agreed last week was true last week. A row can be corrected or taken back until its day has passed; after that it is history, and it changes by a row from another day.
+#v(4pt)
+
+#list([*A service can be removed only if nothing has used it* — no time, no trip])
+#v(4pt)
+
+leg, no agreement covering it. Otherwise it is retired, and stays under its name on everything it billed.
+#v(4pt)
+
+*What a service used to cost is on its own screen, shown when asked for.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"the historic rates are nice and i like the idea however we shouldnt crowd the service display. it should be hidden in a seperate screen only shown upon request"_ — 23 Sep 2026
+]
+#v(4pt)
+
+The services screen shows what is in force and what is scheduled. Each service with anything superseded links to its history, which lists every price and pay rule it has had, with the period each was true for. Travel settings does the same for the mileage rate.
+#v(4pt)
+
+*Hours a retainer covers are paid as a percentage, and Bravo's is 0%.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"retainer covered hours should be percentage based payouts (can be more than one responder each month and that too should be percentage) and bravo would effectively be 0% payout to responder"_ — 23 Sep 2026
+]
+#v(4pt)
+
+*#text(fill: warn, weight: 700)[\[claude\]]* Built in 0021 as I read it: the percentage is of what the retainer charged for the period, and it is split among whoever worked its covered hours by their share of them, counted in person-hours so a team hour is one each. Under a 20% rule on \$400, responders at 3 h and 1 h are paid \$60 and \$20; the retainer pays out 20% however many answered. It is a pay rule for `covered_time`, which can only be a percentage or nothing, so a person's own rule or a client's still wins the way every rule does. A covered hour bills nothing by the hour, and what it _earned_ is its share of the retainer.
+#v(4pt)
+
+*#text(fill: warn, weight: 700)[\[claude\]]* How the mock he approved works, as built in 0020:
+#v(4pt)
+
+#list([*A price counts heads.* `rate` is the first person, `additional_rate` each])
+#v(4pt)
+
+one after: \$80 and +\$50 is the \$130 for two. Nothing extra prices the job; the two equal prices the person.
+#v(4pt)
+
+#list([*The narrowest rule that has started pays.* One client's rule before every])
+#v(4pt)
+
+client's; then one person's before their role's; then the newest. Bravo's _"nothing gauranteed for responder"_ is a rule for Bravo that pays nothing, carried over from the null responder rate — without it the partners' \$25 would reach Bravo's calls.
+#v(4pt)
+
+#list([*Coverage is drawn in the order worked.* An unlimited allotment covers])
+#v(4pt)
+
+every billable hour on the services it names. A capped one covers the first hours of the period up to its pool; past that, the allotment's overage says whether they bill at the going rate or not at all.
+#v(4pt)
+
+#list([*Coverage is the agreement's own.* It starts from the service's])
+#v(4pt)
+
+subscription terms when a service is added to an agreement, and a later change to the service does not reach into an agreement already made.
+#v(4pt)
+
+#list([*Time bills to the nearest minute* (`bill_to_nearest_seconds` = 60 on every])
+#v(4pt)
+
+hourly service), which is _"bill per minute at the going rate"_ — 9 Sep. `minimum_charge` exists and is unset. Both were proposals in the mock, not requests. Pay is never rounded to them.
+#v(4pt)
+
+#list([*One place works out what an entry is worth.* `entry_worth` and])
+#v(4pt)
+
+`leg_worth`, from `billed_amount()` and `time_pay()`; every screen that showed a value read its own copy of the price lookup before.
+#v(4pt)
+
+*#text(fill: warn, weight: 700)[\[claude\]]* What is interim, and why:
+#v(4pt)
+
+#list([*A team is everybody who holds a role*, until entries name who worked. With])
+#v(4pt)
+
+two partners that is the two of them; with a third person it would count them too. _A team entry names nobody_ is the decision this will reopen.
+#v(4pt)
+
+#list([*Pay is counted to the minute*, because entries store minutes. The])
+#v(4pt)
+
+functions take seconds, so storing seconds changes no rule.
+#v(4pt)
+
+#list([*Vehicle rules are stored and shown but pay nobody yet.* A trip does not])
+#v(4pt)
+
+record which vehicle, so there is no owner to pay.
+#v(4pt)
+
+#list([*A capped pool is drawn within a charged period.* Periods are written when])
+#v(4pt)
+
+a retainer is charged, and the app does not charge them yet, so an hour in an uncharged period of a capped retainer has no value until it is — null, not a guess. What covered time pays waits on the charge the same way; a 0% rule pays 0 regardless, so Bravo's is always known.
+#v(4pt)
+
+#list([*Past a `deny` allotment, an hour is valued as billed.* The work should not])
+#v(4pt)
+
+have happened, and capture does not refuse it yet.
+#v(4pt)
+
+#list([*Pay is worked out live.* Until a payout is recorded when it is paid, a])
+#v(4pt)
+
+role change or a new rule moves what the reports say unpaid work pays.
+#v(4pt)
+
 #band[Not decided]
 #v(4pt)
 
 These have never been answered. They are questions, not gaps to be filled in by reasoning.
 #v(4pt)
 
-#list([*Emergency attendance is unpriced.*], [*What is open at cutover* — whether any credit, refund or unpaid invoice is])
+#list([*Emergency attendance is unpriced.*], [*What share of a retainer is paid for covered time, away from Bravo.* Bravo])
+#v(4pt)
+
+is the only retainer; another would pay nobody for covered time until a rule says what share.
+#v(4pt)
+
+#list([*What is open at cutover* — whether any credit, refund or unpaid invoice is])
 #v(4pt)
 
 still outstanding on the day FreshBooks is retired, and so whether an opening balance is needed at all. Known on the day.

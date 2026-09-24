@@ -4,6 +4,8 @@
 	import { pending, flush } from '$lib/queue';
 	import { running, drop, type Running } from '$lib/timers';
 	import { money } from '$lib/money.svelte';
+	import { increment } from '$lib/format';
+	import { rateFor } from '$lib/rates';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -50,6 +52,11 @@
 	};
 
 	const svc = $derived(live ? data.services.find((s) => s.id === live.service_id) : undefined);
+	// This client's price for this crew, not the every-client one-person figure:
+	// the same choice the start form made when the timer was set going.
+	const liveRate = $derived(
+		live ? rateFor(data.prices, live.service_id, live.entity_id, live.crew) : null
+	);
 
 	const clock = (t: Running) => {
 		const s = Math.max(0, Math.floor((now - t.started_at) / 1000));
@@ -88,14 +95,12 @@
 			<div>
 				<div class="timer">{c.hm}<small>:{c.ss}</small></div>
 				<div class="rec-s" style="margin-top: 5px">
-					Started {startedAt(live)} · billing to the minute
+					Started {startedAt(live)} · billing {increment(svc?.bill_to_nearest_seconds)}
 				</div>
 			</div>
 			<div class="chips">
-				{#if svc?.delivery}
-					<span class="chip acc">
-						<span class="dot"></span>{svc.delivery === 'remote' ? 'Remote' : 'On site'}
-					</span>
+				{#if svc}
+					<span class="chip acc"><span class="dot"></span>{svc.name}</span>
 				{/if}
 				<span class="chip">{live.billable ? 'Billable' : 'Non-billable'}</span>
 				<span class="chip">
@@ -120,9 +125,7 @@
 				<div class="kv">
 					<span class="k">Rate</span>
 					<span class="v">
-						{#if svc?.rate}{money(svc.rate)}/h · {live.crew === 'team'
-								? 'both on site'
-								: 'one on site'}
+						{#if liveRate}{money(liveRate)}/h · {live.crew === 'team' ? 'the team' : 'one person'}
 						{:else}not priced{/if}
 					</span>
 				</div>
@@ -173,9 +176,7 @@
 					<div class="rec-m">
 						<div class="rec-t">
 							{e.site ?? e.entity ?? e.note ?? 'No client'}
-							<span class="lt">
-								· {e.billable ? (e.delivery === 'remote' ? 'remote' : 'on site') : 'non-billable'}
-							</span>
+							{#if !e.billable}<span class="lt">· non-billable</span>{/if}
 						</div>
 						<div class="rec-s">
 							{e.crew === 'team' ? 'Both of you' : (e.worked_by ?? 'Unassigned')} · {e.at} · {e.service}

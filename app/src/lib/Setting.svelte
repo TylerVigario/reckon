@@ -269,18 +269,4 @@
 		border: 1px solid var(--line);
 		flex: none;
 	}
-	select.inp {
-		appearance: none;
-		padding-right: 2.4rem;
-		background-image:
-			linear-gradient(45deg, transparent 50%, currentColor 50%),
-			linear-gradient(135deg, currentColor 50%, transparent 50%);
-		background-size:
-			0.36rem 0.36rem,
-			0.36rem 0.36rem;
-		background-position:
-			right 1.2rem center,
-			right 0.85rem center;
-		background-repeat: no-repeat;
-	}
 </style>

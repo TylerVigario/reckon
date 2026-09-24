@@ -27,8 +27,9 @@ export const load: PageServerLoad = async ({ url }) => {
 			entity: string | null;
 			site: string | null;
 			service: string;
-			delivery: string | null;
 			value: string | null;
+			covered: boolean;
+			heads: number;
 			invoiced: boolean;
 			stale: boolean;
 		}[]
@@ -43,19 +44,12 @@ export const load: PageServerLoad = async ({ url }) => {
 		       u.name as worked_by,
 		       e.name as entity,
 		       si.display as site,
-		       s.name as service, s.delivery,
-		       case when t.billable then (
-		         t.minutes / 60.0 * (
-		           select sp.rate from service_price sp
-		            where sp.service_id = t.service_id
-		              and sp.effective_from <= t.worked_on
-		              and (sp.entity_id = t.entity_id or sp.entity_id is null)
-		              and (sp.crew = t.crew or sp.crew is null)
-		            order by (sp.entity_id is not null) desc,
-		                     (sp.crew is not null) desc,
-		                     sp.effective_from desc
-		            limit 1))
-		       end::text as value,
+		       s.name as service,
+		       case when t.billable then w.billed end::text as value,
+		       -- Wholly inside a retainer: it bills nothing by the hour because
+		       -- the retainer has already charged for it.
+		       coalesce(w.covered_minutes = t.minutes, false) as covered,
+		       w.heads,
 		       il.invoice_id is not null as invoiced,
 		       (il.invoice_id is null and t.billable
 		        and current_date - t.worked_on
@@ -64,6 +58,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		  cross join bounds b
 		  left join app_user u on u.id = t.worked_by
 		  join service s on s.id = t.service_id
+		  join entry_worth w on w.time_entry_id = t.id
 		  left join entity e on e.id = t.entity_id
 		  left join site si on si.id = t.site_id
 		  left join invoice_line il on il.time_entry_id = t.id

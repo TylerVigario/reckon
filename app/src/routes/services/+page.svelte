@@ -1,192 +1,124 @@
 <script lang="ts">
 	import Top from '$lib/Top.svelte';
-	import { dated } from '$lib/format';
+	import { dated, increment } from '$lib/format';
 	import { money } from '$lib/money.svelte';
+	import { paysWhat } from '$lib/pay-words';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
 
-	type Price = {
-		id: string;
-		crew: string | null;
-		client: string | null;
-		rate: string | null;
-		effective_from: string;
-		until: string | null;
-		state: string;
-		pays: string | null;
-		keeps: string | null;
-	};
-	type Covered = {
-		agreement_id: string;
-		who: string;
-		sites: string;
-		allotment: string;
-		responder: string | null;
-	};
-	type Service = {
-		id: string;
-		name: string;
-		unit: string;
-		delivery: string | null;
-		basis: string;
-		hours: string | null;
-		overage: string | null;
-		period: string | null;
-		prices: Price[];
-		covered: Covered[];
-	};
+	type Service = (typeof data.services)[number];
 
-	const services = $derived(data.services as Service[]);
+	const offered = $derived(data.services.filter((s) => s.active));
+	const retired = $derived(data.services.filter((s) => !s.active));
 
-	// A service gets its own heading when there is more than one thing to say
-	// about it. The single-rate ones fall into one list at the bottom: a page of
-	// one-row sections is a list with extra headings.
-	const detailed = $derived(
-		services.filter((s) => s.prices.length + s.covered.length > 1 || s.basis !== 'none')
-	);
-	const plain = $derived(services.filter((s) => !detailed.includes(s)));
+	const per = (u: string) => (u === 'mile' ? '/mi' : u === 'hour' ? '/hr' : ' each');
 
-	const per = (u: string) => (u === 'mile' ? '/mi' : u === 'hour' ? '/hr' : `/${u}`);
+	/** The price every client pays today -- the figure a service is known by. */
+	const priceOf = (s: Service) =>
+		s.prices.find((p) => p.client === null && p.state === 'current') ?? null;
 
-	/** Who a price applies to. The scope is the name of the row. */
-	const scope = (p: Price) =>
-		p.state === 'superseded'
-			? 'Superseded'
-			: (p.client ??
-				(p.crew === 'one' ? 'One of you' : p.crew === 'team' ? 'Both of you' : 'Everyone else'));
-
-	function detail(p: Price, s: Service): string {
-		if (p.state === 'superseded')
-			return `${dated(p.effective_from)} – ${p.until ? dated(p.until) : 'now'} · still priced on every line billed under it`;
-
-		const bits: string[] = [];
-		if (p.crew === 'one') bits.push(`Per ${s.unit} of the job · every client, no exceptions`);
-		else if (p.crew === 'team') bits.push(`Per ${s.unit} of the job, not per person`);
-		else if (s.basis === 'capped')
-			bits.push(`Capped at ${Number(s.hours).toFixed(0)} hours a ${s.period}`);
-
-		bits.push(
-			p.state === 'scheduled'
-				? `Takes over ${dated(p.effective_from)}`
-				: `Since ${dated(p.effective_from)}`
-		);
+	/** How it is charged, beyond the figure: heads, increment, minimum, subscription. */
+	function terms(s: Service): string {
+		const p = priceOf(s);
+		const bits = [`Per ${s.unit}`];
+		if (p && s.unit === 'hour' && Number(p.additional_rate) > 0)
+			bits.push(`+${money(p.additional_rate)} each additional person`);
+		if (s.unit === 'hour') bits.push(`billed ${increment(s.bill_to_nearest_seconds)}`);
+		if (s.minimum_charge) bits.push(`at least ${money(s.minimum_charge)}`);
+		if (s.basis === 'capped')
+			bits.push(`${Number(s.hours).toFixed(0)} hours a ${s.period} on subscription`);
+		else if (s.basis === 'unlimited') bits.push('unlimited on subscription');
 		return bits.join(' · ');
+	}
+
+	/**
+	 * Everything else worth knowing at a glance, small: who it pays, what it
+	 * keeps, which clients are priced or covered differently, and what is about
+	 * to change. The pay is here and not the headline -- a service is what it
+	 * charges first.
+	 */
+	function notes(s: Service): { text: string; tone: '' | 'good' | 'acc' | 'warn' }[] {
+		const out: { text: string; tone: '' | 'good' | 'acc' | 'warn' }[] = [];
+		// Every client's rules, said; a client's own are counted, and read on
+		// the service.
+		const live = s.rules.filter((r) => r.state === 'current');
+		for (const r of live.filter((r) => r.client === null)) {
+			const w = paysWhat(r, money);
+			out.push({ text: `${r.payee} ${w.v}${w.x ? ` ${w.x}` : ''}`, tone: '' });
+		}
+		const theirs = live.filter((r) => r.client !== null).length;
+		if (theirs) out.push({ text: `${theirs} client rule${theirs === 1 ? '' : 's'}`, tone: '' });
+		const paid = s.kept.filter((k) => !k.unpaid);
+		if (paid.length === 1) out.push({ text: `keeps ${money(paid[0].kept)} an hour`, tone: 'good' });
+		for (const k of s.kept.filter((k) => k.unpaid))
+			out.push({ text: `no rule pays ${k.who}`, tone: 'warn' });
+		const own = s.prices.filter((p) => p.client !== null && p.state === 'current').length;
+		if (own) out.push({ text: `${own} client price${own === 1 ? '' : 's'}`, tone: '' });
+		for (const c of s.covered) out.push({ text: `${c.who} retainer`, tone: 'acc' });
+		const next = s.prices.find((p) => p.state === 'scheduled');
+		if (next) out.push({ text: `changes ${dated(next.effective_from)}`, tone: 'acc' });
+		return out;
 	}
 </script>
 
 <Top
 	title="Services"
-	sub="Billed to the client, paid to the partner"
+	sub="What is sold, and what it costs"
 	back={resolve('/more')}
 	backLabel="More"
-/>
+>
+	{#snippet actions()}
+		<a class="btn sm pri" href={resolve('/services/new')}>New service</a>
+	{/snippet}
+</Top>
 
 <div class="pad">
-	{#if services.length === 0}
+	{#if data.services.length === 0}
 		<p class="none">No services yet.</p>
-	{:else}
-		{#each detailed as s (s.id)}
+	{/if}
+
+	{#each [{ head: '', list: offered }, { head: 'Retired', list: retired }] as group (group.head)}
+		{#if group.list.length}
 			<div class="sec">
-				<div class="sec-h">
-					<h2>{s.name}</h2>
-					{#if s.delivery}
-						<span class="chip">{s.delivery === 'remote' ? 'remote' : 'on site'}</span>
-					{/if}
-				</div>
+				{#if group.head}<div class="sec-h"><h2>{group.head}</h2></div>{/if}
 				<div class="rows">
-					{#each s.prices as p (p.id)}
-						<div
-							class="rec"
-							class:gone={p.state === 'superseded'}
-							class:acc={p.state === 'scheduled'}
+					{#each group.list as s (s.id)}
+						{@const p = priceOf(s)}
+						<a
+							class="rec link"
+							class:gone={!s.active}
+							class:warn={s.active && !p && s.covered.length === 0}
+							href={resolve('/services/[id]', { id: s.id })}
 						>
-							<div class="rec-m">
-								<div class="rec-t">{scope(p)}</div>
-								<div class="rec-s">{detail(p, s)}</div>
-								{#if p.pays}
-									<div class="rec-c">
-										<span class="chip">
-											{s.delivery === 'remote' ? 'responder' : 'pays'}
-											{money(p.crew === 'team' ? String(Number(p.pays) / 2) : p.pays)}{p.crew ===
-											'team'
-												? ' ×2'
-												: ''}
-										</span>
-										{#if p.keeps}<span class="chip good">keeps {money(p.keeps)}</span>{/if}
-									</div>
-								{/if}
-							</div>
-							<div class="rec-n">
-								<span class="rec-v">{money(p.rate)}</span>
-								<span class="rec-x">{per(s.unit)}</span>
-							</div>
-						</div>
-					{/each}
-
-					{#each s.covered as c (c.agreement_id)}
-						<div class="rec acc">
-							<div class="rec-m">
-								<div class="rec-t">{c.sites}</div>
-								<div class="rec-s">Inside the retainer — not billed by the hour at all</div>
-								<div class="rec-c">
-									{#if !c.responder}<span class="chip">no guaranteed payment</span>{/if}
-									{#if c.allotment === 'unlimited'}
-										<span class="chip acc">∞ unlimited</span>
-									{:else}
-										<span class="chip acc">capped</span>
-									{/if}
-								</div>
-							</div>
-							<div class="rec-n"><span class="rec-v mut">retainer</span></div>
-						</div>
-					{/each}
-
-					{#if s.prices.length === 0 && s.covered.length === 0}
-						<div class="rec warn">
-							<div class="rec-m">
-								<div class="rec-t">Not priced</div>
-								<div class="rec-s">Nothing can be billed under it yet</div>
-							</div>
-							<div class="rec-n"><span class="rec-v mut">—</span></div>
-						</div>
-					{/if}
-				</div>
-			</div>
-		{/each}
-
-		{#if plain.length}
-			<div class="sec">
-				<div class="sec-h"><h2>Everything else</h2></div>
-				<div class="rows">
-					{#each plain as s (s.id)}
-						{@const p = s.prices[0]}
-						<div class="rec" class:warn={!p}>
 							<div class="rec-m">
 								<div class="rec-t">{s.name}</div>
 								<div class="rec-s">
-									{#if p}{detail(p, s)}{:else}Not priced — nothing can be billed under it yet{/if}
+									{p ? terms(s) : 'Not priced — nothing can be billed under it yet'}
 								</div>
-								{#if p?.pays}
+								{#if s.active && notes(s).length}
 									<div class="rec-c">
-										<span class="chip">pays {money(p.pays)}</span>
-										{#if p.keeps}<span class="chip good">keeps {money(p.keeps)}</span>{/if}
+										{#each notes(s) as n (n.text)}
+											<span
+												class="chip"
+												class:good={n.tone === 'good'}
+												class:acc={n.tone === 'acc'}
+												class:warn={n.tone === 'warn'}>{n.text}</span
+											>
+										{/each}
 									</div>
 								{/if}
 							</div>
 							<div class="rec-n">
-								{#if p}
-									<span class="rec-v">{money(p.rate)}</span>
-									<span class="rec-x">{per(s.unit)}</span>
-								{:else}
-									<span class="rec-v mut">—</span>
-								{/if}
+								<span class="rec-v" class:mut={!p}>{p ? money(p.rate) : '—'}</span>
+								{#if p}<span class="rec-x">{per(s.unit)}</span>{/if}
 							</div>
-						</div>
+							<span class="arw" aria-hidden="true">›</span>
+						</a>
 					{/each}
 				</div>
 			</div>
 		{/if}
-	{/if}
+	{/each}
 </div>

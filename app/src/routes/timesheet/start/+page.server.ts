@@ -1,4 +1,5 @@
 import { sql } from '$lib/server/db';
+import { pricesToday } from '$lib/server/prices';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -16,7 +17,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	const [people, entities, services, prices] = await Promise.all([
 		sql<{ id: string; name: string }[]>`
-			select id, name from app_user where active and on_team order by name`,
+			select id, name from app_user where active and role_id is not null order by name`,
 		sql<
 			{
 				id: string;
@@ -34,18 +35,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 			  left join site si on si.entity_id = e.id and si.active
 			  left join site_rate sr on sr.site_id = si.id
 			 where e.active group by e.id, e.name order by e.name`,
-		sql<{ id: string; name: string; unit: string; delivery: string | null }[]>`
-			select id, name, unit, delivery from service
+		sql<{ id: string; name: string; unit: string }[]>`
+			select id, name, unit from service
 			 where active and time_tracked order by name`,
-		// Every price in force today, so the page can resolve one without asking
-		// again. Most specific wins: this client beats any client, this crew
-		// beats any crew.
-		sql<{ service_id: string; entity_id: string | null; crew: string | null; rate: string }[]>`
-			select distinct on (service_id, entity_id, crew)
-			       service_id, entity_id, crew, rate
-			  from service_price
-			 where effective_from <= current_date
-			 order by service_id, entity_id, crew, effective_from desc`
+		pricesToday()
 	]);
 
 	return { today, me: locals.user!.id, people, entities, services, prices };

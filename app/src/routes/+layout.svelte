@@ -604,6 +604,23 @@
 	:global(.inp.mut) {
 		color: var(--ink-3);
 	}
+	/* The platform's arrow ignores the padding above it; drawn here it lines up
+	   with the text. Every select in the app had its own copy of this until a
+	   third screen needed it. */
+	:global(select.inp) {
+		appearance: none;
+		padding-right: 2.4rem;
+		background-image:
+			linear-gradient(45deg, transparent 50%, currentColor 50%),
+			linear-gradient(135deg, currentColor 50%, transparent 50%);
+		background-size:
+			0.36rem 0.36rem,
+			0.36rem 0.36rem;
+		background-position:
+			right 1.2rem center,
+			right 0.85rem center;
+		background-repeat: no-repeat;
+	}
 	/* One row of choices where a dropdown would hide the options. Three of them
 	   is faster to read than a select, and says what the alternatives are. */
 	:global(.seg) {

@@ -8,17 +8,20 @@ import { problem } from '$lib/server/problem';
 import { readFields } from '$lib/json';
 
 /**
- * Saves one service's terms, a field at a time.
+ * Saves what a service is, a field at a time.
  *
  * Same contract as /api/settings: the shared registry decides what a value may
  * be, this side assumes the request never went through a page, and everything
  * it refuses comes back keyed by field.
  *
- * What is particular to a service is that its two terms are one decision. The
- * database says so -- subscription_terms_are_whole -- and a PATCH may carry
- * only one of them, so the pair has to be judged as it will END UP, not as it
- * arrived. That needs the current row, which is why it is checked here and
- * cannot be checked by the page.
+ * WHAT IT IS CHARGED PER CARRIES ITS INCREMENT WITH IT. Only an hourly service
+ * bills to the nearest so many seconds, so moving one to miles or to each
+ * clears the increment in the same write, and moving one to hours starts it at
+ * the nearest minute -- "bill per minute at the going rate", 9 Sep. Both are
+ * reported back, so the page can show what the row now says.
+ *
+ * Its subscription, prices and pay rules are not here: each is a decision of
+ * more than one field, and each has its own endpoint beneath this one.
  */
 const MOST_AT_ONCE = 4;
 
@@ -47,37 +50,24 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	}
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
-	const [service] = await sql<
-		{
-			id: string;
-			name: string;
-			subscription_hours: string | null;
-			subscription_overage: string | null;
-		}[]
-	>`
-		select id, name, subscription_hours, subscription_overage
-		  from service where id = ${params.id}`;
+	const [service] = await sql<{ unit: string; bill_to_nearest_seconds: number | null }[]>`
+		select unit, bill_to_nearest_seconds from service where id = ${params.id}`;
 	if (!service) return problem('notFound', 404, 'No service with that id.');
 
-	// The pair as it will end up, which is the only version worth judging.
-	const hours = 'subscription_hours' in row ? row.subscription_hours : service.subscription_hours;
-	const overage =
-		'subscription_overage' in row ? row.subscription_overage : service.subscription_overage;
-
-	if (hours !== null && overage === null)
+	const unit = 'unit' in row ? String(row.unit) : service.unit;
+	if (row.bill_to_nearest_seconds != null && unit !== 'hour')
 		return refuse({
-			[('subscription_overage' in row ? 'subscription_overage' : 'subscription_hours') as string]:
-				'Included hours need a rule for what happens past them.'
+			bill_to_nearest_seconds:
+				'Only time is billed to an increment. This is charged per ' + unit + '.'
 		});
-	if (hours === null && overage !== null)
-		return refuse({
-			[('subscription_hours' in row ? 'subscription_hours' : 'subscription_overage') as string]:
-				'There are no included hours for that rule to apply to.'
-		});
+	if ('unit' in row && !('bill_to_nearest_seconds' in row)) {
+		if (unit !== 'hour') row.bill_to_nearest_seconds = null;
+		else if (service.unit !== 'hour') row.bill_to_nearest_seconds = 60;
+	}
 
 	try {
-		// asUser so the history names who changed what a client is owed, rather
-		// than recording that somebody did.
+		// asUser so the history names who changed what a client is charged,
+		// rather than recording that somebody did.
 		await asUser(
 			locals.user!.id,
 			(tx) => tx`update service set ${tx(row)} where id = ${params.id}`
@@ -89,4 +79,32 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	}
 
 	return json({ saved: row });
+};
+
+/**
+ * Removes a service nothing has used -- one made by mistake, or by a test.
+ *
+ * A service with time entered against it, a trip leg billed as it, or an
+ * agreement that covers it is refused by the schema itself, and the answer says
+ * to retire it instead: what it billed is still billed under its name. Its own
+ * prices and pay rules go with it.
+ */
+export const DELETE: RequestHandler = async ({ params, locals }) => {
+	if (!UUID.test(params.id)) return problem('notFound', 404, 'No service with that id.');
+	try {
+		const gone = await asUser(
+			locals.user!.id,
+			(tx) => tx`delete from service where id = ${params.id} returning id`
+		);
+		if (gone.length === 0) return problem('notFound', 404, 'No service with that id.');
+	} catch (e) {
+		if ((e as { code?: string }).code === '23503')
+			return problem(
+				'conflict',
+				409,
+				'Work has been recorded under this service, or an agreement covers it. Retire it instead: what it billed stays billed under its name.'
+			);
+		throw e;
+	}
+	return json({ removed: params.id });
 };
