@@ -6,24 +6,19 @@
  * safe, and the keys are the allowlist -- a request names a field and the column
  * written is this object's own key, which is source text.
  *
- * FOUR SHAPES OF WRITE, because a service is four kinds of fact.
+ * THREE SHAPES OF WRITE, because a service is three kinds of fact.
  *
- *   SERVICE_FIELDS       what it is. Each saves on its own as it is left, the
- *                        way a setting does.
- *   SUBSCRIPTION_FIELDS  how it is sold on subscription. The four are one
- *                        decision -- subscription_terms_match_basis says so --
- *                        and save together, because from "not sold as one" no
- *                        single field can be set on its own.
- *   PRICE_FIELDS         what it charges, from a day. A price is dated, so a
- *                        change adds a row rather than overwriting today's
- *                        figure: what a line was worth in June stays June's.
- *   RULE_FIELDS          whom it pays, and how, from a day. Dated for the same
- *                        reason.
+ *   SERVICE_FIELDS  what it is. Each saves on its own as it is left, the way a
+ *                   setting does.
+ *   PRICE_FIELDS    what it charges, from a day. A price is dated, so a change
+ *                   adds a row rather than overwriting today's figure: what a
+ *                   line was worth in June stays June's.
+ *   RULE_FIELDS     whom it pays, and how, from a day. Dated for the same reason.
  *
- * NULL HERE IS NOT NULL ON AN AGREEMENT. `subscription_hours` empty means this
- * service is not sold as a subscription. `agreement_service.included_hours`
- * empty means unlimited -- which is what Bravo has. A service's terms are where
- * an agreement's coverage starts from, not what it goes on reading.
+ * WHAT IS NOT HERE: how much of it a client gets included. That is the
+ * client's, on their agreement -- "allotment for a service shouldnt even a part
+ * of its service configuration. that should be per client and/or per site",
+ * 24 Sep 2026.
  */
 import {
 	anId,
@@ -44,9 +39,6 @@ import {
 export type { Parsed };
 
 export const UNITS = ['hour', 'mile', 'each'] as const;
-export const BASES = ['none', 'capped', 'unlimited'] as const;
-export const PERIODS = ['week', 'month', 'quarter', 'year'] as const;
-export const OVERAGES = ['bill', 'no_charge', 'deny'] as const;
 export const PAYS_FOR = ['time', 'covered_time', 'vehicle'] as const;
 export const METHODS = ['per_hour', 'percent', 'fixed', 'nothing'] as const;
 
@@ -73,36 +65,6 @@ export function parseServiceField(field: string, raw: string): Parsed {
 
 /** What a new service needs before it can exist: a name, and what it is charged per. */
 export const NEW_SERVICE_FIELDS = { name, unit: oneOf(UNITS) };
-
-export const SUBSCRIPTION_FIELDS = {
-	subscription_basis: oneOf(BASES),
-	subscription_hours: optional(decimal(8, 2)),
-	subscription_period: optional(oneOf(PERIODS)),
-	subscription_overage: optional(oneOf(OVERAGES))
-};
-
-/**
- * The four as one decision. A cap needs all three of its terms; no cap needs
- * none of them, and whatever was typed into them is dropped rather than refused
- * -- choosing "unlimited" is not a mistake about the hours box.
- */
-export function readSubscription(fields: Record<string, unknown>) {
-	const { values, errors } = parseAll(SUBSCRIPTION_FIELDS, fields);
-	if (Object.keys(errors).length) return { values, errors };
-	if (values.subscription_basis === 'capped') {
-		if (values.subscription_hours === null)
-			errors.subscription_hours = 'How many hours it includes.';
-		if (values.subscription_period === null)
-			errors.subscription_period = 'A week, a month, a quarter or a year.';
-		if (values.subscription_overage === null)
-			errors.subscription_overage = 'What happens once they are used.';
-	} else {
-		values.subscription_hours = null;
-		values.subscription_period = null;
-		values.subscription_overage = null;
-	}
-	return { values, errors };
-}
 
 export const PRICE_FIELDS = {
 	// Empty is every client.

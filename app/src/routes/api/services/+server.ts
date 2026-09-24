@@ -11,8 +11,8 @@ import { readFields } from '$lib/json';
 /**
  * Creates a service, from a name and what it is charged per.
  *
- * Nothing else is asked for, because nothing else is needed to exist: a price,
- * a pay rule and a subscription are each added on the service's own screen,
+ * Nothing else is asked for, because nothing else is needed to exist: a price
+ * and a pay rule are each added on the service's own screen,
  * dated from the day they start. An hourly service starts billing to the
  * nearest minute, like every hourly service already does.
  *

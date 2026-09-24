@@ -185,11 +185,7 @@ T["integration"] = [("PK","name","stripe|beancount|press|email"),
 T["service"] = [("PK","id","uuid"),("","code","text"),("","name","text"),
     ("","unit","hour | mile | each"),("","taxable","bool"),("","time_tracked","bool"),
     ("","bill_to_nearest_seconds","int · time only, null = exact"),
-    ("","minimum_charge","numeric · null = none"),
-    ("","subscription_basis","none|capped|unlimited"),
-    ("","subscription_hours","numeric · capped only"),
-    ("","subscription_period","week|month|quarter|year"),
-    ("","subscription_overage","bill|no_charge|deny"),("","active","bool")]
+    ("","minimum_charge","numeric · null = none"),("","active","bool")]
 T["service_price"] = [("PK","id","uuid"),("FK","service_id","uuid"),
     ("FK","entity_id","uuid · null = every client"),("","rate","numeric · the first person"),
     ("","additional_rate","numeric · each one after"),("","effective_from","date")]
@@ -444,12 +440,10 @@ c += [note("n3", "\"the services should be universal in nature but allow for our
                  "that causes it to show/hide from the time service drop down\" — 9 Sep. "
                  "unit is how it is charged; time_tracked is whether time is captured "
                  "against it. Mileage may be timed and still billed per mile.\n\n"
-                 "\"Remote support settings should be a function of a service item\" — "
-                 "11 Sep. subscription_hours and subscription_overage are the terms "
-                 "coverage starts from; \"the default remote support is 2 hours\" — 9 Sep "
-                 "is one of them. Empty means not sold as a subscription, which is NOT "
-                 "what empty means on agreement_service.included_hours, where it means "
-                 "unlimited.\n\n"
+                 "\"allotment for a service shouldnt even a part of its service "
+                 "configuration. that should be per client and/or per site\" — 24 Sep. "
+                 "A service has no allotment of its own; what a client gets included "
+                 "is on their agreement, service by service.\n\n"
                  "[claude] bill_to_nearest_seconds and minimum_charge were proposed, not "
                  "asked for: the usual next question about an hourly price. Pay is never "
                  "rounded to them; it is counted as worked.\n\n"
@@ -508,8 +502,8 @@ c += [note("n5", "\"per site and per client. we talked about this. reoccurings s
                  "(Per site)\" — 2 Sep. Bravo hold two subscriptions, one per main site, "
                  "and their agreement is unlimited: \"$400 a month for remote support "
                  "(unlimited)\".\n\n"
-                 "\"the default remote support is 2 hours\" — 9 Sep, which is what a "
-                 "subscription carries otherwise. The pool is \"set at the client level "
+                 "\"the default remote support is 2 hours\" — 9 Sep; whether a new "
+                 "agreement starts from it is open. The pool is \"set at the client level "
                  "vs the site level\", so the meter sits here rather than per location.\n\n"
                  "\"allotment used and they call. bill per minute at the going rate. also "
                  "can be set as no-charge or deny work\" — 9 Sep.\n\n"
@@ -524,9 +518,10 @@ c += [note("n5", "\"per site and per client. we talked about this. reoccurings s
                  "agreement_service names the services an agreement covers, each with its "
                  "own allotment, so an on-site retainer is as easy as a remote one and an "
                  "hour on a service not named is billed.\n\n"
-                 "[claude] The terms are the agreement's own. They start from the "
-                 "service's subscription terms when coverage is added, and a later change "
-                 "to the service does not reach into an agreement already made.\n\n"
+                 "\"allotment for a service shouldnt even a part of its service "
+                 "configuration. that should be per client and/or per site\" — 24 Sep. "
+                 "agreement_service is the only home an allotment has: for the whole "
+                 "client (flat) or per site covered (per_location).\n\n"
                  "[claude] A capped pool is drawn in the order hours were worked, within "
                  "an agreement_period \u2014 a charged period. Hours it covers bill nothing "
                  "by the hour and are paid as a share of that period's charge.",
@@ -608,9 +603,9 @@ c += [note("n8", "\"the whole platform is universal. user access is the only sep
                  "a settings page so eevrything required can be operator supplied\" — "
                  "3 Sep. logo is nullable and the interface renders trading_name in its "
                  "place.\n\n"
-                 "[claude] the subscription defaults left in 0017: a business does not "
-                 "have an included-hours figure, a thing it sells does. They are on "
-                 "service now, and what is paid to whoever answers is a dated "
+                 "[claude] the subscription defaults left the operator in 0017 and the "
+                 "service in 0023: an included-hours figure is a client's, on their "
+                 "agreement, and what is paid to whoever answers is a dated "
                  "pay_rule.\n\n"
                  "[claude] record_history is append-only and exists to explain a figure, "
                  "not to police one.", 40, 1000, 1300, 280)]

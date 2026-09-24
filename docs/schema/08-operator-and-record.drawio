@@ -317,7 +317,7 @@
 
 &quot;it should not detract from an operator supplied logo. we must create a settings page so eevrything required can be operator supplied&quot; — 3 Sep. logo is nullable and the interface renders trading_name in its place.
 
-[claude] the subscription defaults left in 0017: a business does not have an included-hours figure, a thing it sells does. They are on service now, and what is paid to whoever answers is a dated pay_rule.
+[claude] the subscription defaults left the operator in 0017 and the service in 0023: an included-hours figure is a client&apos;s, on their agreement, and what is paid to whoever answers is a dated pay_rule.
 
 [claude] record_history is append-only and exists to explain a figure, not to police one." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;fontSize=11;fontColor=#7b8698;whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="40" y="1000" width="1300" height="280" as="geometry"></mxGeometry></mxCell>
       </root>

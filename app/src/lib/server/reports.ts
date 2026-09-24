@@ -389,10 +389,9 @@ export type RetainerMeter = {
  * exactly the case where nobody is counting.
  *
  * What is metered is what the agreement names, service by service -- nothing
- * is inferred from what kind of work it was. A client with no agreement still
- * appears for a service sold as a subscription, against the service's own
- * terms, because "how much has this client had" is the same question whether
- * or not they signed anything; what they worked is then billed by the hour.
+ * is inferred from what kind of work it was. A client with no agreement has
+ * nothing included and is billed from the first minute, so there is nothing to
+ * meter them against and they are not here.
  *
  * WHO ANSWERED, AND WHAT SHARE. Covered time pays a percentage of the retainer,
  * split by each person's share of the covered hours -- so the share is shown,
@@ -425,25 +424,13 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 			   and t.worked_on between ${p.start} and ${p.end}
 			 group by t.entity_id, t.service_id
 		),
-		metered as (
-			select c.entity_id, c.service_id, c.allotment, c.pooled_hours as cap
-			  from covered c
-			union all
-			select wk.entity_id, s.id, s.subscription_basis, s.subscription_hours
-			  from worked wk
-			  join service s on s.id = wk.service_id
-			 where s.subscription_basis <> 'none'
-			   and not exists (select 1 from covered c
-			                    where c.entity_id = wk.entity_id
-			                      and c.service_id = wk.service_id)
-		),
 		lines as (
-			select m.entity_id, s.name as service, m.allotment, m.cap,
+			select m.entity_id, s.name as service, m.allotment, m.pooled_hours as cap,
 			       coalesce(wk.hours, 0) as hours,
 			       coalesce(wk.billed, 0) as billed,
 			       coalesce(wk.paid, 0) as paid,
 			       coalesce(wk.pay_unknown, false) as pay_unknown
-			  from metered m
+			  from covered m
 			  join service s on s.id = m.service_id
 			  left join worked wk on wk.entity_id = m.entity_id
 			                     and wk.service_id = m.service_id

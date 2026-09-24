@@ -98,37 +98,10 @@ export const load: PageServerLoad = async () => {
 		 where a.ends_on is null or a.ends_on >= current_date
 		 order by e.name`;
 
-	// Everyone without an agreement falls back to whatever each service sold on
-	// subscription includes.
-	const subscriptions = await sql<
-		{ id: string; name: string; basis: string; hours: string | null; period: string | null }[]
-	>`
-		select id, name, subscription_basis as basis,
-		       subscription_hours::text as hours, subscription_period as period
-		  from service
-		 where active and subscription_basis <> 'none'
-		 order by name`;
-
-	const uncovered = await sql<{ id: string; name: string; used: Record<string, string> }[]>`
-		select e.id, e.name,
-		       coalesce((
-		         select json_object_agg(t.service_id, t.hours::numeric(10,2)::text)
-		           from (select t.service_id, sum(t.minutes) / 60.0 as hours
-		                   from time_entry t
-		                  where t.entity_id = e.id
-		                    and t.worked_on >= date_trunc('month', current_date)
-		                  group by t.service_id) t), '{}') as used
-		  from entity e
-		 where e.active
-		   and not exists (select 1 from agreement a
-		                    where a.entity_id = e.id
-		                      and (a.ends_on is null or a.ends_on >= current_date))
-		 order by e.name`;
-
 	const recurring = live
 		.filter((a) => a.interval === 'monthly')
 		.reduce((n, a) => n + Number(a.charge), 0)
 		.toFixed(2);
 
-	return { live, uncovered, subscriptions, recurring };
+	return { live, recurring };
 };

@@ -19,7 +19,7 @@
 	const priceOf = (s: Service) =>
 		s.prices.find((p) => p.client === null && p.state === 'current') ?? null;
 
-	/** How it is charged, beyond the figure: heads, increment, minimum, subscription. */
+	/** How it is charged, beyond the figure: heads, increment, minimum. */
 	function terms(s: Service): string {
 		const p = priceOf(s);
 		const bits = [`Per ${s.unit}`];
@@ -27,9 +27,6 @@
 			bits.push(`+${money(p.additional_rate)} each additional person`);
 		if (s.unit === 'hour') bits.push(`billed ${increment(s.bill_to_nearest_seconds)}`);
 		if (s.minimum_charge) bits.push(`at least ${money(s.minimum_charge)}`);
-		if (s.basis === 'capped')
-			bits.push(`${Number(s.hours).toFixed(0)} hours a ${s.period} on subscription`);
-		else if (s.basis === 'unlimited') bits.push('unlimited on subscription');
 		return bits.join(' · ');
 	}
 

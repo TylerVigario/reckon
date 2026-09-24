@@ -32,10 +32,10 @@ const only = (errors: Errors) => {
  * Which field a database error is about.
  *
  * Constraints are named after their column -- operator_ageing_alert_days_check,
- * service_subscription_hours_check -- so the field is recoverable from the name
+ * service_minimum_charge_check -- so the field is recoverable from the name
  * and the complaint lands under the right box. A NOT NULL violation names the
  * column outright. A constraint spanning two columns, like
- * subscription_terms_are_whole, names neither, and falls through to the
+ * pay_rule_amount_fits_method, names neither, and falls through to the
  * request's only field, or to nothing when there were several -- because a
  * complaint shown against the wrong box is worse than one shown against all.
  */
@@ -65,7 +65,7 @@ export function refuseIfTheDatabaseSaidSo(e: unknown, names: string[], prefix: s
 
 	// Reaching here means a rule drifted from the column it mirrors, so the
 	// detail belongs in the log where it can be fixed -- not in a field label,
-	// where "violates check constraint service_subscription_hours_check" is
+	// where "violates check constraint service_minimum_charge_check" is
 	// nothing anybody can act on.
 	console.error('the database refused a value', {
 		code,

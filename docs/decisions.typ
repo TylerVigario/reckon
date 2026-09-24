@@ -634,6 +634,9 @@ The settings page read `operator.address_place_id` from the day the field was ad
 ]
 #v(4pt)
 
+*Superseded 24 Sep 2026* — _"allotment for a service shouldnt even a part of its service configuration. that should be per client and/or per site"_. The terms left the service in 0023; what a client gets included is on their agreement. The pay half of this section still holds: what is paid is a pay rule.
+#v(4pt)
+
 Three columns sat on `operator` describing remote support: how many hours a subscription includes, what is paid to whoever answers, and what happens once the allotment is used. They described one service from the row that describes the business — the same mistake `0012` corrected when remoteness moved off a `time_entry` checkbox and onto the service, and the same one guard 14 is named for. *A business does not have an included-hours figure. A thing it sells does.*
 #v(4pt)
 
@@ -771,7 +774,7 @@ The services list is one card, a row a service: its name, how it is charged, and
 service off hours clears its billing increment; moving it onto hours starts it at the minute.
 #v(4pt)
 
-#list([*Its subscription* saves as one, because the four terms are one decision.], [*A price or a pay rule is a dated row.* A change adds a row from a day, so])
+#list([*A price or a pay rule is a dated row.* A change adds a row from a day, so])
 #v(4pt)
 
 work before it keeps the figure it was worth. A day already past can be given, since a price agreed last week was true last week. A row can be corrected or taken back until its day has passed; after that it is history, and it changes by a row from another day.
@@ -781,6 +784,29 @@ work before it keeps the figure it was worth. A day already past can be given, s
 #v(4pt)
 
 leg, no agreement covering it. Otherwise it is retired, and stays under its name on everything it billed.
+#v(4pt)
+
+*An allotment is the client's, set on their agreement, per client or per site.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"allotment for a service shouldnt even a part of its service configuration. that should be per client and/or per site"_ — 24 Sep 2026
+]
+#v(4pt)
+
+The service's subscription settings are gone (0023). An agreement's coverage says what each client gets of each service: unlimited, or so many hours a period with a rule for past them, for the whole client or per site it covers. A client with no agreement has nothing included, as before.
+#v(4pt)
+
+*An agreement is kept, and will be agreed to through a link.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"an agreement really doesnt even need to exist. thats legal jargon around a start and stop date/time"_ — 24 Sep 2026 \
+  _"an agreement is a good thing and it would be nice if reckon could faciliate an ongoing agreement request and agreeance (a link like the invoices that makes it official)"_ — 24 Sep 2026
+]
+#v(4pt)
+
+The second was said after the first, and the agreement stays. *#text(fill: warn, weight: 700)[\[claude\]]* Agreeing by link needs what the invoice link needs, and neither exists yet: a page reachable without signing in, and a way to send it. So it comes after invoices, and the link is built once for both.
 #v(4pt)
 
 *What a service used to cost is on its own screen, shown when asked for.*
@@ -826,10 +852,10 @@ client's; then one person's before their role's; then the newest. Bravo's _"noth
 every billable hour on the services it names. A capped one covers the first hours of the period up to its pool; past that, the allotment's overage says whether they bill at the going rate or not at all.
 #v(4pt)
 
-#list([*Coverage is the agreement's own.* It starts from the service's])
+#list([*Coverage is the agreement's own.* A service carries no allotment of its])
 #v(4pt)
 
-subscription terms when a service is added to an agreement, and a later change to the service does not reach into an agreement already made.
+own since 0023, so there is nothing for an agreement to start from or inherit.
 #v(4pt)
 
 #list([*Time bills to the nearest minute* (`bill_to_nearest_seconds` = 60 on every])
@@ -889,7 +915,13 @@ role change or a new rule moves what the reports say unpaid work pays.
 These have never been answered. They are questions, not gaps to be filled in by reasoning.
 #v(4pt)
 
-#list([*Emergency attendance is unpriced.*], [*What share of a retainer is paid for covered time, away from Bravo.* Bravo])
+#list([*Emergency attendance is unpriced.*], [*Whether a new agreement's allotment starts at two hours.* \*"the default])
+#v(4pt)
+
+remote support is 2 hours"\* — 9 Sep — had its home on the service until 0023. With allotments set per client or per site, whether it is the figure a new agreement starts from is open.
+#v(4pt)
+
+#list([*What share of a retainer is paid for covered time, away from Bravo.* Bravo])
 #v(4pt)
 
 is the only retainer; another would pay nobody for covered time until a rule says what share.

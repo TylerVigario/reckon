@@ -35,7 +35,8 @@
  * WHAT IS NOT HERE. Subscription terms used to be: how many hours were
  * included, what was paid to whoever answered, and what happened past them.
  * They described one service while sitting on the row that describes the
- * business, so they moved -- see service-fields.ts and 0017.
+ * business, so they moved to the service in 0017 -- and then, in 0023, to the
+ * agreement, because an allotment is the client's. What is paid is a pay rule.
  */
 import {
 	cap,

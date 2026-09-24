@@ -101,34 +101,7 @@
 		</div>
 	{/if}
 
-	{#if data.uncovered.length}
-		<div class="sec">
-			<div class="sec-h">
-				<h2>{data.subscriptions.length ? 'On the service’s own terms instead' : 'No agreement'}</h2>
-			</div>
-			<div class="rows">
-				{#each data.uncovered as e (e.id)}
-					<div class="rec">
-						<div class="rec-m">
-							<div class="rec-t">{e.name}</div>
-							{#each data.subscriptions as s (s.id)}
-								<div class="rec-s">
-									{s.name}
-									{s.basis === 'unlimited'
-										? 'unlimited'
-										: `${hrs(s.hours)} included per ${s.period}`} · {hrs(e.used[s.id] ?? '0')} used
-								</div>
-							{:else}
-								<div class="rec-s">Nothing included</div>
-							{/each}
-						</div>
-					</div>
-				{/each}
-			</div>
-		</div>
-	{/if}
-
-	{#if data.live.length === 0 && data.uncovered.length === 0}
+	{#if data.live.length === 0}
 		<p class="none">No agreements yet.</p>
 	{/if}
 </div>
