@@ -679,6 +679,20 @@ says what each client gets of each service: unlimited, or so many hours a
 period with a rule for past them, for the whole client or per site it covers.
 A client with no agreement has nothing included, as before.
 
+**There is no default allotment. Each agreement sets its own.**
+> *"no default, it should be set per agreement"* — 24 Sep 2026
+
+So *"the default remote support is 2 hours"* — 9 Sep — is what Bravo's and
+others' agreements were written with then, not a figure a new agreement is
+given.
+
+**A month's charge is made by the invoice builder, automatically.**
+> *"it should be automatic but can be manually removed or added in the invoice builder"* — 24 Sep 2026
+
+Each period's retainer charge goes onto the draft on its own, and is taken off
+or put on by hand there. A month given is a charge taken off. Until the
+invoice builder exists, a month shows as not charged yet — September included.
+
 **An agreement is kept, and will be agreed to through a link.**
 > *"an agreement really doesnt even need to exist. thats legal jargon around a start and stop date/time"* — 24 Sep 2026
 > *"an agreement is a good thing and it would be nice if reckon could faciliate an ongoing agreement request and agreeance (a link like the invoices that makes it official)"* — 24 Sep 2026
@@ -759,10 +773,6 @@ These have never been answered. They are questions, not gaps to be filled in by
 reasoning.
 
 - **Emergency attendance is unpriced.**
-- **Whether a new agreement's allotment starts at two hours.** *"the default
-  remote support is 2 hours"* — 9 Sep — had its home on the service until
-  0023. With allotments set per client or per site, whether it is the figure a
-  new agreement starts from is open.
 - **What share of a retainer is paid for covered time, away from Bravo.** Bravo
   is the only retainer; another would pay nobody for covered time until a rule
   says what share.

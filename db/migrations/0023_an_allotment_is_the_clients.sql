@@ -21,8 +21,8 @@
 --     meter them against.
 --
 -- The 2-hour figure the terms held is Tyler's -- "the default remote support is
--- 2 hours", 9 Sep -- and stays in docs/decisions.md. Whether a new agreement
--- starts from it is a question for the agreement editor, not a column.
+-- 2 hours", 9 Sep -- and stays in docs/decisions.md. It is not a default any
+-- more: "no default, it should be set per agreement", 24 Sep.
 
 BEGIN;
 

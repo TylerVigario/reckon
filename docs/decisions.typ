@@ -797,6 +797,28 @@ leg, no agreement covering it. Otherwise it is retired, and stays under its name
 The service's subscription settings are gone (0023). An agreement's coverage says what each client gets of each service: unlimited, or so many hours a period with a rule for past them, for the whole client or per site it covers. A client with no agreement has nothing included, as before.
 #v(4pt)
 
+*There is no default allotment. Each agreement sets its own.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"no default, it should be set per agreement"_ — 24 Sep 2026
+]
+#v(4pt)
+
+So _"the default remote support is 2 hours"_ — 9 Sep — is what Bravo's and others' agreements were written with then, not a figure a new agreement is given.
+#v(4pt)
+
+*A month's charge is made by the invoice builder, automatically.*
+#v(4pt)
+
+#callout(tone: "note")[
+  _"it should be automatic but can be manually removed or added in the invoice builder"_ — 24 Sep 2026
+]
+#v(4pt)
+
+Each period's retainer charge goes onto the draft on its own, and is taken off or put on by hand there. A month given is a charge taken off. Until the invoice builder exists, a month shows as not charged yet — September included.
+#v(4pt)
+
 *An agreement is kept, and will be agreed to through a link.*
 #v(4pt)
 
@@ -915,13 +937,7 @@ role change or a new rule moves what the reports say unpaid work pays.
 These have never been answered. They are questions, not gaps to be filled in by reasoning.
 #v(4pt)
 
-#list([*Emergency attendance is unpriced.*], [*Whether a new agreement's allotment starts at two hours.* \*"the default])
-#v(4pt)
-
-remote support is 2 hours"\* — 9 Sep — had its home on the service until 0023. With allotments set per client or per site, whether it is the figure a new agreement starts from is open.
-#v(4pt)
-
-#list([*What share of a retainer is paid for covered time, away from Bravo.* Bravo])
+#list([*Emergency attendance is unpriced.*], [*What share of a retainer is paid for covered time, away from Bravo.* Bravo])
 #v(4pt)
 
 is the only retainer; another would pay nobody for covered time until a rule says what share.
