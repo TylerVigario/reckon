@@ -80,7 +80,7 @@
 						<div class="rec-m">
 							<div class="rec-t"><span class="lt">Nothing to meter</span></div>
 							<div class="rec-s">
-								No retainer ran in {mo.period.label} and no hour was worked on a service sold as a subscription
+								No retainer ran in {mo.period.label}
 							</div>
 						</div>
 					</div>

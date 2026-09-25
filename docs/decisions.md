@@ -525,6 +525,11 @@ two columns `0015` gave a location, under the same name.
 
 > *"Remote support settings should be a function of a service item"* — 11 Sep 2026
 
+**Superseded 24 Sep 2026** — *"allotment for a service shouldnt even a part of
+its service configuration. that should be per client and/or per site"*. The
+terms left the service in 0023; what a client gets included is on their
+agreement. The pay half of this section still holds: what is paid is a pay rule.
+
 Three columns sat on `operator` describing remote support: how many hours a
 subscription includes, what is paid to whoever answers, and what happens once
 the allotment is used. They described one service from the row that describes
@@ -657,7 +662,6 @@ everything is editable, as the approved mock laid it out.
 - **What it is** saves field by field as it is left, like a setting. Moving a
   service off hours clears its billing increment; moving it onto hours starts
   it at the minute.
-- **Its subscription** saves as one, because the four terms are one decision.
 - **A price or a pay rule is a dated row.** A change adds a row from a day, so
   work before it keeps the figure it was worth. A day already past can be
   given, since a price agreed last week was true last week. A row can be
@@ -666,6 +670,37 @@ everything is editable, as the approved mock laid it out.
 - **A service can be removed only if nothing has used it** — no time, no trip
   leg, no agreement covering it. Otherwise it is retired, and stays under its
   name on everything it billed.
+
+**An allotment is the client's, set on their agreement, per client or per site.**
+> *"allotment for a service shouldnt even a part of its service configuration. that should be per client and/or per site"* — 24 Sep 2026
+
+The service's subscription settings are gone (0023). An agreement's coverage
+says what each client gets of each service: unlimited, or so many hours a
+period with a rule for past them, for the whole client or per site it covers.
+A client with no agreement has nothing included, as before.
+
+**There is no default allotment. Each agreement sets its own.**
+> *"no default, it should be set per agreement"* — 24 Sep 2026
+
+So *"the default remote support is 2 hours"* — 9 Sep — is what Bravo's and
+others' agreements were written with then, not a figure a new agreement is
+given.
+
+**A month's charge is made by the invoice builder, automatically.**
+> *"it should be automatic but can be manually removed or added in the invoice builder"* — 24 Sep 2026
+
+Each period's retainer charge goes onto the draft on its own, and is taken off
+or put on by hand there. A month given is a charge taken off. Until the
+invoice builder exists, a month shows as not charged yet — September included.
+
+**An agreement is kept, and will be agreed to through a link.**
+> *"an agreement really doesnt even need to exist. thats legal jargon around a start and stop date/time"* — 24 Sep 2026
+> *"an agreement is a good thing and it would be nice if reckon could faciliate an ongoing agreement request and agreeance (a link like the invoices that makes it official)"* — 24 Sep 2026
+
+The second was said after the first, and the agreement stays. **[claude]**
+Agreeing by link needs what the invoice link needs, and neither exists yet: a
+page reachable without signing in, and a way to send it. So it comes after
+invoices, and the link is built once for both.
 
 **What a service used to cost is on its own screen, shown when asked for.**
 > *"the historic rates are nice and i like the idea however we shouldnt crowd the service display. it should be hidden in a seperate screen only shown upon request"* — 23 Sep 2026
@@ -701,9 +736,8 @@ nothing by the hour, and what it *earned* is its share of the retainer.
   every billable hour on the services it names. A capped one covers the first
   hours of the period up to its pool; past that, the allotment's overage says
   whether they bill at the going rate or not at all.
-- **Coverage is the agreement's own.** It starts from the service's
-  subscription terms when a service is added to an agreement, and a later change
-  to the service does not reach into an agreement already made.
+- **Coverage is the agreement's own.** A service carries no allotment of its
+  own since 0023, so there is nothing for an agreement to start from or inherit.
 - **Time bills to the nearest minute** (`bill_to_nearest_seconds` = 60 on every
   hourly service), which is *"bill per minute at the going rate"* — 9 Sep.
   `minimum_charge` exists and is unset. Both were proposals in the mock, not

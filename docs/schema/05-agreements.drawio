@@ -249,7 +249,7 @@
 
 $200 a month per site — &quot;It&apos;s 200 for Traver and 200 for kettleman. (Per site)&quot; — 2 Sep. Bravo hold two subscriptions, one per main site, and their agreement is unlimited: &quot;$400 a month for remote support (unlimited)&quot;.
 
-&quot;the default remote support is 2 hours&quot; — 9 Sep, which is what a subscription carries otherwise. The pool is &quot;set at the client level vs the site level&quot;, so the meter sits here rather than per location.
+&quot;the default remote support is 2 hours&quot; — 9 Sep, but &quot;no default, it should be set per agreement&quot; — 24 Sep. The pool is &quot;set at the client level vs the site level&quot;, so the meter sits here rather than per location.
 
 &quot;allotment used and they call. bill per minute at the going rate. also can be set as no-charge or deny work&quot; — 9 Sep.
 
@@ -259,7 +259,7 @@ $200 a month per site — &quot;It&apos;s 200 for Traver and 200 for kettleman. 
 
 &quot;whats the difference between on-site and remote? why are they categorical instead of universal?&quot; — 23 Sep. The split answered one question, which hours come out of a retainer, and answered it by kind. agreement_service names the services an agreement covers, each with its own allotment, so an on-site retainer is as easy as a remote one and an hour on a service not named is billed.
 
-[claude] The terms are the agreement&apos;s own. They start from the service&apos;s subscription terms when coverage is added, and a later change to the service does not reach into an agreement already made.
+&quot;allotment for a service shouldnt even a part of its service configuration. that should be per client and/or per site&quot; — 24 Sep. agreement_service is the only home an allotment has: for the whole client (flat) or per site covered (per_location).
 
 [claude] A capped pool is drawn in the order hours were worked, within an agreement_period — a charged period. Hours it covers bill nothing by the hour and are paid as a share of that period&apos;s charge." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;fontSize=11;fontColor=#7b8698;whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="40" y="600" width="1540" height="330" as="geometry"></mxGeometry></mxCell>
       </root>

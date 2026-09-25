@@ -360,40 +360,6 @@ if (sid) {
 		{ fields: { unit: 'hour' } },
 		(r) => r.status === 200 && r.body?.saved?.bill_to_nearest_seconds === 60
 	);
-	await check(
-		'a cap with no hours is refused',
-		'PUT',
-		`${at}/subscription`,
-		{
-			fields: {
-				subscription_basis: 'capped',
-				subscription_period: 'month',
-				subscription_overage: 'bill'
-			}
-		},
-		400
-	);
-	await check(
-		'a whole cap saves',
-		'PUT',
-		`${at}/subscription`,
-		{
-			fields: {
-				subscription_basis: 'capped',
-				subscription_hours: '2',
-				subscription_period: 'month',
-				subscription_overage: 'bill'
-			}
-		},
-		200
-	);
-	await check(
-		'no cap drops its terms',
-		'PUT',
-		`${at}/subscription`,
-		{ fields: { subscription_basis: 'none', subscription_hours: '2' } },
-		(r) => r.status === 200 && r.body?.saved?.subscription_hours === null
-	);
 
 	const prices = `${at}/prices`;
 	await check(

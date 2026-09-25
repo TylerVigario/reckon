@@ -25,15 +25,10 @@ export const load: PageServerLoad = async ({ params }) => {
 			active: boolean;
 			bill_to_nearest_seconds: number | null;
 			minimum_charge: string | null;
-			basis: string;
-			hours: string | null;
-			period: string | null;
-			overage: string | null;
 		}[]
 	>`
 		select id, name, unit, time_tracked, taxable, active, bill_to_nearest_seconds,
-		       minimum_charge, subscription_basis as basis, subscription_hours as hours,
-		       subscription_period as period, subscription_overage as overage
+		       minimum_charge
 		  from service where id = ${params.id}`;
 	if (!service) error(404, 'no such service');
 

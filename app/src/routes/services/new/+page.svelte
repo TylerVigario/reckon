@@ -8,8 +8,8 @@
 
 	/**
 	 * A new service: what it is called, and what it is charged per. Everything
-	 * else -- its price, whom it pays, whether it is sold on subscription -- is
-	 * set on its own screen, which is where this goes next.
+	 * else -- its price, and whom it pays -- is set on its own screen, which is
+	 * where this goes next.
 	 */
 	let name = $state('');
 	let unit = $state('hour');

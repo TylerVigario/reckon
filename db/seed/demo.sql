@@ -116,14 +116,13 @@ INSERT INTO site_contact (site_id, entity_id, contact_id, is_primary) VALUES
   ('cccccccc-0000-0000-0000-000000000004','eeeeeeee-0000-0000-0000-000000000002',
    'aaaaaaaa-0000-0000-0000-000000000003', true);
 
--- "the default remote support is 2 hours, 2 hours" -- 9 Sep 2026. The seed said
--- four, from an earlier quote the register keeps for the pay split, not the cap.
-INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds, subscription_basis,
-                     subscription_hours, subscription_overage, subscription_period) VALUES
-  ('55555555-0000-0000-0000-000000000001','onsite','On-site work','hour',60,'none',NULL,NULL,NULL),
-  ('55555555-0000-0000-0000-000000000002','remote','Remote support','hour',60,'capped',2.00,'bill','month'),
-  ('55555555-0000-0000-0000-000000000003','mileage','Mileage','mile',NULL,'none',NULL,NULL,NULL),
-  ('55555555-0000-0000-0000-000000000004','emerg','Emergency attendance','hour',60,'none',NULL,NULL,NULL);
+-- What a client gets included is on their agreement, not here: "allotment for a
+-- service shouldnt even a part of its service configuration" -- 24 Sep 2026.
+INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds) VALUES
+  ('55555555-0000-0000-0000-000000000001','onsite','On-site work','hour',60),
+  ('55555555-0000-0000-0000-000000000002','remote','Remote support','hour',60),
+  ('55555555-0000-0000-0000-000000000003','mileage','Mileage','mile',NULL),
+  ('55555555-0000-0000-0000-000000000004','emerg','Emergency attendance','hour',60);
 
 INSERT INTO service_price (service_id, rate, additional_rate, effective_from) VALUES
   ('55555555-0000-0000-0000-000000000001', 80.00, 50.00,'2026-09-02'),

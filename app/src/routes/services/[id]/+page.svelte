@@ -3,7 +3,6 @@
 	import Setting from '$lib/Setting.svelte';
 	import PriceForm from '$lib/service/PriceForm.svelte';
 	import RuleForm from '$lib/service/RuleForm.svelte';
-	import SubscriptionForm from '$lib/service/SubscriptionForm.svelte';
 	import { dated, increment } from '$lib/format';
 	import { money } from '$lib/money.svelte';
 	import { PAYS_FOR, paysWhat } from '$lib/pay-words';
@@ -469,11 +468,6 @@
 					options={YES_NO}
 					{endpoint}
 					validate={parseServiceField}
-				/>
-				<SubscriptionForm
-					serviceId={s.id}
-					terms={{ basis: s.basis, hours: s.hours, period: s.period, overage: s.overage }}
-					onsaved={() => invalidateAll()}
 				/>
 			</div>
 		</div>

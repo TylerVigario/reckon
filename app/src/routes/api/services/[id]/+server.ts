@@ -20,8 +20,8 @@ import { readFields } from '$lib/json';
  * the nearest minute -- "bill per minute at the going rate", 9 Sep. Both are
  * reported back, so the page can show what the row now says.
  *
- * Its subscription, prices and pay rules are not here: each is a decision of
- * more than one field, and each has its own endpoint beneath this one.
+ * Its prices and pay rules are not here: each is a dated decision of more than
+ * one field, and each has its own endpoint beneath this one.
  */
 const MOST_AT_ONCE = 4;
 

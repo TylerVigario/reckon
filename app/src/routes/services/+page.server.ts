@@ -21,16 +21,10 @@ export const load: PageServerLoad = async () => {
 				unit: string;
 				bill_to_nearest_seconds: number | null;
 				minimum_charge: string | null;
-				basis: string;
-				hours: string | null;
-				overage: string | null;
-				period: string | null;
 				active: boolean;
 			}[]
 		>`
-			select id, name, unit, bill_to_nearest_seconds, minimum_charge,
-			       subscription_basis as basis, subscription_hours as hours,
-			       subscription_overage as overage, subscription_period as period, active
+			select id, name, unit, bill_to_nearest_seconds, minimum_charge, active
 			  from service order by active desc, name`,
 
 		prices(),

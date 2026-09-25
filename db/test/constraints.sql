@@ -54,15 +54,11 @@ INSERT INTO entity (id, name) VALUES
   ('44444444-0000-0000-0000-000000000002','Wild Jacks');
 
 
-INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds, subscription_basis,
-                     subscription_hours, subscription_overage, subscription_period)
+INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds)
 VALUES
-  ('55555555-5555-5555-5555-555555555555','onsite','On-site work','hour',60,
-   'none',NULL,NULL,NULL),
-  ('55555555-5555-5555-5555-555555555556','remote','Remote support','hour',60,
-   'capped',2.00,'bill','month'),
-  ('55555555-5555-5555-5555-555555555557','mileage','Mileage','mile',NULL,
-   'none',NULL,NULL,NULL);
+  ('55555555-5555-5555-5555-555555555555','onsite','On-site work','hour',60),
+  ('55555555-5555-5555-5555-555555555556','remote','Remote support','hour',60),
+  ('55555555-5555-5555-5555-555555555557','mileage','Mileage','mile',NULL);
 
 INSERT INTO material (id, name, unit) VALUES
   ('66666666-6666-6666-6666-666666666666','Cable - Cat6 - Riser','foot');
@@ -570,6 +566,7 @@ BEGIN
       OR (table_name='operator'        AND column_name IN ('default_subscription_hours',
                                                            'default_responder_rate',
                                                            'default_overage'))
+      OR (table_name='service'         AND column_name LIKE 'subscription_%')
       OR (table_name='agreement'       AND column_name IN ('remote_allotment',
                                                            'remote_cap_hours',
                                                            'allotment_basis',
@@ -581,7 +578,7 @@ BEGIN
     RAISE EXCEPTION 'GUARD MISSING: a price or a counter has two homes again';
   END IF;
   RAISE NOTICE '  absent    no operator.mileage_rate, no crew-split price, no stored counter';
-  RAISE NOTICE '  absent    no subscription terms on the business, nor on the agreement row';
+  RAISE NOTICE '  absent    no subscription terms on the business or the service -- the agreement says';
   RAISE NOTICE '  absent    no pay-rate table beside the pay rules';
 END $$;
 
@@ -1334,43 +1331,9 @@ END $$;
 \echo ''
 \echo '=== 23. an allotment says what it is, and pay says who it pays ==='
 
-DO $$
-DECLARE b text; h numeric; ovr text;
-BEGIN
-  SELECT subscription_basis, subscription_hours, subscription_overage INTO b, h, ovr
-    FROM service WHERE code = 'remote';
-  IF b <> 'capped' OR h <> 2.00 OR ovr <> 'bill' THEN
-    RAISE EXCEPTION 'GUARD MISSING: remote support should be capped at 2.00 h, got % % %', b, h, ovr;
-  END IF;
-  RAISE NOTICE '  on the sold thing  Remote support: capped, 2.00 h, overage bill';
-END $$;
-
--- Unlimited is a value now, not an absent one. It was the absence, and the
--- absence meant "not sold as a subscription" one table over.
-SELECT must_pass($$
-  INSERT INTO service (code, name, unit, subscription_basis)
-  VALUES ('allin','All-in support','hour','unlimited')
-$$, 'a service sold with an unlimited allotment');
-
-SELECT must_fail($$
-  INSERT INTO service (code, name, unit, subscription_basis, subscription_hours)
-  VALUES ('badinf','Unlimited with a number','hour','unlimited', 4.00)
-$$, 'unlimited with a cap, which is two answers');
-
-SELECT must_fail($$
-  INSERT INTO service (code, name, unit, subscription_basis)
-  VALUES ('badcap','Capped with no number','hour','capped')
-$$, 'capped with nothing to cap it at');
-
-SELECT must_fail($$
-  INSERT INTO service (code, name, unit, subscription_basis, subscription_hours)
-  VALUES ('badrule','Hours with no rule','hour','capped', 2.00)
-$$, 'capped hours with no rule for exceeding them');
-
-SELECT must_fail($$
-  INSERT INTO service (code, name, unit, subscription_hours, subscription_overage)
-  VALUES ('badnone','Terms with no basis','hour', 2.00, 'bill')
-$$, 'terms on a service that is not sold as a subscription');
+-- "allotment for a service shouldnt even a part of its service configuration.
+-- that should be per client and/or per site" -- 24 Sep 2026. So an allotment is
+-- only ever an agreement's, and it is whole there or not at all.
 
 DO $$
 DECLARE b text; pool numeric;
@@ -1392,6 +1355,12 @@ SELECT must_fail($$
   UPDATE agreement_service SET allotment = 'capped'
    WHERE agreement_id = 'bbbbbbbb-0000-0000-0000-000000000001'
 $$, 'capped with no hours to cap it at');
+
+SELECT must_fail($$
+  INSERT INTO agreement_service (agreement_id, service_id, allotment, included_hours)
+  VALUES ('bbbbbbbb-0000-0000-0000-000000000004','55555555-5555-5555-5555-555555555555',
+          'capped', 2.00)
+$$, 'capped hours with no rule for exceeding them');
 
 -- Pay has a person. Both partners are paid by one rule today, written against
 -- the role they hold -- and the day that stops being true is one row, not a
@@ -1540,23 +1509,8 @@ END $$;
 \echo ''
 \echo '=== 25. a recurring charge has a period and an anchor ==='
 
--- Four hours a month and four hours a week are different products.
-SELECT must_fail($$
-  INSERT INTO service (code, name, unit, subscription_basis,
-                       subscription_hours, subscription_overage)
-  VALUES ('noper','Capped, but over what','hour','capped', 4.00, 'bill')
-$$, 'an allotment with no period to refresh over');
-
-SELECT must_pass($$
-  INSERT INTO service (code, name, unit, subscription_basis, subscription_hours,
-                       subscription_overage, subscription_period)
-  VALUES ('weekly','Four hours a week','hour','capped', 4.00, 'bill', 'week')
-$$, 'four hours a week, said in the row rather than assumed');
-
-SELECT must_fail($$
-  INSERT INTO service (code, name, unit, subscription_basis, subscription_period)
-  VALUES ('perinf','Unlimited, per month','hour','unlimited','month')
-$$, 'a period on an allotment that never runs out');
+-- An allotment refreshes with the agreement's own period: four hours a month is
+-- an agreement billed monthly that covers four hours.
 
 -- The charge falls on the agreement's day, not the calendar's.
 DO $$
