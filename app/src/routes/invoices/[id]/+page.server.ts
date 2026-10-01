@@ -1,0 +1,132 @@
+import { error } from '@sveltejs/kit';
+import { asc, eq, sql } from 'drizzle-orm';
+import { db } from '$lib/server/db';
+import * as t from '$lib/server/db/schema';
+import { UUID } from '$lib/field-rules';
+import type { PageServerLoad } from './$types';
+
+/**
+ * One invoice, and what it does to the return.
+ *
+ * Every figure comes off the lines as they were billed -- invoice_line stores
+ * the rate that was applied and where it came from, so an invoice sent in June
+ * still says what June said, whatever the rate table says today.
+ */
+export const load: PageServerLoad = async ({ params }) => {
+	if (!UUID.test(params.id)) error(404, 'no such invoice');
+
+	const i = t.invoice;
+	const e = t.entity;
+	const il = t.invoiceLine;
+	const te = t.timeEntry;
+	const u = t.user;
+	const tl = t.tripLeg;
+	const tr = t.trip;
+	const ml = t.materialLot;
+	const ap = t.agreementPeriod;
+	const si = t.site;
+
+	const [invoice] = await db
+		.select({
+			id: i.id,
+			number: i.number,
+			status: i.status,
+			who: e.name,
+			terms: sql<
+				number | null
+			>`coalesce(${e.termsDays}, (select ${t.operator.defaultTermsDays} from ${t.operator}))`,
+			issued_on: i.issuedOn,
+			due_on: i.dueOn,
+			sent_on: sql<string | null>`${i.sentAt}::date::text`,
+			assembled: sql<string>`to_char(${i.createdAt}, 'HH24:MI')`,
+			period_start: i.periodStart,
+			period_end: i.periodEnd
+		})
+		.from(i)
+		.innerJoin(e, eq(e.id, i.entityId))
+		.where(eq(i.id, params.id));
+	if (!invoice) error(404, 'no such invoice');
+
+	const [lines, [totals]] = await Promise.all([
+		db
+			.select({
+				id: il.id,
+				seq: il.seq,
+				kind: il.kind,
+				description: il.description,
+				// Where the line came from, said in the terms of its source.
+				detail: sql<string | null>`coalesce(
+					${u.name} || ' · ' || to_char(${te.workedOn}, 'FMDD Mon') || coalesce(' · ' || ${te.note}, ''),
+					to_char(${tr.travelledOn}, 'FMDD Mon') || ' · leg of a trip',
+					${ml.supplier} || ' · from stock, weighted average',
+					'Recurring · ' || to_char(${ap.periodStart}, 'FMMonth'))`,
+				qty: il.qty,
+				unit: il.unit,
+				unit_price: il.unitPrice,
+				amount: il.amount,
+				taxable: il.taxable,
+				tax_rate_pct: il.taxRatePct,
+				trip_leg_id: il.tripLegId,
+				where_from: sql<string>`coalesce(${si.display}, '')`
+			})
+			.from(il)
+			.leftJoin(te, eq(te.id, il.timeEntryId))
+			.leftJoin(u, eq(u.id, te.workedBy))
+			.leftJoin(tl, eq(tl.id, il.tripLegId))
+			.leftJoin(tr, eq(tr.id, tl.tripId))
+			.leftJoin(ml, eq(ml.id, il.materialLotId))
+			.leftJoin(ap, eq(ap.id, il.agreementPeriodId))
+			.leftJoin(si, eq(si.id, il.siteId))
+			.where(eq(il.invoiceId, params.id))
+			.orderBy(asc(il.seq)),
+		db
+			.execute<{
+				untaxed: string;
+				taxable_measure: string;
+				tax: string;
+				due: string;
+				resold: string;
+				due_on_return: string;
+				district: string | null;
+				rate_pct: string | null;
+				state_rate_pct: string | null;
+				district_rate_pct: string | null;
+				untaxed_kinds: string[];
+				taxed_kinds: string[];
+			}>(
+				sql`
+		select
+		  coalesce(sum(${il.amount}) filter (where not ${il.taxable}), 0)::text as untaxed,
+		  coalesce(sum(${il.amount}) filter (where ${il.taxable}), 0)::text     as taxable_measure,
+		  -- The tax to the cent, once for the invoice, and what is due with it:
+		  -- the same figure the invoice list and every balance use.
+		  round(coalesce(sum(${il.amount} * ${il.taxRatePct} / 100), 0), 2)::text as tax,
+		  (coalesce(sum(${il.amount}), 0)
+		   + round(coalesce(sum(${il.amount} * ${il.taxRatePct} / 100), 0), 2))::text as due,
+		  -- Reg 1701, where the operator has made that election: goods resold
+		  -- after tax was paid on them come off the measure, at the cost
+		  -- recorded on each line, and the return is taxed line by line on
+		  -- what is left.
+		  coalesce(sum(${il.exTaxCost}) filter (where ${il.taxable} and o.claims), 0)::text as resold,
+		  round(coalesce(sum((${il.amount} - case when o.claims then coalesce(${il.exTaxCost}, 0)
+		                                         else 0 end) * ${il.taxRatePct} / 100)
+		                       filter (where ${il.taxable}), 0), 2)::text as due_on_return,
+		  max(${si.taxJurisdiction}) as district,
+		  max(${il.taxRatePct})::text as rate_pct,
+		  max(${si.stateRatePct})::text as state_rate_pct,
+		  max(${si.districtRatePct})::text as district_rate_pct,
+		  -- What is actually in each half, so the page can name them instead of
+		  -- assuming labour is never taxed and goods always are.
+		  coalesce(array_remove(array_agg(distinct ${il.kind}) filter (where not ${il.taxable}), null), '{}') as untaxed_kinds,
+		  coalesce(array_remove(array_agg(distinct ${il.kind}) filter (where ${il.taxable}), null), '{}') as taxed_kinds
+		  from ${il}
+		  cross join (select coalesce(bool_or(${t.operator.claimsTaxPaidPurchasesResold}), false) as claims
+		                from ${t.operator}) o
+		  left join ${si} on ${si.id} = ${il.siteId}
+		 where ${il.invoiceId} = ${params.id}`
+			)
+			.then((r) => r.rows)
+	]);
+
+	return { invoice, lines, totals };
+};

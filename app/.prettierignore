@@ -1,0 +1,8 @@
+# Derived, vendored, or not ours to format.
+node_modules
+build
+.svelte-kit
+package-lock.json
+
+# press ships these; they are vendored bytes, not source.
+static/fonts

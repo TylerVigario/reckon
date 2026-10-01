@@ -1,0 +1,37 @@
+# Branch naming, and the two gates worth paying for before a push.
+#
+# Reads stdin per the git pre-push protocol: one line per ref, as
+# `<local_ref> <local_sha> <remote_ref> <remote_sha>`. Only refs actually
+# being pushed are checked, deletes are skipped, and main is skipped because
+# the release workflow writes it.
+#
+# Bypass once with --no-verify. Not as a habit.
+
+valid='^(feat|fix|refactor|perf|ci|build|docs|test|chore|revert)/[a-z0-9]+(-[a-z0-9]+)*$'
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$local_sha" in
+    0000000000000000000000000000000000000000) continue ;;
+  esac
+  case "$remote_ref" in
+    refs/heads/*) branch="${remote_ref#refs/heads/}" ;;
+    *) continue ;;
+  esac
+  [ "$branch" = "main" ] && continue
+
+  if ! echo "$branch" | grep -Eq "$valid"; then
+    echo "error: branch name '$branch' does not match the convention." >&2
+    echo "" >&2
+    echo "Expected: <type>/<slug>" >&2
+    echo "  type: feat | fix | refactor | perf | ci | build | docs | test | chore | revert" >&2
+    echo "  slug: kebab-case, single dashes, starts and ends with [a-z0-9]" >&2
+    echo "" >&2
+    echo "Rename: git branch -m <new-name>" >&2
+    echo "Bypass once: git push --no-verify" >&2
+    exit 1
+  fi
+done
+
+# The schema is the thing this repository is most careful about, and the guard
+# suite is seconds. Discovering a broken guard in CI costs a round trip.
+db/apply.sh --test

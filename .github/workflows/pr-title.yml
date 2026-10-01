@@ -1,0 +1,49 @@
+name: PR title
+
+# Enforce Conventional Commits on PR titles. The repo squash-merges,
+# so the PR title is what lands on main as the commit message. A bad
+# title means a bad commit on main, and main is linear-only — there's
+# no force-push fix. husky only runs against commit messages, not PR
+# titles, so without this check a non-conventional title slips through
+# and the release pipeline silently no-bumps.
+#
+# Reuses .commitlintrc.js as the single source of truth, so the local
+# commit-msg hook and this check enforce the same rules from the same file.
+
+on:
+  pull_request:
+    # `edited` re-runs on title changes so a green badge appears
+    # without needing a new commit when the author fixes a bad title.
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  HUSKY: 0
+  CI: true
+
+jobs:
+  validate:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Shallow is fine — commitlint only reads the piped string,
+          # not git history.
+          fetch-depth: 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+      # `--ignore-scripts` skips the husky `prepare` step (and any
+      # other lifecycle script) — none are needed to run commitlint,
+      # and skipping shaves time off the job.
+      - run: npm ci --ignore-scripts
+      - name: Run commitlint on PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        # printf, not echo: a title that happens to start with `-n`/`-e`
+        # would be eaten by echo as a flag, truncating what commitlint sees.
+        run: printf '%s\n' "$TITLE" | npx --no-install commitlint
