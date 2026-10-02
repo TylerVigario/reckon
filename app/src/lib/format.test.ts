@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dated, day, formatMoney, fullDay, hours, increment, pct } from './format';
+import { dated, day, formatMoney, fullDay, hours, increment, pct } from './format.ts';
 
 /**
  * How a figure or a date is written.

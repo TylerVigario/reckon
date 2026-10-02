@@ -1,10 +1,9 @@
-import { json } from '@sveltejs/kit';
 import { and, eq, gte, sql } from 'drizzle-orm';
-import { asUser } from '$lib/server/db';
-import { servicePrice } from '$lib/server/db/schema';
-import { UUID } from '$lib/field-rules';
+import { asUser } from '#lib/server/db/index.ts';
+import { servicePrice } from '#lib/server/db/schema/index.ts';
+import { UUID } from '#lib/field-rules.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
+import { problem } from '#lib/server/problem.ts';
 
 /**
  * Takes back a price that has not yet been in force for a whole day: one
@@ -33,5 +32,5 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 			409,
 			'That price is not here, or its day has passed. A price that has been in force stays on the history; change it with a price from another day.'
 		);
-	return json({ removed: params.price });
+	return Response.json({ removed: params.price });
 };

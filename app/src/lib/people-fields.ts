@@ -6,7 +6,7 @@
  * are written against roles, so a person's role is which rules reach them.
  * No role at all means they sign in and are not paid for work.
  */
-import { anId, cap, optional, parseIn, required, type Parsed } from './field-rules';
+import { anId, cap, optional, parseIn, required, type Parsed } from './field-rules.ts';
 
 export const ROLE_FIELDS = {
 	name: required('A role needs a name.', cap(40))

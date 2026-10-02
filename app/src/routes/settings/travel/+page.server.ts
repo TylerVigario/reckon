@@ -1,8 +1,8 @@
 import { and, asc, eq } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { service } from '$lib/server/db/schema';
-import { prices } from '$lib/server/catalogue';
-import { operatorRow } from '$lib/server/operator';
+import { db } from '#lib/server/db/index.ts';
+import { service } from '#lib/server/db/schema/index.ts';
+import { prices } from '#lib/server/catalogue.ts';
+import { operatorRow } from '#lib/server/operator.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {

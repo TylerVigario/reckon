@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import Top from '$lib/Top.svelte';
-	import { readNewAgreement } from '$lib/agreement-fields';
-	import { readJson, readProblem } from '$lib/json';
+	import Top from '#lib/Top.svelte';
+	import { readNewAgreement } from '#lib/agreement-fields.ts';
+	import { readJson, readProblem } from '#lib/json.ts';
 	import { goto } from '$app/navigation';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';

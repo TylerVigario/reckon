@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
-import { db } from './db';
-import * as t from './db/schema';
+import { db } from './db/index.ts';
+import * as t from './db/schema/index.ts';
 
 /**
  * Where a trip went, by town: a trip is titled "Woodland and Elverta", not by

@@ -32,7 +32,7 @@ import {
 	required,
 	whole,
 	type Parsed
-} from './field-rules';
+} from './field-rules.ts';
 
 export type { Parsed };
 

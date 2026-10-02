@@ -1,13 +1,12 @@
-import { json } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
-import { asUser } from '$lib/server/db';
-import { role } from '$lib/server/db/schema';
-import { refuse, refuseIfTheDatabaseSaidSo, stillReferenced } from '$lib/server/field-errors';
-import { UUID } from '$lib/field-rules';
-import { parseRoleField } from '$lib/people-fields';
+import { asUser } from '#lib/server/db/index.ts';
+import { role } from '#lib/server/db/schema/index.ts';
+import { refuse, refuseIfTheDatabaseSaidSo, stillReferenced } from '#lib/server/field-errors.ts';
+import { UUID } from '#lib/field-rules.ts';
+import { parseRoleField } from '#lib/people-fields.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readFields } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readFields } from '#lib/json.ts';
 
 /** Renames a role. Everybody who holds it, and every rule written against it, follows. */
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
@@ -32,7 +31,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		if (refused) return refused;
 		throw e;
 	}
-	return json({ saved: { name: parsed.value } });
+	return Response.json({ saved: { name: parsed.value } });
 };
 
 /**
@@ -56,5 +55,5 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 			);
 		throw e;
 	}
-	return json({ removed: params.id });
+	return Response.json({ removed: params.id });
 };

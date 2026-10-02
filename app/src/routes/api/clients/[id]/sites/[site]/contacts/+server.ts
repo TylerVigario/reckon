@@ -1,13 +1,12 @@
-import { json } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
-import { asUser, db } from '$lib/server/db';
-import { contact, entityContact, site as sites, siteContact } from '$lib/server/db/schema';
-import { refuse, refuseIfTheDatabaseSaidSo } from '$lib/server/field-errors';
-import { UUID, cap, required } from '$lib/field-rules';
-import { lookUpClient, lookUpSite } from '$lib/server/find';
+import { asUser, db } from '#lib/server/db/index.ts';
+import { contact, entityContact, site as sites, siteContact } from '#lib/server/db/schema/index.ts';
+import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
+import { UUID, cap, required } from '#lib/field-rules.ts';
+import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readBody, textField } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readBody, textField } from '#lib/json.ts';
 
 /**
  * Who to ask for at this site.
@@ -88,7 +87,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		throw e;
 	}
 
-	return json({ contact_id: contactId }, { status: 201 });
+	return Response.json({ contact_id: contactId }, { status: 201 });
 };
 
 /** Takes somebody off this site. They stay the client's contact. */
@@ -107,5 +106,5 @@ export const DELETE: RequestHandler = async ({ params, request, locals }) => {
 			.delete(siteContact)
 			.where(and(eq(siteContact.siteId, id), eq(siteContact.contactId, contactId)))
 	);
-	return json({ removed: true });
+	return Response.json({ removed: true });
 };

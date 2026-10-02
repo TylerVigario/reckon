@@ -27,9 +27,9 @@ import {
 	unique,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { day, decimal, id, nonNegative, oneOf } from './columns';
-import { contact, entity, site } from './clients';
-import { service } from './catalogue';
+import { day, decimal, id, nonNegative, oneOf } from './columns.ts';
+import { contact, entity, site } from './clients.ts';
+import { service } from './catalogue.ts';
 
 export const INTERVALS = ['weekly', 'monthly', 'quarterly', 'annually'] as const;
 export const PRORATIONS = ['none', 'daily'] as const;

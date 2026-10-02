@@ -1,13 +1,12 @@
-import { json } from '@sveltejs/kit';
 import { and, eq, sql } from 'drizzle-orm';
-import { asUser, db } from '$lib/server/db';
-import { PAY_METHODS, PAYS_FOR, payRule, service } from '$lib/server/db/schema';
-import { refuse, refuseIfTheDatabaseSaidSo } from '$lib/server/field-errors';
-import { UUID } from '$lib/field-rules';
-import { readRule, RULE_FIELDS } from '$lib/service-fields';
+import { asUser, db } from '#lib/server/db/index.ts';
+import { PAY_METHODS, PAYS_FOR, payRule, service } from '#lib/server/db/schema/index.ts';
+import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
+import { UUID } from '#lib/field-rules.ts';
+import { readRule, RULE_FIELDS } from '#lib/service-fields.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readFields } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readFields } from '#lib/json.ts';
 
 /**
  * A pay rule for a service, from a day: whom it pays, for what, how, and for
@@ -74,7 +73,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 						.values({ serviceId: params.id, ...scope, ...how })
 						.returning({ id: payRule.id })
 		);
-		return json({ id: row.id, replaced: Boolean(same) }, { status: same ? 200 : 201 });
+		return Response.json({ id: row.id, replaced: Boolean(same) }, { status: same ? 200 : 201 });
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, Object.keys(RULE_FIELDS), 'pay_rule');
 		if (refused) return refused;

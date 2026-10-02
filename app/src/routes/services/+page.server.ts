@@ -1,8 +1,8 @@
 import { asc, desc, eq, gte, isNull, or, sql } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { agreement, agreementService, entity, service, site } from '$lib/server/db/schema';
-import { anHourNow } from '$lib/server/reports';
-import { prices, rules } from '$lib/server/catalogue';
+import { db } from '#lib/server/db/index.ts';
+import { agreement, agreementService, entity, service, site } from '#lib/server/db/schema/index.ts';
+import { anHourNow } from '#lib/server/reports.ts';
+import { prices, rules } from '#lib/server/catalogue.ts';
 import type { PageServerLoad } from './$types';
 
 /**

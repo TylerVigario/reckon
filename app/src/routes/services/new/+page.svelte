@@ -1,8 +1,8 @@
 <script lang="ts">
-	import Top from '$lib/Top.svelte';
-	import { NEW_SERVICE_FIELDS } from '$lib/service-fields';
-	import { parseAll } from '$lib/field-rules';
-	import { readJson, readProblem } from '$lib/json';
+	import Top from '#lib/Top.svelte';
+	import { NEW_SERVICE_FIELDS } from '#lib/service-fields.ts';
+	import { parseAll } from '#lib/field-rules.ts';
+	import { readJson, readProblem } from '#lib/json.ts';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 

@@ -41,7 +41,7 @@ export const day = () => date({ mode: 'string' });
 
 /**
  * NUMERIC, as the string Postgres writes. Arithmetic on it goes through
- * $lib/decimal, never a JS number.
+ * #lib/decimal, never a JS number.
  */
 export const decimal = (precision: number, scale: number) => numeric({ precision, scale });
 
@@ -52,7 +52,7 @@ export const bytea = customType<{ data: Buffer; driverData: Buffer }>({
 
 /**
  * Lowercase words joined by single hyphens: `harbor-light-dental`. A slug is a
- * URL, so the database refuses anything else; $lib/slug makes one.
+ * URL, so the database refuses anything else; #lib/slug makes one.
  */
 export const slugFormat = (name: string, column: AnyPgColumn) =>
 	check(name, sql`${column} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`);

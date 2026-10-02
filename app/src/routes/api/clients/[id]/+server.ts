@@ -1,21 +1,20 @@
-import { json } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
-import { asUser, db } from '$lib/server/db';
-import { camel } from '$lib/server/db/rows';
-import { entity } from '$lib/server/db/schema';
-import { refuse, refuseIfTheDatabaseSaidSo } from '$lib/server/field-errors';
-import { lookUpClient } from '$lib/server/find';
-import { parseClientField } from '$lib/client-fields';
+import { asUser, db } from '#lib/server/db/index.ts';
+import { camel } from '#lib/server/db/rows.ts';
+import { entity } from '#lib/server/db/schema/index.ts';
+import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
+import { lookUpClient } from '#lib/server/find.ts';
+import { parseClientField } from '#lib/client-fields.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
+import { problem } from '#lib/server/problem.ts';
 import {
 	preconditionOf,
 	staleRead,
 	unchangedSince,
 	VERSION,
 	withVersion
-} from '$lib/server/concurrent';
-import { readFields } from '$lib/json';
+} from '#lib/server/concurrent.ts';
+import { readFields } from '#lib/json.ts';
 
 /**
  * Saves one client's standing terms, a field at a time.
@@ -102,5 +101,5 @@ export const PATCH: RequestHandler = async (event) => {
 	}
 
 	if (!after) return staleRead('This client', event.url.pathname);
-	return withVersion(json({ saved: row, version: after.version }), after.version);
+	return withVersion(Response.json({ saved: row, version: after.version }), after.version);
 };

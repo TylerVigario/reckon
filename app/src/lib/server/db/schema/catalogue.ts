@@ -11,7 +11,7 @@
 // the first person and additional_rate each one after. The most specific price
 // that has started wins: one client's before every client's.
 //
-// Pay is a set of dated rules, resolved by $lib/server/valuation. A material is
+// Pay is a set of dated rules, resolved by #lib/server/valuation. A material is
 // sold from lots, and each lot keeps its cost before tax and the tax paid on
 // it, which Reg 1701 lets come off the measure when the goods are resold.
 
@@ -27,9 +27,9 @@ import {
 	unique,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { createdAt, day, decimal, id, nonNegative, oneOf } from './columns';
-import { entity } from './clients';
-import { role, user } from './people';
+import { createdAt, day, decimal, id, nonNegative, oneOf } from './columns.ts';
+import { entity } from './clients.ts';
+import { role, user } from './people.ts';
 
 export const UNITS = ['hour', 'mile', 'each'] as const;
 export const PAYS_FOR = ['time', 'covered_time', 'vehicle'] as const;

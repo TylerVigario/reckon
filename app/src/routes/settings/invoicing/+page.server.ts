@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { invoice } from '$lib/server/db/schema';
-import { operatorRow } from '$lib/server/operator';
+import { db } from '#lib/server/db/index.ts';
+import { invoice } from '#lib/server/db/schema/index.ts';
+import { operatorRow } from '#lib/server/operator.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {

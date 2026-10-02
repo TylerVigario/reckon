@@ -1,5 +1,5 @@
-import { Decimal, Ratio } from '$lib/decimal';
-import { billedAmount, jobRate, priceOn, type Price, type ServiceTerms } from './pricing';
+import { Decimal, Ratio } from '#lib/decimal.ts';
+import { billedAmount, jobRate, priceOn, type Price, type ServiceTerms } from './pricing.ts';
 
 /**
  * The day in `month` that an agreement anchored on `anchorDay` bills: the

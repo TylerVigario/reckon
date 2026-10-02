@@ -1,30 +1,27 @@
 // One connection pool for the app, and Drizzle over it.
 //
 // Money never passes through a JS number: NUMERIC arrives as a string and is
-// worked with through $lib/decimal. A calendar date arrives as the string
+// worked with through #lib/decimal. A calendar date arrives as the string
 // Postgres writes, never as a JS Date -- a Date is a moment, and west of
 // Greenwich it turns 2026-03-14 into the 13th.
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
-import { env } from '$env/dynamic/private';
-import * as schema from './schema';
+import { DATABASE_URL, PGDATABASE, PGHOST } from '$app/env/private';
+import * as schema from './schema/index.ts';
 
 // DATE as text, for raw queries too: the schema's date columns already say so,
 // but a date computed in SQL would otherwise come back as a Date.
 pg.types.setTypeParser(pg.types.builtins.DATE, (v) => v);
 
 // By default, the unix socket Linux packages usually create, which
-// authenticates by user rather than by password. PGHOST moves it, and
-// DATABASE_URL wins outright -- so a host that wants TCP, another machine or a
-// managed service says so without editing this. A socket can be named in the
-// URL too, as ?host=.
-const pool = env.DATABASE_URL
-	? new pg.Pool({ connectionString: env.DATABASE_URL })
-	: new pg.Pool({
-			host: env.PGHOST ?? '/var/run/postgresql',
-			database: env.PGDATABASE ?? 'reckon_dev'
-		});
+// authenticates by user rather than by password (the defaults are in
+// src/env.ts). PGHOST moves it, and DATABASE_URL wins outright -- so a host that
+// wants TCP, another machine or a managed service says so without editing
+// this. A socket can be named in the URL too, as ?host=.
+const pool = DATABASE_URL
+	? new pg.Pool({ connectionString: DATABASE_URL })
+	: new pg.Pool({ host: PGHOST, database: PGDATABASE });
 
 // `casing` must match drizzle.config.ts: it maps workedOn to worked_on, here at
 // runtime and there in migrations.

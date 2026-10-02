@@ -1,7 +1,7 @@
-import { Decimal, sum } from '$lib/decimal';
-import { db, today } from '$lib/server/db';
-import { loadAgreements, usedThisMonth } from '$lib/server/valuation/load';
-import { hoursOf } from '$lib/server/valuation/misc';
+import { Decimal, sum } from '#lib/decimal.ts';
+import { db, today } from '#lib/server/db/index.ts';
+import { loadAgreements, usedThisMonth } from '#lib/server/valuation/load.ts';
+import { hoursOf } from '#lib/server/valuation/misc.ts';
 import type { PageServerLoad } from './$types';
 
 /**

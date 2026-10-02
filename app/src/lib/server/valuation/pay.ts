@@ -1,4 +1,4 @@
-import { Decimal, Ratio } from '$lib/decimal';
+import { Decimal, Ratio } from '#lib/decimal.ts';
 
 export type PayRule = {
 	serviceId: string;

@@ -5,7 +5,7 @@
  * worded one way in one and another in the other is two answers to one
  * question.
  */
-import { pct } from './format';
+import { pct } from './format.ts';
 
 export const PAYS_FOR = {
 	time: 'for their time',

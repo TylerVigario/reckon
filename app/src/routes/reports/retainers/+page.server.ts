@@ -1,5 +1,5 @@
-import { lastFullMonth, thisMonth } from '$lib/server/periods';
-import { retainerMeter } from '$lib/server/reports';
+import { lastFullMonth, thisMonth } from '#lib/server/periods.ts';
+import { retainerMeter } from '#lib/server/reports.ts';
 import type { PageServerLoad } from './$types';
 
 /**

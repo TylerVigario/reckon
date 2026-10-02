@@ -8,7 +8,7 @@
  * goes stale without telling anybody, and is then charged at addresses it was
  * never true for.
  *
- *   node --import ./scripts/ts-resolve.mjs scripts/refresh-tax-rates.mjs [--all] [--dry-run]
+ *   node scripts/refresh-tax-rates.mjs [--all] [--dry-run]
  *
  * Two questions, because CDTFA answers them in two places. The rate API turns
  * an address into a rate and a tax area code; the published rate layer turns
@@ -19,8 +19,9 @@
  * STALE_AFTER_DAYS ago, the same rule the screens use. --all re-asks about
  * everything.
  *
- * It imports the app's own CDTFA client and decimals, which are TypeScript;
- * ts-resolve lets node run them as they are.
+ * It imports the app's own CDTFA client and decimals, which are TypeScript.
+ * Node strips the types itself, and every import names its file, so they run
+ * as they are.
  *
  * Scheduling belongs to the host, not here. Run it daily; the API is free and
  * needs no key. It makes one rate request per site and one rate-layer request

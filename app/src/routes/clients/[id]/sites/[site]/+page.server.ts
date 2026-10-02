@@ -1,9 +1,9 @@
 import { error } from '@sveltejs/kit';
 import { and, asc, count, desc, eq, notExists, sql } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import * as t from '$lib/server/db/schema';
-import { rateIsStale } from '$lib/server/stale';
-import { findClient, findSite } from '$lib/server/find';
+import { db } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
+import { rateIsStale } from '#lib/server/stale.ts';
+import { findClient, findSite } from '#lib/server/find.ts';
 import type { PageServerLoad } from './$types';
 
 /**

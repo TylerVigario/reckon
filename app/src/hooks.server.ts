@@ -1,15 +1,23 @@
-import { redirect, error, type Handle, type ServerInit } from '@sveltejs/kit';
+import { redirect, error } from '@sveltejs/kit';
+import type { Handle, ServerInit } from '@sveltejs/kit/hooks';
 import { eq } from 'drizzle-orm';
-import { authHeaders, getAuth } from '$lib/server/auth';
-import { db, schema } from '$lib/server/db';
+import { SECURE_COOKIES } from '$app/env/private';
+import { authHeaders, getAuth } from '#lib/server/auth.ts';
+import { db, schema } from '#lib/server/db/index.ts';
 
 /**
- * Made when the server starts rather than at its first request, so a missing
- * BETTER_AUTH_SECRET stops the process with its reason instead of answering
- * every request with a 500.
+ * Made when the server starts rather than at its first request, so a
+ * configuration Better Auth refuses stops the process with its reason instead
+ * of answering every request with a 500.
  */
 export const init: ServerInit = () => {
 	getAuth();
+	// Chosen, and allowed, but never quietly: whoever reads the log should see
+	// that the session token is travelling in the clear.
+	if (!SECURE_COOKIES)
+		console.warn(
+			'SECURE_COOKIES=false: the session cookie is not Secure, so a browser sends it over plain http too.'
+		);
 };
 
 /** Reachable without signing in. Everything else is not. */

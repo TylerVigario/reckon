@@ -1,8 +1,8 @@
 <script lang="ts">
-	import Top from '$lib/Top.svelte';
-	import { dated } from '$lib/format';
-	import { PAYS_FOR, paysWhat } from '$lib/pay-words';
-	import { money } from '$lib/money.svelte';
+	import Top from '#lib/Top.svelte';
+	import { dated } from '#lib/format.ts';
+	import { PAYS_FOR, paysWhat } from '#lib/pay-words.ts';
+	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 

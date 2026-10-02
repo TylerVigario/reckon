@@ -1,4 +1,4 @@
-import { env } from '$env/dynamic/private';
+import { GOOGLE_MAPS_API_KEY } from '$app/env/private';
 
 /**
  * Asks Google whether a place id is a place.
@@ -18,7 +18,7 @@ export type Verdict = 'real' | 'no-such-place' | 'unknown';
 const TIMEOUT_MS = 4000;
 
 export async function verifyPlace(placeId: string): Promise<Verdict> {
-	const key = env.GOOGLE_MAPS_API_KEY;
+	const key = GOOGLE_MAPS_API_KEY;
 	if (!key) return 'unknown';
 
 	try {

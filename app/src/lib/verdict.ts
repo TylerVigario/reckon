@@ -2,7 +2,7 @@
  * What address validation said, as it crosses the wire.
  *
  * Shared because both ends need it and neither owns it: the server builds one
- * in $lib/server/validate-address and AddressField reads one back from
+ * in #lib/server/validate-address and AddressField reads one back from
  * /api/address. Declared once, so a field the server sends always has a
  * reader.
  */

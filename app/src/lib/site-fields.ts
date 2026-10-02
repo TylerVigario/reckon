@@ -23,8 +23,8 @@ import {
 	required,
 	whole,
 	type Parsed
-} from './field-rules';
-import { toSlug } from './slug';
+} from './field-rules.ts';
+import { toSlug } from './slug.ts';
 
 export type { Parsed };
 

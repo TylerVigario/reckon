@@ -1,9 +1,9 @@
 import { error } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { service as services } from '$lib/server/db/schema';
-import { UUID } from '$lib/field-rules';
-import { prices, rules } from '$lib/server/catalogue';
+import { db } from '#lib/server/db/index.ts';
+import { service as services } from '#lib/server/db/schema/index.ts';
+import { UUID } from '#lib/field-rules.ts';
+import { prices, rules } from '#lib/server/catalogue.ts';
 import type { PageServerLoad } from './$types';
 
 /**

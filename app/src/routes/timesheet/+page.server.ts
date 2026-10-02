@@ -1,9 +1,9 @@
 import { desc, eq, gte, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { db, today } from '$lib/server/db';
-import * as t from '$lib/server/db/schema';
-import { clientsAndSites, theTeam, timedServices } from '$lib/server/choices';
-import { pricesToday } from '$lib/server/prices';
+import { db, today } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
+import { clientsAndSites, theTeam, timedServices } from '#lib/server/choices.ts';
+import { pricesToday } from '#lib/server/prices.ts';
 import type { PageServerLoad } from './$types';
 
 /**

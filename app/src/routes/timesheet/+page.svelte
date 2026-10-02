@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Top from '$lib/Top.svelte';
-	import { pending, flush, enqueue } from '$lib/queue';
-	import { running, drop, toEntry, type Running } from '$lib/timers';
-	import { invalidateAll } from '$app/navigation';
-	import { money } from '$lib/money.svelte';
-	import { increment } from '$lib/format';
-	import { rateFor } from '$lib/rates';
+	import Top from '#lib/Top.svelte';
+	import { pending, flush, enqueue } from '#lib/queue.ts';
+	import { running, drop, toEntry, type Running } from '#lib/timers.ts';
+	import { refreshAll } from '$app/navigation';
+	import { money } from '#lib/money.svelte.ts';
+	import { increment } from '#lib/format.ts';
+	import { rateFor } from '#lib/rates.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -60,7 +60,7 @@
 			.catch(() => {})
 			.then(() => {
 				queued = pending();
-				return invalidateAll();
+				return refreshAll();
 			});
 	}
 

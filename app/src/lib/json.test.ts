@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readBody, readFields, readJson, textField } from './json';
+import { readBody, readFields, readJson, textField } from './json.ts';
 
 /** A stand-in for Request/Response -- both are just something with .json(). */
 const carrying = (body: unknown) => ({ json: () => Promise.resolve(body) });

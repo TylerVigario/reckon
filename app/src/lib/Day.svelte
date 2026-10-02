@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { dated, day } from './format';
+	import { dated, day } from './format.ts';
 
 	/**
 	 * A date that gives up its year when there is no room for it.

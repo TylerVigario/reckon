@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, sql, type SQLWrapper } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { payRule, role, user } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { payRule, role, user } from '#lib/server/db/schema/index.ts';
 import type { PageServerLoad } from './$types';
 
 /**

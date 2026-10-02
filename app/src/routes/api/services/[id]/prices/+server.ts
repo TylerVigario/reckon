@@ -1,13 +1,12 @@
-import { json } from '@sveltejs/kit';
 import { and, eq, sql } from 'drizzle-orm';
-import { asUser, db } from '$lib/server/db';
-import { service, servicePrice } from '$lib/server/db/schema';
-import { refuse, refuseIfTheDatabaseSaidSo } from '$lib/server/field-errors';
-import { UUID } from '$lib/field-rules';
-import { PRICE_FIELDS, readPrice } from '$lib/service-fields';
+import { asUser, db } from '#lib/server/db/index.ts';
+import { service, servicePrice } from '#lib/server/db/schema/index.ts';
+import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
+import { UUID } from '#lib/field-rules.ts';
+import { PRICE_FIELDS, readPrice } from '#lib/service-fields.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readFields } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readFields } from '#lib/json.ts';
 
 /**
  * A price for a service, from a day: every client's, or one client's.
@@ -72,7 +71,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 						.values({ serviceId: params.id, entityId, effectiveFrom, ...price })
 						.returning({ id: servicePrice.id })
 		);
-		return json({ id: row.id, replaced: Boolean(same) }, { status: same ? 200 : 201 });
+		return Response.json({ id: row.id, replaced: Boolean(same) }, { status: same ? 200 : 201 });
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, Object.keys(PRICE_FIELDS), 'service_price');
 		if (refused) return refused;

@@ -1,4 +1,4 @@
-import { problem } from './problem';
+import { problem } from './problem.ts';
 
 /**
  * Turning a database complaint into one a person can act on, keyed to the box

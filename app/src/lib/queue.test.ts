@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enqueue, flush, pending, type Entry } from './queue';
+import { enqueue, flush, pending, type Entry } from './queue.ts';
 
 const entry = (client_uuid: string): Entry => ({
 	client_uuid,

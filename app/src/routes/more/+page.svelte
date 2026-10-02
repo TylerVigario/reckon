@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import Top from '$lib/Top.svelte';
+	import Top from '#lib/Top.svelte';
 	import { resolve } from '$app/paths';
-	import type { Pathname } from '$app/types';
+	import type { RouteId } from '$app/types';
 
 	const op = $derived(page.data.operator);
 	const name = $derived(op?.trading_name ?? 'reckon');
@@ -24,7 +24,7 @@
 			title: 'Settings',
 			sub: 'The mark, the rates, the tax rules — everything you supply'
 		}
-	] satisfies { href: Pathname; title: string; sub: string }[];
+	] satisfies { href: RouteId; title: string; sub: string }[];
 </script>
 
 <Top title="More" sub="Catalogue, entities, reports" />

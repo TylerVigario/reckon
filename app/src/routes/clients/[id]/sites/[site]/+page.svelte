@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { goto, invalidateAll } from '$app/navigation';
-	import Top from '$lib/Top.svelte';
-	import Setting from '$lib/Setting.svelte';
-	import { parseSiteField } from '$lib/site-fields';
-	import { pct } from '$lib/format';
-	import Day from '$lib/Day.svelte';
+	import { goto, refreshAll } from '$app/navigation';
+	import Top from '#lib/Top.svelte';
+	import Setting from '#lib/Setting.svelte';
+	import { parseSiteField } from '#lib/site-fields.ts';
+	import { pct } from '#lib/format.ts';
+	import Day from '#lib/Day.svelte';
 	import type { PageProps } from './$types';
-	import { readProblem } from '$lib/json';
+	import { readProblem } from '#lib/json.ts';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
@@ -55,7 +55,7 @@
 		}
 		adding = false;
 		picked = newName = newEmail = newPhone = '';
-		await invalidateAll();
+		await refreshAll();
 	}
 
 	async function detach(contact_id: string) {
@@ -64,7 +64,7 @@
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ contact_id })
 		});
-		await invalidateAll();
+		await refreshAll();
 	}
 
 	async function makeFirst(contact_id: string) {
@@ -73,7 +73,7 @@
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ contact_id, is_primary: true })
 		});
-		await invalidateAll();
+		await refreshAll();
 	}
 </script>
 

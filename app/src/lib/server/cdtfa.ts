@@ -6,7 +6,8 @@
  * moment somebody saves one, and scripts/refresh-tax-rates.mjs, which re-asks
  * about everything on a schedule. A second copy of a network contract is a copy
  * that drifts, and the drift shows up as a rate. The script imports this file
- * as it is, through scripts/ts-resolve.mjs, so imports here stay relative.
+ * as it is, under plain Node, so imports here are relative or #lib -- never a
+ * $app module, which only exists inside SvelteKit.
  *
  * TWO QUESTIONS, because CDTFA answers them in two places:
  *
@@ -22,7 +23,7 @@
  * has moved, and that is not the moment to pick a side.
  */
 
-import { Decimal, sum } from '../decimal';
+import { Decimal, sum } from '../decimal.ts';
 
 const RATE_API = 'https://services.maps.cdtfa.ca.gov/api/taxrate/GetRateByAddress';
 const RATE_LAYER =

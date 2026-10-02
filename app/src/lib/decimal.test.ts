@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Decimal, Ratio, sum, sumMoney } from './decimal';
+import { Decimal, Ratio, sum, sumMoney } from './decimal.ts';
 
 const d = (s: string) => Decimal.from(s);
 

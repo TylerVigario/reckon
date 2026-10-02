@@ -28,7 +28,7 @@ import {
 	uniqueIndex,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { createdAt, day, decimal, id, nonNegative, slugFormat, tstz } from './columns';
+import { createdAt, day, decimal, id, nonNegative, slugFormat, tstz } from './columns.ts';
 
 export const entity = pgTable(
 	'entity',

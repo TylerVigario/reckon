@@ -1,13 +1,13 @@
 import { error } from '@sveltejs/kit';
 import { and, desc, eq, gte, isNull, or, sql } from 'drizzle-orm';
-import { Decimal } from '$lib/decimal';
-import { db, today as dbToday } from '$lib/server/db';
-import * as t from '$lib/server/db/schema';
-import { balances } from '$lib/server/balances';
-import { findClient } from '$lib/server/find';
-import { loadAgreements, usedThisMonth } from '$lib/server/valuation/load';
-import { hoursOf } from '$lib/server/valuation/misc';
-import { rateIsStale } from '$lib/server/stale';
+import { Decimal } from '#lib/decimal.ts';
+import { db, today as dbToday } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
+import { balances } from '#lib/server/balances.ts';
+import { findClient } from '#lib/server/find.ts';
+import { loadAgreements, usedThisMonth } from '#lib/server/valuation/load.ts';
+import { hoursOf } from '#lib/server/valuation/misc.ts';
+import { rateIsStale } from '#lib/server/stale.ts';
 import type { PageServerLoad } from './$types';
 
 /**

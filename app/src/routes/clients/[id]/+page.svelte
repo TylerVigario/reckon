@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import Top from '$lib/Top.svelte';
-	import Setting from '$lib/Setting.svelte';
-	import { parseClientField } from '$lib/client-fields';
-	import { day, pct } from '$lib/format';
-	import { money } from '$lib/money.svelte';
+	import Top from '#lib/Top.svelte';
+	import Setting from '#lib/Setting.svelte';
+	import { parseClientField } from '#lib/client-fields.ts';
+	import { day, pct } from '#lib/format.ts';
+	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 

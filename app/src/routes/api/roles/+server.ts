@@ -1,12 +1,11 @@
-import { json } from '@sveltejs/kit';
-import { asUser } from '$lib/server/db';
-import { role } from '$lib/server/db/schema';
-import { refuse, refuseIfTheDatabaseSaidSo } from '$lib/server/field-errors';
-import { parseAll } from '$lib/field-rules';
-import { ROLE_FIELDS } from '$lib/people-fields';
+import { asUser } from '#lib/server/db/index.ts';
+import { role } from '#lib/server/db/schema/index.ts';
+import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
+import { parseAll } from '#lib/field-rules.ts';
+import { ROLE_FIELDS } from '#lib/people-fields.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readFields } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readFields } from '#lib/json.ts';
 
 /** Adds a role to the operator's own list. A name already on it is refused. */
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -21,7 +20,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				.values({ name: String(values.name) })
 				.returning({ id: role.id })
 		);
-		return json({ id: made.id }, { status: 201 });
+		return Response.json({ id: made.id }, { status: 201 });
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, ['name'], 'role');
 		if (refused) return refused;

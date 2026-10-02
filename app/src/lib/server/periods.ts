@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { db } from './db';
-import { operator } from './db/schema';
+import { db } from './db/index.ts';
+import { operator } from './db/schema/index.ts';
 
 export type Period = { start: string; end: string; label: string; spans: string };
 

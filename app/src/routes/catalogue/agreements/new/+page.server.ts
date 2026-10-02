@@ -1,5 +1,5 @@
-import { today } from '$lib/server/db';
-import { clientsAndSites } from '$lib/server/choices';
+import { today } from '#lib/server/db/index.ts';
+import { clientsAndSites } from '#lib/server/choices.ts';
 import type { PageServerLoad } from './$types';
 
 /** Every client, with its sites, so choosing one shows what an agreement can cover. */

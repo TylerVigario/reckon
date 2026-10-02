@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Tx } from './db';
-import { insertNamed } from './slugs';
+import type { Tx } from './db/index.ts';
+import { insertNamed } from './slugs.ts';
 
 /**
  * A transaction that holds the slugs already taken, refusing a taken one the

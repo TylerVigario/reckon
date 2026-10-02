@@ -1,6 +1,6 @@
 <script lang="ts">
-	import Top from '$lib/Top.svelte';
-	import Setting from '$lib/Setting.svelte';
+	import Top from '#lib/Top.svelte';
+	import Setting from '#lib/Setting.svelte';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 

@@ -1,9 +1,9 @@
 import { and, desc, eq, notExists, sql } from 'drizzle-orm';
-import { db, today as dbToday } from '$lib/server/db';
-import * as t from '$lib/server/db/schema';
-import { sum } from '$lib/decimal';
-import { entryColumns, valueEntries } from '$lib/server/valuation/load';
-import { rateIsStale } from '$lib/server/stale';
+import { db, today as dbToday } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
+import { sum } from '#lib/decimal.ts';
+import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
+import { rateIsStale } from '#lib/server/stale.ts';
 import type { PageServerLoad } from './$types';
 
 /**

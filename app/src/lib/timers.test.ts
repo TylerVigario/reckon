@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toEntry, type Running } from './timers';
+import { toEntry, type Running } from './timers.ts';
 
 const timer = (over: Partial<Running> = {}): Running => ({
 	id: '0f0e0d0c-0000-4000-8000-000000000001',

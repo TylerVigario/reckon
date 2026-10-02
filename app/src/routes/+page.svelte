@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { sumMoney } from '$lib/decimal';
+	import { sumMoney } from '#lib/decimal.ts';
 	import { onMount } from 'svelte';
-	import Top from '$lib/Top.svelte';
-	import { running, type Running } from '$lib/timers';
-	import { fullDay } from '$lib/format';
-	import { money } from '$lib/money.svelte';
+	import Top from '#lib/Top.svelte';
+	import { running, type Running } from '#lib/timers.ts';
+	import { fullDay } from '#lib/format.ts';
+	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 

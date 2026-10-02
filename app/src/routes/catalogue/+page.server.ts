@@ -1,7 +1,7 @@
 import { and, count, eq, gte, isNull, lte, notExists, or, sql } from 'drizzle-orm';
-import { sum } from '$lib/decimal';
-import { db } from '$lib/server/db';
-import * as t from '$lib/server/db/schema';
+import { sum } from '#lib/decimal.ts';
+import { db } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
 import type { PageServerLoad } from './$types';
 
 /** What can go on a line: what is sold, what is stocked, what recurs. */

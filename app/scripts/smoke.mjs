@@ -9,6 +9,13 @@
  *   node scripts/smoke.mjs http://127.0.0.1:5181 email password
  */
 const [, , base, email, password] = process.argv;
+
+// In production a TLS proxy stands in front, and the server takes the scheme
+// from it. Over plain http this says what that proxy would -- the server is
+// started with PROTOCOL_HEADER=x-forwarded-proto to read it. Without it the
+// server assumes https, and refuses every form post as cross-site.
+/** @type {Record<string, string>} */
+const PROXY = base.startsWith('http:') ? { 'x-forwarded-proto': 'http' } : {};
 if (!base) {
 	console.error('usage: smoke.mjs <base-url> [email] [password]');
 	process.exit(2);
@@ -111,7 +118,7 @@ if (email) {
 		method: 'POST',
 		body,
 		redirect: 'manual',
-		headers: { origin: base }
+		headers: { origin: base, ...PROXY }
 	});
 	cookie = (r.headers.getSetCookie?.() ?? []).map((c) => c.split(';')[0]).join('; ');
 	if (!cookie) {

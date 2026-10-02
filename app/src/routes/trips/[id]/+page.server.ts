@@ -1,12 +1,12 @@
 import { error } from '@sveltejs/kit';
 import { and, asc, eq, sql } from 'drizzle-orm';
-import { Decimal, Ratio, sum } from '$lib/decimal';
-import { db } from '$lib/server/db';
-import * as t from '$lib/server/db/schema';
-import { townsOf } from '$lib/server/trips';
-import { loadCatalogue, valueLegs } from '$lib/server/valuation/load';
-import { billedAmount, jobRate, priceOn } from '$lib/server/valuation/pricing';
-import { UUID } from '$lib/field-rules';
+import { Decimal, Ratio, sum } from '#lib/decimal.ts';
+import { db } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
+import { townsOf } from '#lib/server/trips.ts';
+import { loadCatalogue, valueLegs } from '#lib/server/valuation/load.ts';
+import { billedAmount, jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
+import { UUID } from '#lib/field-rules.ts';
 import type { PageServerLoad } from './$types';
 
 /**

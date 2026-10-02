@@ -7,7 +7,7 @@
  * and a second copy of `decimal` would be a second copy to get wrong.
  *
  * Everything here is shared by the browser and the server. Nothing in it may
- * import from $lib/server.
+ * import from #lib/server.
  */
 
 export type Parsed =

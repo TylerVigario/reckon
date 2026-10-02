@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import * as t from './db/schema';
+import * as t from './db/schema/index.ts';
 
 const i = t.invoice;
 const il = t.invoiceLine;

@@ -1,7 +1,7 @@
 import { fail } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { operator } from '$lib/server/db/schema';
-import { operatorRow } from '$lib/server/operator';
+import { db } from '#lib/server/db/index.ts';
+import { operator } from '#lib/server/db/schema/index.ts';
+import { operatorRow } from '#lib/server/operator.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const MAX_LOGO = 512 * 1024;
@@ -11,7 +11,7 @@ const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
  * What appears on an invoice.
  *
  * Every field here saves itself as focus leaves it -- the rules are shared with
- * the endpoint in $lib/settings-fields. The logo is the exception: a file is not
+ * the endpoint in #lib/settings-fields. The logo is the exception: a file is not
  * a field, so it stays a form action.
  */
 export const load: PageServerLoad = async () => ({ operator: await operatorRow() });

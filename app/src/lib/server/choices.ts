@@ -1,7 +1,7 @@
 import { and, asc, eq, isNotNull } from 'drizzle-orm';
-import { Decimal } from '$lib/decimal';
-import { db } from './db';
-import * as t from './db/schema';
+import { Decimal } from '#lib/decimal.ts';
+import { db } from './db/index.ts';
+import * as t from './db/schema/index.ts';
 
 /**
  * What an entry can be written against: who can work it, who pays and where,

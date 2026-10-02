@@ -24,17 +24,17 @@ against an invented case.
 
 ## Where things are
 
-| | |
-|---|---|
-| `app/src/lib/server/db/schema/` | the schema, in TypeScript, a file per area, with every table's reasons beside it |
-| `db/migrations/` | the schema as applied SQL: generated from the above, and one hand-written migration for what Drizzle cannot say |
-| `db/test/constraints.sql` | proves the guards, both ways |
-| `app/src/lib/server/valuation/` | what an hour bills, what it pays, what a retainer covers, and the tax split — exact decimals, tested |
-| `docs/schema/*.drawio` | the data model: an overview and seven clusters |
-| `docs/schema/regenerate.py` | lays the diagrams out from one definition of the tables; overwrites hand edits |
-| `docs/schema/make-printable.py` | derives the printed reference from the diagrams |
-| `docs/schema-reference.typ` | generated — do not hand-edit |
-| `vendor/press` | the `@vts/press` Typst package, as a submodule |
+|                                 |                                                                                                                 |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `app/src/lib/server/db/schema/` | the schema, in TypeScript, a file per area, with every table's reasons beside it                                |
+| `db/migrations/`                | the schema as applied SQL: generated from the above, and one hand-written migration for what Drizzle cannot say |
+| `db/test/constraints.sql`       | proves the guards, both ways                                                                                    |
+| `app/src/lib/server/valuation/` | what an hour bills, what it pays, what a retainer covers, and the tax split — exact decimals, tested            |
+| `docs/schema/*.drawio`          | the data model: an overview and seven clusters                                                                  |
+| `docs/schema/regenerate.py`     | lays the diagrams out from one definition of the tables; overwrites hand edits                                  |
+| `docs/schema/make-printable.py` | derives the printed reference from the diagrams                                                                 |
+| `docs/schema-reference.typ`     | generated — do not hand-edit                                                                                    |
+| `vendor/press`                  | the `@vts/press` Typst package, as a submodule                                                                  |
 
 ## The database
 
@@ -46,8 +46,8 @@ db/apply.sh <database>    apply any migration not yet recorded
 Where the database can hold a rule about what may be stored rather than
 trusting the application to remember it, it does — and every guard is tested
 both ways, because one that also blocks ordinary use is a bug rather than a
-guard. What a stored row is *worth* is the application's: it is arithmetic, and
-it is done once, in `$lib/server/valuation`.
+guard. What a stored row is _worth_ is the application's: it is arithmetic, and
+it is done once, in `#lib/server/valuation`.
 
 The schema is changed in `app/src/lib/server/db/schema/`, and the migration
 written from it:
@@ -151,36 +151,64 @@ node app/scripts/user.mjs password avery@kestrel.example --insecure   # the seed
 least, or it will not start. Left to itself Better Auth would sign with a default
 that is printed in its own source.
 
-**`ORIGIN` must be set when the server runs**, or adapter-node cannot verify
-where a form came from and rejects every POST with 403 — sign-in included. It
-is the public URL a browser used, so behind a reverse proxy that is the
-`https://` name and not the address the process is listening on.
+**The session cookie is `Secure`** unless `SECURE_COOKIES=false`, so a browser
+only ever sends it over https. Turning that off is for a proxy that serves plain
+http, and what it costs is the session token crossing that network in the
+clear — the server says so in its log every time it starts.
+
+## Serving it
+
+**There is no address to configure.** The server reads its own from each
+request — the `Host` header, over https — so the address a form is checked
+against is always the one the browser used. A configured address can disagree
+with that, and when it does every form post is refused as cross-site, sign-in
+included.
+
+What that asks of whatever is in front of it:
+
+|                                                                |               | set                                                            |
+| -------------------------------------------------------------- | ------------- | -------------------------------------------------------------- |
+| https, through a reverse proxy that passes `Host` through      | the default   | nothing                                                        |
+| https, through one that puts the public name in another header |               | `HOST_HEADER`, e.g. `x-forwarded-host`                         |
+| plain http, through a proxy                                    |               | `PROTOCOL_HEADER=x-forwarded-proto` and `SECURE_COOKIES=false` |
+| plain http straight to the process, no proxy                   | not supported | —                                                              |
+
+The last is SvelteKit's limit rather than reckon's. With nothing in the request
+to say the scheme, adapter-node takes it to be https, and a form posted from an
+http page reads as cross-site. The only way round that is building the address
+into the artifact, which makes it one build per deployment.
 
 ## Environment
 
 Everything the process needs, and nothing that belongs in the database.
-[`app/.env.example`](app/.env.example) is the same list with the reasoning, and
-is what to copy to `app/.env` for local development — beside `vite.config.ts`,
-because that is the only directory Vite reads a `.env` from.
+[`app/src/env.ts`](app/src/env.ts) declares each variable with its default and
+its check, and every one is read when the server starts rather than built in, so
+the same artifact runs on any host with any values. A value that fails its check
+stops the server at start with the reason.
 
-| | | |
-|---|---|---|
-| `ORIGIN` | **required** | the public URL a browser used. Without it adapter-node cannot verify where a form came from and refuses every POST with 403, sign-in included. Behind a proxy this is the `https://` name, not the address the process listens on |
-| `BETTER_AUTH_SECRET` | **required** | signs every session cookie; 32 characters at least, random — `openssl rand -hex 32`. Without it the server does not start. Changing it signs everybody out |
-| `PORT` | `3000` | |
-| `HOST` | `0.0.0.0` | set it to `127.0.0.1` where a reverse proxy is the only route in, so the bind enforces that rather than convention |
-| `PGHOST` | `/var/run/postgresql` | a unix socket, which peer-authenticates rather than asking for a password |
-| `PGDATABASE` | `reckon_dev` | |
-| `DATABASE_URL` | — | wins outright over `PGHOST`/`PGDATABASE`, for TCP, another machine, or a managed service |
-| `PUBLIC_GOOGLE_MAPS_API_KEY` | **unset** | the browser key. Enables address lookup; unset, addresses are typed |
-| `GOOGLE_MAPS_API_KEY` | **unset** | the server key. Validates a chosen address; unset, it is stored as Google returned it |
+[`app/.env.example`](app/.env.example) is the same list as a file, and is what
+to copy to `app/.env` for local development — beside `vite.config.ts`, because
+that is the only directory Vite reads a `.env` from.
+
+|                                  |                       |                                                                                                                                                                    |
+| -------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BETTER_AUTH_SECRET`             | **required**          | signs every session cookie; 32 characters at least, random — `openssl rand -hex 32`. Without it the server does not start. Changing it signs everybody out         |
+| `SECURE_COOKIES`                 | `true`                | `false` only behind a proxy that serves plain http — see [Serving it](#serving-it)                                                                                 |
+| `PORT`                           | `3000`                |                                                                                                                                                                    |
+| `HOST`                           | `0.0.0.0`             | set it to `127.0.0.1` where a reverse proxy is the only route in, so the bind enforces that rather than convention                                                 |
+| `PROTOCOL_HEADER`, `HOST_HEADER` | unset                 | read by adapter-node: the headers a proxy uses for the scheme and the public name, where it does not pass them as https and `Host` — see [Serving it](#serving-it) |
+| `PGHOST`                         | `/var/run/postgresql` | a unix socket, which peer-authenticates rather than asking for a password                                                                                          |
+| `PGDATABASE`                     | `reckon_dev`          |                                                                                                                                                                    |
+| `DATABASE_URL`                   | —                     | wins outright over `PGHOST`/`PGDATABASE`, for TCP, another machine, or a managed service                                                                           |
+| `PUBLIC_GOOGLE_MAPS_API_KEY`     | **unset**             | the browser key. Enables address lookup; unset, addresses are typed                                                                                                |
+| `GOOGLE_MAPS_API_KEY`            | **unset**             | the server key. Validates a chosen address; unset, it is stored as Google returned it                                                                              |
 
 **Two keys, because a Google API key carries exactly one application
-restriction.** It can be restricted to HTTP referrers *or* to IP addresses,
+restriction.** It can be restricted to HTTP referrers _or_ to IP addresses,
 never both — so the key a browser uses and the key this server uses cannot be
 the same key without one of them being unrestricted.
 
-**`PUBLIC_` is deliberate: that key reaches the browser.** Address lookup is a
+**`PUBLIC_` is deliberate: that key reaches the browser.** `public: true` in `app/src/env.ts` is what sends it there; the prefix is what tells whoever fills in the environment. Address lookup is a
 type-ahead, and the browser calls Google directly. Proxying it through here
 would put the browser-to-server leg in front of every keystroke — over whatever
 uplink the host has, from a phone, in the places this is used. Direct is one hop
@@ -196,15 +224,11 @@ restriction instead, which cannot mean anything when the caller is somebody
 else's browser. A key calling `places.googleapis.com` from a page is
 unrestrictable — the worst of the options, and not obviously so.
 
-`GOOGLE_MAPS_API_KEY` has no prefix and never reaches a page. Restrict it to
+`GOOGLE_MAPS_API_KEY` is private in `app/src/env.ts` and never reaches a page. Restrict it to
 **IP addresses** for this host, and to two APIs: **Address Validation API**, and
 **Places API (New)**, which confirms that a place id a browser sent is a place. It is
 used once per address rather than once per keystroke, so the round trip that
 ruled out proxying the autocomplete does not apply.
-
-Both are read with `$env/dynamic/*` rather than `static`, so the same built
-artifact runs on any host with any keys. `static` would bake the values in at
-build time and mean one build per deployment.
 
 Unset is a supported state, not a broken one: the address field is an ordinary
 text input.
@@ -243,12 +267,12 @@ Printed invoices through Typst and card payments through Stripe are planned;
 neither is wired in yet.
 
 adapter-node emits a standalone server. How it is then run — the service
-manager, the reverse proxy, the certificates — is the host's business and is not
-described here, because a description of one machine drifts from every other
-one.
+manager, the reverse proxy, the certificates — is the host's business, past
+what [Serving it](#serving-it) asks of them, and is not described here: a
+description of one machine drifts from every other one.
 
 Money lives in `NUMERIC` and arrives as a string. Arithmetic on it is exact
-decimal on `BigInt`, in `$lib/decimal`, and never passes through a JS number:
+decimal on `BigInt`, in `#lib/decimal`, and never passes through a JS number:
 cent-level correctness is the point, and a float is how a cent goes missing.
 
 ## The app

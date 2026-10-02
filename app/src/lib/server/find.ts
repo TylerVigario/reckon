@@ -1,8 +1,8 @@
 import { error } from '@sveltejs/kit';
 import { and, desc, eq, or, sql } from 'drizzle-orm';
-import { db } from './db';
-import { entity, site } from './db/schema';
-import { UUID } from '$lib/field-rules';
+import { db } from './db/index.ts';
+import { entity, site } from './db/schema/index.ts';
+import { UUID } from '#lib/field-rules.ts';
 
 /**
  * Resolves the thing a URL names.
