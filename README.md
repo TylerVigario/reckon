@@ -303,6 +303,17 @@ posted when there is a connection. `POST /api/time` is safe to call twice with
 the same body, because `client_uuid` is made on the phone and carries a unique
 index; a retry returns the row that already exists.
 
+**It installs as an app, and opens without a signal.** A phone offers to add
+it to the home screen: named for the business, in its colour, with its logo as
+the icon where the logo is fit to be one (square, and an SVG or a PNG of 512px
+or more) and reckon's own tally where it is not. A service worker keeps Today
+and the Time screens as they were last seen, so with no signal at all the app
+still opens there — a timer starts and stops, time is entered by hand — and
+what was recorded posts when any page next opens with one. Every other screen
+says it needs a connection rather than showing a figure that may have changed.
+Signing out empties what was kept, and a new deploy is announced with a reload,
+never forced on someone mid-entry.
+
 ## Licence
 
 Copyright © 2026 Tyler Vigario. reckon is free software under the

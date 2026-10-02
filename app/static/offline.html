@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>No connection</title>
+		<link rel="icon" href="/icons/reckon.svg" />
+		<!-- Shown by the service worker in place of a screen that needs the
+		     network, when there is none. Static, so it is in the cache with the
+		     app's own files; the screens that work offline are linked below. -->
+		<style>
+			@font-face {
+				font-family: 'VTS Display';
+				src: url('/fonts/vts-display-700.woff2') format('woff2');
+				font-weight: 700;
+			}
+			@font-face {
+				font-family: 'VTS Text';
+				src: url('/fonts/vts-text-400.woff2') format('woff2');
+			}
+			:root {
+				--paper: #eef1f5;
+				--surface: #fff;
+				--line: #d4dae4;
+				--ink: #141a2b;
+				--ink-3: #7b8698;
+				--accent: #1d6f9c;
+				color-scheme: light dark;
+			}
+			@media (prefers-color-scheme: dark) {
+				:root {
+					--paper: #0d1219;
+					--surface: #161d29;
+					--line: #2c3646;
+					--ink: #e4e9f2;
+					--ink-3: #6f7c90;
+					--accent: #5aaed6;
+				}
+			}
+			body {
+				margin: 0;
+				background: var(--paper);
+				color: var(--ink);
+				font:
+					16px/1.5 'VTS Text',
+					system-ui,
+					sans-serif;
+				padding: 48px 16px;
+			}
+			main {
+				max-width: 30rem;
+				margin: 0 auto;
+				display: flex;
+				flex-direction: column;
+				gap: 18px;
+			}
+			h1 {
+				font:
+					700 24px 'VTS Display',
+					system-ui,
+					sans-serif;
+				margin: 0;
+			}
+			p {
+				margin: 0;
+				color: var(--ink-3);
+			}
+			nav {
+				background: var(--surface);
+				border: 1px solid var(--line);
+				border-radius: 10px;
+				display: flex;
+				flex-direction: column;
+			}
+			nav a {
+				padding: 14px;
+				color: var(--accent);
+				text-decoration: none;
+				border-bottom: 1px solid var(--line);
+				min-height: 24px;
+			}
+			nav a:last-child {
+				border-bottom: 0;
+			}
+			.again {
+				color: var(--accent);
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<h1>No connection</h1>
+			<p>
+				This screen needs one, so that nothing on it is shown as current when it is not.
+				<a class="again" href="">Try again</a>
+			</p>
+			<p>Time can still be recorded without a connection, and is sent when there is one:</p>
+			<nav aria-label="What works offline">
+				<a href="/">Today</a>
+				<a href="/timesheet">Time</a>
+				<a href="/timesheet/start">Start a timer</a>
+				<a href="/timesheet/manual">Enter time by hand</a>
+			</nav>
+		</main>
+	</body>
+</html>

@@ -20,8 +20,14 @@ export const init: ServerInit = () => {
 		);
 };
 
-/** Reachable without signing in. Everything else is not. */
-const OPEN = new Set(['/login']);
+/**
+ * Reachable without signing in. Everything else is not.
+ *
+ * The manifest and the logo are here because a browser fetches them without the
+ * session cookie -- to install the app, and to draw its icon -- and neither says
+ * more than the sign-in page already does: the business's name, colour and mark.
+ */
+const OPEN = new Set(['/login', '/manifest.webmanifest', '/operator/logo']);
 
 /**
  * One place decides whether a request is allowed. Per-route checks are how a
