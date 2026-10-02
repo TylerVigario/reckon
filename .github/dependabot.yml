@@ -30,12 +30,13 @@ updates:
         update-types: [minor, patch]
     ignore:
       # svelte-check is the typecheck this repository gates on, and its peer
-      # range is typescript ^5 || ^6 -- at its own latest, 4.7.6. So TypeScript 7
-      # cannot be installed here at all: npm refuses to resolve it, and the
-      # proposal comes back red every week until somebody reads why.
+      # range is typescript ^5 || ^6 -- at its own latest, 4.7.6. SvelteKit 3's
+      # is ^6. So TypeScript 7 cannot be installed here at all: npm refuses to
+      # resolve it, and the proposal comes back red every week until somebody
+      # reads why.
       #
-      # Remove this the moment svelte-check accepts 7. It is a note about
-      # somebody else's release schedule, not a decision about this repository.
+      # Remove this the moment both accept 7. It is a note about somebody
+      # else's release schedule, not a decision about this repository.
       - dependency-name: typescript
         update-types: [version-update:semver-major]
 
