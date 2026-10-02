@@ -67,6 +67,11 @@
 	     attribute, which the content security policy refuses. Keyed by the colour,
 	     so a new one is a new URL and the old one can be cached for good. -->
 	{#if accent}<link rel="stylesheet" href={`/operator/theme.css?${accent.slice(1)}`} />{/if}
+	<!-- The tab's icon is the operator's logo, as the shell's mark is. Without one
+	     -- or signed out, where the logo is not served -- there is none, said
+	     outright: naming no icon at all sends every browser to ask for a
+	     /favicon.ico that does not exist. -->
+	<link rel="icon" href={data.user && data.operator?.has_logo ? '/operator/logo' : 'data:,'} />
 </svelte:head>
 
 {#if !data.user}
