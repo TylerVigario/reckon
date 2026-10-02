@@ -23,7 +23,8 @@
  * Plain JavaScript, so a release can run it with no build step. It connects as
  * the app does: DATABASE_URL, or the local socket and PGDATABASE.
  */
-import { hash } from '@node-rs/argon2';
+import { argon2, randomBytes } from 'node:crypto';
+import { promisify } from 'node:util';
 import pg from 'pg';
 import { stdin, stdout } from 'node:process';
 
@@ -49,9 +50,24 @@ if (
 	process.exit(1);
 }
 
-/** The same rule and parameters as src/lib/server/auth.ts; a sign-in rehashes anything older. */
+/** The same minimum as src/lib/server/auth.ts (MIN_PASSWORD_LENGTH). */
 const MIN = 12;
-const ARGON = { algorithm: 2, memoryCost: 19456, timeCost: 2, parallelism: 1 };
+
+/**
+ * The same parameters as src/lib/server/password.ts, and the same PHC
+ * string, made with node:crypto as the server makes it. Restated here because a
+ * release ships this script without src/; a sign-in rehashes anything older, so
+ * the two drifting apart costs one rewrite, not a lockout.
+ */
+const ARGON = { memory: 19456, passes: 2, parallelism: 1 };
+const derive = promisify(argon2);
+const b64 = (/** @type {Buffer} */ b) => b.toString('base64').replace(/=+$/, '');
+/** @param {string} password */
+async function hash(password) {
+	const nonce = randomBytes(16);
+	const tag = await derive('argon2id', { message: password, nonce, tagLength: 32, ...ARGON });
+	return `$argon2id$v=19$m=${ARGON.memory},t=${ARGON.passes},p=${ARGON.parallelism}$${b64(nonce)}$${b64(tag)}`;
+}
 
 /**
  * Prompts without echoing. A password on screen is a password over a shoulder.
@@ -204,7 +220,7 @@ async function setPassword(user) {
 			`Insecure: ${first.length} character(s). Fine for a development database, not for one anybody else signs in to.`
 		);
 
-	const password = await hash(first, ARGON);
+	const password = await hash(first);
 	const client = await pool.connect();
 	try {
 		await client.query('begin');

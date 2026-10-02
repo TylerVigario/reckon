@@ -2,11 +2,11 @@ import { and, eq } from 'drizzle-orm';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
-import { hash, verify } from '@node-rs/argon2';
 import { BETTER_AUTH_SECRET, SECURE_COOKIES } from '$app/env/private';
 import { getRequestEvent } from '$app/server';
 import type { RequestEvent } from '@sveltejs/kit';
 import { db, schema } from './db/index.ts';
+import { CURRENT_HASH, hashPassword, verifyPassword } from './password.ts';
 
 /**
  * Sign-in, by Better Auth over the app's own database.
@@ -24,20 +24,6 @@ import { db, schema } from './db/index.ts';
  * check returns early for a direct call. The one thing a base URL would have
  * decided -- whether the cookie is Secure -- is SECURE_COOKIES, said outright.
  */
-
-/**
- * argon2id at the OWASP minimum. Better Auth's own default is scrypt below
- * OWASP's scrypt minimum; its password option is how a different algorithm is
- * given. The hash records its own parameters, so a stored hash made at older
- * ones is replaced at the next sign-in (see rehashIfDated).
- */
-// 2 is Argon2id. The enum is a const enum, which verbatimModuleSyntax cannot
-// import; the number is what it compiles to either way.
-export const ARGON = { algorithm: 2, memoryCost: 19456, timeCost: 2, parallelism: 1 } as const;
-export const hashPassword = (password: string) => hash(password, ARGON);
-
-/** The header every hash made at today's parameters starts with. */
-export const CURRENT_HASH = `$argon2id$v=19$m=${ARGON.memoryCost},t=${ARGON.timeCost},p=${ARGON.parallelism}$`;
 
 export const MIN_PASSWORD_LENGTH = 12;
 const SESSION_DAYS = 30;
@@ -69,8 +55,10 @@ function createAuth() {
 			disableSignUp: true,
 			minPasswordLength: MIN_PASSWORD_LENGTH,
 			password: {
+				// argon2id at the OWASP minimum, in place of Better Auth's own scrypt,
+				// which is below OWASP's minimum for scrypt (./password.ts).
 				hash: hashPassword,
-				verify: ({ hash: stored, password }) => verify(stored, password).catch(() => false)
+				verify: ({ hash: stored, password }) => verifyPassword(stored, password)
 			}
 		},
 		session: {

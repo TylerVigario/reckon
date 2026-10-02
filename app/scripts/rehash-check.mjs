@@ -38,7 +38,7 @@ if (!base || !email || !password) {
 /** @type {Record<string, string>} */
 const PROXY = base.startsWith('http:') ? { 'x-forwarded-proto': 'http' } : {};
 
-// Today's parameters, as src/lib/server/auth.ts states them (ARGON, CURRENT_HASH).
+// Today's parameters, as src/lib/server/password.ts states them (ARGON, CURRENT_HASH).
 // That module imports SvelteKit's own, so a plain node script cannot import it.
 const TODAY = '$argon2id$v=19$m=19456,t=2,p=1$';
 // Older: a quarter of the memory. Anything that is not today's would do.

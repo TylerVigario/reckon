@@ -9,13 +9,12 @@
  * artifact moves every one of those failures to CI, where they block a release
  * instead of breaking a running system.
  *
- * WHY THAT IS SAFE ACROSS DISTRIBUTIONS. The only native dependency is
- * @node-rs/argon2, which ships prebuilt N-API binaries per platform inside the
- * published package. What has to match is the ABI, not the distribution: any
- * glibc linux-x64 host takes the linux-x64-gnu binary assembled here, and N-API
- * keeps it valid across Node majors. Asserted below rather than assumed -- if
- * that stops being true this fails instead of shipping something that cannot
- * hash a password. A musl target would need its own build.
+ * WHY THAT IS SAFE ACROSS PLATFORMS. Nothing in it is native: passwords are
+ * hashed by node:crypto's own argon2, so node_modules is JavaScript only and the
+ * same tarball runs on any host with the Node it was built for, whatever its
+ * libc or architecture. Asserted below rather than assumed -- a native module
+ * arriving as a runtime dependency would make the artifact one platform's, and
+ * this fails instead of shipping that quietly.
  *
  * WHY db/ IS IN THE TARBALL. The schema is applied on the host, by the host,
  * from the same artifact that carries the code that expects it. A migration
@@ -117,9 +116,7 @@ const pinned = Object.keys(appPkg.dependencies ?? {}).map((dep) => {
 console.log(`  runtime: ${pinned.join(', ') || '(none)'}`);
 
 // --ignore-scripts: a release build does not execute package lifecycle
-// scripts, and nothing here needs one. @node-rs/argon2 carries its binaries in
-// the published package rather than fetching in a postinstall, and the
-// assertion below fails the build if that ever changes.
+// scripts, and nothing here needs one.
 if (pinned.length) {
 	run('npm', ['install', ...pinned, '--ignore-scripts', '--no-audit', '--no-fund', '--no-save'], {
 		cwd: staging,
@@ -127,17 +124,20 @@ if (pinned.length) {
 	});
 }
 
-// Fail loudly rather than ship an artifact whose password hashing cannot load.
-const native = path.join(staging, 'node_modules/@node-rs/argon2-linux-x64-gnu');
-if (!fs.existsSync(native)) {
-	const got = fs
-		.readdirSync(path.join(staging, 'node_modules/@node-rs'))
-		.filter((d) => d.startsWith('argon2-'));
+// Fail loudly rather than ship an artifact that only runs on the platform it was
+// built on: a compiled addon anywhere under node_modules is one.
+const modules = path.join(staging, 'node_modules');
+const native = fs.existsSync(modules)
+	? fs
+			.readdirSync(modules, { recursive: true })
+			.map(String)
+			.filter((f) => f.endsWith('.node'))
+	: [];
+if (native.length)
 	die(
-		`the linux-x64-gnu argon2 binary is missing — the artifact could not hash a password.\n` +
-			`       node_modules/@node-rs holds: ${got.join(', ') || '(nothing)'}`
+		`a native module is now a runtime dependency, which makes the artifact one platform's:\n` +
+			native.map((f) => `       node_modules/${f}`).join('\n')
 	);
-}
 
 // The changelog ships inside the artifact: RELEASE pins which commit this is,
 // the changelog says what that commit changed, and it says so without needing a
