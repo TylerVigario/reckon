@@ -38,6 +38,18 @@ export default defineConfig({
 					'default-src': ['self'],
 					'script-src': ['self'],
 					'style-src': ['self'],
+					// No style attribute is admitted but one: SvelteKit's route
+					// announcer, which hides itself with one and would otherwise
+					// show its text after every client-side navigation
+					// (sveltejs/kit#15220). 'unsafe-hashes' with its hash admits
+					// that exact attribute and nothing else, where the usual
+					// workaround, 'unsafe-inline', admits every inline style.
+					// src/csp.test.ts re-hashes it from SvelteKit's own source, so
+					// an upgrade that changes it fails CI rather than the page.
+					'style-src-attr': [
+						'unsafe-hashes',
+						'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo='
+					],
 					'img-src': ['self', 'data:'],
 					'font-src': ['self'],
 					'connect-src': ['self'],

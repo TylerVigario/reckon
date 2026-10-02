@@ -115,7 +115,7 @@
 		<div class="timer-card">
 			<div>
 				<div class="timer">{c.hm}<small>:{c.ss}</small></div>
-				<div class="rec-s" style="margin-top: 5px">
+				<div class="rec-s under">
 					Started {startedAt(live)} · billing {increment(svc?.bill_to_nearest_seconds)}
 				</div>
 			</div>
@@ -160,7 +160,7 @@
 		<div class="timer-card">
 			<div>
 				<div class="timer">0:00<small>:00</small></div>
-				<div class="rec-s" style="margin-top: 5px">Nothing running</div>
+				<div class="rec-s under">Nothing running</div>
 			</div>
 			<div class="btnrow">
 				<a class="btn pri blk" href={resolve('/timesheet/start')}>Start a timer</a>
@@ -223,3 +223,10 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	/* The line under the running timer, set off from the figure above it. */
+	.under {
+		margin-top: 5px;
+	}
+</style>

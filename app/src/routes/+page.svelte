@@ -20,9 +20,9 @@
 	// them: "nothing older than a month" is the figure worth seeing.
 	const BUCKETS = ['0–7 days', '8–30 days', '31+ days'] as const;
 	const TONE: Record<string, string> = {
-		'0–7 days': 'var(--good)',
-		'8–30 days': 'var(--warn)',
-		'31+ days': 'var(--crit)'
+		'0–7 days': 'good',
+		'8–30 days': 'warn',
+		'31+ days': 'crit'
 	};
 	type Bucket = { bucket: string; n: string; worth: string; oldest: string | null };
 	const byBucket = $derived(
@@ -175,7 +175,7 @@
 						</div>
 						<div class="rec-n">
 							{#if row}
-								<span class="rec-v" style="color: {TONE[b]}">{money(row.worth)}</span>
+								<span class="rec-v {TONE[b]}">{money(row.worth)}</span>
 							{:else}
 								<span class="rec-v mut">{money(0)}</span>
 							{/if}
@@ -190,3 +190,17 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	/* What each age of unbilled work is worth, coloured by how urgent the age is.
+	   Classes, not a style attribute, which the content security policy refuses. */
+	.rec-v.good {
+		color: var(--good);
+	}
+	.rec-v.warn {
+		color: var(--warn);
+	}
+	.rec-v.crit {
+		color: var(--crit);
+	}
+</style>

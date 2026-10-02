@@ -61,14 +61,25 @@
 	});
 </script>
 
-<svelte:head><title>{name}</title></svelte:head>
+<svelte:head>
+	<title>{name}</title>
+	<!-- The operator's colour, as a stylesheet of this origin's rather than a style
+	     attribute, which the content security policy refuses. Keyed by the colour,
+	     so a new one is a new URL and the old one can be cached for good. -->
+	{#if accent}<link rel="stylesheet" href={`/operator/theme.css?${accent.slice(1)}`} />{/if}
+	<!-- The tab's icon is the operator's logo, as the shell's mark is. Without one
+	     -- or signed out, where the logo is not served -- there is none, said
+	     outright: naming no icon at all sends every browser to ask for a
+	     /favicon.ico that does not exist. -->
+	<link rel="icon" href={data.user && data.operator?.has_logo ? '/operator/logo' : 'data:,'} />
+</svelte:head>
 
 {#if !data.user}
 	<!-- Signed out, there is nothing to navigate to. The shell would be a header
 	     and a row of links that all bounce back to here. -->
 	{@render children()}
 {:else}
-	<div class="app" style={accent ? `--accent: ${accent}` : ''}>
+	<div class="app">
 		<div class="rail">
 			<div class="rail-mark">
 				{#if data.operator?.has_logo}
@@ -207,6 +218,12 @@
 			--crit: #e0796d;
 			--crit-wash: #3d1b17;
 		}
+	}
+
+	/* app.html's wrapper. A rule rather than its own style attribute, which the
+	   content security policy refuses. */
+	:global(#app) {
+		display: contents;
 	}
 
 	:global(body) {
@@ -458,6 +475,9 @@
 	}
 	:global(.tile .v.crit) {
 		color: var(--crit);
+	}
+	:global(.tile .v.warn) {
+		color: var(--warn);
 	}
 	:global(.tile .s) {
 		font-size: 12.5px;

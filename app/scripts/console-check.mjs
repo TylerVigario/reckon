@@ -41,6 +41,13 @@ const complaints = [];
 ws.onmessage = (/** @type {{ data: string }} */ m) => {
 	const x = JSON.parse(m.data);
 	if (x.id && waiting.has(x.id)) waiting.get(x.id)(x);
+	// What the browser itself reports, not the page: a refusal by the content
+	// security policy arrives here and nowhere else, so a check that read only
+	// the page's console would pass a page whose styles were being refused.
+	if (x.method === 'Log.entryAdded' && x.params.entry.level === 'error') {
+		const e = x.params.entry;
+		complaints.push(`browser (${e.source}): ${e.text.slice(0, 200)}${e.url ? ` -- ${e.url}` : ''}`);
+	}
 	if (x.method === 'Runtime.exceptionThrown') {
 		const d = x.params.exceptionDetails;
 		complaints.push(`uncaught: ${(d.exception?.description ?? d.text).split('\n')[0]}`);
@@ -66,6 +73,7 @@ const send = (/** @type {string} */ method, /** @type {Record<string, unknown>} 
 
 await send('Page.enable');
 await send('Runtime.enable');
+await send('Log.enable');
 // In production a TLS proxy stands in front, and the server takes the scheme
 // from it. Over plain http the browser says what that proxy would -- the
 // server is started with PROTOCOL_HEADER=x-forwarded-proto to read it. Without
