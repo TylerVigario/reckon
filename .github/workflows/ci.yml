@@ -202,6 +202,11 @@ jobs:
         # reports that as skipped rather than failed if they cannot be reached.
         run: node app/scripts/write-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
+      - name: A sign-in replaces a password hash made at older parameters
+        # Every hash the steps above meet was made at today's parameters, so
+        # the replacement could stop and they would all stay green.
+        run: node app/scripts/rehash-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+
       - name: Stop it
         if: always()
         run: kill "$(cat /tmp/reckon.pid)" 2>/dev/null || true
