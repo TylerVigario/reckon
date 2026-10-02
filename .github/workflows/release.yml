@@ -10,13 +10,34 @@ name: Release
 # from the commits since the last tag, so feat/fix/revert set the bump
 # and a run with nothing bump-worthy exits without releasing.
 #
-# WHY THIS WRITES TO main. A tag has to point at a commit carrying the
-# matching version and changelog. A tag on a commit whose package.json
-# says something else makes "what is this artifact" unanswerable.
-# Producing such a commit means writing to main, and main refuses direct
-# pushes, so the release App is a bypass actor on main-protection for
-# that reason and no other. Its permissions are the blast radius: keep
-# them at contents:write on this repository, with no workflows scope.
+# THE ORDER IS THE POINT. Nothing may fail halfway and leave a halfway
+# state, so everything that can fail happens before anything that cannot be
+# taken back, and of the two writes the one that cannot be taken back at
+# all goes first:
+#
+#   decide    read-only. Works out the version, and refuses -- before any
+#             write -- a tag that already exists without its release.
+#   publish   gate, build, attest, then draft -> attach -> publish. The draft
+#             and its asset are deletable, and are deleted if anything fails.
+#             Publication is the only step that can still refuse at the end
+#             (an immutable release reserves its tag name for ever, and says
+#             so only when asked to publish), so it is the last thing this
+#             job does and nothing has been recorded when it refuses.
+#   record    the version and the changelog, written to main as the receipt.
+#             The release already exists, so this asserts nothing false, and
+#             it is the one step a re-run resumes: dispatched again, decide
+#             finds the release published and runs this job alone.
+#
+# The tag names the commit the artifact was built from -- the one the gate
+# passed and the attestation names -- not the receipt that follows it. The
+# artifact carries its own version: its package.json is generated with it.
+#
+# WHY THIS WRITES TO main AT ALL. The receipt is the version in package.json
+# and the changelog, in the tree, so the project can be read from itself.
+# main refuses direct pushes, so the release App is a bypass actor on
+# main-protection for that reason and no other. Its permissions are the
+# blast radius: keep them at contents:write on this repository, with no
+# workflows scope.
 on:
   workflow_dispatch:
     inputs:
@@ -39,7 +60,7 @@ jobs:
   decide:
     runs-on: ubuntu-latest
     outputs:
-      release: ${{ steps.decide.outputs.release }}
+      mode: ${{ steps.decide.outputs.mode }}
       version: ${{ steps.decide.outputs.version }}
       tag: ${{ steps.decide.outputs.tag }}
     steps:
@@ -68,47 +89,60 @@ jobs:
         env:
           FORCED: ${{ inputs.version }}
           COMPUTED: ${{ steps.bump.outputs.content }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          current="v$(node -p "require('./package.json').version")"
+          # What main records, and what the commits (or the operator) say
+          # comes next. With nothing bump-worthy since the last tag, git-cliff
+          # answers with that tag -- which is exactly the case of a release
+          # published by a run whose record step then failed.
+          recorded="v$(node -p "require('./package.json').version")"
           forced="$FORCED"
           next="${forced:+v$forced}"
           next="${next:-$COMPUTED}"
-          echo "current=$current  next=$next  forced=${forced:-no}"
-          # An explicit version input is an instruction, not a suggestion,
-          # so it skips the equality veto. That is what makes a partial
-          # release recoverable: if a run wrote the commit and then failed
-          # before tagging, main already carries the version and the
-          # computed bump would match it, so without this the retry would
-          # report "nothing to release" and refuse.
-          if [ -n "$forced" ]; then
-            {
-              echo "release=true"
-              echo "version=${next#v}"
-              echo "tag=$next"
-            } >> "$GITHUB_OUTPUT"
-          elif [ -z "$next" ] || [ "$next" = "$current" ]; then
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            echo "Nothing bump-worthy since $current. No release."
-          else
-            {
-              echo "release=true"
-              echo "version=${next#v}"
-              echo "tag=$next"
-            } >> "$GITHUB_OUTPUT"
+          echo "recorded=$recorded  next=$next  forced=${forced:-no}"
+          if [ -z "$next" ] || [ "$next" = "$recorded" ]; then
+            echo "mode=none" >> "$GITHUB_OUTPUT"
+            echo "main already records $recorded. Nothing to release."
+            exit 0
           fi
 
-  release:
+          published=$(gh release view "$next" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft --jq 'if .isDraft then "draft" else "published" end' 2>/dev/null || echo absent)
+          tagged=$(git ls-remote --tags origin "refs/tags/$next" | wc -l)
+
+          if [ "$published" = "published" ]; then
+            # Published, not yet recorded: a run that stopped after the step
+            # that cannot be taken back. Finish it rather than start again.
+            mode=record
+          elif [ "$tagged" -gt 0 ]; then
+            # A tag with no published release behind it was made by hand, and
+            # publishing would adopt whatever it points at. Refused here,
+            # before anything is written, rather than discovered at the end.
+            echo "::error::$next exists as a tag with no published release. Nothing was written."
+            exit 1
+          else
+            mode=publish
+          fi
+          echo "mode=$mode"
+          {
+            echo "mode=$mode"
+            echo "version=${next#v}"
+            echo "tag=$next"
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
     needs: decide
-    if: needs.decide.outputs.release == 'true'
+    if: needs.decide.outputs.mode == 'publish'
     runs-on: ubuntu-latest
 
-    # The credential that can write the default branch lives on this
-    # environment, not on the repository. A repository secret is reachable by
-    # every job that asks for it; an environment secret is reachable only by a
-    # job that declares the environment, and the declaration is where branch
-    # restrictions attach -- this one is limited to protected branches, so a
-    # run from any other ref cannot mint the token at all.
+    # The App credential -- which publishes here and writes the receipt in
+    # record -- lives on this environment, not on the repository. A
+    # repository secret is reachable by every job that asks for it; an
+    # environment secret is reachable only by a job that declares the
+    # environment, and the declaration is where branch restrictions attach --
+    # this one is limited to protected branches, so a run from any other ref
+    # cannot mint the token at all.
     #
     # Publishing is the step that cannot be taken back, which is why it is the
     # one worth separating from the build before it.
@@ -152,8 +186,12 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          # The commit this run was dispatched at: what is gated, built,
+          # attested and tagged is one commit, whatever lands on main
+          # meanwhile.
+          ref: ${{ github.sha }}
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
 
       # The same composite the gate uses: node from .nvmrc, an npm cache
       # keyed on the dependency set, and both manifests installed. One
@@ -181,9 +219,9 @@ jobs:
           OUTPUT: ${{ runner.temp }}/CHANGELOG.md
 
       - name: Build the artifact
-        # Before anything is written anywhere. Everything above this point
-        # is reversible: a failed build leaves no commit, no tag and no
-        # release, and a re-dispatch starts from an unchanged main.
+        # Before anything is written anywhere. A failed build leaves no
+        # release, no tag and no commit, and a re-dispatch starts from an
+        # unchanged main.
         #
         # The version is passed in rather than read from the tree. The
         # artifact's package.json is generated, so the bump does not need
@@ -199,6 +237,10 @@ jobs:
         # through Sigstore. A host verifies with `gh attestation verify`
         # before installing, which is the gate against a release asset
         # that did not come from here.
+        #
+        # Before publication, and harmless if publication then refuses: an
+        # attestation says where these bits came from, never that they were
+        # released.
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           # One artifact, one attestation. MANIFEST.sha256 lives inside
@@ -207,94 +249,150 @@ jobs:
           # that could disagree.
           subject-path: dist-release/reckon-${{ needs.decide.outputs.version }}.tar.gz
 
-      - name: Ask the forge to write the release commit
-        id: commit
-        # THE FIRST WRITE OF THE RUN. The artifact is built and attested
-        # by now, so everything that could fail has.
-        #
-        # NOT `git commit && git push`. A push sends an object already
-        # built, so it arrives unsigned no matter which token carried it.
-        # createCommitOnBranch has GitHub construct the object and sign it
-        # with its own key.
-        #
-        # expectedHeadOid makes it a compare-and-swap: if anything landed
-        # on main since this job read it, the mutation fails rather than
-        # clobbering.
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          TAG: ${{ needs.decide.outputs.tag }}
-          VERSION: ${{ needs.decide.outputs.version }}
-        run: |
-          set -euo pipefail
-          # The bump and the changelog land in the tree only now, purely
-          # to be read into the mutation below. --allow-same-version so a
-          # retry of a partial release is not refused for setting the
-          # number the branch already carries.
-          npm version "$VERSION" --no-git-tag-version --allow-same-version
-          cp "$RUNNER_TEMP/CHANGELOG.md" CHANGELOG.md
-          head=$(git rev-parse HEAD)
-          # --rawfile, not --arg "$(base64 ...)". A single argv entry is
-          # capped at 128 KB on Linux and package-lock.json base64s to
-          # roughly 460 KB, which fails as "jq: Argument list too long".
-          # jq reads the files itself and encodes them below, so nothing
-          # large crosses the command line.
-          jq -n \
-            --arg repo "$GITHUB_REPOSITORY" \
-            --arg head "$head" \
-            --arg msg "chore(release): $TAG [skip ci]" \
-            --rawfile pkg package.json \
-            --rawfile lock package-lock.json \
-            --rawfile log CHANGELOG.md \
-            '{query:"mutation($input:CreateCommitOnBranchInput!){createCommitOnBranch(input:$input){commit{oid}}}",
-              variables:{input:{
-                branch:{repositoryNameWithOwner:$repo,branchName:"main"},
-                expectedHeadOid:$head,
-                message:{headline:$msg},
-                fileChanges:{additions:[
-                  {path:"package.json",contents:($pkg|@base64)},
-                  {path:"package-lock.json",contents:($lock|@base64)},
-                  {path:"CHANGELOG.md",contents:($log|@base64)}]}}}}' > /tmp/mutation.json
-          oid=$(gh api graphql --input /tmp/mutation.json --jq '.data.createCommitOnBranch.commit.oid')
-          [ -n "$oid" ] || { echo "::error::createCommitOnBranch returned no oid"; exit 1; }
-          echo "release commit: $oid"
-          echo "oid=$oid" >> "$GITHUB_OUTPUT"
-
       - name: Publish
-        # DRAFT, ATTACH, THEN PUBLISH — in that order, and not as one call.
+        # DRAFT, ATTACH, THEN PUBLISH -- in that order, and not as one call.
         #
         # Immutable releases freeze a release's assets at PUBLICATION.
         # `gh release create` with the file attaches it after the release
         # already exists, so publishing first would freeze an empty
         # release and refuse the upload that follows.
         #
-        # A draft creates no tag. That is the second reason for this
-        # order: until the draft is published, this run has produced no
-        # tag at all, so a failure during upload leaves a deletable draft
-        # rather than a permanent tag naming a release with nothing in it
-        # — and the tag ruleset makes such a tag unremovable.
+        # A draft creates no tag, so until the last line this run has made
+        # nothing permanent: a failure leaves a draft, which the next step
+        # deletes. Publishing is what creates the tag, at --target -- the
+        # commit this run gated and built.
         #
-        # Publishing is what creates the tag, at --target. Annotated or
-        # lightweight makes no difference to what a tag marks, so the
-        # lightweight tag this produces costs nothing.
+        # A draft left by an interrupted run is deleted first. It owns no tag
+        # and holds nothing this run is not about to rebuild.
         #
         # Notes come from --unreleased rather than --latest: the tag does
         # not exist while this runs, so there is no latest to describe.
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           TAG: ${{ needs.decide.outputs.tag }}
-          OID: ${{ steps.commit.outputs.oid }}
           ARTIFACT: dist-release/reckon-${{ needs.decide.outputs.version }}.tar.gz
         run: |
           set -euo pipefail
+          if gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null | grep -qx true; then
+            gh release delete "$TAG" --yes
+          fi
           notes=$(npx --yes git-cliff@2 --config cliff.toml --unreleased --tag "$TAG" --strip all)
 
-          gh release create "$TAG" --draft --target "$OID" --title "$TAG" --notes "$notes"
+          gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "$TAG" --notes "$notes"
           gh release upload "$TAG" "$ARTIFACT"
 
-          # Only now does the tag exist and the freeze fall.
+          # The one step that cannot be taken back, and the last in this job.
           gh release edit "$TAG" --draft=false
 
           published=$(gh release view "$TAG" --json isDraft,assets \
             --jq 'if .isDraft then "draft" else ([.assets[].name]|join(",")) end')
           [ "$published" != "draft" ] || { echo "::error::$TAG is still a draft"; exit 1; }
-          echo "published $TAG -> $OID with $published"
+          echo "published $TAG -> $GITHUB_SHA with $published"
+
+      - name: Leave nothing behind
+        # Whatever failed above, a draft is the only thing it can have left,
+        # and a draft is deletable. A published release is not touched: it
+        # is not a draft, so this finds nothing to do.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ needs.decide.outputs.tag }}
+        run: |
+          if gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null | grep -qx true; then
+            gh release delete "$TAG" --yes
+            echo "deleted the draft of $TAG; nothing remains of this run"
+          fi
+
+  record:
+    # The receipt: the version and the changelog, written to main once the
+    # release exists. Runs after a publish, or alone when decide finds the
+    # release already published -- a re-dispatch after this job failed.
+    needs: [decide, publish]
+    if: >-
+      always() &&
+      (needs.publish.result == 'success' ||
+       (needs.decide.outputs.mode == 'record' && needs.publish.result == 'skipped'))
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - name: Mint a token for the release App
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Write the receipt to main
+        # NOT `git commit && git push`. A push sends an object already
+        # built, so it arrives unsigned no matter which token carried it.
+        # createCommitOnBranch has GitHub construct the object and sign it
+        # with its own key.
+        #
+        # expectedHeadOid makes each attempt a compare-and-swap: if anything
+        # landed on main since this read it, the mutation is refused rather
+        # than clobbering, and the receipt is rebuilt on the new head. What
+        # it writes does not depend on that head -- the changelog is made at
+        # the tag, so every attempt and every re-run writes the same file.
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ needs.decide.outputs.tag }}
+          VERSION: ${{ needs.decide.outputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin "refs/tags/$TAG:refs/tags/$TAG"
+
+          # The changelog as of the release, made from a checkout of its tag,
+          # so nothing merged since reads as part of it.
+          git worktree add --quiet --detach "$RUNNER_TEMP/at-tag" "$TAG"
+          (cd "$RUNNER_TEMP/at-tag" && npx --yes git-cliff@2 --config cliff.toml --output "$RUNNER_TEMP/CHANGELOG.md")
+
+          for attempt in 1 2 3 4 5; do
+            git fetch --quiet origin main
+            git checkout --quiet --force --detach origin/main
+            if [ "$(node -p "require('./package.json').version")" = "$VERSION" ]; then
+              echo "main already records $VERSION"
+              exit 0
+            fi
+            npm version "$VERSION" --no-git-tag-version --allow-same-version > /dev/null
+            cp "$RUNNER_TEMP/CHANGELOG.md" CHANGELOG.md
+            head=$(git rev-parse HEAD)
+            # --rawfile, not --arg "$(base64 ...)". A single argv entry is
+            # capped at 128 KB on Linux and package-lock.json base64s to
+            # roughly 460 KB, which fails as "jq: Argument list too long".
+            jq -n \
+              --arg repo "$GITHUB_REPOSITORY" \
+              --arg head "$head" \
+              --arg msg "chore(release): $TAG" \
+              --rawfile pkg package.json \
+              --rawfile lock package-lock.json \
+              --rawfile log CHANGELOG.md \
+              '{query:"mutation($input:CreateCommitOnBranchInput!){createCommitOnBranch(input:$input){commit{oid}}}",
+                variables:{input:{
+                  branch:{repositoryNameWithOwner:$repo,branchName:"main"},
+                  expectedHeadOid:$head,
+                  message:{headline:$msg},
+                  fileChanges:{additions:[
+                    {path:"package.json",contents:($pkg|@base64)},
+                    {path:"package-lock.json",contents:($lock|@base64)},
+                    {path:"CHANGELOG.md",contents:($log|@base64)}]}}}}' > "$RUNNER_TEMP/mutation.json"
+            if oid=$(gh api graphql --input "$RUNNER_TEMP/mutation.json" --jq '.data.createCommitOnBranch.commit.oid') && [ -n "$oid" ]; then
+              echo "recorded $TAG on main as $oid"
+              exit 0
+            fi
+            echo "attempt $attempt refused -- main moved, or the forge did not answer; rebuilding on the new head"
+            sleep $((attempt * 5))
+          done
+          echo "::error::$TAG is published but not recorded. Dispatch the workflow again: it finds the release and finishes this step alone."
+          exit 1
