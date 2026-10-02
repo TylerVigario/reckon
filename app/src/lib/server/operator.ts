@@ -1,7 +1,7 @@
 import { getTableColumns, sql } from 'drizzle-orm';
-import { db, type Reader } from './db';
-import { operator } from './db/schema';
-import { snake } from './db/rows';
+import { db, type Reader } from './db/index.ts';
+import { operator } from './db/schema/index.ts';
+import { snake } from './db/rows.ts';
 
 /**
  * The operator row as the settings pages read it: every column by its own

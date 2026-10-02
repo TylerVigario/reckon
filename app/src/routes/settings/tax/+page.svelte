@@ -1,7 +1,7 @@
 <script lang="ts">
-	import Top from '$lib/Top.svelte';
-	import Setting from '$lib/Setting.svelte';
-	import { dated } from '$lib/format';
+	import Top from '#lib/Top.svelte';
+	import Setting from '#lib/Setting.svelte';
+	import { dated } from '#lib/format.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 

@@ -43,7 +43,7 @@ retainer covers is arithmetic, done once, in exact decimals, in
 rule between the two needs to say why.
 
 **Every guard is tested both ways.** `db/test/constraints.sql` asserts that the
-wrong thing is refused *and* that the ordinary thing is allowed. A guard that
+wrong thing is refused _and_ that the ordinary thing is allowed. A guard that
 also blocks ordinary use is a bug, not a guard, and a guard that passes for the
 wrong reason is what the second assertion catches.
 
@@ -67,7 +67,7 @@ npm ci                      # repository tooling, and the git hooks
 npm ci --prefix app         # the application
 
 cp app/.env.example app/.env
-$EDITOR app/.env            # PGDATABASE=reckon_dev, ORIGIN=http://localhost:5173
+$EDITOR app/.env            # PGDATABASE=reckon_dev
 
 createdb reckon_dev
 db/apply.sh --test          # prove the schema before applying it anywhere
@@ -79,9 +79,9 @@ node scripts/user.mjs password avery@kestrel.example --insecure   # its owner, A
 npm run dev
 ```
 
-`app/.env.example` carries **production** defaults, so change the database and
-the origin before using it — a file that defaults to a development database is
-one copy away from a production process writing invoices into it.
+`app/.env.example` carries **production** defaults, so change the database
+before using it — a file that defaults to a development database is one copy
+away from a production process writing invoices into it.
 
 **Both `npm ci` commands, and the root one first.** It installs the `commit-msg`
 hook, and without it a bad commit message is only caught when CI rejects the

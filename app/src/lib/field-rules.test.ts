@@ -12,7 +12,7 @@ import {
 	parseAll,
 	required,
 	whole
-} from './field-rules';
+} from './field-rules.ts';
 
 /**
  * The rules that decide what a value may be.

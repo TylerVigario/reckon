@@ -2,7 +2,7 @@
 // Stated outright rather than left to @types auto-inclusion, which does not
 // reach this project's tsconfig: the SDK is loaded at runtime by the script
 // tag below, so this reference is the only thing that says what it will be.
-import { env } from '$env/dynamic/public';
+import { PUBLIC_GOOGLE_MAPS_API_KEY } from '$app/env/public';
 
 /**
  * Loading the Maps JavaScript API, once.
@@ -19,7 +19,7 @@ import { env } from '$env/dynamic/public';
  * front of each one.
  */
 
-export const KEY = env.PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
+export const KEY = PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
 export const addressesAreLive = KEY !== '';
 
 let loading: Promise<void> | null = null;

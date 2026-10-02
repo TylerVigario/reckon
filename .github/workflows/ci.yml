@@ -142,9 +142,12 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: postgres
       PGDATABASE: reckon_ci
-      ORIGIN: http://127.0.0.1:5178
       PORT: '5178'
       HOST: 127.0.0.1
+      # The server takes its scheme from the proxy in front of it, and assumes
+      # https when there is none. Here there is none and it is plain http, so
+      # the harnesses send what that proxy would, and this is where it is read.
+      PROTOCOL_HEADER: x-forwarded-proto
       # Signs the sessions of a database that is gone when the job ends.
       BETTER_AUTH_SECRET: ci-only-secret-for-a-database-that-ends-with-the-job
 
@@ -178,7 +181,7 @@ jobs:
         run: npm run check:schema --prefix app
 
       - name: Every route answers, signed in
-        run: node app/scripts/smoke.mjs "$ORIGIN" avery@kestrel.example ci-only-password
+        run: node app/scripts/smoke.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: Every screen renders, with nothing on the console
         # A page can answer 200 with its body already doomed: SvelteKit renders
@@ -192,12 +195,12 @@ jobs:
             curl -sf -o /dev/null http://127.0.0.1:9222/json && break
             sleep 1
           done
-          node app/scripts/console-check.mjs "$ORIGIN" avery@kestrel.example ci-only-password
+          node app/scripts/console-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: Every write works, and the wrong ones are refused
         # Needs the network: creating a site is a CDTFA lookup, and the check
         # reports that as skipped rather than failed if they cannot be reached.
-        run: node app/scripts/write-check.mjs "$ORIGIN" avery@kestrel.example ci-only-password
+        run: node app/scripts/write-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: Stop it
         if: always()
@@ -242,11 +245,8 @@ jobs:
 
       - name: The build produced a server that serves a page
         # A build that emits files nobody runs is not a proven build. This is
-        # the cheapest proof that the adapter detects its environment -- and
-        # ORIGIN is set because without it every form POST is refused, sign-in
-        # included.
+        # the cheapest proof that the adapter detects its environment.
         env:
-          ORIGIN: http://127.0.0.1:5177
           PORT: '5177'
           HOST: 127.0.0.1
           # Without one the server refuses to start, which is the point.

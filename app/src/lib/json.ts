@@ -1,4 +1,4 @@
-import type { ProblemLike } from '$lib/problem';
+import type { ProblemLike } from '#lib/problem.ts';
 
 /**
  * Reading JSON off the wire without `any` getting in.

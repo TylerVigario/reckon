@@ -23,13 +23,13 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"ci": "npm run format && npm run lint && npm run check && npm run test && npm run test:tz && npm run build",
-		"check:schema": "node --import ./scripts/ts-resolve.mjs scripts/schema-check.mjs",
+		"check:schema": "node scripts/schema-check.mjs",
 		"test:tz": "TZ=Pacific/Kiritimati vitest run src/lib/format.test.ts && TZ=Pacific/Midway vitest run src/lib/format.test.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
-		"@sveltejs/adapter-node": "^5.5.7",
-		"@sveltejs/kit": "^2.63.0",
+		"@sveltejs/adapter-node": "^6.0.0",
+		"@sveltejs/kit": "^3.0.0",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@types/google.maps": "^3.66.4",
 		"@types/node": "^24.13.4",
@@ -42,7 +42,7 @@
 		"prettier": "^3.9.9",
 		"prettier-plugin-svelte": "^4.1.1",
 		"svelte": "^5.57.1",
-		"svelte-check": "^4.6.0",
+		"svelte-check": "^4.7.5",
 		"svelte-eslint-parser": "^1.8.1",
 		"typescript": "^6.0.3",
 		"typescript-eslint": "^8.71.0",
@@ -56,6 +56,11 @@
 		"pg": "^8.23.1"
 	},
 	"overrides": {
-		"cookie": "^0.7.2"
+		"better-auth": {
+			"@sveltejs/kit": "$@sveltejs/kit"
+		}
+	},
+	"imports": {
+		"#lib/*": "./src/lib/*"
 	}
 }

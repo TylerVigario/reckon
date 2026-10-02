@@ -1,9 +1,9 @@
 <script lang="ts">
-	import Top from '$lib/Top.svelte';
-	import Setting from '$lib/Setting.svelte';
-	import { parsePersonField, parseRoleField, ROLE_FIELDS } from '$lib/people-fields';
-	import { parseAll } from '$lib/field-rules';
-	import { readProblem } from '$lib/json';
+	import Top from '#lib/Top.svelte';
+	import Setting from '#lib/Setting.svelte';
+	import { parsePersonField, parseRoleField, ROLE_FIELDS } from '#lib/people-fields.ts';
+	import { parseAll } from '#lib/field-rules.ts';
+	import { readProblem } from '#lib/json.ts';
 	import { invalidateAll } from '$app/navigation';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';

@@ -1,10 +1,10 @@
 import { fail } from '@sveltejs/kit';
 import { and, count, eq } from 'drizzle-orm';
-import { db, today } from '$lib/server/db';
-import { integration, operator, service, user } from '$lib/server/db/schema';
-import { operatorRow } from '$lib/server/operator';
-import { loadCatalogue } from '$lib/server/valuation/load';
-import { jobRate, priceOn } from '$lib/server/valuation/pricing';
+import { db, today } from '#lib/server/db/index.ts';
+import { integration, operator, service, user } from '#lib/server/db/schema/index.ts';
+import { operatorRow } from '#lib/server/operator.ts';
+import { loadCatalogue } from '#lib/server/valuation/load.ts';
+import { jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const MAX_LOGO = 512 * 1024;

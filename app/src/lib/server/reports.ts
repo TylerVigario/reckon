@@ -1,20 +1,20 @@
 import { and, asc, between, eq, inArray, lte, gte, isNull, or, sql } from 'drizzle-orm';
-import { Decimal, sum, sumMoney } from '$lib/decimal';
-import { db, today } from './db';
-import * as t from './db/schema';
-import type { Period } from './periods';
-import { agreementFor, team } from './valuation/entries';
+import { Decimal, sum, sumMoney } from '#lib/decimal.ts';
+import { db, today } from './db/index.ts';
+import * as t from './db/schema/index.ts';
+import type { Period } from './periods.ts';
+import { agreementFor, team } from './valuation/entries.ts';
 import {
 	entryColumns,
 	loadAgreements,
 	loadCatalogue,
 	taxOfInvoices,
 	valueEntries
-} from './valuation/load';
-import { billedAmount, jobRate, priceOn } from './valuation/pricing';
-import { ruleOn, timePay } from './valuation/pay';
-import { rateIsStale } from './stale';
-import { Ratio } from '$lib/decimal';
+} from './valuation/load.ts';
+import { billedAmount, jobRate, priceOn } from './valuation/pricing.ts';
+import { ruleOn, timePay } from './valuation/pay.ts';
+import { rateIsStale } from './stale.ts';
+import { Ratio } from '#lib/decimal.ts';
 
 /**
  * The three things somebody outside the business asks for, and the one thing
@@ -27,7 +27,7 @@ import { Ratio } from '$lib/decimal';
  * is a bug that takes a year to find.
  *
  * Money is NUMERIC throughout: a string out of Postgres, and worked with through
- * $lib/decimal, never a JS number.
+ * #lib/decimal, never a JS number.
  */
 
 export type DistrictRow = {

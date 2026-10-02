@@ -1,6 +1,6 @@
 <script lang="ts">
-	import Top from '$lib/Top.svelte';
-	import { money } from '$lib/money.svelte';
+	import Top from '#lib/Top.svelte';
+	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 

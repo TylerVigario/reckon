@@ -1,12 +1,12 @@
 import { error } from '@sveltejs/kit';
 import { and, asc, desc, eq, inArray, lte, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { Decimal } from '$lib/decimal';
-import { db, today as dbToday } from '$lib/server/db';
-import * as t from '$lib/server/db/schema';
-import { loadAgreements, usedThisMonth } from '$lib/server/valuation/load';
-import { hoursOf } from '$lib/server/valuation/misc';
-import { UUID } from '$lib/field-rules';
+import { Decimal } from '#lib/decimal.ts';
+import { db, today as dbToday } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
+import { loadAgreements, usedThisMonth } from '#lib/server/valuation/load.ts';
+import { hoursOf } from '#lib/server/valuation/misc.ts';
+import { UUID } from '#lib/field-rules.ts';
 import type { PageServerLoad } from './$types';
 
 /**

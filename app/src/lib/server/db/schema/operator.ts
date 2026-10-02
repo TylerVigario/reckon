@@ -27,8 +27,8 @@ import {
 	unique,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { bytea, day, decimal, id, nonNegative, oneOf, tstz } from './columns';
-import { user } from './people';
+import { bytea, day, decimal, id, nonNegative, oneOf, tstz } from './columns.ts';
+import { user } from './people.ts';
 
 export const ROUNDING_MODES = ['half_up', 'half_even'] as const;
 export const TAX_RULE_SETS = ['us_ca', 'flat_per_site', 'none'] as const;

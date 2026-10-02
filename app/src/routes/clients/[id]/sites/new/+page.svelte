@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import Top from '$lib/Top.svelte';
-	import { parseSiteField, SITE_FIELDS } from '$lib/site-fields';
-	import { toSlug } from '$lib/slug';
+	import Top from '#lib/Top.svelte';
+	import { parseSiteField, SITE_FIELDS } from '#lib/site-fields.ts';
+	import { toSlug } from '#lib/slug.ts';
 	import type { PageProps } from './$types';
-	import { readJson, readProblem } from '$lib/json';
+	import { readJson, readProblem } from '#lib/json.ts';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();

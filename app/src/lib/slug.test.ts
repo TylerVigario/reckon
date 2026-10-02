@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toSlug } from './slug';
+import { toSlug } from './slug.ts';
 
 /**
  * These cases pin what toSlug makes. That the database accepts it is not

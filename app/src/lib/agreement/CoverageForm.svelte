@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { readCoverage } from '$lib/agreement-fields';
-	import { readProblem } from '$lib/json';
+	import { readCoverage } from '#lib/agreement-fields.ts';
+	import { readProblem } from '#lib/json.ts';
 
 	/**
 	 * A service on an agreement and its allotment: no limit, or a number of

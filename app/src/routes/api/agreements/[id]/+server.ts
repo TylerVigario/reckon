@@ -1,14 +1,14 @@
 import { json } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
-import { asUser, db } from '$lib/server/db';
-import { camel } from '$lib/server/db/rows';
-import { agreement as agreements, entityContact } from '$lib/server/db/schema';
-import { refuse, refuseIfTheDatabaseSaidSo, stillReferenced } from '$lib/server/field-errors';
-import { UUID } from '$lib/field-rules';
-import { parseAgreementField } from '$lib/agreement-fields';
+import { asUser, db } from '#lib/server/db/index.ts';
+import { camel } from '#lib/server/db/rows.ts';
+import { agreement as agreements, entityContact } from '#lib/server/db/schema/index.ts';
+import { refuse, refuseIfTheDatabaseSaidSo, stillReferenced } from '#lib/server/field-errors.ts';
+import { UUID } from '#lib/field-rules.ts';
+import { parseAgreementField } from '#lib/agreement-fields.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readFields } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readFields } from '#lib/json.ts';
 
 /**
  * Saves what an agreement charges and when it runs, a field at a time.

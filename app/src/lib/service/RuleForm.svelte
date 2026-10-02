@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { readRule } from '$lib/service-fields';
-	import { readProblem } from '$lib/json';
+	import { readRule } from '#lib/service-fields.ts';
+	import { readProblem } from '#lib/json.ts';
 
 	/**
 	 * A pay rule from a day: whom it pays, for what, how, and for which clients.

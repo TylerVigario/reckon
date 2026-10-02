@@ -1,12 +1,12 @@
 <script lang="ts">
-	import Top from '$lib/Top.svelte';
-	import Setting from '$lib/Setting.svelte';
-	import CoverageForm from '$lib/agreement/CoverageForm.svelte';
-	import { dated } from '$lib/format';
-	import { money } from '$lib/money.svelte';
-	import { paysWhat } from '$lib/pay-words';
-	import { parseAgreementField } from '$lib/agreement-fields';
-	import { readProblem } from '$lib/json';
+	import Top from '#lib/Top.svelte';
+	import Setting from '#lib/Setting.svelte';
+	import CoverageForm from '#lib/agreement/CoverageForm.svelte';
+	import { dated } from '#lib/format.ts';
+	import { money } from '#lib/money.svelte.ts';
+	import { paysWhat } from '#lib/pay-words.ts';
+	import { parseAgreementField } from '#lib/agreement-fields.ts';
+	import { readProblem } from '#lib/json.ts';
 	import { goto, invalidateAll } from '$app/navigation';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';

@@ -4,8 +4,8 @@
  * THE SHAPE, NOT THE RESPONSE. This half is shared: the server builds problem
  * documents and every screen reads them, and two definitions of one wire format
  * is how a field rename becomes a screen that silently shows nothing. The
- * `problem()` that turns this into a Response lives in $lib/server/problem,
- * because a client importing anything under $lib/server is a build error.
+ * `problem()` that turns this into a Response lives in #lib/server/problem,
+ * because a client importing anything under #lib/server is a build error.
  *
  * One shape for every refusal, saying what kind of problem it is. RFC 9457
  * gives a carrier every HTTP client already understands, and, usefully here,

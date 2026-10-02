@@ -1,6 +1,6 @@
-import { today } from '$lib/server/db';
-import { clientsAndSites, theTeam, timedServices } from '$lib/server/choices';
-import { pricesToday } from '$lib/server/prices';
+import { today } from '#lib/server/db/index.ts';
+import { clientsAndSites, theTeam, timedServices } from '#lib/server/choices.ts';
+import { pricesToday } from '#lib/server/prices.ts';
 import type { PageServerLoad } from './$types';
 
 /**

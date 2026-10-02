@@ -1,5 +1,5 @@
-import { fiscalYear, lastFullMonth } from '$lib/server/periods';
-import { scheduleA, payOwed, retainerMeter, nonBillable } from '$lib/server/reports';
+import { fiscalYear, lastFullMonth } from '#lib/server/periods.ts';
+import { scheduleA, payOwed, retainerMeter, nonBillable } from '#lib/server/reports.ts';
 import type { PageServerLoad } from './$types';
 
 /**

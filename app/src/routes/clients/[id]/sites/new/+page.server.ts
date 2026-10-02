@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { entity } from '$lib/server/db/schema';
-import { findClient } from '$lib/server/find';
+import { db } from '#lib/server/db/index.ts';
+import { entity } from '#lib/server/db/schema/index.ts';
+import { findClient } from '#lib/server/find.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {

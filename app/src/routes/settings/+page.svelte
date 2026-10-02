@@ -1,9 +1,9 @@
 <script lang="ts">
-	import Top from '$lib/Top.svelte';
-	import { money } from '$lib/money.svelte';
+	import Top from '#lib/Top.svelte';
+	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
-	import type { Pathname } from '$app/types';
+	import type { RouteId } from '$app/types';
 
 	let { data }: PageProps = $props();
 	const o = $derived(data.operator);
@@ -45,7 +45,7 @@
 			sub: 'Payments, the ledger, the PDF renderer and email',
 			value: data.counts.integrations
 		}
-	] satisfies { href: Pathname; title: string; sub: string; value: string }[]);
+	] satisfies { href: RouteId; title: string; sub: string; value: string }[]);
 </script>
 
 <Top

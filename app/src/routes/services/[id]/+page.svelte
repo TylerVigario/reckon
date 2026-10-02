@@ -1,13 +1,13 @@
 <script lang="ts">
-	import Top from '$lib/Top.svelte';
-	import Setting from '$lib/Setting.svelte';
-	import PriceForm from '$lib/service/PriceForm.svelte';
-	import RuleForm from '$lib/service/RuleForm.svelte';
-	import { dated, increment } from '$lib/format';
-	import { money } from '$lib/money.svelte';
-	import { PAYS_FOR, paysWhat } from '$lib/pay-words';
-	import { parseServiceField } from '$lib/service-fields';
-	import { readProblem } from '$lib/json';
+	import Top from '#lib/Top.svelte';
+	import Setting from '#lib/Setting.svelte';
+	import PriceForm from '#lib/service/PriceForm.svelte';
+	import RuleForm from '#lib/service/RuleForm.svelte';
+	import { dated, increment } from '#lib/format.ts';
+	import { money } from '#lib/money.svelte.ts';
+	import { PAYS_FOR, paysWhat } from '#lib/pay-words.ts';
+	import { parseServiceField } from '#lib/service-fields.ts';
+	import { readProblem } from '#lib/json.ts';
 	import { goto, invalidateAll } from '$app/navigation';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';

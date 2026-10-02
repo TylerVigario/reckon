@@ -10,7 +10,7 @@
 //
 // A password is never a column of user. It is account.password, an argon2id
 // hash carrying its own parameters, set by Better Auth through the hash
-// function in $lib/server/auth.
+// function in #lib/server/auth.
 
 import { sql } from 'drizzle-orm';
 import {
@@ -23,7 +23,7 @@ import {
 	unique,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { createdAt, id, lowercaseEmail, tstz, updatedAt } from './columns';
+import { createdAt, id, lowercaseEmail, tstz, updatedAt } from './columns.ts';
 
 /**
  * The operator's own list of the capacities people are paid in -- Partner,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NoAnswer, priceAddress } from './cdtfa';
+import { NoAnswer, priceAddress } from './cdtfa.ts';
 
 /**
  * The contract with CDTFA, tested against a fetcher that answers the way CDTFA

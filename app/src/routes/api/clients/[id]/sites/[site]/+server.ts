@@ -1,23 +1,23 @@
 import { json } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
-import { Decimal } from '$lib/decimal';
-import { asUser, db, today } from '$lib/server/db';
-import { camel } from '$lib/server/db/rows';
-import { site as sites, siteTaxCheck } from '$lib/server/db/schema';
-import { refuse, refuseIfTheDatabaseSaidSo } from '$lib/server/field-errors';
-import { lookUpClient, lookUpSite } from '$lib/server/find';
-import { ADDRESS_FIELDS, parseSiteField } from '$lib/site-fields';
-import { priceAddress, NoAnswer, type Priced } from '$lib/server/cdtfa';
+import { Decimal } from '#lib/decimal.ts';
+import { asUser, db, today } from '#lib/server/db/index.ts';
+import { camel } from '#lib/server/db/rows.ts';
+import { site as sites, siteTaxCheck } from '#lib/server/db/schema/index.ts';
+import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
+import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
+import { ADDRESS_FIELDS, parseSiteField } from '#lib/site-fields.ts';
+import { priceAddress, NoAnswer, type Priced } from '#lib/server/cdtfa.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
+import { problem } from '#lib/server/problem.ts';
 import {
 	preconditionOf,
 	staleRead,
 	unchangedSince,
 	VERSION,
 	withVersion
-} from '$lib/server/concurrent';
-import { readFields } from '$lib/json';
+} from '#lib/server/concurrent.ts';
+import { readFields } from '#lib/json.ts';
 
 /**
  * Saves one site's details, a field at a time.

@@ -20,10 +20,10 @@ import {
 	unique,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { createdAt, day, decimal, id, nonNegative, oneOf, tstz } from './columns';
-import { entity, site } from './clients';
-import { service } from './catalogue';
-import { user } from './people';
+import { createdAt, day, decimal, id, nonNegative, oneOf, tstz } from './columns.ts';
+import { entity, site } from './clients.ts';
+import { service } from './catalogue.ts';
+import { user } from './people.ts';
 
 export const CREWS = ['one', 'team'] as const;
 export const LEG_RULES = [

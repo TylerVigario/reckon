@@ -1,10 +1,10 @@
 import { error } from '@sveltejs/kit';
 import { and, asc, count, desc, eq, gte, isNull, or, sql } from 'drizzle-orm';
-import { db, today as dbToday } from '$lib/server/db';
-import * as t from '$lib/server/db/schema';
-import { UUID } from '$lib/field-rules';
-import { prices, rules } from '$lib/server/catalogue';
-import { anHourNow } from '$lib/server/reports';
+import { db, today as dbToday } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
+import { UUID } from '#lib/field-rules.ts';
+import { prices, rules } from '#lib/server/catalogue.ts';
+import { anHourNow } from '#lib/server/reports.ts';
 import type { PageServerLoad } from './$types';
 
 /**

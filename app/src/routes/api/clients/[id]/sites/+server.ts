@@ -1,14 +1,14 @@
 import { json } from '@sveltejs/kit';
-import { asUser, today } from '$lib/server/db';
-import { site as sites, siteTaxCheck } from '$lib/server/db/schema';
-import { insertNamed } from '$lib/server/slugs';
-import { refuse, refuseIfTheDatabaseSaidSo } from '$lib/server/field-errors';
-import { lookUpClient } from '$lib/server/find';
-import { SITE_FIELDS, parseSiteField } from '$lib/site-fields';
-import { priceAddress, NoAnswer } from '$lib/server/cdtfa';
+import { asUser, today } from '#lib/server/db/index.ts';
+import { site as sites, siteTaxCheck } from '#lib/server/db/schema/index.ts';
+import { insertNamed } from '#lib/server/slugs.ts';
+import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
+import { lookUpClient } from '#lib/server/find.ts';
+import { SITE_FIELDS, parseSiteField } from '#lib/site-fields.ts';
+import { priceAddress, NoAnswer } from '#lib/server/cdtfa.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readFields } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readFields } from '#lib/json.ts';
 
 /**
  * Creates a site.

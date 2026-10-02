@@ -3,11 +3,10 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { hash, verify } from '@node-rs/argon2';
-import { dev } from '$app/environment';
+import { BETTER_AUTH_SECRET, SECURE_COOKIES } from '$app/env/private';
 import { getRequestEvent } from '$app/server';
 import type { RequestEvent } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
-import { db, schema } from './db';
+import { db, schema } from './db/index.ts';
 
 /**
  * Sign-in, by Better Auth over the app's own database.
@@ -17,11 +16,13 @@ import { db, schema } from './db';
  * sign-out are form actions calling it directly -- so its own rate limiter
  * never runs, and wrong passwords are limited per address in ./sign-in-limit.
  *
- * BETTER_AUTH_SECRET signs the session cookie. Outside `vite dev` nobody signs
- * in without one: left to itself Better Auth falls back to a default that is
- * printed in its own source, unless NODE_ENV says production -- and
- * adapter-node does not set NODE_ENV. ORIGIN is the site's public URL, the
- * variable adapter-node reads.
+ * BETTER_AUTH_SECRET signs the session cookie; src/env.ts refuses to start
+ * without one anywhere but `vite dev`.
+ *
+ * Better Auth is given no base URL, because in this application it has none:
+ * its routes are not mounted, it is never called over HTTP, and its origin
+ * check returns early for a direct call. The one thing a base URL would have
+ * decided -- whether the cookie is Secure -- is SECURE_COOKIES, said outright.
  */
 
 /**
@@ -41,22 +42,22 @@ export const CURRENT_HASH = `$argon2id$v=19$m=${ARGON.memoryCost},t=${ARGON.time
 export const MIN_PASSWORD_LENGTH = 12;
 const SESSION_DAYS = 30;
 
-/** A secret shorter than this is not one: 32 characters is Better Auth's own floor. */
-const SHORTEST_SECRET = 32;
-
 function createAuth() {
-	const secret = env.BETTER_AUTH_SECRET;
-	if (!dev && (secret ?? '').length < SHORTEST_SECRET)
-		throw new Error(
-			`BETTER_AUTH_SECRET must be set, ${SHORTEST_SECRET} characters at least -- it signs every session. ` +
-				'`openssl rand -hex 32` makes one.'
-		);
 	return betterAuth({
-		secret,
-		baseURL: env.ORIGIN,
+		secret: BETTER_AUTH_SECRET,
 		database: drizzleAdapter(db, { provider: 'pg', schema }),
+		// Every message passes through but one: at start Better Auth warns that it
+		// has no base URL, which is true and harmless here (see above), and would
+		// send whoever reads the log to set one.
+		logger: {
+			log: (level, message, ...args: unknown[]) => {
+				if (level === 'warn' && message.includes('Base URL is not set')) return;
+				console[level]('[Better Auth]', message, ...args);
+			}
+		},
 		advanced: {
 			cookiePrefix: 'reckon',
+			useSecureCookies: SECURE_COOKIES,
 			// The tables give every id a database default (uuidv7); this leaves it to them.
 			database: { generateId: false },
 			// Where a session's ip_address comes from -- set by authHeaders() below,

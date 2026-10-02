@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm';
-import { sumMoney } from '$lib/decimal';
-import { db } from '$lib/server/db';
-import * as t from '$lib/server/db/schema';
-import { balances } from '$lib/server/balances';
+import { sumMoney } from '#lib/decimal.ts';
+import { db } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
+import { balances } from '#lib/server/balances.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -19,7 +19,7 @@ import type { PageServerLoad } from './$types';
  * the screen has.
  *
  * Each row's figures are Postgres', and the total is added exactly by
- * $lib/decimal. Money stays a string the whole way out -- the rows and the
+ * #lib/decimal. Money stays a string the whole way out -- the rows and the
  * total sit on the same screen, where one cent out would show.
  */
 export const load: PageServerLoad = async () => {

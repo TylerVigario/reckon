@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import type { LayoutProps } from './$types';
 	import { resolve } from '$app/paths';
-	import type { Pathname } from '$app/types';
+	import type { RouteId } from '$app/types';
 
 	let { data, children }: LayoutProps = $props();
 
@@ -18,7 +18,7 @@
 		{ href: '/trips', label: 'Trips', ic: 'i3' },
 		{ href: '/invoices', label: 'Invoices', ic: 'i4' },
 		{ href: '/more', label: 'More', ic: 'i9' }
-	] satisfies { href: Pathname; label: string; ic: string }[];
+	] satisfies { href: RouteId; label: string; ic: string }[];
 
 	// The rail flattens what the tab bar nests: on a screen with room, More is
 	// not a place, it is four more rows.
@@ -31,7 +31,7 @@
 		{ href: '/clients', label: 'Entities', count: () => counts.entities },
 		{ href: '/reports', label: 'Reports', count: () => null },
 		{ href: '/settings', label: 'Settings', count: () => null }
-	] satisfies { href: Pathname; label: string; count: () => string | number | null | undefined }[];
+	] satisfies { href: RouteId; label: string; count: () => string | number | null | undefined }[];
 
 	const counts = $derived(data.counts ?? {});
 	const hours = (m: number | undefined) => (m === undefined ? null : `${Math.round(m / 60)}h`);

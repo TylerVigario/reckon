@@ -30,7 +30,7 @@ import {
 	required,
 	whole,
 	type Parsed
-} from './field-rules';
+} from './field-rules.ts';
 
 export const INTERVALS = ['weekly', 'monthly', 'quarterly', 'annually'] as const;
 export const PRORATION = ['daily', 'none'] as const;

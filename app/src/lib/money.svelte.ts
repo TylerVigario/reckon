@@ -1,5 +1,5 @@
 import { page } from '$app/state';
-import { formatMoney } from './format';
+import { formatMoney } from './format.ts';
 
 /**
  * A figure in the operator's own currency.

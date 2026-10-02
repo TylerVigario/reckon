@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
-	import Top from '$lib/Top.svelte';
-	import Setting from '$lib/Setting.svelte';
-	import AddressField from '$lib/AddressField.svelte';
+	import Top from '#lib/Top.svelte';
+	import Setting from '#lib/Setting.svelte';
+	import AddressField from '#lib/AddressField.svelte';
 	import type { PageProps } from './$types';
-	import { readJson, readProblem, type Saved } from '$lib/json';
-	import type { ProblemLike } from '$lib/problem';
+	import { readJson, readProblem, type Saved } from '#lib/json.ts';
+	import type { ProblemLike } from '#lib/problem.ts';
 	import { resolve } from '$app/paths';
 
 	let { data, form }: PageProps = $props();

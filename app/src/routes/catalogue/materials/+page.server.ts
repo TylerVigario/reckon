@@ -1,7 +1,7 @@
 import { asc, desc, eq, gt, lte, sql } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import * as t from '$lib/server/db/schema';
-import { materialWorth } from '$lib/server/valuation/misc';
+import { db } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
+import { materialWorth } from '#lib/server/valuation/misc.ts';
 import type { PageServerLoad } from './$types';
 
 /**

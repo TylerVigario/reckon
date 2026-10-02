@@ -1,13 +1,13 @@
 import { json } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
-import { asUser, db } from '$lib/server/db';
-import { contact, entityContact, site as sites, siteContact } from '$lib/server/db/schema';
-import { refuse, refuseIfTheDatabaseSaidSo } from '$lib/server/field-errors';
-import { UUID, cap, required } from '$lib/field-rules';
-import { lookUpClient, lookUpSite } from '$lib/server/find';
+import { asUser, db } from '#lib/server/db/index.ts';
+import { contact, entityContact, site as sites, siteContact } from '#lib/server/db/schema/index.ts';
+import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
+import { UUID, cap, required } from '#lib/field-rules.ts';
+import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readBody, textField } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readBody, textField } from '#lib/json.ts';
 
 /**
  * Who to ask for at this site.

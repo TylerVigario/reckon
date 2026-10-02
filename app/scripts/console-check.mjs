@@ -66,6 +66,14 @@ const send = (/** @type {string} */ method, /** @type {Record<string, unknown>} 
 
 await send('Page.enable');
 await send('Runtime.enable');
+// In production a TLS proxy stands in front, and the server takes the scheme
+// from it. Over plain http the browser says what that proxy would -- the
+// server is started with PROTOCOL_HEADER=x-forwarded-proto to read it. Without
+// it the server assumes https, and refuses every form post as cross-site.
+if (base.startsWith('http:')) {
+	await send('Network.enable');
+	await send('Network.setExtraHTTPHeaders', { headers: { 'x-forwarded-proto': 'http' } });
+}
 
 const evaluate = async (/** @type {string} */ expression) =>
 	(await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result

@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
-import { asUser, db } from '$lib/server/db';
-import { invoice, invoiceLine, timeEntry } from '$lib/server/db/schema';
+import { asUser, db } from '#lib/server/db/index.ts';
+import { invoice, invoiceLine, timeEntry } from '#lib/server/db/schema/index.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { UUID } from '$lib/field-rules';
+import { problem } from '#lib/server/problem.ts';
+import { UUID } from '#lib/field-rules.ts';
 
 /**
  * Removes a time entry.

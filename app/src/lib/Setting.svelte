@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import type { Parsed } from './field-rules';
-	import { parseField } from './settings-fields';
-	import { readJson, readProblem, type Saved } from '$lib/json';
-	import type { ProblemLike } from '$lib/problem';
+	import type { Parsed } from './field-rules.ts';
+	import { parseField } from './settings-fields.ts';
+	import { readJson, readProblem, type Saved } from '#lib/json.ts';
+	import type { ProblemLike } from '#lib/problem.ts';
 
 	/**
 	 * One setting that saves itself.

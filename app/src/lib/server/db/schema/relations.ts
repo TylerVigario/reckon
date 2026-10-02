@@ -2,13 +2,20 @@
 // foreign keys are the constraints; these are only the paths a query may walk.
 
 import { relations } from 'drizzle-orm';
-import { role, user } from './people';
-import { contact, entity, entityContact, site, siteContact, siteTaxCheck } from './clients';
-import { material, materialLot, materialPrice, payRule, service, servicePrice } from './catalogue';
-import { timeEntry, trip, tripLeg, tripStop } from './work';
-import { agreement, agreementPeriod, agreementService } from './agreements';
-import { invoice, invoiceLine, payment, paymentAllocation, taxRemittance } from './money';
-import { recordHistory } from './operator';
+import { role, user } from './people.ts';
+import { contact, entity, entityContact, site, siteContact, siteTaxCheck } from './clients.ts';
+import {
+	material,
+	materialLot,
+	materialPrice,
+	payRule,
+	service,
+	servicePrice
+} from './catalogue.ts';
+import { timeEntry, trip, tripLeg, tripStop } from './work.ts';
+import { agreement, agreementPeriod, agreementService } from './agreements.ts';
+import { invoice, invoiceLine, payment, paymentAllocation, taxRemittance } from './money.ts';
+import { recordHistory } from './operator.ts';
 
 export const roleRelations = relations(role, ({ many }) => ({ users: many(user) }));
 

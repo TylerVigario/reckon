@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit';
 import { and, eq, gte, sql } from 'drizzle-orm';
-import { asUser } from '$lib/server/db';
-import { payRule } from '$lib/server/db/schema';
-import { UUID } from '$lib/field-rules';
+import { asUser } from '#lib/server/db/index.ts';
+import { payRule } from '#lib/server/db/schema/index.ts';
+import { UUID } from '#lib/field-rules.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
+import { problem } from '#lib/server/problem.ts';
 
 /**
  * Takes back a pay rule that has not yet been in force for a whole day. One

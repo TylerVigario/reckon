@@ -1,6 +1,6 @@
 import { and, count, eq, gte, sql, sum } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { entity, invoice, operator, timeEntry } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { entity, invoice, operator, timeEntry } from '#lib/server/db/schema/index.ts';
 import type { LayoutServerLoad } from './$types';
 
 /**

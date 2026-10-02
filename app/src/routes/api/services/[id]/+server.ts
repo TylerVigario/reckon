@@ -1,14 +1,14 @@
 import { json } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
-import { asUser, db } from '$lib/server/db';
-import { camel } from '$lib/server/db/rows';
-import { service as services } from '$lib/server/db/schema';
-import { refuse, refuseIfTheDatabaseSaidSo, stillReferenced } from '$lib/server/field-errors';
-import { UUID } from '$lib/field-rules';
-import { parseServiceField } from '$lib/service-fields';
+import { asUser, db } from '#lib/server/db/index.ts';
+import { camel } from '#lib/server/db/rows.ts';
+import { service as services } from '#lib/server/db/schema/index.ts';
+import { refuse, refuseIfTheDatabaseSaidSo, stillReferenced } from '#lib/server/field-errors.ts';
+import { UUID } from '#lib/field-rules.ts';
+import { parseServiceField } from '#lib/service-fields.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readFields } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readFields } from '#lib/json.ts';
 
 /**
  * Saves what a service is, a field at a time.

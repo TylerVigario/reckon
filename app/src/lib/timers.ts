@@ -1,4 +1,4 @@
-import type { Entry } from './queue';
+import type { Entry } from './queue.ts';
 
 /**
  * Timers that are still running.

@@ -1,10 +1,10 @@
 import { and, count, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
-import { Decimal, sum } from '$lib/decimal';
-import { db, today } from '$lib/server/db';
-import * as t from '$lib/server/db/schema';
-import { townsOf } from '$lib/server/trips';
-import { loadCatalogue, valueLegs } from '$lib/server/valuation/load';
-import { jobRate, priceOn } from '$lib/server/valuation/pricing';
+import { Decimal, sum } from '#lib/decimal.ts';
+import { db, today } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
+import { townsOf } from '#lib/server/trips.ts';
+import { loadCatalogue, valueLegs } from '#lib/server/valuation/load.ts';
+import { jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
 import type { PageServerLoad } from './$types';
 
 /**

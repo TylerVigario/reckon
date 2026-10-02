@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
-import { fiscalYear } from '$lib/server/periods';
-import { scheduleA, taxObligation } from '$lib/server/reports';
+import { fiscalYear } from '#lib/server/periods.ts';
+import { scheduleA, taxObligation } from '#lib/server/reports.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {

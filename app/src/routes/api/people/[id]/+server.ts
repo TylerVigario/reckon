@@ -1,13 +1,13 @@
 import { json } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
-import { asUser } from '$lib/server/db';
-import { user } from '$lib/server/db/schema';
-import { refuse, refuseIfTheDatabaseSaidSo } from '$lib/server/field-errors';
-import { UUID } from '$lib/field-rules';
-import { parsePersonField } from '$lib/people-fields';
+import { asUser } from '#lib/server/db/index.ts';
+import { user } from '#lib/server/db/schema/index.ts';
+import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
+import { UUID } from '#lib/field-rules.ts';
+import { parsePersonField } from '#lib/people-fields.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readFields } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readFields } from '#lib/json.ts';
 
 /**
  * Sets the role a person is paid in, or none. Which pay rules reach them

@@ -1,6 +1,6 @@
-import { toSlug } from '$lib/slug';
-import type { Tx } from './db';
-import { pgError } from './field-errors';
+import { toSlug } from '#lib/slug.ts';
+import type { Tx } from './db/index.ts';
+import { pgError } from './field-errors.ts';
 
 /**
  * Inserts a row a URL names by its slug, making the slug from its name when

@@ -1,8 +1,8 @@
 <script lang="ts">
-	import Top from '$lib/Top.svelte';
-	import Setting from '$lib/Setting.svelte';
-	import { money } from '$lib/money.svelte';
-	import Day from '$lib/Day.svelte';
+	import Top from '#lib/Top.svelte';
+	import Setting from '#lib/Setting.svelte';
+	import { money } from '#lib/money.svelte.ts';
+	import Day from '#lib/Day.svelte';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 

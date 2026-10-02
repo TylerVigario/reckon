@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import { authHeaders, getAuth } from '$lib/server/auth';
+import { authHeaders, getAuth } from '#lib/server/auth.ts';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async (event) => {

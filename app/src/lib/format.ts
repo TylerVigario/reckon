@@ -19,7 +19,7 @@ const ABSENT = '—';
  * The currency is an argument because it is data -- operator.currency is a
  * setting, and a literal 'USD' here would be the same fault as a hardcoded tax
  * rate: a value with a source of truth, duplicated where nobody would look for
- * it. Components call money() from $lib/money.svelte, which supplies it.
+ * it. Components call money() from #lib/money.svelte, which supplies it.
  */
 export function formatMoney(v: string | number | null | undefined, currency = 'USD'): string {
 	if (v === null || v === undefined || v === '') return ABSENT;

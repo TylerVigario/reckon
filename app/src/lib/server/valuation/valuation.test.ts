@@ -4,9 +4,9 @@
  * changed where they run and nothing about what they say.
  */
 import { describe, expect, it } from 'vitest';
-import { Decimal, Ratio } from '$lib/decimal';
-import { billedAmount, jobRate, priceOn, type Price, type ServiceTerms } from './pricing';
-import { coveredPay, ruleOn, timePay, type PayRule } from './pay';
+import { Decimal, Ratio } from '#lib/decimal.ts';
+import { billedAmount, jobRate, priceOn, type Price, type ServiceTerms } from './pricing.ts';
+import { coveredPay, ruleOn, timePay, type PayRule } from './pay.ts';
 import {
 	agreementFor,
 	coverage,
@@ -15,9 +15,9 @@ import {
 	type Context,
 	type Entry,
 	type Person
-} from './entries';
-import { invoiceTax } from './tax';
-import { billingDate, hoursOf, legWorth } from './misc';
+} from './entries.ts';
+import { invoiceTax } from './tax.ts';
+import { billingDate, hoursOf, legWorth } from './misc.ts';
 
 const AVERY = { id: 'u-avery', roleId: 'r-partner', active: true };
 const SAM = { id: 'u-sam', roleId: 'r-partner', active: true };

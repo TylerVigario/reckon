@@ -1,6 +1,6 @@
 import { asc, sql } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { accountMap, integration } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { accountMap, integration } from '#lib/server/db/schema/index.ts';
 import type { PageServerLoad } from './$types';
 
 /** What is wired up, and what it points at. Never a credential. */

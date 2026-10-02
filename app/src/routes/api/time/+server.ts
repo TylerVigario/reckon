@@ -1,11 +1,11 @@
 import { json } from '@sveltejs/kit';
 import { sql } from 'drizzle-orm';
-import { asUser } from '$lib/server/db';
-import { timeEntry } from '$lib/server/db/schema';
-import { pgError } from '$lib/server/field-errors';
+import { asUser } from '#lib/server/db/index.ts';
+import { timeEntry } from '#lib/server/db/schema/index.ts';
+import { pgError } from '#lib/server/field-errors.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readBody } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readBody } from '#lib/json.ts';
 
 /**
  * Accepts a time entry from the capture queue.

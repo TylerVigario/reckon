@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
-import { PROBLEM, type ProblemBody, type ProblemKind } from '$lib/problem';
+import { PROBLEM, type ProblemBody, type ProblemKind } from '#lib/problem.ts';
 
 /**
  * A problem document as an HTTP response. The shape it builds, and the kinds
- * it may be, are in $lib/problem so the screens that read one share them.
+ * it may be, are in #lib/problem so the screens that read one share them.
  */
 
 export function problem(

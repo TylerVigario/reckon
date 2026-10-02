@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
-import { validate, validationIsLive } from '$lib/server/validate-address';
+import { validate, validationIsLive } from '#lib/server/validate-address.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readBody, textField } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readBody, textField } from '#lib/json.ts';
 
 /**
  * Validates one chosen address.

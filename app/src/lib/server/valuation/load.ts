@@ -3,8 +3,8 @@
  * valued without knowing what that took.
  */
 import { and, between, eq, gte, inArray, or, sql } from 'drizzle-orm';
-import { today, type Reader } from '../db';
-import * as t from '../db/schema';
+import { today, type Reader } from '../db/index.ts';
+import * as t from '../db/schema/index.ts';
 import {
 	agreementFor,
 	worth,
@@ -12,10 +12,10 @@ import {
 	type Context,
 	type Entry,
 	type Worth
-} from './entries';
-import type { ServiceTerms } from './pricing';
-import { legWorth } from './misc';
-import { invoiceTax, type InvoiceTax } from './tax';
+} from './entries.ts';
+import type { ServiceTerms } from './pricing.ts';
+import { legWorth } from './misc.ts';
+import { invoiceTax, type InvoiceTax } from './tax.ts';
 
 /** The columns of a time entry the valuation reads. */
 export const entryColumns = {

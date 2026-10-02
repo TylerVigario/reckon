@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { readPrice } from '$lib/service-fields';
-	import { readProblem } from '$lib/json';
+	import { readPrice } from '#lib/service-fields.ts';
+	import { readProblem } from '#lib/json.ts';
 
 	/**
 	 * A price from a day: every client's, or one client's.

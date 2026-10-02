@@ -47,7 +47,7 @@ import {
 	type Parse,
 	type Parsed,
 	whole
-} from './field-rules';
+} from './field-rules.ts';
 
 export type { Parsed };
 

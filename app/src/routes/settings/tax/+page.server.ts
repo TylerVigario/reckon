@@ -1,8 +1,8 @@
 import { eq, sql } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { site } from '$lib/server/db/schema';
-import { operatorRow } from '$lib/server/operator';
-import { rateIsStale } from '$lib/server/stale';
+import { db } from '#lib/server/db/index.ts';
+import { site } from '#lib/server/db/schema/index.ts';
+import { operatorRow } from '#lib/server/operator.ts';
+import { rateIsStale } from '#lib/server/stale.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {

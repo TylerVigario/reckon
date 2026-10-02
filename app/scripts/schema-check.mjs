@@ -2,7 +2,7 @@
 /**
  * Proves the field registries and the database agree.
  *
- *   node --import ./scripts/ts-resolve.mjs scripts/schema-check.mjs
+ *   node scripts/schema-check.mjs
  *
  * WHY. Validation in this app has one source of truth for two of its three
  * layers: the page and the endpoint import the same registry, so a rule cannot
@@ -126,7 +126,7 @@ for (const [table, registry] of registries) {
 }
 
 // ===========================================================================
-// THE SLUG RULE, WHICH THE DATABASE ENFORCES AND $lib/slug MAKES.
+// THE SLUG RULE, WHICH THE DATABASE ENFORCES AND #lib/slug MAKES.
 //
 // toSlug runs in the browser, so a form can show the URL while somebody types
 // the name, and on the server when a site or a service is saved without one.
@@ -162,7 +162,7 @@ for (const c of slugChecks) {
 		looked++;
 		const mine = toSlug(n);
 		const [{ ok }] = await q('select $1::text ~ $2::text as ok', [mine, pattern]);
-		if (!ok) complaints.push(`slug '${n}': $lib/slug makes '${mine}', which ${c.name} refuses`);
+		if (!ok) complaints.push(`slug '${n}': #lib/slug makes '${mine}', which ${c.name} refuses`);
 	}
 }
 

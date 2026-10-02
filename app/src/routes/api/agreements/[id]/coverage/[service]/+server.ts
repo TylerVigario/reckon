@@ -1,13 +1,19 @@
 import { json } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
-import { asUser, db } from '$lib/server/db';
-import { agreement, agreementService, ALLOTMENTS, OVERAGES, service } from '$lib/server/db/schema';
-import { refuse, refuseIfTheDatabaseSaidSo } from '$lib/server/field-errors';
-import { UUID } from '$lib/field-rules';
-import { COVERAGE_FIELDS, readCoverage } from '$lib/agreement-fields';
+import { asUser, db } from '#lib/server/db/index.ts';
+import {
+	agreement,
+	agreementService,
+	ALLOTMENTS,
+	OVERAGES,
+	service
+} from '#lib/server/db/schema/index.ts';
+import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
+import { UUID } from '#lib/field-rules.ts';
+import { COVERAGE_FIELDS, readCoverage } from '#lib/agreement-fields.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readFields } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readFields } from '#lib/json.ts';
 
 /**
  * One service an agreement covers, and its allotment: PUT sets it whole --

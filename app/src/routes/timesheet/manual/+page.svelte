@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
-	import Top from '$lib/Top.svelte';
-	import { enqueue, flush, type Entry } from '$lib/queue';
-	import { money } from '$lib/money.svelte';
-	import { rateFor } from '$lib/rates';
+	import Top from '#lib/Top.svelte';
+	import { enqueue, flush, type Entry } from '#lib/queue.ts';
+	import { money } from '#lib/money.svelte.ts';
+	import { rateFor } from '#lib/rates.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 

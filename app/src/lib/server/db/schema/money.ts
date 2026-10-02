@@ -24,12 +24,12 @@ import {
 	unique,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { createdAt, day, decimal, id, nonNegative, oneOf, tstz } from './columns';
-import { entity, site } from './clients';
-import { materialLot } from './catalogue';
-import { agreementPeriod } from './agreements';
-import { timeEntry, tripLeg } from './work';
-import { user } from './people';
+import { createdAt, day, decimal, id, nonNegative, oneOf, tstz } from './columns.ts';
+import { entity, site } from './clients.ts';
+import { materialLot } from './catalogue.ts';
+import { agreementPeriod } from './agreements.ts';
+import { timeEntry, tripLeg } from './work.ts';
+import { user } from './people.ts';
 
 export const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'void'] as const;
 export const LINE_KINDS = ['service', 'material', 'recurring', 'adjustment'] as const;

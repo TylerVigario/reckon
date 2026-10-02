@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { db } from './db';
-import { entity, payRule, role, servicePrice, user } from './db/schema';
+import { db } from './db/index.ts';
+import { entity, payRule, role, servicePrice, user } from './db/schema/index.ts';
 
 export type RowState = 'current' | 'scheduled' | 'superseded';
 

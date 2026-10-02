@@ -1,14 +1,14 @@
 import { json } from '@sveltejs/kit';
 import { sql } from 'drizzle-orm';
-import { asUser, db } from '$lib/server/db';
-import { invoice, operator } from '$lib/server/db/schema';
-import { camel } from '$lib/server/db/rows';
-import { type Errors, refuse, refuseIfTheDatabaseSaidSo } from '$lib/server/field-errors';
-import { parseField } from '$lib/settings-fields';
-import { verifyPlace } from '$lib/server/verify-place';
+import { asUser, db } from '#lib/server/db/index.ts';
+import { invoice, operator } from '#lib/server/db/schema/index.ts';
+import { camel } from '#lib/server/db/rows.ts';
+import { type Errors, refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
+import { parseField } from '#lib/settings-fields.ts';
+import { verifyPlace } from '#lib/server/verify-place.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readFields } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readFields } from '#lib/json.ts';
 
 /**
  * Saves settings one field at a time.
@@ -22,7 +22,7 @@ import { readFields } from '$lib/json';
  * any of it is written, so one bad value saves nothing.
  *
  * THIS IS THE CHECK THAT COUNTS. The page runs the same rules from
- * $lib/settings-fields, which is a courtesy -- an answer without a round trip.
+ * #lib/settings-fields, which is a courtesy -- an answer without a round trip.
  * Nothing arriving here has necessarily been through the page, so this side
  * assumes it did not, and then adds the four things the page could not have
  * done for itself:

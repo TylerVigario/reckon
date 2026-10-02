@@ -1,7 +1,7 @@
 <script lang="ts">
-	import Top from '$lib/Top.svelte';
-	import { pct } from '$lib/format';
-	import Day from '$lib/Day.svelte';
+	import Top from '#lib/Top.svelte';
+	import { pct } from '#lib/format.ts';
+	import Day from '#lib/Day.svelte';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 

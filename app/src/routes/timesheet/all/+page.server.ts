@@ -1,8 +1,8 @@
 import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { db, today } from '$lib/server/db';
-import * as t from '$lib/server/db/schema';
-import { entryColumns, valueEntries } from '$lib/server/valuation/load';
+import { db, today } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
+import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
 import type { PageServerLoad } from './$types';
 
 /**

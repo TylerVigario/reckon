@@ -1,10 +1,10 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, notExists, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { Ratio, sum, sumMoney } from '$lib/decimal';
-import { db, today } from '$lib/server/db';
-import * as t from '$lib/server/db/schema';
-import { theTeam } from '$lib/server/choices';
-import { entryColumns, valueEntries, valueLegs } from '$lib/server/valuation/load';
+import { Ratio, sum, sumMoney } from '#lib/decimal.ts';
+import { db, today } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
+import { theTeam } from '#lib/server/choices.ts';
+import { entryColumns, valueEntries, valueLegs } from '#lib/server/valuation/load.ts';
 import type { PageServerLoad } from './$types';
 
 /**

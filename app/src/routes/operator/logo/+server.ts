@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { operator } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { operator } from '#lib/server/db/schema/index.ts';
 import type { RequestHandler } from './$types';
 
 /** The operator's logo, straight out of the row that holds it. */

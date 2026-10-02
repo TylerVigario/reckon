@@ -5,9 +5,9 @@
  * Pure functions over rows already loaded -- load.ts does the loading. Every
  * figure is rounded to the cent once, where it is a figure, and not on the way.
  */
-import { Decimal, Ratio } from '$lib/decimal';
-import { billedAmount, jobRate, priceOn, type Price, type ServiceTerms } from './pricing';
-import { coveredPay, ruleOn, timePay, type Payee, type PayRule } from './pay';
+import { Decimal, Ratio } from '#lib/decimal.ts';
+import { billedAmount, jobRate, priceOn, type Price, type ServiceTerms } from './pricing.ts';
+import { coveredPay, ruleOn, timePay, type Payee, type PayRule } from './pay.ts';
 
 export type Entry = {
 	id: string;

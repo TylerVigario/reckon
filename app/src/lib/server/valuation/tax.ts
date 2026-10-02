@@ -5,7 +5,7 @@
  * newest answer on or before that day -- and, where nothing was asked by then,
  * by the earliest answer there is, counted as an estimate.
  */
-import { Decimal, Ratio, sum } from '$lib/decimal';
+import { Decimal, Ratio, sum } from '#lib/decimal.ts';
 
 export type TaxLine = {
 	invoiceId: string;

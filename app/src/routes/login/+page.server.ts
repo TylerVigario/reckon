@@ -1,9 +1,9 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
 import { eq } from 'drizzle-orm';
-import { db, schema } from '$lib/server/db';
-import { authHeaders, getAuth, rehashIfDated } from '$lib/server/auth';
-import { clearFailures, recordFailure, waitFor } from '$lib/server/sign-in-limit';
+import { db, schema } from '#lib/server/db/index.ts';
+import { authHeaders, getAuth, rehashIfDated } from '#lib/server/auth.ts';
+import { clearFailures, recordFailure, waitFor } from '#lib/server/sign-in-limit.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 // eslint-disable-next-line @typescript-eslint/require-await -- a load is async by contract
@@ -44,8 +44,10 @@ export const actions: Actions = {
 			// Someone made inactive answers exactly as a wrong password does.
 			if (signedIn.user.active === false) {
 				await db.delete(schema.session).where(eq(schema.session.userId, userId));
+				// A Secure cookie's name carries __Secure- in front of its own.
 				event.cookies.getAll().forEach(({ name }) => {
-					if (name.startsWith('reckon.')) event.cookies.delete(name, { path: '/' });
+					if (name.replace(/^__Secure-/, '').startsWith('reckon.'))
+						event.cookies.delete(name, { path: '/' });
 				});
 				return fail(400, { email, message: 'Wrong email or password.' });
 			}

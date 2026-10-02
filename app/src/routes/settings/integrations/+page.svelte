@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Top from '$lib/Top.svelte';
+	import Top from '#lib/Top.svelte';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 

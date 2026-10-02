@@ -1,5 +1,5 @@
-import { env } from '$env/dynamic/private';
-import type { Verdict } from '$lib/verdict';
+import { GOOGLE_MAPS_API_KEY } from '$app/env/private';
+import type { Verdict } from '#lib/verdict.ts';
 
 /**
  * Address validation, server-side.
@@ -20,10 +20,9 @@ import type { Verdict } from '$lib/verdict';
 
 const ENDPOINT = 'https://addressvalidation.googleapis.com/v1:validateAddress';
 
-export const validationIsLive = () =>
-	typeof env.GOOGLE_MAPS_API_KEY === 'string' && env.GOOGLE_MAPS_API_KEY.trim() !== '';
+export const validationIsLive = () => GOOGLE_MAPS_API_KEY !== undefined;
 
-export type { Verdict } from '$lib/verdict';
+export type { Verdict } from '#lib/verdict.ts';
 
 /**
  * What Google's Address Validation API returns, narrowed to the parts read
@@ -57,7 +56,7 @@ export async function validate(address: {
 	postcode?: string | null;
 	country?: string | null;
 }): Promise<Verdict | null> {
-	const key = env.GOOGLE_MAPS_API_KEY?.trim();
+	const key = GOOGLE_MAPS_API_KEY;
 	if (!key) return null;
 
 	const lines = [address.street, address.city, address.region, address.postcode].filter(

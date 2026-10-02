@@ -6,9 +6,9 @@
 		suggest,
 		type Resolved,
 		type Suggestion
-	} from '$lib/google';
-	import { readJson } from '$lib/json';
-	import type { Verdict } from '$lib/verdict';
+	} from '#lib/google.ts';
+	import { readJson } from '#lib/json.ts';
+	import type { Verdict } from '#lib/verdict.ts';
 
 	/**
 	 * An address, chosen rather than typed.

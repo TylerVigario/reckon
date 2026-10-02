@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm';
-import { Decimal, sumMoney } from '$lib/decimal';
-import { db } from '$lib/server/db';
-import * as t from '$lib/server/db/schema';
-import { balances } from '$lib/server/balances';
+import { Decimal, sumMoney } from '#lib/decimal.ts';
+import { db } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
+import { balances } from '#lib/server/balances.ts';
 import type { PageServerLoad } from './$types';
 
 /**

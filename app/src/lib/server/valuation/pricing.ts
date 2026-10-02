@@ -1,4 +1,4 @@
-import { Decimal, Ratio } from '$lib/decimal';
+import { Decimal, Ratio } from '#lib/decimal.ts';
 
 /** A dated price: every client's when entityId is null, or one client's. */
 export type Price = {

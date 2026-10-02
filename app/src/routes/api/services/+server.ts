@@ -1,13 +1,13 @@
 import { json } from '@sveltejs/kit';
-import { asUser } from '$lib/server/db';
-import { service, UNITS } from '$lib/server/db/schema';
-import { refuse, refuseIfTheDatabaseSaidSo } from '$lib/server/field-errors';
-import { parseAll } from '$lib/field-rules';
-import { NEW_SERVICE_FIELDS } from '$lib/service-fields';
-import { insertNamed } from '$lib/server/slugs';
+import { asUser } from '#lib/server/db/index.ts';
+import { service, UNITS } from '#lib/server/db/schema/index.ts';
+import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
+import { parseAll } from '#lib/field-rules.ts';
+import { NEW_SERVICE_FIELDS } from '#lib/service-fields.ts';
+import { insertNamed } from '#lib/server/slugs.ts';
 import type { RequestHandler } from './$types';
-import { problem } from '$lib/server/problem';
-import { readFields } from '$lib/json';
+import { problem } from '#lib/server/problem.ts';
+import { readFields } from '#lib/json.ts';
 
 /**
  * Creates a service, from a name and what it is charged per.

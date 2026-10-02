@@ -1,10 +1,10 @@
 import { lte } from 'drizzle-orm';
-import { db, today } from './db';
-import { servicePrice } from './db/schema';
-import type { Price } from '$lib/rates';
-import { jobRate, priceOn } from './valuation/pricing';
-import { loadCatalogue } from './valuation/load';
-import { team } from './valuation/entries';
+import { db, today } from './db/index.ts';
+import { servicePrice } from './db/schema/index.ts';
+import type { Price } from '#lib/rates.ts';
+import { jobRate, priceOn } from './valuation/pricing.ts';
+import { loadCatalogue } from './valuation/load.ts';
+import { team } from './valuation/entries.ts';
 
 /**
  * Every client each service has a price for today, with the rate for one person

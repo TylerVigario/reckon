@@ -18,6 +18,13 @@
  */
 const [, , base = 'http://127.0.0.1:5181', email, password] = process.argv;
 
+// In production a TLS proxy stands in front, and the server takes the scheme
+// from it. Over plain http this says what that proxy would -- the server is
+// started with PROTOCOL_HEADER=x-forwarded-proto to read it. Without it the
+// server assumes https, and refuses every form post as cross-site.
+/** @type {Record<string, string>} */
+const PROXY = base.startsWith('http:') ? { 'x-forwarded-proto': 'http' } : {};
+
 let passed = 0;
 const failures = [];
 
@@ -27,7 +34,7 @@ const login = async () => {
 		method: 'POST',
 		body,
 		redirect: 'manual',
-		headers: { origin: base }
+		headers: { origin: base, ...PROXY }
 	});
 	const cookie = (r.headers.getSetCookie?.() ?? []).map((c) => c.split(';')[0]).join('; ');
 	if (!cookie) throw new Error(`could not sign in (${r.status})`);
@@ -35,7 +42,7 @@ const login = async () => {
 };
 
 const cookie = await login();
-const H = { cookie, 'content-type': 'application/json', origin: base };
+const H = { cookie, 'content-type': 'application/json', origin: base, ...PROXY };
 
 /**
  * @param {string} method

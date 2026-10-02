@@ -1,6 +1,6 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { sql } from 'drizzle-orm';
-import { problem } from './problem';
+import { problem } from './problem.ts';
 
 /**
  * Stops one person's save from silently erasing another's.

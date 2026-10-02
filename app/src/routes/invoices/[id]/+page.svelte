@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { Decimal } from '$lib/decimal';
-	import Top from '$lib/Top.svelte';
-	import { day } from '$lib/format';
-	import { money } from '$lib/money.svelte';
+	import { Decimal } from '#lib/decimal.ts';
+	import Top from '#lib/Top.svelte';
+	import { day } from '#lib/format.ts';
+	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
