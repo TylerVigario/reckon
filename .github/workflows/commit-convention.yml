@@ -1,0 +1,81 @@
+name: Commit convention
+
+# Conventional Commits, checked at both ends: the pull request title where it
+# can block a merge, and whatever lands on main where it can only report.
+#
+# THE TITLE. The repo squash-merges, so the PR title is what lands on main as
+# the commit message. A bad title means a bad commit on main, and main is
+# linear-only — there's no force-push fix. husky only runs against commit
+# messages, not PR titles, so without this check a non-conventional title
+# slips through and the release pipeline silently no-bumps.
+#
+# MAIN. Under squash the title and the commit are the same string, so this
+# mostly re-reads what the title check passed. What it catches is what never
+# had a pull request: the release's receipt, written by the release App, and
+# anything that reached main some other way. It is not a required context and
+# cannot be one — it runs on a push, so a pull request waiting on it would
+# wait for ever.
+#
+# Both read .commitlintrc.js, so the local commit-msg hook and these checks
+# enforce the same rules from the same file.
+
+on:
+  pull_request:
+    # `edited` re-runs on title changes so a green badge appears
+    # without needing a new commit when the author fixes a bad title.
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  HUSKY: 0
+  CI: true
+
+jobs:
+  validate:
+    name: Validate PR title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Shallow is fine — commitlint only reads the piped string,
+          # not git history.
+          fetch-depth: 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+      # `--ignore-scripts` skips the husky `prepare` step (and any
+      # other lifecycle script) — none are needed to run commitlint,
+      # and skipping shaves time off the job.
+      - run: npm ci --ignore-scripts
+      - name: Run commitlint on PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        # printf, not echo: a title that happens to start with `-n`/`-e`
+        # would be eaten by echo as a flag, truncating what commitlint sees.
+        run: printf '%s\n' "$TITLE" | npx --no-install commitlint
+
+  main:
+    name: Lint main
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The whole push, back to what main was before it.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci --ignore-scripts
+      - name: Every commit this push landed follows the convention
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: npx --no-install commitlint --from "$BEFORE" --to "$AFTER" --verbose

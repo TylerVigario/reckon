@@ -9,9 +9,10 @@ Applied state is a copy of these files, not the other way round.
 
 ## `main.json`
 
-Five rules. Four say who may write the branch — `deletion`, `non_fast_forward`,
-`pull_request`, `required_linear_history` — and the fifth says what must be true
-before a merge: every assertion CI makes, each as its own context.
+Six rules. Four say who may write the branch — `deletion`, `non_fast_forward`,
+`pull_request`, `required_linear_history` — and two say what must be true before
+a merge: every assertion CI makes, each as its own context, and no new CodeQL
+finding.
 
 `allowed_merge_methods` is `squash` alone. That is not the same lever as
 disabling the other merge methods in settings: a setting is re-enabled by one
@@ -24,6 +25,13 @@ assertion means removing its job, and the context then names nothing and wedges
 the branch, so the removal cannot complete without editing this file. A context
 naming no job wedges it the same way by accident, so renaming a job means
 editing this file in the same change.
+
+`code_scanning` refuses a pull request that introduces a CodeQL error, or a
+security finding of medium or higher. It reads the analysis rather than a job,
+which is why the CodeQL jobs are not among the required contexts. Like a
+required context, it is applied only once the thing behind it can answer — after
+CodeQL has analysed `main` — or every pull request waits on an analysis that
+never comes.
 
 ## `tags.json`
 
