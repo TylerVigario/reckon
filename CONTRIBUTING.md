@@ -115,4 +115,7 @@ green CI run, and the difference is the assertions most worth having.
 The pull request **title is the commit**. Merges are squash-only with an empty
 body, so the title is the entire record of the change and has to be a
 [Conventional Commit](https://www.conventionalcommits.org). `feat` and `fix` are
-the only two types the specification gives meaning to; the rest are labels.
+the only two types the specification gives meaning to; the rest are labels. It is
+checked against [`@vts/commitlint-config`](https://github.com/TylerVigario/commitlint-config),
+which holds to the specification and nothing more: a type and a subject, types in
+any case, and no rule about case, length or punctuation.

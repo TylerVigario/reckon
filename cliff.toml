@@ -1,5 +1,5 @@
 [changelog]
-header = "# Changelog\n"
+header = "# Changelog\n\n"
 body = """
 {% if version %}\
 ## [{{ version | trim_start_matches(pat="v") }}](https://github.com/TylerVigario/reckon/{% if previous.version %}compare/{{ previous.version }}...{{ version }}{% else %}releases/tag/{{ version }}{% endif %}) ({{ timestamp | date(format="%Y-%m-%d") }})
@@ -23,15 +23,21 @@ render_always = true
 conventional_commits = true
 filter_unconventional = true
 split_commits = false
-protect_breaking_commits = false
+# A commit marked breaking is never dropped, whatever its type: the `!` is the
+# author saying something will break, and the specification makes that a bump on
+# any type.
+protect_breaking_commits = true
 filter_commits = true
 topo_order = false
 sort_commits = "oldest"
 tag_pattern = "v[0-9].*"
+# The squash body is empty, so what a change means -- what breaks, and what an
+# operator has to do about it -- is in its pull request. The `(#n)` the forge
+# appends to every squash subject becomes the link to it.
 commit_preprocessors = [
-  { pattern = '\(#\d+\)', replace = "" },
+  { pattern = '\(#(\d+)\)', replace = "([#${1}](https://github.com/TylerVigario/reckon/pull/${1}))" },
 ]
-# Angular Conventional Commits. The line these parsers draw is DID THE
+# Conventional Commits. The line these parsers draw is DID THE
 # ARTIFACT CHANGE — because the version names a tarball, and two
 # tarballs with different bytes should not answer to the same number.
 #
@@ -55,25 +61,31 @@ commit_preprocessors = [
 # `chore` covers `chore(release)` too, which keeps the release commits
 # out of the changelog they generate.
 #
-# `style` is skipped like the rest of that set. It is a valid type —
-# .commitlintrc.js inherits the eleven Angular types from
-# config-conventional rather than declaring a subset — it simply cannot
-# reach the artifact, so it neither bumps nor appears.
+# `style` is skipped like the rest of that set. It is a valid type — one
+# of @vts/commitlint-config's starter set — it simply cannot reach the
+# artifact, so it neither bumps nor appears.
+#
+# Case-insensitive, because the specification is and so is the commit
+# linter: `Fix:` is a fix, and a case-sensitive parser would drop it from
+# the changelog and the version both.
 commit_parsers = [
-  { message = "^feat",     group = "<!-- 0 -->Features" },
-  { message = "^fix",      group = "<!-- 1 -->Bug Fixes" },
-  { message = "^revert",   group = "<!-- 1 -->Bug Fixes" },
-  { message = "^perf",     group = "<!-- 2 -->Performance" },
-  { message = "^refactor", group = "<!-- 3 -->Refactoring" },
-  { message = "^build",    group = "<!-- 4 -->Build & Packaging" },
-  { message = "^style",    skip = true },
-  { message = "^ci",       skip = true },
-  { message = "^docs",     skip = true },
-  { message = "^test",     skip = true },
-  { message = "^chore",    skip = true },
+  { message = "(?i)^feat",     group = "<!-- 0 -->Features" },
+  { message = "(?i)^fix",      group = "<!-- 1 -->Bug Fixes" },
+  { message = "(?i)^revert",   group = "<!-- 1 -->Bug Fixes" },
+  { message = "(?i)^perf",     group = "<!-- 2 -->Performance" },
+  { message = "(?i)^refactor", group = "<!-- 3 -->Refactoring" },
+  { message = "(?i)^build",    group = "<!-- 4 -->Build & Packaging" },
+  { message = "(?i)^style",    skip = true },
+  { message = "(?i)^ci",       skip = true },
+  { message = "(?i)^docs",     skip = true },
+  { message = "(?i)^test",     skip = true },
+  { message = "(?i)^chore",    skip = true },
 ]
 
 [bump]
+# Before 1.0 a feature bumps the minor version and so does a breaking change --
+# semver's own rule for major version zero, where anything may change. 1.0 is
+# declared, not reached by accident.
 features_always_bump_minor = true
-breaking_always_bump_major = true
+breaking_always_bump_major = false
 initial_tag = "v0.1.0"
