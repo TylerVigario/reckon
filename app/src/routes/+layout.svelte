@@ -3,6 +3,7 @@
 	import type { LayoutProps } from './$types';
 	import { resolve } from '$app/paths';
 	import type { RouteId } from '$app/types';
+	import TabIcon, { type Tab } from '#lib/TabIcon.svelte';
 
 	let { data, children }: LayoutProps = $props();
 
@@ -13,12 +14,12 @@
 
 	// Five tabs, one per kind of work.
 	const nav = [
-		{ href: '/', label: 'Today', ic: 'i1' },
-		{ href: '/timesheet', label: 'Time', ic: 'i2' },
-		{ href: '/trips', label: 'Trips', ic: 'i3' },
-		{ href: '/invoices', label: 'Invoices', ic: 'i4' },
-		{ href: '/more', label: 'More', ic: 'i9' }
-	] satisfies { href: RouteId; label: string; ic: string }[];
+		{ href: '/', label: 'Today', ic: 'today' },
+		{ href: '/timesheet', label: 'Time', ic: 'time' },
+		{ href: '/trips', label: 'Trips', ic: 'trips' },
+		{ href: '/invoices', label: 'Invoices', ic: 'invoices' },
+		{ href: '/more', label: 'More', ic: 'more' }
+	] satisfies { href: RouteId; label: string; ic: Tab }[];
 
 	// The rail flattens what the tab bar nests: on a screen with room, More is
 	// not a place, it is four more rows.
@@ -95,7 +96,7 @@
 		<nav class="tabbar" aria-label="Sections">
 			{#each nav as n (n.href)}
 				<a href={resolve(n.href)} aria-current={here(n.href) ? 'page' : undefined}>
-					<span class="ic {n.ic}" aria-hidden="true"></span>{n.label}
+					<TabIcon name={n.ic} />{n.label}
 				</a>
 			{/each}
 		</nav>
@@ -798,20 +799,27 @@
 
 	.app {
 		min-height: 100dvh;
+		display: flex;
+		flex-direction: column;
 	}
 
 	/* The screen. Its header is the page's own .top, sticky to the top of it,
 	   because what a screen is called belongs to the screen. */
 	main {
+		flex: 1 0 auto;
 		min-width: 0;
-		padding-bottom: calc(var(--tabh) + env(safe-area-inset-bottom));
 	}
 
-	/* Thumb-reach on a phone, because that is where a timer gets used. */
+	/* Thumb-reach on a phone, because that is where a timer gets used.
+
+	   Sticky in the page's flow rather than fixed over it. A fixed bar takes no
+	   room, so the page has to reserve its height -- and a reserved height is a
+	   guess: the bar grows with its padding, the safe area and the reader's text
+	   size, and whatever it outgrows the guess by sits under it. In the flow the
+	   bar's room is the bar's own height, whatever that turns out to be, and the
+	   last thing on a page always ends above it. */
 	.tabbar {
-		position: fixed;
-		left: 0;
-		right: 0;
+		position: sticky;
 		bottom: 0;
 		z-index: 40;
 		display: grid;
@@ -821,6 +829,9 @@
 		padding-bottom: env(safe-area-inset-bottom);
 	}
 	.tabbar a {
+		/* The bar is --tabh tall, padding included -- the height the token names,
+		   rather than the token plus whatever the padding adds. */
+		box-sizing: border-box;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -838,33 +849,6 @@
 		color: var(--accent);
 		border-top-color: var(--brand);
 		background: var(--accent-wash);
-	}
-
-	/* Drawn rather than set: a glyph font is one more thing to ship, and these
-	   are four rectangles and a rule. */
-	.ic {
-		width: 20px;
-		height: 20px;
-		border: 1.7px solid currentColor;
-		border-radius: 5px;
-	}
-	.ic.i2 {
-		border-radius: 50%;
-	}
-	.ic.i3 {
-		border-radius: 5px 14px 5px 14px;
-	}
-	.ic.i4 {
-		border-radius: 3px;
-		border-left-width: 6px;
-	}
-	.ic.i9 {
-		border: 0;
-		border-radius: 0;
-		box-shadow:
-			0 -6px 0 -4px currentColor,
-			0 0 0 -4px currentColor,
-			0 6px 0 -4px currentColor;
 	}
 
 	/* Below the rail's width there is no rail; the tab bar is the navigation. */
@@ -896,9 +880,6 @@
 	@media (min-width: 1180px) {
 		.tabbar {
 			display: none;
-		}
-		main {
-			padding-bottom: 0;
 		}
 		/* The application fills the window. Capping it at 1280 and centring it
 		   would leave 320px of page background down each side of a 1920 monitor
