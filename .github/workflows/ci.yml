@@ -207,6 +207,27 @@ jobs:
         # the replacement could stop and they would all stay green.
         run: node app/scripts/rehash-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
+      - name: It installs, and works with the server out of reach
+        # Out of reach for real: the server is stopped between the runs, because
+        # the service worker fetches on its own and a flag set on the page would
+        # not reach it. The browser the console check started stays up
+        # throughout, so the worker, its caches and the capture queue carry
+        # across, as on a phone. The server comes back with the job's own
+        # environment, so the session survives the restart.
+        run: |
+          check() { node app/scripts/offline-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password "$1"; }
+          check online
+          kill "$(cat /tmp/reckon.pid)"
+          sleep 1
+          check offline
+          node app/build/index.js &
+          echo $! > /tmp/reckon.pid
+          for _ in $(seq 1 30); do
+            curl -sf -o /dev/null "http://127.0.0.1:$PORT/login" && break
+            sleep 1
+          done
+          check back
+
       - name: Stop it
         if: always()
         run: kill "$(cat /tmp/reckon.pid)" 2>/dev/null || true
