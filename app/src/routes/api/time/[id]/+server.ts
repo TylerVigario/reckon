@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
 import { invoice, invoiceLine, timeEntry } from '#lib/server/db/schema/index.ts';
@@ -34,5 +33,5 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 
 	// asUser so record_history names who removed it, rather than nobody.
 	await asUser(locals.user!.id, (tx) => tx.delete(timeEntry).where(eq(timeEntry.id, params.id)));
-	return json({ deleted: params.id });
+	return Response.json({ deleted: params.id });
 };

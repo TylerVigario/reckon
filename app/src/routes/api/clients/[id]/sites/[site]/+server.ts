@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
 import { Decimal } from '#lib/decimal.ts';
 import { asUser, db, today } from '#lib/server/db/index.ts';
@@ -142,7 +141,7 @@ export const PATCH: RequestHandler = async (event) => {
 	}
 
 	if (!after) return staleRead('This site', event.url.pathname);
-	return withVersion(json({ saved: row, priced, version: after.version }), after.version);
+	return withVersion(Response.json({ saved: row, priced, version: after.version }), after.version);
 };
 
 /**
@@ -157,5 +156,5 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	await asUser(locals.user!.id, (tx) =>
 		tx.update(sites).set({ active: false }).where(eq(sites.id, found.id))
 	);
-	return json({ closed: true });
+	return Response.json({ closed: true });
 };

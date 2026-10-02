@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
 import { agreement, entity, INTERVALS } from '#lib/server/db/schema/index.ts';
@@ -44,7 +43,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				})
 				.returning({ id: agreement.id })
 		);
-		return json({ id: made.id }, { status: 201 });
+		return Response.json({ id: made.id }, { status: 201 });
 	} catch (e) {
 		// A site of another client is refused by agreement_site_is_the_clients.
 		if (pgError(e).constraint === 'agreement_site_is_the_clients')

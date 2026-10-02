@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
 import { role } from '#lib/server/db/schema/index.ts';
@@ -32,7 +31,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		if (refused) return refused;
 		throw e;
 	}
-	return json({ saved: { name: parsed.value } });
+	return Response.json({ saved: { name: parsed.value } });
 };
 
 /**
@@ -56,5 +55,5 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 			);
 		throw e;
 	}
-	return json({ removed: params.id });
+	return Response.json({ removed: params.id });
 };

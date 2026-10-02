@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { asUser } from '#lib/server/db/index.ts';
 import { role } from '#lib/server/db/schema/index.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
@@ -21,7 +20,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				.values({ name: String(values.name) })
 				.returning({ id: role.id })
 		);
-		return json({ id: made.id }, { status: 201 });
+		return Response.json({ id: made.id }, { status: 201 });
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, ['name'], 'role');
 		if (refused) return refused;

@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
 import { camel } from '#lib/server/db/rows.ts';
@@ -85,7 +84,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		throw e;
 	}
 
-	return json({ saved: row });
+	return Response.json({ saved: row });
 };
 
 /**
@@ -112,5 +111,5 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 			);
 		throw e;
 	}
-	return json({ removed: params.id });
+	return Response.json({ removed: params.id });
 };

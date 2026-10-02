@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { sql } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
 import { timeEntry } from '#lib/server/db/schema/index.ts';
@@ -120,5 +119,5 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		throw err;
 	}
 
-	return json(row, { status: 200 });
+	return Response.json(row, { status: 200 });
 };

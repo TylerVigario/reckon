@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
 import { user } from '#lib/server/db/schema/index.ts';
@@ -36,5 +35,5 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		if (refused) return refused;
 		throw e;
 	}
-	return json({ saved: { role_id: parsed.value } });
+	return Response.json({ saved: { role_id: parsed.value } });
 };

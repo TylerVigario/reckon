@@ -8,7 +8,7 @@
 	import { PAYS_FOR, paysWhat } from '#lib/pay-words.ts';
 	import { parseServiceField } from '#lib/service-fields.ts';
 	import { readProblem } from '#lib/json.ts';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -60,7 +60,7 @@
 
 	async function refresh() {
 		editing = null;
-		await invalidateAll();
+		await refreshAll();
 	}
 
 	async function takeBack(kind: 'prices' | 'rules', id: string) {
@@ -75,7 +75,7 @@
 			problem = b.detail ?? b.title ?? 'That was not taken back.';
 			return;
 		}
-		await invalidateAll();
+		await refreshAll();
 	}
 
 	// What happens to the service as a whole lives in the header: delete one
@@ -116,7 +116,7 @@
 				: 'Not saved — no connection.';
 			return;
 		}
-		await invalidateAll();
+		await refreshAll();
 	}
 
 	async function remove() {
@@ -420,7 +420,7 @@
 					value={s.name}
 					{endpoint}
 					validate={parseServiceField}
-					onsaved={() => invalidateAll()}
+					onsaved={() => refreshAll()}
 				/>
 				<Setting
 					name="unit"
@@ -433,7 +433,7 @@
 					]}
 					{endpoint}
 					validate={parseServiceField}
-					onsaved={() => invalidateAll()}
+					onsaved={() => refreshAll()}
 				/>
 				{#if s.unit === 'hour'}
 					<Setting
@@ -444,7 +444,7 @@
 						hint="Pay is never rounded: it is counted as worked."
 						{endpoint}
 						validate={parseServiceField}
-						onsaved={() => invalidateAll()}
+						onsaved={() => refreshAll()}
 					/>
 				{/if}
 				<Setting
@@ -456,7 +456,7 @@
 					hint="The least one entry bills, however short."
 					{endpoint}
 					validate={parseServiceField}
-					onsaved={() => invalidateAll()}
+					onsaved={() => refreshAll()}
 				/>
 				<Setting
 					name="time_tracked"

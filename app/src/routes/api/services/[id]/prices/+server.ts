@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { and, eq, sql } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
 import { service, servicePrice } from '#lib/server/db/schema/index.ts';
@@ -72,7 +71,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 						.values({ serviceId: params.id, entityId, effectiveFrom, ...price })
 						.returning({ id: servicePrice.id })
 		);
-		return json({ id: row.id, replaced: Boolean(same) }, { status: same ? 200 : 201 });
+		return Response.json({ id: row.id, replaced: Boolean(same) }, { status: same ? 200 : 201 });
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, Object.keys(PRICE_FIELDS), 'service_price');
 		if (refused) return refused;

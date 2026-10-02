@@ -3,7 +3,7 @@
 	import Top from '#lib/Top.svelte';
 	import { pending, flush, enqueue } from '#lib/queue.ts';
 	import { running, drop, toEntry, type Running } from '#lib/timers.ts';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { money } from '#lib/money.svelte.ts';
 	import { increment } from '#lib/format.ts';
 	import { rateFor } from '#lib/rates.ts';
@@ -60,7 +60,7 @@
 			.catch(() => {})
 			.then(() => {
 				queued = pending();
-				return invalidateAll();
+				return refreshAll();
 			});
 	}
 

@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
 import {
@@ -59,7 +58,7 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 		if (refused) return refused;
 		throw e;
 	}
-	return json({ saved: values });
+	return Response.json({ saved: values });
 };
 
 export const DELETE: RequestHandler = async ({ params, locals }) => {
@@ -78,5 +77,5 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	);
 	if (gone.length === 0)
 		return problem('notFound', 404, 'The agreement does not cover that service.');
-	return json({ removed: params.service });
+	return Response.json({ removed: params.service });
 };

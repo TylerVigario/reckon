@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { PROBLEM, type ProblemBody, type ProblemKind } from '#lib/problem.ts';
 
 /**
@@ -19,7 +18,7 @@ export function problem(
 		...(extra?.instance ? { instance: extra.instance } : {}),
 		...(extra?.errors ? { errors: extra.errors } : {})
 	};
-	return json(body, {
+	return Response.json(body, {
 		status,
 		headers: {
 			// Not application/json: the media type is how a client knows this

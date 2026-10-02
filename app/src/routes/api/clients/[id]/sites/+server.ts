@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { asUser, today } from '#lib/server/db/index.ts';
 import { site as sites, siteTaxCheck } from '#lib/server/db/schema/index.ts';
 import { insertNamed } from '#lib/server/slugs.ts';
@@ -127,7 +126,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			return made;
 		});
 
-		return json({ id: site.id, slug: site.slug, display: site.display, priced }, { status: 201 });
+		return Response.json(
+			{ id: site.id, slug: site.slug, display: site.display, priced },
+			{ status: 201 }
+		);
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, Object.keys(row), 'site');
 		if (refused) return refused;

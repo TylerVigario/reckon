@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
 import { camel } from '#lib/server/db/rows.ts';
@@ -102,5 +101,5 @@ export const PATCH: RequestHandler = async (event) => {
 	}
 
 	if (!after) return staleRead('This client', event.url.pathname);
-	return withVersion(json({ saved: row, version: after.version }), after.version);
+	return withVersion(Response.json({ saved: row, version: after.version }), after.version);
 };

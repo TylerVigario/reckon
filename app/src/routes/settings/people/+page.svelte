@@ -4,7 +4,7 @@
 	import { parsePersonField, parseRoleField, ROLE_FIELDS } from '#lib/people-fields.ts';
 	import { parseAll } from '#lib/field-rules.ts';
 	import { readProblem } from '#lib/json.ts';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -40,7 +40,7 @@
 			return;
 		}
 		newRole = '';
-		await invalidateAll();
+		await refreshAll();
 	}
 
 	async function removeRole(id: string) {
@@ -52,7 +52,7 @@
 				: 'Not deleted — no connection.';
 			return;
 		}
-		await invalidateAll();
+		await refreshAll();
 	}
 </script>
 
@@ -84,7 +84,7 @@
 							.join(' · ')}
 						endpoint="/api/people/{p.id}"
 						validate={parsePersonField}
-						onsaved={() => invalidateAll()}
+						onsaved={() => refreshAll()}
 					/>
 				{/each}
 			</div>
@@ -102,7 +102,7 @@
 							value={r.name}
 							endpoint="/api/roles/{r.id}"
 							validate={parseRoleField}
-							onsaved={() => invalidateAll()}
+							onsaved={() => refreshAll()}
 						/>
 						{#if !r.holders && !r.rules}
 							<button type="button" class="btn sm gho" onclick={() => removeRole(r.id)}

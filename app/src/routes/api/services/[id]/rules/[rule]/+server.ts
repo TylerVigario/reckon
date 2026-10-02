@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
 import { payRule } from '#lib/server/db/schema/index.ts';
@@ -33,5 +32,5 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 			409,
 			'That rule is not here, or its day has passed. A rule that has been in force stays on the history; change it with a rule from another day.'
 		);
-	return json({ removed: params.rule });
+	return Response.json({ removed: params.rule });
 };

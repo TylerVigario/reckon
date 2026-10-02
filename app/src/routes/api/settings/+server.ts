@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { sql } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
 import { invoice, operator } from '#lib/server/db/schema/index.ts';
@@ -131,5 +130,5 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 
 	// The stored values go back, not the submitted ones: "usd" is saved as USD
 	// and #4F6D8A as #4f6d8a, and the field should show what is actually there.
-	return json({ saved: row, address_verified: verified });
+	return Response.json({ saved: row, address_verified: verified });
 };

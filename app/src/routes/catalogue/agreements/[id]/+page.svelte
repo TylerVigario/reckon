@@ -7,7 +7,7 @@
 	import { paysWhat } from '#lib/pay-words.ts';
 	import { parseAgreementField } from '#lib/agreement-fields.ts';
 	import { readProblem } from '#lib/json.ts';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -59,7 +59,7 @@
 
 	async function refresh() {
 		editing = null;
-		await invalidateAll();
+		await refreshAll();
 	}
 
 	/** Every write on this screen answers the same way: reload, or say why not. */
@@ -80,7 +80,7 @@
 
 	async function uncover(serviceId: string) {
 		const ok = await send(`${endpoint}/coverage/${serviceId}`, { method: 'DELETE' }, 'Not removed');
-		if (ok) await invalidateAll();
+		if (ok) await refreshAll();
 	}
 
 	async function setEnd(value: string) {
@@ -95,7 +95,7 @@
 			'Not saved'
 		);
 		asking = 'idle';
-		if (ok) await invalidateAll();
+		if (ok) await refreshAll();
 	}
 
 	async function remove() {
@@ -317,7 +317,7 @@
 					inputmode="decimal"
 					{endpoint}
 					validate={parseAgreementField}
-					onsaved={() => invalidateAll()}
+					onsaved={() => refreshAll()}
 				/>
 				<Setting
 					name="billing_interval"
@@ -331,7 +331,7 @@
 					]}
 					{endpoint}
 					validate={parseAgreementField}
-					onsaved={() => invalidateAll()}
+					onsaved={() => refreshAll()}
 				/>
 				<Setting
 					name="billing_anchor_day"
@@ -349,7 +349,7 @@
 					value={a.starts_on}
 					{endpoint}
 					validate={parseAgreementField}
-					onsaved={() => invalidateAll()}
+					onsaved={() => refreshAll()}
 				/>
 				<Setting
 					name="final_period_proration"

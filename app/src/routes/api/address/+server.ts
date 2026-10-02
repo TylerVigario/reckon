@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { validate, validationIsLive } from '#lib/server/validate-address.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
@@ -14,7 +13,7 @@ import { readBody, textField } from '#lib/json.ts';
  * Once per address, not per keystroke -- the autocomplete never comes here.
  */
 export const POST: RequestHandler = async ({ request }) => {
-	if (!validationIsLive()) return json({ verdict: null, reason: 'no server key' });
+	if (!validationIsLive()) return Response.json({ verdict: null, reason: 'no server key' });
 
 	const body = await readBody(request);
 	if (!body) return problem('malformed', 400, 'Expected an address.');
@@ -28,7 +27,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	};
 
 	try {
-		return json({ verdict: await validate(address) });
+		return Response.json({ verdict: await validate(address) });
 	} catch (e) {
 		// A quota, a wrong key, Google being down: none of them make the chosen
 		// address wrong, and none are fixed by the caller. Say so rather than
