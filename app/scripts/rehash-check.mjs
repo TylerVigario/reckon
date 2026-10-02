@@ -79,12 +79,15 @@ try {
 
 	const after = (await db.query(`select password from account ${credential}`, [userId])).rows[0]
 		?.password;
-	if (after === planted) failures.push('the planted hash is still there: nothing replaced it');
-	else if (!after?.startsWith(TODAY))
-		failures.push(
-			`the hash was replaced, but not at today's parameters: ${after?.split('$').slice(0, 4).join('$')}`
-		);
-	else console.log("  ✓ the sign-in replaced it with one at today's parameters");
+	// Said without the value: nothing taken from a password column is printed,
+	// even the part of a hash that is only its parameters.
+	if (after === planted) {
+		failures.push('the planted hash is still there: nothing replaced it');
+	} else if (!after?.startsWith(TODAY)) {
+		failures.push("the hash was replaced, but not at today's parameters");
+	} else {
+		console.log("  ✓ the sign-in replaced it with one at today's parameters");
+	}
 } finally {
 	await db.end();
 }
