@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { page } from '$app/state';
+	import { onMount } from 'svelte';
+	import { page, updated } from '$app/state';
+	import { afterNavigate } from '$app/navigation';
+	import { flush } from '#lib/queue.ts';
 	import type { LayoutProps } from './$types';
 	import { resolve } from '$app/paths';
 	import type { RouteId } from '$app/types';
@@ -11,6 +14,34 @@
 	// to, and an operator who has chosen a colour gets theirs.
 	const accent = $derived(data.operator?.accent_colour || '');
 	const name = $derived(data.operator?.trading_name ?? 'reckon');
+
+	// The installed app's icon, and the tab's: the operator's logo where it is
+	// fit to be one, reckon's tally where it is not.
+	const appleIcon = $derived(
+		data.operator?.logo_is_app_icon ? '/operator/logo' : '/icons/apple-touch-icon.png'
+	);
+	const tabIcon = $derived(data.operator?.has_logo ? '/operator/logo' : '/icons/reckon.svg');
+
+	// The service worker keeps Today and the Time screens for when there is no
+	// signal (src/service-worker). Signed in and online, it is asked to fetch
+	// them now, so a phone that has never opened Time can still open it offline.
+	onMount(() => {
+		if (!data.user || !navigator.onLine) return;
+		// Whatever the capture queue still holds goes now. A page opened with a
+		// signal never hears the browser say it is back online, so without this an
+		// entry recorded offline would wait for the next one to carry it.
+		void flush().catch(() => {});
+		if ('serviceWorker' in navigator)
+			void navigator.serviceWorker.ready.then((r) => r.active?.postMessage({ type: 'warm' }));
+	});
+
+	// A full-page load is the only thing that makes a browser look for a new
+	// service worker. Asking on every navigation picks up a deploy as eagerly as
+	// the page itself notices one.
+	afterNavigate(() => {
+		if ('serviceWorker' in navigator)
+			void navigator.serviceWorker.getRegistration().then((r) => r?.update());
+	});
 
 	// Five tabs, one per kind of work.
 	const nav = [
@@ -67,11 +98,12 @@
 	     attribute, which the content security policy refuses. Keyed by the colour,
 	     so a new one is a new URL and the old one can be cached for good. -->
 	{#if accent}<link rel="stylesheet" href={`/operator/theme.css?${accent.slice(1)}`} />{/if}
-	<!-- The tab's icon is the operator's logo, as the shell's mark is. Without one
-	     -- or signed out, where the logo is not served -- there is none, said
-	     outright: naming no icon at all sends every browser to ask for a
+	<!-- Named outright: no icon named sends every browser to ask for a
 	     /favicon.ico that does not exist. -->
-	<link rel="icon" href={data.user && data.operator?.has_logo ? '/operator/logo' : 'data:,'} />
+	<link rel="icon" href={tabIcon} />
+	<link rel="apple-touch-icon" href={appleIcon} />
+	<link rel="manifest" href="/manifest.webmanifest" />
+	<meta name="theme-color" content={accent || '#1d6f9c'} />
 </svelte:head>
 
 {#if !data.user}
@@ -102,7 +134,18 @@
 			</form>
 		</div>
 
-		<main>{@render children()}</main>
+		<main>
+			<!-- SvelteKit notices a new deploy on navigation, on focus and hourly.
+			     Said, not done: a reload in the middle of entering something would
+			     lose it. -->
+			{#if updated.current}
+				<div class="updated" role="status">
+					<span>reckon has been updated.</span>
+					<button type="button" class="btn sm pri" onclick={() => location.reload()}>Reload</button>
+				</div>
+			{/if}
+			{@render children()}
+		</main>
 
 		<nav class="tabbar" aria-label="Sections">
 			{#each nav as n (n.href)}
@@ -828,6 +871,19 @@
 	main {
 		flex: 1 0 auto;
 		min-width: 0;
+	}
+
+	/* A new version is out. A bar across the top of the screen, in the brand
+	   colour, rather than a toast that goes before it is read. */
+	.updated {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 10px var(--pad);
+		background: var(--accent-wash);
+		border-bottom: 1px solid var(--accent-line);
+		font-size: 14px;
 	}
 
 	/* Thumb-reach on a phone, because that is where a timer gets used.

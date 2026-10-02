@@ -1,6 +1,7 @@
 import { and, count, eq, gte, sql, sum } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { entity, invoice, operator, timeEntry } from '#lib/server/db/schema/index.ts';
+import { iconFromLogo } from '#lib/server/app-icon.ts';
 import type { LayoutServerLoad } from './$types';
 
 /**
@@ -21,12 +22,28 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 			short_name: operator.shortName,
 			accent_colour: operator.accentColour,
 			currency: operator.currency,
-			has_logo: sql<boolean>`${operator.logo} is not null`
+			has_logo: sql<boolean>`${operator.logo} is not null`,
+			// Enough of the file to read a PNG's header or an SVG's root element,
+			// to say whether the logo can be the installed app's icon.
+			logo_head: sql<Buffer | null>`substring(${operator.logo} from 1 for 4096)`,
+			logo_media_type: operator.logoMediaType
 		})
 		.from(operator)
 		.limit(1);
 
-	if (!locals.user) return { operator: found ?? null, user: null, counts: {} };
+	// The logo's first bytes are read only to say whether it can be the app's
+	// icon; they are not sent to the browser.
+	const { logo_head, logo_media_type, ...shown } = found ?? {};
+	const operatorShown = found
+		? {
+				...shown,
+				logo_is_app_icon: logo_head
+					? iconFromLogo(new Uint8Array(logo_head), logo_media_type ?? null) !== null
+					: false
+			}
+		: null;
+
+	if (!locals.user) return { operator: operatorShown, user: null, counts: {} };
 
 	const [[drafts], [entities], [month]] = await Promise.all([
 		db.select({ n: count() }).from(invoice).where(eq(invoice.status, 'draft')),
@@ -38,7 +55,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 	]);
 
 	return {
-		operator: found ?? null,
+		operator: operatorShown,
 		user: locals.user,
 		counts: { drafts: drafts.n, entities: entities.n, monthMinutes: month.minutes ?? 0 }
 	};

@@ -8,5 +8,8 @@
 	// harnesses there -- the ones that prove the app actually runs -- are
 	// typechecked and type-aware linted like the app itself; "*" is this
 	// directory's own config files.
-	"include": ["src", "scripts", "*"]
+	"include": ["src", "scripts", "*"],
+	// The service worker runs in another kind of scope, so it is its own project:
+	// src/service-worker/tsconfig.json, checked by `npm run check`.
+	"exclude": ["src/service-worker"]
 }
