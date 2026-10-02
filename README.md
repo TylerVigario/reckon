@@ -178,6 +178,15 @@ to say the scheme, adapter-node takes it to be https, and a form posted from an
 http page reads as cross-site. The only way round that is building the address
 into the artifact, which makes it one build per deployment.
 
+**Behind any proxy, say where the visitor is.** The process has one client —
+the proxy — so without `ADDRESS_HEADER` every visitor has the proxy's address:
+the per-address sign-in limit becomes one limit for everyone, five wrong
+passwords from anyone lock everyone out, and every session records the proxy.
+Name a header the proxy sets from the connection. One it overwrites, like an
+`X-Real-IP` set from the connection's address, needs nothing else.
+`X-Forwarded-For` is one a client can start, so it also needs `XFF_DEPTH`: the
+number of proxies in front, 1 for one.
+
 ## Environment
 
 Everything the process needs, and nothing that belongs in the database.
@@ -197,6 +206,7 @@ that is the only directory Vite reads a `.env` from.
 | `PORT`                           | `3000`                |                                                                                                                                                                    |
 | `HOST`                           | `0.0.0.0`             | set it to `127.0.0.1` where a reverse proxy is the only route in, so the bind enforces that rather than convention                                                 |
 | `PROTOCOL_HEADER`, `HOST_HEADER` | unset                 | read by adapter-node: the headers a proxy uses for the scheme and the public name, where it does not pass them as https and `Host` — see [Serving it](#serving-it) |
+| `ADDRESS_HEADER`, `XFF_DEPTH`    | unset                 | read by adapter-node: the header holding a visitor's address. **Needed behind any proxy** — unset, every visitor is the proxy — see [Serving it](#serving-it)      |
 | `PGHOST`                         | `/var/run/postgresql` | a unix socket, which peer-authenticates rather than asking for a password                                                                                          |
 | `PGDATABASE`                     | `reckon_dev`          |                                                                                                                                                                    |
 | `DATABASE_URL`                   | —                     | wins outright over `PGHOST`/`PGDATABASE`, for TCP, another machine, or a managed service                                                                           |
