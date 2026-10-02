@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/TylerVigario/reckon/compare/v0.3.0...v0.3.1) (2026-10-02)
+
+### Bug Fixes
+
+* Name the proxy's address header, and check DATABASE_URL at start ([#17](https://github.com/TylerVigario/reckon/pull/17))
+* Nothing inline that the content security policy refuses ([#18](https://github.com/TylerVigario/reckon/pull/18))
+
 ## [0.3.0](https://github.com/TylerVigario/reckon/compare/v0.2.0...v0.3.0) (2026-10-02)
 
 ### Features

@@ -1,6 +1,6 @@
 {
 	"name": "reckon-repo",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "Repository tooling. The application is in app/.",
 	"license": "AGPL-3.0-or-later",
 	"private": true,
