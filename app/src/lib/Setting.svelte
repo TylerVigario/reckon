@@ -80,6 +80,17 @@
 	const initial = untrack(() => (value === null || value === undefined ? '' : String(value)));
 
 	let current = $state(initial);
+
+	/**
+	 * The swatch's colour, set through the CSSOM. A style attribute is refused by
+	 * the content security policy, and a colour typed a character at a time
+	 * cannot be a class; a value that is not a colour yet is simply not applied.
+	 */
+	function paint(node: HTMLElement, colour: string) {
+		const set = (c: string) => node.style.setProperty('background', c || 'var(--ink-faint)');
+		set(colour);
+		return { update: set };
+	}
 	/** What the database is known to hold, so an unchanged field sends nothing. */
 	let stored = $state(initial);
 	let status = $state<'idle' | 'saving' | 'ok' | 'bad'>('idle');
@@ -207,7 +218,7 @@
 				aria-invalid={status === 'bad'}
 				aria-describedby={status === 'bad' ? `${id}-why` : undefined}
 			/>
-			<i style="background: {current || 'var(--ink-faint)'}"></i>
+			<i use:paint={current}></i>
 		</span>
 	{:else}
 		<input

@@ -75,7 +75,7 @@
 		</div>
 		<div class="tile">
 			<span class="k">Status</span>
-			<span class="v sm" style="color: {i.status === 'draft' ? 'var(--warn)' : 'var(--good)'}">
+			<span class="v sm {i.status === 'draft' ? 'warn' : 'good'}">
 				{i.status === 'draft' ? 'Draft' : 'Sent'}
 			</span>
 			<span class="s">
