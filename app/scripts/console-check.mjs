@@ -45,7 +45,8 @@ ws.onmessage = (/** @type {{ data: string }} */ m) => {
 	// security policy arrives here and nowhere else, so a check that read only
 	// the page's console would pass a page whose styles were being refused.
 	if (x.method === 'Log.entryAdded' && x.params.entry.level === 'error') {
-		complaints.push(`browser (${x.params.entry.source}): ${x.params.entry.text.slice(0, 200)}`);
+		const e = x.params.entry;
+		complaints.push(`browser (${e.source}): ${e.text.slice(0, 200)}${e.url ? ` -- ${e.url}` : ''}`);
 	}
 	if (x.method === 'Runtime.exceptionThrown') {
 		const d = x.params.exceptionDetails;
