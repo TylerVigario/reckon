@@ -54,8 +54,16 @@ export const variables = defineEnvVars({
 
 	DATABASE_URL: {
 		description:
-			'Wins outright over PGHOST and PGDATABASE: for TCP, another machine, or a managed service.',
-		schema: optional
+			'Wins outright over PGHOST and PGDATABASE: for TCP, another machine, or a managed service. A postgres:// or postgresql:// URL.',
+		// Checked at start rather than at the first query, and named without its
+		// value, which can carry a password.
+		schema: (value) => {
+			const url = optional(value);
+			if (url === undefined || building) return url;
+			if (!URL.canParse(url) || !['postgres:', 'postgresql:'].includes(new URL(url).protocol))
+				throw new Error('DATABASE_URL is set but is not a postgres:// or postgresql:// URL.');
+			return url;
+		}
 	},
 
 	PGHOST: {
