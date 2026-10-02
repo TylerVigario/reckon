@@ -1,0 +1,100 @@
+name: CodeQL
+
+# Static analysis of the application and of the workflows.
+#
+#   javascript-typescript   the server and the shared library under app/src,
+#                           the scripts that run against a database, and the
+#                           repository tooling. The server is where a request
+#                           meets SQL and the filesystem.
+#   actions                 the workflows, which run holding this repository's
+#                           token. The live case is commit-convention.yml,
+#                           which reads the pull request title, whatever its
+#                           author typed, and must only ever hand it to a shell
+#                           through env.
+#
+# WHAT THIS DOES NOT SEE. Stated first, because a comment claiming a check
+# exists is what stops anyone checking by hand.
+#
+# - Svelte components. CodeQL extracts .ts, .js and Vue, not .svelte, so the
+#   markup and the script blocks in app/src/routes and app/src/lib/*.svelte
+#   are not read. The modules they import are.
+# - db/: the migrations and the guard suite are SQL, and db/apply.sh is shell.
+#   Nothing here analyses either; the guard suite is itself the check on the
+#   schema.
+# - workflow_dispatch inputs. The actions queries treat data an outsider
+#   controls as untrusted, not inputs a collaborator dispatches.
+#
+# Its findings gate the merge: main-protection's code_scanning rule refuses a
+# pull request that introduces an error, or a security finding of medium or
+# higher. The jobs themselves are not required contexts -- the rule reads the
+# analysis, not the job.
+
+on:
+  # No paths filter on push. CodeQL compares each analysis with the previous
+  # commit's, and a commit it skipped reads as a missing analysis, not as
+  # nothing to see.
+  push:
+    branches: [main]
+  # Every pull request, with no paths filter. Its findings gate the merge, and
+  # a required result from a workflow that a paths filter skipped never
+  # arrives: the pull request waits on it for ever.
+  pull_request:
+  schedule:
+    # Weekly, because the queries change and unchanged code is re-examined
+    # against rules that did not exist when it was written. GitHub disables a
+    # public repository's scheduled workflows after 60 days without activity;
+    # re-enable from the Actions tab if reckon goes that quiet.
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    # A hung upload should fail rather than hold a runner for six hours.
+    timeout-minutes: 20
+    permissions:
+      # The SARIF upload needs it; without it the upload is refused.
+      security-events: write
+      # No `actions: read`: CodeQL needs it only in private repositories.
+      contents: read
+    strategy:
+      # One leg failing must not cancel the other's analysis.
+      fail-fast: false
+      matrix:
+        language: [actions, javascript-typescript]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Nothing after checkout uses git credentials; CodeQL is given its
+          # token.
+          persist-credentials: false
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          languages: ${{ matrix.language }}
+          # Both extractors read source directly; neither needs a build.
+          build-mode: none
+          # security-extended over the default suite, which is tuned for low
+          # noise on large codebases. This one is small enough that the extra
+          # queries cost little.
+          queries: security-extended
+          config: |
+            paths-ignore:
+              - '**/node_modules'
+              - app/build
+              - app/.svelte-kit
+              - vendor
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          category: /language:${{ matrix.language }}
