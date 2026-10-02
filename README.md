@@ -293,6 +293,13 @@ posted when there is a connection. `POST /api/time` is safe to call twice with
 the same body, because `client_uuid` is made on the phone and carries a unique
 index; a retry returns the row that already exists.
 
+## Licence
+
+Copyright © 2026 Tyler Vigario. reckon is free software under the
+[GNU Affero General Public License](LICENSE), version 3 or (at your option) any
+later version. [`LICENSE-NOTICE.md`](LICENSE-NOTICE.md) says what that covers,
+and what is deliberately not here.
+
 ## Open
 
 - **Token lifetime** on the public invoice link.
