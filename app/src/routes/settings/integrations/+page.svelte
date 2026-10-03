@@ -1,17 +1,12 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import { datedAt } from '#lib/format.ts';
+	import { businessZone } from '#lib/zone.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
-	const when = (iso: string | null | undefined) =>
-		iso
-			? new Date(iso).toLocaleDateString('en-GB', {
-					day: 'numeric',
-					month: 'short',
-					year: 'numeric'
-				})
-			: null;
+	const when = (iso: string | null | undefined) => (iso ? datedAt(iso, businessZone()) : null);
 </script>
 
 <Top

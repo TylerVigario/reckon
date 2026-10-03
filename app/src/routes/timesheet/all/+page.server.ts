@@ -1,3 +1,4 @@
+import { monthOf } from '#lib/format.ts';
 import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db, today } from '#lib/server/db/index.ts';
@@ -73,11 +74,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	const totals = {
 		minutes: String(entries.reduce((n, e) => n + e.minutes, 0)),
 		idle: String(entries.filter((e) => !e.billable).reduce((n, e) => n + e.minutes, 0)),
-		month: new Date(Date.UTC(y, m - 1, 1)).toLocaleString('en-US', {
-			month: 'long',
-			year: 'numeric',
-			timeZone: 'UTC'
-		})
+		month: monthOf(`${y}-${String(m).padStart(2, '0')}-01`)
 	};
 
 	// One entry per week, newest first, so the page draws rather than regroups.

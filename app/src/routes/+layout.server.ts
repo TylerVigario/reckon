@@ -22,6 +22,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 			short_name: operator.shortName,
 			accent_colour: operator.accentColour,
 			currency: operator.currency,
+			timezone: operator.timezone,
 			has_logo: sql<boolean>`${operator.logo} is not null`,
 			// Enough of the file to read a PNG's header or an SVG's root element,
 			// to say whether the logo can be the installed app's icon.

@@ -24,7 +24,7 @@
 		"test:watch": "vitest",
 		"ci": "npm run format && npm run lint && npm run check && npm run test && npm run test:tz && npm run build",
 		"check:schema": "node scripts/schema-check.mjs",
-		"test:tz": "TZ=Pacific/Kiritimati vitest run src/lib/format.test.ts && TZ=Pacific/Midway vitest run src/lib/format.test.ts"
+		"test:tz": "TZ=Pacific/Kiritimati vitest run src/lib/format.test.ts src/lib/timers.test.ts && TZ=Pacific/Midway vitest run src/lib/format.test.ts src/lib/timers.test.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

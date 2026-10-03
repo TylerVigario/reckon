@@ -49,6 +49,14 @@ const pool = process.env.DATABASE_URL
 const q = (/** @type {string} */ text, /** @type {unknown[]} */ values = []) =>
 	pool.query(text, values).then((r) => r.rows);
 
+// The business's calendar, as the app keeps it (#26): "stale" and the day a
+// rate was checked are both current_date. One connection, so setting it once
+// holds for every statement after.
+await q(
+	`select set_config('TimeZone', coalesce((select timezone from operator limit 1),
+	                                        current_setting('TimeZone')), false)`
+);
+
 // The API wants street, city AND zip -- any one of them missing is a 400, not
 // a best guess. The schema already requires all three; this checks anyway, and
 // names a site it cannot ask about rather than skipping it quietly.

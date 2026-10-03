@@ -695,6 +695,60 @@ if (person)
 	});
 }
 
+// What day it is, by the business's clock rather than the database server's
+// (#26). Kiritimati and Pago Pago are 25 hours apart, so at any moment they
+// sit on different dates: a screen that followed the server's zone could match
+// one of them at most. The manual entry form starts on today and refuses
+// later, so its max is the server's today, as the page was drawn.
+{
+	const settingsPage = await (
+		await fetch(`${base}/settings/business`, { headers: { cookie } })
+	).text();
+	const original = /id="set-timezone"[^>]*value="([^"]+)"/.exec(settingsPage)?.[1] ?? 'UTC';
+	const zoneDay = (/** @type {string} */ zone) =>
+		new Intl.DateTimeFormat('en-CA', {
+			timeZone: zone,
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit'
+		}).format(new Date());
+
+	/** @type {(string | null)[]} */
+	const shown = [];
+	for (const zone of ['Pacific/Kiritimati', 'Pacific/Pago_Pago']) {
+		const before = zoneDay(zone);
+		const saved = await call('PATCH', '/api/settings', { fields: { timezone: zone } });
+		const form = await (await fetch(`${base}/timesheet/manual`, { headers: { cookie } })).text();
+		const today = /id="m-day"[^>]*?max="(\d{4}-\d{2}-\d{2})"/.exec(form)?.[1] ?? null;
+		const after = zoneDay(zone);
+		shown.push(today);
+		const ok = saved.status === 200 && (today === before || today === after);
+		if (ok) passed++;
+		else
+			failures.push(
+				`today follows the business's zone, ${zone}: ${saved.status} ${today} vs ${before}`
+			);
+		console.log(`  ${ok ? '✓' : '✗'} today follows the business's zone: ${zone} says ${today}`);
+	}
+	const apart = shown[0] !== null && shown[1] !== null && shown[0] !== shown[1];
+	if (apart) passed++;
+	else failures.push(`two zones 25 hours apart gave the same today: ${shown.join(', ')}`);
+	console.log(`  ${apart ? '✓' : '✗'} two zones 25 hours apart are never on the same day`);
+
+	// Put back as it was, typed in lower case: it is saved under Postgres's
+	// own spelling, so the browser and the database name the same zone.
+	const back = await call('PATCH', '/api/settings', {
+		fields: { timezone: original.toLowerCase() }
+	});
+	const spelled = back.status === 200 && back.body?.saved?.timezone === original;
+	if (spelled) passed++;
+	else
+		failures.push(
+			`a zone is saved under the database's spelling: ${back.status} ${JSON.stringify(back.body?.saved)}`
+		);
+	console.log(`  ${spelled ? '✓' : '✗'} a zone typed in lower case is saved as ${original}`);
+}
+
 console.log('');
 if (failures.length) {
 	console.error(`${failures.length} write path(s) failed, ${passed} passed:`);

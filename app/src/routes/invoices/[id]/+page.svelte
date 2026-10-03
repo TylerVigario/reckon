@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Decimal } from '#lib/decimal.ts';
 	import Top from '#lib/Top.svelte';
-	import { day } from '#lib/format.ts';
+	import { day, monthOf } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -47,14 +47,7 @@
 		return words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1];
 	};
 
-	const period = $derived(
-		i.period_start
-			? new Date(i.period_start + 'T12:00:00').toLocaleDateString('en-GB', {
-					month: 'long',
-					year: 'numeric'
-				})
-			: null
-	);
+	const period = $derived(i.period_start ? monthOf(i.period_start) : null);
 	const sub = $derived([i.who, period].filter(Boolean).join(' · '));
 	const title = $derived(i.status === 'draft' ? `Draft ${i.number}` : i.number);
 </script>

@@ -170,7 +170,12 @@
 					value={o?.currency ?? 'USD'}
 					hint="Stored as NUMERIC, never a float"
 				/>
-				<Setting name="timezone" label="Time zone" value={o?.timezone ?? 'UTC'} />
+				<Setting
+					name="timezone"
+					label="Time zone"
+					value={o?.timezone ?? 'UTC'}
+					hint="Decides what day it is, everywhere — America/Los_Angeles"
+				/>
 			</div>
 			<div class="pair">
 				<Setting
