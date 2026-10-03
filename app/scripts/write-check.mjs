@@ -657,6 +657,44 @@ if (person)
 		400
 	);
 
+// An SVG logo with a script in it, uploaded through the settings form the way
+// a browser would, and then asked for by someone who is not signed in. It is
+// still served as an image -- the favicon and the installed icon depend on
+// that -- but under a policy that runs nothing if it is opened as a page.
+{
+	const svg =
+		'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.cookie)</script></svg>';
+	const form = new FormData();
+	form.set('logo', new Blob([svg], { type: 'image/svg+xml' }), 'logo.svg');
+	const up = await fetch(`${base}/settings/business?/logo`, {
+		method: 'POST',
+		body: form,
+		headers: { cookie, origin: base, 'x-sveltekit-action': 'true', ...PROXY }
+	});
+	const served = await fetch(`${base}/operator/logo`, { headers: PROXY });
+	const policy = served.headers.get('content-security-policy') ?? '';
+	const ok =
+		up.ok &&
+		served.status === 200 &&
+		served.headers.get('content-type') === 'image/svg+xml' &&
+		/default-src 'none'/.test(policy) &&
+		/(^|;\s*)sandbox(;|$)/.test(policy) &&
+		!/script-src/.test(policy);
+	if (ok) passed++;
+	else
+		failures.push(
+			`an SVG logo is served under a policy that runs nothing: ${up.status} ${served.status} ${policy || 'no policy'}`
+		);
+	console.log(`  ${ok ? '✓' : '✗'} an SVG logo is served under a policy that runs nothing`);
+
+	// The demo business has no logo; it is left without one.
+	await fetch(`${base}/settings/business?/clearLogo`, {
+		method: 'POST',
+		body: new FormData(),
+		headers: { cookie, origin: base, 'x-sveltekit-action': 'true', ...PROXY }
+	});
+}
+
 console.log('');
 if (failures.length) {
 	console.error(`${failures.length} write path(s) failed, ${passed} passed:`);
