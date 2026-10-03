@@ -59,7 +59,8 @@ cd app && npx drizzle-kit generate --name what-changed
 What Drizzle cannot express — the triggers that freeze a sent invoice and keep
 the history, one foreign key, the roles every operator starts with — is in the
 hand-written `db/migrations/0001_integrity.sql`, with its invoice guards made to
-hold in `0002_sent_invoices_hold.sql`. A new one starts as
+hold in `0002_sent_invoices_hold.sql` and a file described in the history rather
+than copied into it in `0003_history_describes_binary.sql`. A new one starts as
 `npx drizzle-kit generate --custom --name what-changed`. `db/apply.sh` runs the
 migrations with node, so it needs node and the application's dependencies: a
 clone's `app/node_modules`, or a release's own.
