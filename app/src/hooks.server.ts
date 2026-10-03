@@ -79,6 +79,21 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// frame-ancestors 'none' in the CSP says this to anything modern.
 	response.headers.set('X-Frame-Options', 'DENY');
 
+	// SvelteKit puts the CSP on the pages it renders and on nothing else. The
+	// rest -- the logo, the operator's stylesheet, the manifest, the API -- is
+	// never meant to be opened as a page, and an SVG logo opened as one would
+	// run its script as reckon, with the viewer's session. So whatever arrives
+	// here without a policy gets one that runs nothing: no script, nothing
+	// fetched, only the inline style and data images an SVG draws with, and a
+	// sandbox that takes it out of this origin altogether. An <img> or a
+	// <link> using the same response is not affected; this applies only when
+	// it is opened as a document.
+	if (!response.headers.has('Content-Security-Policy'))
+		response.headers.set(
+			'Content-Security-Policy',
+			"default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
+		);
+
 	// Only over TLS, and only in production: sent over plain http it is
 	// ignored, and set in development it would pin localhost to https in the
 	// browser for two years.
