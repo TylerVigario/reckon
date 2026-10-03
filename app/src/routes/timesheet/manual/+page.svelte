@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import Top from '#lib/Top.svelte';
-	import { enqueue, flush, type Entry } from '#lib/queue.ts';
+	import { enqueue, find, flush, type Entry, type Queued } from '#lib/queue.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import { rateFor } from '#lib/rates.ts';
 	import type { PageProps } from './$types';
@@ -41,6 +42,30 @@
 	let note = $state('');
 	let saving = $state(false);
 	let why = $state('');
+
+	// FIXING an entry the server refused: the same form, filled in from the
+	// copy the phone kept, saved back under the same client_uuid -- which
+	// replaces the refused copy rather than adding a second entry. Whatever
+	// the server named as gone is left empty to be chosen again.
+	let fixing = $state<Queued | null>(null);
+	onMount(async () => {
+		const id = page.url.searchParams.get('fix');
+		const q = id ? await find(id).catch(() => undefined) : undefined;
+		if (!q?.refused) return;
+		const e = q.entry;
+		const known = (list: { id: string }[], v: string | null | undefined) =>
+			v && list.some((x) => x.id === v) ? v : null;
+		fixing = q;
+		entityId = known(data.entities, e.entity_id);
+		siteId = known(entity?.sites ?? [], e.site_id);
+		serviceId = known(data.services, e.service_id);
+		crew = e.crew;
+		workedBy = e.crew === 'team' ? workedBy : known(data.people, e.worked_by);
+		day = e.worked_on;
+		duration = `${Math.floor(e.minutes / 60)}:${String(e.minutes % 60).padStart(2, '0')}`;
+		billable = e.billable ?? true;
+		note = e.note ?? '';
+	});
 
 	const entity = $derived((data.entities as Ent[]).find((e) => e.id === entityId));
 	const sites = $derived(entity?.sites ?? []);
@@ -86,9 +111,13 @@
 			why = 'What was done?';
 			return;
 		}
+		if (crew === 'one' && !workedBy) {
+			why = 'Who worked it?';
+			return;
+		}
 
 		const entry: Entry = {
-			client_uuid: crypto.randomUUID(),
+			client_uuid: fixing?.entry.client_uuid ?? crypto.randomUUID(),
 			worked_on: day,
 			minutes,
 			crew,
@@ -104,7 +133,13 @@
 		saving = true;
 		// Written down locally first, always. The connection decides when it
 		// reaches the server, not whether the work was recorded.
-		enqueue(entry);
+		try {
+			await enqueue(entry);
+		} catch {
+			why = 'This phone would not save it. Nothing was recorded; try again.';
+			saving = false;
+			return;
+		}
 		await flush().catch(() => {});
 		saving = false;
 		await goto(resolve('/timesheet'));
@@ -112,14 +147,18 @@
 </script>
 
 <Top
-	title="Add past work"
-	sub="Work already finished, entered by hand"
+	title={fixing ? 'Fix an entry' : 'Add past work'}
+	sub={fixing
+		? 'Refused by the server, kept on this phone'
+		: 'Work already finished, entered by hand'}
 	back={resolve('/timesheet')}
 	backLabel="Time"
 />
 
 <div class="pad">
 	<div class="rows form">
+		{#if fixing?.refused}<p class="why bad">Refused: {fixing.refused.detail}</p>{/if}
+
 		<div class="fld">
 			<label for="m-entity">Who pays</label>
 			<select id="m-entity" class="inp" bind:value={entityId} onchange={() => (siteId = null)}>
@@ -143,11 +182,14 @@
 			<label for="m-service">What was done</label>
 			<span class="inp-wrap">
 				<select id="m-service" class="inp" bind:value={serviceId}>
+					{#if !serviceId}<option value={null} disabled>Choose what was done</option>{/if}
 					{#each data.services as sv (sv.id)}<option value={sv.id}>{sv.name}</option>{/each}
 				</select>
-				<span class="hint">
-					{rate ? `${money(rate)}/${service?.unit === 'mile' ? 'mi' : 'h'}` : 'not priced'}
-				</span>
+				{#if serviceId}
+					<span class="hint">
+						{rate ? `${money(rate)}/${service?.unit === 'mile' ? 'mi' : 'h'}` : 'not priced'}
+					</span>
+				{/if}
 			</span>
 		</div>
 
@@ -206,7 +248,7 @@
 		{#if why}<p class="why bad">{why}</p>{/if}
 
 		<button class="btn pri blk" onclick={save} disabled={saving}>
-			{saving ? 'Saving…' : 'Save entry'}
+			{saving ? 'Saving…' : fixing ? 'Save and send again' : 'Save entry'}
 		</button>
 
 		<p class="aside">

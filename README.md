@@ -90,7 +90,14 @@ while another is on something else, and one phone tracks both. They survive a
 refresh, because a timer a reload silently ends is worse than no timer: you find
 out hours later. Nothing reaches `time_entry` until one stops. Stopping writes
 its entry to the same queue as everything else, dated the day it started and
-carrying the timer's own id as the entry's `client_uuid`.
+carrying the timer's own id as the entry's `client_uuid` — and the timer is let
+go only once that write has committed.
+
+The queue is in IndexedDB, and nothing in it is thrown away. An entry leaves
+when the server has it or when someone discards it by hand. One the server
+refuses for good — it names a service deleted after it was recorded offline —
+is kept with the server's reason, shown on Time as not saved, and fixed or
+discarded there.
 
 `DELETE /api/time/:id` removes an entry. One an invoice was built from cannot be
 removed: `invoice_line.time_entry_id` is `ON DELETE RESTRICT`. What is removed
@@ -272,7 +279,7 @@ drift.
 
 **SvelteKit** (Svelte 5 runes), **Postgres** 18 through **Drizzle** on
 node-postgres, **Better Auth**, and an **offline queue** for time capture —
-`localStorage` plus retry, not a sync engine.
+IndexedDB plus retry, not a sync engine.
 Printed invoices through Typst and card payments through Stripe are planned;
 neither is wired in yet.
 
