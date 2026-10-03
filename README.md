@@ -285,6 +285,16 @@ IndexedDB plus retry, not a sync engine.
 Printed invoices through Typst and card payments through Stripe are planned;
 neither is wired in yet.
 
+**Dates are the business's.** The operator's time zone (Settings → Business) is
+set on every database connection, so `current_date` — the day a form starts on,
+a month's edges, how long work has waited, whether an invoice is overdue — is
+the business's day wherever the server runs, and the database does that
+arithmetic in one place. A calendar date is the string `2026-09-17` end to end,
+never a JavaScript `Date`. A moment is shown in the business's zone with
+`Intl.DateTimeFormat`, each formatter built once and kept. No date library:
+Temporal will replace the little this needs once Safari ships it and the server
+runs Node 26.
+
 adapter-node emits a standalone server. How it is then run — the service
 manager, the reverse proxy, the certificates — is the host's business, past
 what [Serving it](#serving-it) asks of them, and is not described here: a
