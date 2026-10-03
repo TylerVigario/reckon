@@ -1,7 +1,7 @@
 // Money out and money in.
 //
 // An invoice is built as a draft and sent once; after that it is immutable,
-// which a trigger in the hand-written migration enforces, and a credit note is
+// which triggers in the hand-written migrations enforce, and a credit note is
 // the only way to change what a client owes. Each line stores what was billed
 // -- quantity, price, tax rate, the cost of resold goods -- rather than looking
 // it up, so a price changed later rewrites nothing already sent. A line points

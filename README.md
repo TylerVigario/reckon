@@ -27,7 +27,7 @@ against an invented case.
 |                                 |                                                                                                                 |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `app/src/lib/server/db/schema/` | the schema, in TypeScript, a file per area, with every table's reasons beside it                                |
-| `db/migrations/`                | the schema as applied SQL: generated from the above, and one hand-written migration for what Drizzle cannot say |
+| `db/migrations/`                | the schema as applied SQL: generated from the above, and hand-written migrations for whatever Drizzle can't say |
 | `db/test/constraints.sql`       | proves the guards, both ways                                                                                    |
 | `app/src/lib/server/valuation/` | what an hour bills, what it pays, what a retainer covers, and the tax split — exact decimals, tested            |
 | `docs/schema/*.drawio`          | the data model: an overview and seven clusters                                                                  |
@@ -58,7 +58,9 @@ cd app && npx drizzle-kit generate --name what-changed
 
 What Drizzle cannot express — the triggers that freeze a sent invoice and keep
 the history, one foreign key, the roles every operator starts with — is in the
-hand-written `db/migrations/0001_integrity.sql`. `db/apply.sh` runs the
+hand-written `db/migrations/0001_integrity.sql`, with its invoice guards made to
+hold in `0002_sent_invoices_hold.sql`. A new one starts as
+`npx drizzle-kit generate --custom --name what-changed`. `db/apply.sh` runs the
 migrations with node, so it needs node and the application's dependencies: a
 clone's `app/node_modules`, or a release's own.
 
