@@ -1,3 +1,4 @@
+import { monthOf } from '#lib/format.ts';
 import { and, count, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import { Decimal, sum } from '#lib/decimal.ts';
 import { db, today } from '#lib/server/db/index.ts';
@@ -105,11 +106,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		unbilled: trips.filter((x) => !x.billed),
 		billed: trips.filter((x) => x.billed),
 		totals: {
-			month: new Date(Date.UTC(y, m - 1, 1)).toLocaleString('en-US', {
-				month: 'long',
-				year: 'numeric',
-				timeZone: 'UTC'
-			}),
+			month: monthOf(`${y}-${String(m).padStart(2, '0')}-01`),
 			miles: sum(legs.map((l) => l.miles)).toFixed(2),
 			trips: String(found.length),
 			rate: rate === null ? null : Decimal.from(rate).toFixed(2)

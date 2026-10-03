@@ -5,7 +5,8 @@
 	import { running, drop, toEntry, type Running } from '#lib/timers.ts';
 	import { refreshAll } from '$app/navigation';
 	import { money } from '#lib/money.svelte.ts';
-	import { day, increment } from '#lib/format.ts';
+	import { clock as clockAt, day, increment } from '#lib/format.ts';
+	import { businessZone } from '#lib/zone.svelte.ts';
 	import { rateFor } from '#lib/rates.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -67,7 +68,7 @@
 		stopping = true;
 		why = '';
 		try {
-			await enqueue(toEntry(t, data.me));
+			await enqueue(toEntry(t, data.me, businessZone()));
 		} catch {
 			why = 'This phone would not save the entry, so the timer is still running.';
 			stopping = false;
@@ -121,8 +122,7 @@
 		return { hm, ss: String(s % 60).padStart(2, '0') };
 	};
 
-	const startedAt = (t: Running) =>
-		new Date(t.started_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+	const startedAt = (t: Running) => clockAt(t.started_at, businessZone());
 
 	const sub = $derived(
 		[

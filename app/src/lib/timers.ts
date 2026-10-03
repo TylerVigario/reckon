@@ -1,3 +1,4 @@
+import { todayIn } from './format.ts';
 import type { Entry } from './queue.ts';
 
 /**
@@ -81,18 +82,15 @@ export function elapsedMinutes(t: Running, now = Date.now()): number {
 }
 
 /**
- * The entry a timer becomes when it stops: dated the day it started, on this
- * device's calendar, and carrying the timer's own id as its client_uuid -- so
- * a stop whose post is retried still records the time once.
+ * The entry a timer becomes when it stops: dated the day it started on the
+ * business's calendar -- the same calendar the server's "today" keeps, not
+ * whatever zone the phone is set to -- and carrying the timer's own id as its
+ * client_uuid, so a stop whose post is retried still records the time once.
  */
-export function toEntry(t: Running, createdBy: string, now = Date.now()): Entry {
-	const d = new Date(t.started_at);
-	const day = [d.getFullYear(), d.getMonth() + 1, d.getDate()]
-		.map((n, i) => String(n).padStart(i === 0 ? 4 : 2, '0'))
-		.join('-');
+export function toEntry(t: Running, createdBy: string, zone: string, now = Date.now()): Entry {
 	return {
 		client_uuid: t.id,
-		worked_on: day,
+		worked_on: todayIn(zone, t.started_at),
 		minutes: elapsedMinutes(t, now),
 		crew: t.crew,
 		worked_by: t.crew === 'team' ? null : t.worked_by,
