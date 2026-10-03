@@ -245,6 +245,39 @@ SELECT must_fail($$
   UPDATE invoice SET status = 'void' WHERE id = '77777777-7777-7777-7777-777777777777'
 $$, 'voiding without a reason');
 
+-- Paid now, which is still sent: none of these may reach it (#24).
+INSERT INTO invoice (id, number, entity_id, created_by) VALUES
+  ('77777777-0000-4000-8000-0000000000d1','INV-0413',
+   '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1'),
+  ('77777777-0000-4000-8000-0000000000d2','INV-0414',
+   '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1');
+INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount)
+VALUES ('77777777-0000-4000-8000-0000000000d1',1,'service','Still a draft',1,10,10);
+UPDATE invoice SET status='sent', issued_on='2026-09-04', due_on='2026-10-04', sent_at=now()
+ WHERE id = '77777777-0000-4000-8000-0000000000d2';
+
+SELECT must_fail($$
+  UPDATE invoice SET status = 'draft' WHERE id = '77777777-7777-7777-7777-777777777777'
+$$, 'putting a sent invoice back to draft');
+
+SELECT must_fail($$
+  UPDATE invoice_line SET invoice_id = '77777777-0000-4000-8000-0000000000d1'
+   WHERE invoice_id = '77777777-7777-7777-7777-777777777777' AND seq = 3
+$$, 'moving a line off a sent invoice onto a draft');
+
+SELECT must_fail($$
+  UPDATE invoice_line SET invoice_id = '77777777-7777-7777-7777-777777777777'
+   WHERE invoice_id = '77777777-0000-4000-8000-0000000000d1'
+$$, 'moving a draft''s line onto a sent invoice');
+
+SELECT must_fail($$
+  DELETE FROM invoice WHERE id = '77777777-0000-4000-8000-0000000000d2'
+$$, 'deleting a sent invoice, even one with no lines');
+
+SELECT must_pass($$
+  DELETE FROM invoice WHERE id = '77777777-0000-4000-8000-0000000000d1'
+$$, 'deleting a draft, lines and all');
+
 \echo ''
 \echo '=== 7. stock cannot be used before it arrives ==='
 
