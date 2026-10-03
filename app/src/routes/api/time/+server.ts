@@ -1,10 +1,37 @@
 import { sql } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
 import { timeEntry } from '#lib/server/db/schema/index.ts';
-import { pgError } from '#lib/server/field-errors.ts';
+import {
+	pgError,
+	refuse as refuseFields,
+	refuseIfTheDatabaseSaidSo
+} from '#lib/server/field-errors.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
 import { readBody } from '#lib/json.ts';
+
+/** What the body carries, for a database complaint to be laid against. */
+const FIELDS = [
+	'client_uuid',
+	'worked_on',
+	'minutes',
+	'crew',
+	'worked_by',
+	'entity_id',
+	'site_id',
+	'service_id',
+	'billable',
+	'note'
+];
+
+/** Each foreign key an entry can break, and what it means to the person fixing it. */
+const GONE: Record<string, [field: string, why: string]> = {
+	time_entry_service_id_fkey: ['service_id', 'That service no longer exists.'],
+	time_entry_entity_id_fkey: ['entity_id', 'That client no longer exists.'],
+	time_entry_site_id_fkey: ['site_id', 'That site no longer exists.'],
+	time_entry_site_is_the_clients: ['site_id', "That site is no longer this client's."],
+	time_entry_worked_by_fkey: ['worked_by', 'That person no longer exists.']
+};
 
 /**
  * Accepts a time entry from the capture queue.
@@ -102,20 +129,26 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				})
 		);
 	} catch (err) {
-		// SQLSTATE class 23 is integrity: a check, a foreign key, a not-null.
-		// The body will never satisfy it, so this must be a 400 the queue drops
-		// rather than a 500 it keeps retrying for ever.
 		// 42703 is an undefined column -- the shape of this statement being
 		// wrong, not the body: a column dropped while this insert still names
 		// it makes every entry fail and the queue retry for ever. A 500 is
 		// right (the body is fine and will work once the code is), but it is
 		// worth naming.
 		const pg = pgError(err);
-		const code = pg.code ?? '';
-		if (code === '42703')
+		if (pg.code === '42703')
 			console.error('time_entry insert names a column that does not exist', pg.message);
-		if (code.startsWith('23') || code.startsWith('22'))
-			return problem('invalidField', 400, `the database refused this entry: ${pg.message}`);
+
+		// A foreign key: the entry names something that has gone since the
+		// phone recorded it -- a service deleted, a site moved to another
+		// client. The phone keeps a refused entry and shows this sentence to
+		// whoever has to fix it, so it says what is gone, in words.
+		const gone = pg.code === '23503' ? GONE[pg.constraint ?? ''] : undefined;
+		if (gone) return refuseFields({ [gone[0]]: gone[1] });
+
+		// Any other integrity or data complaint is a 400 too: the body will
+		// never satisfy it, and a 500 is what the queue retries.
+		const refused = refuseIfTheDatabaseSaidSo(err, FIELDS, 'time_entry');
+		if (refused) return refused;
 		throw err;
 	}
 

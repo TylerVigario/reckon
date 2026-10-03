@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Top from '#lib/Top.svelte';
-	import { pending, flush, enqueue } from '#lib/queue.ts';
+	import { held, flush, enqueue, discard, type Queued } from '#lib/queue.ts';
 	import { running, drop, toEntry, type Running } from '#lib/timers.ts';
 	import { refreshAll } from '$app/navigation';
 	import { money } from '#lib/money.svelte.ts';
-	import { increment } from '#lib/format.ts';
+	import { day, increment } from '#lib/format.ts';
 	import { rateFor } from '#lib/rates.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -20,13 +20,24 @@
 	// loaded, because neither is the server's to know yet.
 	let timers = $state<Running[]>([]);
 	let queued = $state(0);
+	let notSaved = $state<Queued[]>([]);
 	let online = $state(true);
 	let now = $state(Date.now());
+	let why = $state('');
+
+	const readQueue = () =>
+		held().then(
+			(s) => {
+				queued = s.waiting;
+				notSaved = s.refused;
+			},
+			() => {}
+		);
 
 	onMount(() => {
 		const read = () => {
 			timers = running();
-			queued = pending();
+			void readQueue();
 			online = navigator.onLine;
 			now = Date.now();
 		};
@@ -44,24 +55,49 @@
 
 	const live = $derived(timers[0]);
 
-	// Queued before the timer is dropped, so there is no moment at which the
-	// time is in neither place. The buttons rest for a moment after a stop, so
-	// a double tap does not land on whichever timer moved up into its place;
-	// the post itself goes on in the background and never holds them.
+	// Written to the queue before the timer is dropped, and only once the write
+	// has committed, so there is no moment at which the time is in neither
+	// place. If the phone will not store it, the timer keeps running. The
+	// buttons rest for a moment after a stop, so a double tap does not land on
+	// whichever timer moved up into its place; the post itself goes on in the
+	// background and never holds them.
 	let stopping = $state(false);
-	function stop(t: Running) {
+	async function stop(t: Running) {
 		if (stopping) return;
 		stopping = true;
-		enqueue(toEntry(t, data.me));
+		why = '';
+		try {
+			await enqueue(toEntry(t, data.me));
+		} catch {
+			why = 'This phone would not save the entry, so the timer is still running.';
+			stopping = false;
+			return;
+		}
 		timers = drop(t.id);
-		queued = pending();
+		await readQueue();
 		setTimeout(() => (stopping = false), 800);
 		void flush()
 			.catch(() => {})
-			.then(() => {
-				queued = pending();
+			.then(async () => {
+				await readQueue();
 				return refreshAll();
 			});
+	}
+
+	// Letting go of a refused entry is hours gone for good, so it takes a
+	// second tap, and the first one says so.
+	let confirming = $state<string | null>(null);
+	async function letGo(id: string) {
+		if (confirming !== id) {
+			confirming = id;
+			setTimeout(() => {
+				if (confirming === id) confirming = null;
+			}, 4000);
+			return;
+		}
+		confirming = null;
+		await discard(id).catch(() => {});
+		await readQueue();
 	}
 
 	const nameOf = (list: { id: string; name: string }[], id: string | null) =>
@@ -89,7 +125,11 @@
 		new Date(t.started_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
 	const sub = $derived(
-		[queued ? `${queued} queued` : null, `${Math.round(data.monthMinutes / 60)} h this month`]
+		[
+			notSaved.length ? `${notSaved.length} not saved` : null,
+			queued ? `${queued} queued` : null,
+			`${Math.round(data.monthMinutes / 60)} h this month`
+		]
 			.filter(Boolean)
 			.join(' · ')
 	);
@@ -110,6 +150,50 @@
 {/if}
 
 <div class="pad">
+	{#if why}<p class="why bad">{why}</p>{/if}
+
+	{#if notSaved.length}
+		<div class="sec">
+			<div class="sec-h"><h2>Not saved</h2></div>
+			<div class="rows">
+				{#each notSaved as q (q.entry.client_uuid)}
+					{@const e = q.entry}
+					<div class="rec crit">
+						<div class="rec-m">
+							<div class="rec-t">
+								{siteOf(e.entity_id ?? null, e.site_id ?? null) ??
+									nameOf(data.entities, e.entity_id ?? null) ??
+									'No client'}
+								<span class="lt">
+									· {nameOf(data.services, e.service_id) ?? 'a service that is gone'}</span
+								>
+							</div>
+							<div class="rec-s">
+								{e.crew === 'team'
+									? 'The team'
+									: (nameOf(data.people, e.worked_by) ?? 'Unassigned')}
+								· {day(e.worked_on)} · {hhmm(e.minutes)}
+							</div>
+							<div class="rec-s refusal">
+								Refused: {q.refused?.detail} It is kept on this phone until it is fixed or let go.
+							</div>
+							<div class="acts">
+								<a
+									class="btn sm pri"
+									href={`${resolve('/timesheet/manual')}?fix=${encodeURIComponent(e.client_uuid)}`}
+									>Fix</a
+								>
+								<button class="btn sm gho" onclick={() => letGo(e.client_uuid)}>
+									{confirming === e.client_uuid ? 'Tap again to discard' : 'Discard'}
+								</button>
+							</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/if}
+
 	{#if live}
 		{@const c = clock(live)}
 		<div class="timer-card">
@@ -228,5 +312,18 @@
 	/* The line under the running timer, set off from the figure above it. */
 	.under {
 		margin-top: 5px;
+	}
+	.why.bad {
+		color: var(--crit);
+	}
+	/* Why the server would not take it, in its words. */
+	.refusal {
+		margin-top: 6px;
+		color: var(--crit);
+	}
+	.acts {
+		display: flex;
+		gap: 8px;
+		margin-top: 10px;
 	}
 </style>

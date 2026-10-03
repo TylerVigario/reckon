@@ -1,47 +1,208 @@
+import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enqueue, flush, pending, type Entry } from './queue.ts';
+import type { Entry } from './queue.ts';
 
-const entry = (client_uuid: string): Entry => ({
+const entry = (client_uuid: string, extra: Partial<Entry> = {}): Entry => ({
 	client_uuid,
 	worked_on: '2026-03-14',
 	minutes: 30,
 	crew: 'one',
 	worked_by: 'a',
 	created_by: 'a',
-	service_id: 'v'
+	service_id: 'v',
+	...extra
 });
 
-beforeEach(() => {
-	const store = new Map<string, string>();
+const answer = (status: number, body?: object) =>
+	Promise.resolve(
+		new Response(body ? JSON.stringify(body) : null, {
+			status,
+			headers: body ? { 'content-type': 'application/problem+json' } : {}
+		})
+	);
+
+const sentId = (init: RequestInit) => (JSON.parse(init.body as string) as Entry).client_uuid;
+
+let store: Map<string, string>;
+let q: typeof import('./queue.ts');
+
+/** A fresh database, and a fresh module that has never opened it. */
+async function fresh(old: Map<string, string> = new Map(), setItem = true) {
+	store = old;
+	vi.stubGlobal('indexedDB', new IDBFactory());
 	vi.stubGlobal('localStorage', {
 		getItem: (k: string) => store.get(k) ?? null,
-		setItem: (k: string, v: string) => void store.set(k, v)
+		setItem: (k: string, v: string) => void (setItem && store.set(k, v)),
+		removeItem: (k: string) => void store.delete(k)
 	});
-});
+	// The module keeps its open connection, so reusing it would carry one
+	// test's queue into the next.
+	vi.resetModules();
+	q = await import('./queue.ts');
+}
+
+beforeEach(() => fresh());
 
 afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-describe('flush', () => {
-	it('keeps an entry queued while a post was in flight', async () => {
-		enqueue(entry('first'));
-		vi.stubGlobal('fetch', () => {
-			// Somebody stops a timer while the first post is still out.
-			enqueue(entry('second'));
-			return Promise.resolve({ ok: true, status: 201 });
-		});
-		const r = await flush();
-		expect(r.sent).toBe(1);
-		expect(pending()).toBe(1);
+describe('enqueue', () => {
+	it('keeps an entry until it is sent', async () => {
+		await q.enqueue(entry('one'));
+		expect((await q.held()).waiting).toBe(1);
 	});
 
-	it('keeps what the session refused and drops what the server never will', async () => {
-		enqueue(entry('unauthorised'));
-		enqueue(entry('malformed'));
-		let n = 0;
-		vi.stubGlobal('fetch', () => Promise.resolve({ ok: false, status: n++ === 0 ? 401 : 400 }));
-		await flush();
-		expect(pending()).toBe(1);
+	it('replaces an entry queued with the same client_uuid', async () => {
+		await q.enqueue(entry('one', { minutes: 30 }));
+		await q.enqueue(entry('one', { minutes: 45 }));
+		expect((await q.held()).waiting).toBe(1);
+		expect((await q.find('one'))?.entry.minutes).toBe(45);
+	});
+});
+
+describe('flush', () => {
+	it('sends in the order things were queued, and lets go of what was sent', async () => {
+		await q.enqueue(entry('first'));
+		await q.enqueue(entry('second'));
+		const order: string[] = [];
+		vi.stubGlobal('fetch', (_: string, init: RequestInit) => {
+			order.push(sentId(init));
+			return answer(200, {});
+		});
+		expect(await q.flush()).toEqual({ sent: 2, refused: 0 });
+		expect(order).toEqual(['first', 'second']);
+		expect((await q.held()).waiting).toBe(0);
+	});
+
+	it('keeps an entry queued while a post was in flight', async () => {
+		await q.enqueue(entry('first'));
+		vi.stubGlobal('fetch', async () => {
+			// Somebody stops a timer while the first post is still out.
+			await q.enqueue(entry('second'));
+			return answer(200, {});
+		});
+		expect((await q.flush()).sent).toBe(1);
+		expect((await q.held()).waiting).toBe(1);
+	});
+
+	it('keeps what failed for a reason that is not the entry', async () => {
+		for (const id of ['401', '403', '408', '429', '500', '503']) await q.enqueue(entry(id));
+		vi.stubGlobal('fetch', (_: string, init: RequestInit) => answer(Number(sentId(init))));
+		expect(await q.flush()).toEqual({ sent: 0, refused: 0 });
+		expect((await q.held()).waiting).toBe(6);
+	});
+
+	it('keeps everything when there is no connection', async () => {
+		await q.enqueue(entry('first'));
+		await q.enqueue(entry('second'));
+		vi.stubGlobal('fetch', () => Promise.reject(new TypeError('Failed to fetch')));
+		expect(await q.flush()).toEqual({ sent: 0, refused: 0 });
+		expect((await q.held()).waiting).toBe(2);
+	});
+
+	it('keeps an entry the server refuses, with its reason, and stops sending it', async () => {
+		await q.enqueue(entry('gone'));
+		const fetch = vi.fn(() =>
+			answer(400, {
+				type: '/problems/invalid-field',
+				title: 'A value was refused',
+				status: 400,
+				detail: 'That service no longer exists.',
+				errors: { service_id: 'That service no longer exists.' }
+			})
+		);
+		vi.stubGlobal('fetch', fetch);
+		expect(await q.flush()).toEqual({ sent: 0, refused: 1 });
+
+		const s = await q.held();
+		expect(s.waiting).toBe(0);
+		expect(s.refused).toHaveLength(1);
+		expect(s.refused[0].refused).toEqual({
+			status: 400,
+			detail: 'That service no longer exists.',
+			errors: { service_id: 'That service no longer exists.' }
+		});
+
+		// Refused is refused: the next flush does not post it again.
+		await q.flush();
+		expect(fetch).toHaveBeenCalledTimes(1);
+	});
+
+	it('says something even when the refusal has no body', async () => {
+		await q.enqueue(entry('bare'));
+		vi.stubGlobal('fetch', () => answer(422));
+		await q.flush();
+		expect((await q.held()).refused[0].refused?.detail).toBe('The server refused it (422).');
+	});
+
+	it('runs one flush at a time, and a later one sees what was queued before it', async () => {
+		await q.enqueue(entry('first'));
+		let out = 0;
+		let most = 0;
+		vi.stubGlobal('fetch', async () => {
+			most = Math.max(most, ++out);
+			await new Promise((r) => setTimeout(r, 5));
+			out--;
+			return answer(200, {});
+		});
+		const a = q.flush();
+		await q.enqueue(entry('second'));
+		const b = q.flush();
+		// Whichever flush carries it, the second is sent, and once.
+		expect((await a).sent + (await b).sent).toBe(2);
+		expect(most).toBe(1);
+		expect((await q.held()).waiting).toBe(0);
+	});
+});
+
+describe('a refused entry', () => {
+	beforeEach(async () => {
+		await q.enqueue(entry('gone'));
+		vi.stubGlobal('fetch', () => answer(400, { detail: 'That service no longer exists.' }));
+		await q.flush();
+	});
+
+	it('is sent again once it is fixed', async () => {
+		await q.enqueue(entry('gone', { service_id: 'another' }));
+		const s = await q.held();
+		expect(s.refused).toHaveLength(0);
+		expect(s.waiting).toBe(1);
+	});
+
+	it('goes only when a person discards it', async () => {
+		await q.discard('gone');
+		expect(await q.held()).toEqual({ waiting: 0, refused: [] });
+	});
+});
+
+describe('moving from localStorage', () => {
+	it('moves what an earlier version queued, in order, and empties the old store', async () => {
+		await fresh(
+			new Map([['reckon.queue', JSON.stringify([entry('older'), entry('newer'), { bad: 1 }])]])
+		);
+		const order: string[] = [];
+		vi.stubGlobal('fetch', (_: string, init: RequestInit) => {
+			order.push(sentId(init));
+			return answer(500);
+		});
+		await q.flush();
+		expect(order).toEqual(['older', 'newer']);
+		expect(store.has('reckon.queue')).toBe(false);
+	});
+
+	it('leaves the old store alone when the new one will not open', async () => {
+		await fresh(new Map([['reckon.queue', JSON.stringify([entry('older')])]]));
+		vi.stubGlobal('indexedDB', {
+			open: () => {
+				const req = { error: new Error('no room') } as unknown as IDBOpenDBRequest;
+				setTimeout(() => {
+					req.onerror?.call(req, new Event('error'));
+				});
+				return req;
+			}
+		});
+		await expect(q.held()).rejects.toThrow('no room');
+		expect(store.has('reckon.queue')).toBe(true);
 	});
 });
