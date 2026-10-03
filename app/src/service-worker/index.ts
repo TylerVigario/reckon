@@ -149,7 +149,9 @@ async function networkFirst(request: Request, url: URL): Promise<Response> {
 		const response = await fetch(request);
 		// The operator's colour and mark are kept whenever they arrive; a screen's
 		// data only by warm(), whole, never a partial reload of one of its parts.
-		if (response.ok && OPERATOR.includes(url.pathname))
+		// Never a redirect followed to somewhere else: that is not this file, and
+		// kept under its name it would stand in for it offline.
+		if (response.ok && !response.redirected && OPERATOR.includes(url.pathname))
 			await (await caches.open(PAGES)).put(request, response.clone());
 		return response;
 	} catch (error) {

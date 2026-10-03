@@ -29,11 +29,13 @@ export const init: ServerInit = async () => {
 /**
  * Reachable without signing in. Everything else is not.
  *
- * The manifest and the logo are here because a browser fetches them without the
- * session cookie -- to install the app, and to draw its icon -- and neither says
- * more than the sign-in page already does: the business's name, colour and mark.
+ * The manifest, the logo and the operator's stylesheet are here because the
+ * sign-in page uses them, and a browser fetches the first two without the
+ * session cookie anyway -- to install the app, and to draw its icon. None of
+ * them says more than the sign-in page already does: the business's name,
+ * colour and mark.
  */
-const OPEN = new Set(['/login', '/manifest.webmanifest', '/operator/logo']);
+const OPEN = new Set(['/login', '/manifest.webmanifest', '/operator/logo', '/operator/theme.css']);
 
 /**
  * One place decides whether a request is allowed. Per-route checks are how a
