@@ -1166,6 +1166,30 @@ SELECT must_pass($$
                       tax_registration = 'Seller''s permit', tax_agency = 'CDTFA'
 $$, 'quarterly, the year ending in December, on a CDTFA seller''s permit');
 
+-- A logo is described in the history, never copied into it (#28): its length
+-- and SHA-256, against whoever changed it.
+SELECT set_config('reckon.user_id','a0a0a0a0-0000-4000-8000-0000000000a1',false);
+UPDATE operator SET logo = convert_to('<svg xmlns="http://www.w3.org/2000/svg"/>', 'UTF8'),
+                    logo_media_type = 'image/svg+xml';
+DO $$
+DECLARE
+  r record;
+  file bytea := convert_to('<svg xmlns="http://www.w3.org/2000/svg"/>', 'UTF8');
+BEGIN
+  SELECT * INTO r FROM record_history
+   WHERE table_name = 'operator' AND field = 'logo' ORDER BY id DESC LIMIT 1;
+  IF r IS NULL THEN RAISE EXCEPTION 'GUARD MISSING: the logo change was not recorded'; END IF;
+  IF r.new_value IS DISTINCT FROM
+     octet_length(file)::text || ' bytes, sha256 ' || encode(sha256(file), 'hex') THEN
+    RAISE EXCEPTION 'GUARD MISSING: the logo went into the history as "%"', left(r.new_value, 40);
+  END IF;
+  IF r.changed_by IS DISTINCT FROM 'a0a0a0a0-0000-4000-8000-0000000000a1' THEN
+    RAISE EXCEPTION 'GUARD MISSING: the logo change was recorded against the wrong user';
+  END IF;
+  RAISE NOTICE '  recorded  the logo as "%"', r.new_value;
+END $$;
+SELECT set_config('reckon.user_id','a0a0a0a0-0000-4000-8000-0000000000a2',false);
+
 -- How legs are HANDED OUT is not what a leg IS. The two vocabularies are
 -- separate on purpose, and neither accepts the other's words.
 SELECT must_fail($$
