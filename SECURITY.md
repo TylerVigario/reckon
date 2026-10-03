@@ -54,6 +54,10 @@ oversights:
 - **The phone keeps Today and the Time screens** in the service worker's cache,
   as the person signed in last saw them, so they open without a signal. That
   copy is on the device until they sign out, which empties it, or until a
-  request finds the session gone. Nothing else is kept.
+  request finds the session gone.
+- **The phone keeps time not yet sent** in the capture queue, in IndexedDB: an
+  entry waiting for a signal, and one the server refused, until it is sent or
+  discarded by hand. Signing out does not empty it, because those are hours
+  recorded nowhere else. Nothing else is kept.
 - **`created_by` comes from the session, never the request body.** The capture
   queue is written on a phone, and a phone is not trusted to say who it is.
