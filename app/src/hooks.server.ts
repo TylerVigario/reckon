@@ -3,15 +3,21 @@ import type { Handle, ServerInit } from '@sveltejs/kit/hooks';
 import { eq } from 'drizzle-orm';
 import { SECURE_COOKIES } from '$app/env/private';
 import { authHeaders, getAuth } from '#lib/server/auth.ts';
-import { db, schema } from '#lib/server/db/index.ts';
+import { db, loadZone, schema } from '#lib/server/db/index.ts';
 
 /**
  * Made when the server starts rather than at its first request, so a
  * configuration Better Auth refuses stops the process with its reason instead
  * of answering every request with a 500.
  */
-export const init: ServerInit = () => {
+export const init: ServerInit = async () => {
 	getAuth();
+	// The business's time zone, before the first request asks what day it is.
+	// A database that cannot be reached yet is not a reason to refuse to
+	// start: the first request tries again.
+	await loadZone().catch((e: unknown) =>
+		console.error('the business time zone could not be read at start', e)
+	);
 	// Chosen, and allowed, but never quietly: whoever reads the log should see
 	// that the session token is travelling in the clear.
 	if (!SECURE_COOKIES)
@@ -35,6 +41,7 @@ const OPEN = new Set(['/login', '/manifest.webmanifest', '/operator/logo']);
  * added to OPEN on purpose.
  */
 export const handle: Handle = async ({ event, resolve }) => {
+	await loadZone();
 	// A person made inactive is signed out wherever they are, at their next
 	// request, rather than keeping a session until it expires.
 	const found = await getAuth().api.getSession({ headers: authHeaders(event) });

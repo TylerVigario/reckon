@@ -56,10 +56,10 @@ export const operator = pgTable(
 		phone: text(),
 		currency: text().default('USD').notNull(),
 		/**
-		 * UNUSED, PLANNED. The zone the business keeps its days in. The settings
-		 * page saves it; nothing reads it yet. Server-side dates are the
-		 * database's current_date, and a stopped timer dates its entry by the
-		 * device's calendar.
+		 * The zone the business keeps its days in, as Postgres names it. Every
+		 * connection is set to it (#lib/server/db), so current_date and every
+		 * timestamp written as a date or a time are the business's; a stopped
+		 * timer dates its entry by it too, and screens show moments in it.
 		 */
 		timezone: text().default('UTC').notNull(),
 		/**

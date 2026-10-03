@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { asUser, db } from '#lib/server/db/index.ts';
+import { asUser, db, useZone } from '#lib/server/db/index.ts';
 import { invoice, operator } from '#lib/server/db/schema/index.ts';
 import { camel } from '#lib/server/db/rows.ts';
 import { type Errors, refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
@@ -94,6 +94,17 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 		verified = verdict === 'real';
 	}
 
+	// The time zone has to be one Postgres knows, not only one the browser
+	// does: every connection is set to it (#26). Saved under Postgres's own
+	// spelling of the name, so the two never disagree about which zone it is.
+	if (typeof row.timezone === 'string') {
+		const { rows: known } = await db.execute<{ name: string }>(
+			sql`select name from pg_timezone_names where lower(name) = lower(${row.timezone}) limit 1`
+		);
+		if (!known[0]) return refuse({ timezone: 'The database does not know that time zone.' });
+		row.timezone = known[0].name;
+	}
+
 	const [exists] = await db.select({ id: operator.id }).from(operator).limit(1);
 	// The registry's keys are the columns' own names; the schema's are camelCase.
 	const values = camel(row) as Partial<typeof operator.$inferInsert>;
@@ -127,6 +138,9 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 		if (refused) return refused;
 		throw e;
 	}
+
+	// Every connection follows the new zone from its next use.
+	if (typeof row.timezone === 'string') useZone(row.timezone);
 
 	// The stored values go back, not the submitted ones: "usd" is saved as USD
 	// and #4F6D8A as #4f6d8a, and the field should show what is actually there.

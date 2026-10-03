@@ -23,6 +23,37 @@ const pool = DATABASE_URL
 	? new pg.Pool({ connectionString: DATABASE_URL })
 	: new pg.Pool({ host: PGHOST, database: PGDATABASE });
 
+/**
+ * THE BUSINESS'S CLOCK (#26).
+ *
+ * Every date this application treats as today is Postgres's current_date --
+ * the day a form starts on, a month's edges, how long work has waited, whether
+ * an invoice is overdue -- and every timestamp it writes out as a date or a
+ * time goes through Postgres too. All of it follows the session's TimeZone,
+ * which is the database server's own unless the session says otherwise. So
+ * each connection is given the operator's time zone, and the database does
+ * the calendar arithmetic in the business's zone, in one place.
+ *
+ * Set when a connection is handed out and does not have it yet: nothing on a
+ * connection that already has it, and one statement on each after a change.
+ * The pool announces a checkout before the caller has the connection, and a
+ * connection runs its statements in the order they were made, so this always
+ * runs first.
+ *
+ * Null until it is known. Before there is an operator, a connection keeps the
+ * server's zone.
+ */
+let zone: string | null = null;
+const zoneOf = new WeakMap<pg.PoolClient, string>();
+pool.on('acquire', (client) => {
+	if (zone === null || zoneOf.get(client) === zone) return;
+	zoneOf.set(client, zone);
+	client.query('select set_config($1, $2, false)', ['TimeZone', zone]).catch((e: unknown) => {
+		zoneOf.delete(client);
+		console.error('the business time zone could not be set on a connection', e);
+	});
+});
+
 // `casing` must match drizzle.config.ts: it maps workedOn to worked_on, here at
 // runtime and there in migrations.
 //
@@ -54,7 +85,24 @@ export async function asUser<T>(userId: string, fn: (tx: Tx) => Promise<T>): Pro
 	});
 }
 
-/** Today, by the database's calendar -- the one every stored date is compared with. */
+/** From now on, every connection keeps this zone: the operator's, as just saved. */
+export function useZone(next: string | null): void {
+	zone = next;
+}
+
+let zoneLoaded = false;
+/**
+ * Reads the operator's time zone. When the server starts, and again on a later
+ * request if the database could not be reached then.
+ */
+export async function loadZone(): Promise<void> {
+	if (zoneLoaded) return;
+	const [row] = await db.select({ zone: schema.operator.timezone }).from(schema.operator).limit(1);
+	zone = row?.zone ?? null;
+	zoneLoaded = true;
+}
+
+/** Today, by the business's calendar -- the one every stored date is compared with. */
 export async function today(r: Reader = db): Promise<string> {
 	const { rows } = await r.execute<{ today: string }>(sql`select current_date::text as today`);
 	return rows[0].today;
