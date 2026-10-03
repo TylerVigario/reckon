@@ -48,11 +48,12 @@ oversights:
   address wait. The limit is per address and never per account, so it says
   nothing about which addresses have one — and it is held in memory, so a
   restart forgives everyone.
-- **Every response carries a content security policy.** A page gets the one
-  SvelteKit writes, with its own inline code hashed. Anything else — the logo,
-  the operator's stylesheet, the manifest, the API — gets one that runs nothing
-  and is sandboxed, so an uploaded SVG logo opened directly cannot act as the
-  site.
+- **Whatever has a body to run carries a content security policy.** A page gets
+  the one SvelteKit writes, with its own inline code hashed. What an endpoint
+  returns — the logo, the operator's stylesheet, the manifest, the API — gets
+  one that runs nothing and is sandboxed, so an uploaded SVG logo opened
+  directly cannot act as the site. The redirect and the 401 that turn a
+  signed-out request away carry none, having nothing in them to run.
 - **It is meant to sit behind a reverse proxy**, bound to loopback with
   `HOST=127.0.0.1`, and nothing assumes the proxy is the only protection —
   the application authenticates for itself.
