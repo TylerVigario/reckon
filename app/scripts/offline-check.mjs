@@ -19,9 +19,13 @@
  *            asks Chrome whether the app is installable.
  *   offline  opens each offline screen from a cold load; confirms a screen that
  *            needs the network says so instead; starts a timer and stops it,
- *            which leaves an entry in the queue.
- *   back     opens a page, which posts the queue; signs out, which must empty
- *            the cache the worker kept.
+ *            which leaves an entry in the queue. Beside it goes a copy naming a
+ *            service that does not exist -- what an entry recorded offline
+ *            looks like once someone deletes its service meanwhile.
+ *   back     opens a page, which posts the queue. The good entry goes; the other
+ *            is refused, and must be kept, shown with the server's reason,
+ *            open to be fixed, and gone only when discarded by hand. Then signs
+ *            out, which must empty the cache the worker kept.
  */
 const [, , base = 'http://127.0.0.1:5181', email, password, phase] = process.argv;
 if (!['online', 'offline', 'back'].includes(phase ?? '')) {
@@ -91,6 +95,28 @@ const stored = (/** @type {string} */ key) =>
 	evaluate(
 		`(() => { try { return JSON.parse(localStorage.getItem('${key}') ?? '[]').length } catch { return -1 } })()`
 	);
+/**
+ * Runs `body` against the capture queue's store, in the page, and returns what
+ * it resolves. The same database and schema the app opens (#lib/queue.ts).
+ */
+const inQueue = (/** @type {string} */ body) =>
+	evaluate(`new Promise((resolve) => {
+		const req = indexedDB.open('reckon', 1);
+		req.onupgradeneeded = () =>
+			req.result.createObjectStore('queue', { keyPath: 'entry.client_uuid' });
+		req.onerror = () => resolve(null);
+		req.onsuccess = () => {
+			const db = req.result;
+			const done = (v) => { db.close(); resolve(v); };
+			${body}
+		};
+	})`);
+/** @returns {Promise<{ id: string, refused: string | null }[] | null>} */
+const queued = () =>
+	inQueue(`const all = db.transaction('queue').objectStore('queue').getAll();
+		all.onsuccess = () =>
+			done(all.result.map((q) => ({ id: q.entry.client_uuid, refused: q.refused?.detail ?? null })));
+		all.onerror = () => done(null);`);
 const click = (/** @type {string} */ text) =>
 	evaluate(`(() => {
 		const b = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === ${JSON.stringify(text)});
@@ -142,7 +168,7 @@ if (phase === 'online') {
 			(parsed.icons ?? []).length > 0,
 		`the manifest parses, named "${parsed.name ?? ''}", with ${(parsed.icons ?? []).length} icon(s)`
 	);
-	check((await stored('reckon.queue')) === 0, 'the capture queue starts empty');
+	check((await queued())?.length === 0, 'the capture queue starts empty');
 }
 
 if (phase === 'offline') {
@@ -172,24 +198,85 @@ if (phase === 'offline') {
 	check(await click('Stop'), 'the timer stops');
 	await settle(1500);
 	check(
-		(await stored('reckon.running')) === 0 && (await stored('reckon.queue')) === 1,
+		(await stored('reckon.running')) === 0 && (await queued())?.length === 1,
 		'its entry waits in the queue'
+	);
+
+	// The same entry again, but naming a service that is not there: an entry
+	// recorded offline whose service someone deleted before the phone got back.
+	const planted =
+		await inQueue(`const store = db.transaction('queue', 'readwrite').objectStore('queue');
+		const all = store.getAll();
+		all.onsuccess = () => {
+			const q = all.result[0];
+			store.put({
+				entry: { ...q.entry, client_uuid: crypto.randomUUID(), service_id: crypto.randomUUID(), minutes: 80 },
+				queued_at: q.queued_at + 1
+			});
+			store.transaction.oncomplete = () => done(true);
+		};
+		all.onerror = () => done(false);`);
+	check(
+		planted === true && (await queued())?.length === 2,
+		'one naming a deleted service waits beside it'
 	);
 }
 
 if (phase === 'back') {
 	await go('/timesheet');
 	await settle(2500);
+	const left = (await queued()) ?? [];
 	check(
-		(await stored('reckon.queue')) === 0,
+		left.length === 1 && left[0].refused !== null,
 		'opening a page with the server back posts the queue'
 	);
+	check(
+		left[0]?.refused === 'That service no longer exists.',
+		`the one naming a deleted service is kept, with the reason "${left[0]?.refused ?? ''}"`
+	);
+
+	// Reload so the screen reads the queue as it now is.
+	await go('/timesheet');
+	const shown = await evaluate(`(() => {
+		const sec = [...document.querySelectorAll('.sec')].find((s) => s.querySelector('h2')?.textContent?.trim() === 'Not saved');
+		return sec ? sec.textContent.replace(/\\s+/g, ' ') : '';
+	})()`);
+	check(
+		/That service no longer exists\./.test(shown) && /1:20/.test(shown),
+		'Time shows it as not saved, with the reason'
+	);
+
+	await evaluate(
+		`[...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'Fix')?.click()`
+	);
+	await settle(2000);
+	const form = await evaluate(`({
+		heading: document.querySelector('h1')?.textContent?.trim() ?? '',
+		duration: document.querySelector('#m-duration')?.value ?? '',
+		service: document.querySelector('#m-service')?.selectedOptions[0]?.textContent?.trim() ?? ''
+	})`);
+	const filledIn =
+		form.heading.startsWith('Fix an entry') &&
+		form.duration === '1:20' &&
+		form.service === 'Choose what was done';
+	check(
+		filledIn,
+		`Fix opens it filled in, with the deleted service left to choose again${filledIn ? '' : ` (${JSON.stringify(form)})`}`
+	);
+
+	await go('/timesheet');
+	await click('Discard');
+	await settle(300);
+	check((await queued())?.length === 1, 'one tap does not discard it');
+	await click('Tap again to discard');
+	await settle(800);
+	check((await queued())?.length === 0, 'the second tap does');
 
 	await evaluate(`document.querySelector('form[action="/logout"]')?.requestSubmit()`);
 	await settle(2500);
 	const after = await evaluate(`location.pathname`);
-	const left = (await kept()) ?? [];
-	check(after === '/login' && left.length === 0, 'signing out empties what the worker kept');
+	const cached = (await kept()) ?? [];
+	check(after === '/login' && cached.length === 0, 'signing out empties what the worker kept');
 }
 
 ws.close();

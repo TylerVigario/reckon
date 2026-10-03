@@ -164,6 +164,16 @@ if (serviceId) {
 		{ ...one, client_uuid: crypto.randomUUID(), minutes: 0 },
 		400
 	);
+	// What the phone shows when an entry recorded offline names a service
+	// deleted before it got back: the queue keeps it, and this is the sentence.
+	await check(
+		'an entry naming a service that is gone says so',
+		'POST',
+		'/api/time',
+		{ ...one, client_uuid: crypto.randomUUID(), service_id: crypto.randomUUID() },
+		(/** @type {{ status: number, body: any }} */ r) =>
+			r.status === 400 && r.body?.errors?.service_id === 'That service no longer exists.'
+	);
 } else {
 	failures.push('could not find a service to post an entry with');
 }
