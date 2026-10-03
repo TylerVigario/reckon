@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { dated, day, formatMoney, fullDay, hours, increment, pct } from './format.ts';
+import {
+	clock,
+	dated,
+	datedAt,
+	day,
+	formatMoney,
+	fullDay,
+	hours,
+	increment,
+	monthOf,
+	pct,
+	todayIn
+} from './format.ts';
 
 /**
  * How a figure or a date is written.
@@ -81,26 +93,19 @@ describe('the dates', () => {
 	});
 
 	/**
-	 * NOON, NOT MIDNIGHT -- and this is the assertion that says so.
-	 *
-	 * A date column comes back as "2026-09-17". Handing that to Date() parses
-	 * it as UTC midnight, which west of Greenwich is the evening before, so the
-	 * date renders as the previous day for eight hours out of every day.
-	 *
-	 * Asserting the rendered string only proves it in whatever zone the test
-	 * happened to run in. This asserts the mechanism instead -- the day of the
-	 * month, read locally, is the day that was asked for -- which holds in
-	 * every zone. CI then runs this whole suite again at UTC+14 and UTC-11,
-	 * which is the part no single assertion can do.
+	 * A date is drawn from its own year, month and day, read back in UTC, so the
+	 * zone this runs in never moves it. Asserting the strings proves that only
+	 * for the zone the test happens to run in; CI runs the whole suite again at
+	 * UTC+14 and UTC-11, which is the part no single assertion can do. This one
+	 * names the hard cases outright.
 	 */
 	it('lands on the day it was given, in whatever zone this is', () => {
-		for (const iso of ['2026-01-01', '2026-06-15', '2026-09-17', '2026-12-31']) {
-			const [y, m, d] = iso.split('-').map(Number);
-			const local = new Date(`${iso}T12:00:00`);
-			expect(local.getFullYear()).toBe(y);
-			expect(local.getMonth() + 1).toBe(m);
-			expect(local.getDate()).toBe(d);
-		}
+		expect(fullDay('2026-01-01')).toBe('Thursday, 1 January 2026');
+		expect(fullDay('2026-12-31')).toBe('Thursday, 31 December 2026');
+		// The first day of summer time in both America and Europe.
+		expect(day('2026-03-08')).toBe('8 Mar');
+		expect(day('2026-03-29')).toBe('29 Mar');
+		expect(monthOf('2026-09-01')).toBe('September 2026');
 	});
 
 	it('renders the same day it was handed, end to end', () => {
@@ -127,5 +132,29 @@ describe('increment', () => {
 	// Null is not "unset": the column says a null bills the time as worked.
 	it('says a null bills the exact time', () => {
 		expect(increment(null)).toBe('the exact time');
+	});
+});
+
+describe('the business clock', () => {
+	// 01:30 UTC on 15 March 2026, after the American clocks went forward.
+	const moment = Date.UTC(2026, 2, 15, 1, 30);
+
+	it('says what day it is where the business is, not where this runs', () => {
+		expect(todayIn('America/Los_Angeles', moment)).toBe('2026-03-14');
+		expect(todayIn('UTC', moment)).toBe('2026-03-15');
+		expect(todayIn('Pacific/Kiritimati', moment)).toBe('2026-03-15');
+		expect(todayIn('Pacific/Pago_Pago', moment)).toBe('2026-03-14');
+	});
+
+	it('writes a moment on the business clock', () => {
+		expect(clock(moment, 'America/Los_Angeles')).toBe('18:30');
+		expect(clock(moment, 'UTC')).toBe('01:30');
+		expect(clock(new Date(moment).toISOString(), 'Asia/Kolkata')).toBe('07:00');
+		expect(datedAt(moment, 'America/Los_Angeles')).toBe('14 Mar 2026');
+		expect(datedAt(moment, 'UTC')).toBe('15 Mar 2026');
+	});
+
+	it('pads a single-digit month and day', () => {
+		expect(todayIn('UTC', Date.UTC(2026, 0, 5, 12))).toBe('2026-01-05');
 	});
 });
