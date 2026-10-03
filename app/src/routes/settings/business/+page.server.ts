@@ -1,5 +1,5 @@
 import { fail } from '@sveltejs/kit';
-import { db } from '#lib/server/db/index.ts';
+import { asUser, db } from '#lib/server/db/index.ts';
 import { operator } from '#lib/server/db/schema/index.ts';
 import { operatorRow } from '#lib/server/operator.ts';
 import type { Actions, PageServerLoad } from './$types';
@@ -19,9 +19,12 @@ export const load: PageServerLoad = async () => ({ operator: await operatorRow()
 /**
  * The logo stays a form action. A file is not a field: there is nothing to
  * autosave until one is picked, and picking it is the whole action.
+ *
+ * Both write as the person signed in, like every other setting, so the history
+ * says who changed the logo and not only that it changed.
  */
 export const actions: Actions = {
-	logo: async ({ request }) => {
+	logo: async ({ request, locals }) => {
 		const f = await request.formData();
 		const file = f.get('logo');
 		if (!(file instanceof File) || file.size === 0)
@@ -40,12 +43,16 @@ export const actions: Actions = {
 		if (!exists)
 			return fail(400, { message: 'Set the trading name first — there is no operator yet.' });
 
-		await db.update(operator).set({ logo: bytes, logoMediaType: file.type });
+		await asUser(locals.user!.id, (tx) =>
+			tx.update(operator).set({ logo: bytes, logoMediaType: file.type })
+		);
 		return { saved: true };
 	},
 
-	clearLogo: async () => {
-		await db.update(operator).set({ logo: null, logoMediaType: null });
+	clearLogo: async ({ locals }) => {
+		await asUser(locals.user!.id, (tx) =>
+			tx.update(operator).set({ logo: null, logoMediaType: null })
+		);
 		return { saved: true };
 	}
 };
