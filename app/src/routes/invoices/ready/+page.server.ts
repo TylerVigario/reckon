@@ -4,6 +4,7 @@ import { sumMoney } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
+import { taxRounding } from '#lib/server/business.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -24,6 +25,7 @@ import type { PageServerLoad } from './$types';
  * total sit on the same screen, where one cent out would show.
  */
 export const load: PageServerLoad = async () => {
+	const owing = balances(await taxRounding());
 	const i = t.invoice;
 	const e = t.entity;
 	const il = t.invoiceLine;
@@ -114,7 +116,7 @@ export const load: PageServerLoad = async () => {
 		  from ${i}
 		  cross join alert a
 		  join ${e} on ${e.id} = ${i.entityId}
-		  join ${balances} b on b.invoice_id = ${i.id}
+		  join ${owing} b on b.invoice_id = ${i.id}
 		  left join ${ec} on ${ec.entityId} = ${e.id} and ${ec.isPrimary}
 		  left join ${c} on ${c.id} = ${ec.contactId}
 		  left join counted n on n.invoice_id = ${i.id}

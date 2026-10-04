@@ -30,7 +30,6 @@ import {
 import { bytea, day, decimal, id, nonNegative, oneOf, tstz } from './columns.ts';
 import { user } from './people.ts';
 
-export const ROUNDING_MODES = ['half_up', 'half_even'] as const;
 export const TAX_RULE_SETS = ['us_ca', 'flat_per_site', 'none'] as const;
 export const FILING_BASES = ['annual', 'quarterly', 'monthly'] as const;
 export const MILEAGE_ASSIGNMENTS = ['actual', 'round_trip_per_client'] as const;
@@ -62,11 +61,6 @@ export const operator = pgTable(
 		 * person follows it until they set their own zone.
 		 */
 		timezone: text().default('UTC').notNull(),
-		/**
-		 * UNUSED, PLANNED. How an invoice total is to be rounded to the cent. The
-		 * settings page saves it; nothing reads it yet.
-		 */
-		roundingMode: text({ enum: ROUNDING_MODES }).default('half_up').notNull(),
 		taxRuleSet: text({ enum: TAX_RULE_SETS }).default('none').notNull(),
 		invoiceNumberFormat: text().default('INV-0000').notNull(),
 		nextInvoiceNumber: integer().default(1).notNull(),
@@ -153,7 +147,6 @@ export const operator = pgTable(
 		),
 		oneOf('operator_mileage_assignment_check', t.mileageAssignment, MILEAGE_ASSIGNMENTS),
 		check('operator_next_invoice_number_check', sql`${t.nextInvoiceNumber} > 0`),
-		oneOf('operator_rounding_mode_check', t.roundingMode, ROUNDING_MODES),
 		check('operator_singleton_check', sql`${t.singleton}`),
 		oneOf('operator_tax_rule_set_check', t.taxRuleSet, TAX_RULE_SETS)
 	]

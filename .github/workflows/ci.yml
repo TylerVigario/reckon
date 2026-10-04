@@ -171,6 +171,11 @@ jobs:
           db/apply.sh reckon_empty
           PGDATABASE=reckon_empty node app/scripts/refresh-tax-rates.mjs --dry-run
 
+      - name: The database and the valuation round tax alike
+        # Every scope and method of a tax rule's rounding, in SQL and in
+        # TypeScript, over the same made-up lines. Nothing is written.
+        run: PGDATABASE=reckon_empty node app/scripts/tax-check.mjs
+
       - name: A business to run the checks against
         # The database's default zone is set to one nobody keeps. reckon opens
         # its connections in UTC and names a zone wherever it works out a day,

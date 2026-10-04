@@ -4,6 +4,7 @@ import { Decimal, sumMoney } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
+import { taxRounding } from '#lib/server/business.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -14,6 +15,7 @@ import type { PageServerLoad } from './$types';
  * so an invoice sent in June still says what June said.
  */
 export const load: PageServerLoad = async () => {
+	const owing = balances(await taxRounding());
 	const i = t.invoice;
 	const e = t.entity;
 	const il = t.invoiceLine;
@@ -60,7 +62,7 @@ export const load: PageServerLoad = async () => {
 		       (${i.dueOn} is not null and ${i.dueOn} < ${businessToday()}::date and b.owed > 0) as overdue
 		  from ${i}
 		  join ${e} on ${e.id} = ${i.entityId}
-		  join ${balances} b on b.invoice_id = ${i.id}
+		  join ${owing} b on b.invoice_id = ${i.id}
 		  left join kinds k on k.invoice_id = ${i.id}
 		  left join settled s on s.invoice_id = ${i.id}
 		 where ${i.status} <> 'void'

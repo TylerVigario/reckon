@@ -16,6 +16,7 @@ import {
 } from './entries.ts';
 import type { ServiceTerms } from './pricing.ts';
 import { legWorth } from './misc.ts';
+import { taxRounding } from '../business.ts';
 import { invoiceTax, type InvoiceTax } from './tax.ts';
 
 /** The columns of a time entry the valuation reads. */
@@ -241,5 +242,11 @@ export async function taxOfInvoices(
 				.from(t.siteTaxCheck)
 				.where(inArray(t.siteTaxCheck.siteId, sites))
 		: [];
-	return invoiceTax(lines, checks, new Map(issued.map((i) => [i.id, i.issuedOn])), day);
+	return invoiceTax(
+		lines,
+		checks,
+		new Map(issued.map((i) => [i.id, i.issuedOn])),
+		day,
+		await taxRounding()
+	);
 }

@@ -36,6 +36,18 @@ describe('Decimal', () => {
 		expect(d('7').round(2).toString()).toBe('7.00');
 	});
 
+	// As a tax may require: Japan lets a business round down or up; HMRC lets a
+	// line be rounded down. Measured from zero, so a credit mirrors a charge.
+	it('rounds down and up, from zero', () => {
+		expect(d('86.76').round(1, 'down').toString()).toBe('86.7');
+		expect(d('86.71').round(1, 'up').toString()).toBe('86.8');
+		expect(d('86.70').round(1, 'up').toString()).toBe('86.7');
+		expect(d('-1.019').round(2, 'down').toString()).toBe('-1.01');
+		expect(d('-1.011').round(2, 'up').toString()).toBe('-1.02');
+		expect(Ratio.of(1).div(3).round(2, 'up').toString()).toBe('0.34');
+		expect(Ratio.of(2).div(3).round(2, 'down').toString()).toBe('0.66');
+	});
+
 	it('compares across scales', () => {
 		expect(d('1.50').eq('1.5')).toBe(true);
 		expect(d('2').gt('1.999')).toBe(true);

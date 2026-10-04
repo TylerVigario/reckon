@@ -6,6 +6,7 @@
  * by the earliest answer there is, counted as an estimate.
  */
 import { Decimal, Ratio, sum } from '#lib/decimal.ts';
+import { roundTax, type TaxRounding } from '../tax-rules.ts';
 
 export type TaxLine = {
 	invoiceId: string;
@@ -38,12 +39,17 @@ export type InvoiceTax = {
 	linesWithoutASplit: number;
 };
 
-/** The split for each invoice that has a taxable line. `issuedOn` is null for a draft, which splits as of today. */
+/**
+ * The split for each invoice that has a taxable line. `issuedOn` is null for a
+ * draft, which splits as of today. The tax is rounded as `rounding` says, the
+ * business's tax rule (#lib/server/tax-rules), as every balance rounds it.
+ */
 export function invoiceTax(
 	lines: readonly TaxLine[],
 	checks: readonly TaxCheck[],
 	issuedOn: ReadonlyMap<string, string | null>,
-	today: string
+	today: string,
+	rounding: TaxRounding
 ): Map<string, InvoiceTax> {
 	const bySite = new Map<string, TaxCheck[]>();
 	for (const c of checks) {
@@ -55,6 +61,7 @@ export function invoiceTax(
 
 	type Part = {
 		amount: Decimal;
+		rate: string;
 		tax: Ratio;
 		state: Ratio | null;
 		district: Ratio | null;
@@ -81,6 +88,7 @@ export function invoiceTax(
 			...(parts.get(l.invoiceId) ?? []),
 			{
 				amount: Decimal.from(l.amount),
+				rate: l.taxRatePct,
 				tax,
 				state: can && statePct !== null ? tax.mul(statePct).div(splitOf) : null,
 				district: can && districtPct !== null ? tax.mul(districtPct).div(splitOf) : null,
@@ -105,7 +113,7 @@ export function invoiceTax(
 			invoiceId,
 			jurisdiction: names.at(-1) ?? null,
 			measure: sum(ps.map((p) => p.amount)).round(2),
-			tax: ps.reduce((a, p) => a.add(p.tax), Ratio.of(0)).round(2),
+			tax: roundTax(ps, rounding, 2) ?? Decimal.ZERO,
 			stateTax: add(ps.map((p) => p.state)),
 			districtTax: add(ps.map((p) => p.district)),
 			estimatedLines: ps.filter((p) => p.estimated).length,

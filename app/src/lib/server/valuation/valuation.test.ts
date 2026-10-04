@@ -17,6 +17,7 @@ import {
 	type Person
 } from './entries.ts';
 import { invoiceTax } from './tax.ts';
+import { TAX_ROUNDING, type TaxRounding } from '../tax-rules.ts';
 import { billingDate, hoursOf, legWorth } from './misc.ts';
 
 const AVERY = { id: 'u-avery', roleId: 'r-partner', active: true };
@@ -603,7 +604,8 @@ describe('tax collected is split by what CDTFA said', () => {
 			],
 			[{ ...check, checkedOn: '2026-09-01', checkedAt: new Date('2026-09-01T12:00:00Z') }],
 			new Map([['i', '2026-09-30']]),
-			'2026-09-30'
+			'2026-09-30',
+			TAX_ROUNDING.us_ca
 		).get('i')!;
 		expect([t.tax, t.stateTax, t.districtTax].map(money)).toEqual(['8.00', '7.25', '0.75']);
 		expect(t.estimatedLines).toBe(0);
@@ -622,7 +624,8 @@ describe('tax collected is split by what CDTFA said', () => {
 			],
 			[{ ...check, checkedOn: '2026-09-01', checkedAt: new Date('2026-09-01T12:00:00Z') }],
 			new Map([['i', '2026-08-01']]),
-			'2026-09-30'
+			'2026-09-30',
+			TAX_ROUNDING.us_ca
 		).get('i')!;
 		expect(t.estimatedLines).toBe(1);
 		expect(money(t.stateTax)).toBe('7.25');
@@ -632,11 +635,51 @@ describe('tax collected is split by what CDTFA said', () => {
 			[{ invoiceId: 'i', amount: '50.00', taxable: true, taxRatePct: '7.2500', siteId: null }],
 			[],
 			new Map([['i', null]]),
-			'2026-09-30'
+			'2026-09-30',
+			TAX_ROUNDING.us_ca
 		).get('i')!;
 		expect(money(t.tax)).toBe('3.63');
 		expect(t.stateTax).toBeNull();
 		expect(t.linesWithoutASplit).toBe(1);
+	});
+});
+
+/**
+ * Tax is rounded as its rule says (#lib/server/tax-rules): where, how and to
+ * what. A cent either way is the whole difference, so each case is one.
+ */
+describe('tax is rounded by its rule', () => {
+	const line = (amount: string, taxRatePct: string) => ({
+		invoiceId: 'i',
+		amount,
+		taxable: true,
+		taxRatePct,
+		siteId: null
+	});
+	const taxOf = (lines: ReturnType<typeof line>[], rounding: TaxRounding) =>
+		money(invoiceTax(lines, [], new Map([['i', null]]), '2026-09-30', rounding).get('i')!.tax);
+
+	// 0.005 at one rate and 0.015 at another: 0.02 rounded once, but 0.01 and
+	// 0.02 rounded for each rate, as California and Japan round.
+	it('once per invoice for each rate', () => {
+		expect(taxOf([line('0.10', '5.0000'), line('0.10', '15.0000')], TAX_ROUNDING.us_ca)).toBe(
+			'0.03'
+		);
+	});
+
+	// Two lines of 0.004 at one rate: 0.008, a cent, rounded for the rate; but
+	// nothing, rounded on each line.
+	it('or on each line, where the rule says so', () => {
+		const lines = [line('0.10', '4.0000'), line('0.10', '4.0000')];
+		expect(taxOf(lines, { scope: 'invoice', method: 'half_up' })).toBe('0.01');
+		expect(taxOf(lines, { scope: 'line', method: 'half_up' })).toBe('0.00');
+	});
+
+	it('down or up, where the rule lets the business choose', () => {
+		const lines = [line('12.34', '10.0000')];
+		expect(taxOf(lines, { scope: 'invoice', method: 'down' })).toBe('1.23');
+		expect(taxOf(lines, { scope: 'invoice', method: 'up' })).toBe('1.24');
+		expect(taxOf(lines, { scope: 'invoice', method: 'half_up' })).toBe('1.23');
 	});
 });
 

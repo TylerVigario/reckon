@@ -167,37 +167,26 @@
 		<div class="rows inset">
 			<div class="pair">
 				<Setting
-					name="currency"
-					label="Currency"
-					value={o?.currency ?? 'USD'}
-					hint="Stored as NUMERIC, never a float"
-				/>
-				<Setting
-					name="timezone"
-					label="Time zone"
-					value={o?.timezone ?? 'UTC'}
-					options={zoneOptions(o?.timezone ?? 'UTC')}
-					hint="The business's clock: overdue, ageing and report months. Each person keeps their own."
-				/>
-			</div>
-			<div class="pair">
-				<Setting
-					name="rounding_mode"
-					label="Rounding"
-					value={o?.rounding_mode ?? 'half_up'}
-					options={[
-						{ value: 'half_up', label: 'Half up' },
-						{ value: 'half_even', label: "Half even (banker's)" }
-					]}
-				/>
-				<Setting
 					name="locale"
 					label="Locale"
 					value={o?.locale ?? 'en-US'}
 					options={localeOptions(o?.locale ?? 'en-US')}
 					hint="How the business's dates and figures read, and each person's until they choose their own."
 				/>
+				<Setting
+					name="currency"
+					label="Currency"
+					value={o?.currency ?? 'USD'}
+					hint="Stored as NUMERIC, never a float"
+				/>
 			</div>
+			<Setting
+				name="timezone"
+				label="Time zone"
+				value={o?.timezone ?? 'UTC'}
+				options={zoneOptions(o?.timezone ?? 'UTC')}
+				hint="The business's clock: overdue, ageing and report months. Each person keeps their own."
+			/>
 			<Setting
 				name="default_markup_pct"
 				label="Default markup %"

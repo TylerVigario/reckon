@@ -1,10 +1,12 @@
-import { and, desc, eq, notExists, sql } from 'drizzle-orm';
+import { and, eq, notExists, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday, personalDay, businessDay } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { sum } from '#lib/decimal.ts';
 import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
 import { rateIsStale } from '#lib/server/stale.ts';
+import { balances } from '#lib/server/balances.ts';
+import { taxRounding } from '#lib/server/business.ts';
 import { count, dated } from '#lib/format.ts';
 import { ageOf, type Age } from '#lib/ageing.ts';
 import type { PageServerLoad } from './$types';
@@ -22,10 +24,10 @@ import type { PageServerLoad } from './$types';
  * in the afternoon.
  */
 export const load: PageServerLoad = async ({ locals }) => {
+	const owing = balances(await taxRounding());
 	const today = businessToday();
 	const i = t.invoice;
 	const il = t.invoiceLine;
-	const pa = t.paymentAllocation;
 	const e = t.entity;
 	const s = t.site;
 
@@ -38,42 +40,25 @@ export const load: PageServerLoad = async ({ locals }) => {
 		draft_count: string;
 		tax_held: string;
 	}>(sql`
-		with line_totals as (
-			select ${il.invoiceId} as invoice_id,
-			       sum(${il.amount}) as net,
-			       sum(${il.amount} * ${il.taxRatePct} / 100) as tax,
-			       -- Reg 1701, where the operator has made that election: tax
-			       -- already paid on resold goods never reaches the return.
-			       sum(${il.exTaxCost} * ${il.taxRatePct} / 100)
-			         filter (where ${il.taxable}
-			                   and (select ${t.operator.claimsTaxPaidPurchasesResold} from ${t.operator}))
-			         as credit
-			  from ${il} group by ${il.invoiceId}
-		),
-		-- What has been paid against each invoice. Owed is what is left.
-		allocated as (
-			select ${pa.invoiceId} as invoice_id, sum(${pa.amount}) as paid from ${pa} group by ${pa.invoiceId}
-		)
 		select
-		  coalesce(sum(greatest(lt.net + lt.tax - coalesce(a.paid, 0), 0))
-		             filter (where ${i.status} = 'sent'), 0)::numeric(12,2)::text      as owed,
-		  count(*) filter (where ${i.status} = 'sent'
-		                     and lt.net + lt.tax > coalesce(a.paid, 0))::text        as owed_count,
-		  coalesce(sum(lt.net + lt.tax) filter (where ${i.status} = 'draft'), 0)::numeric(12,2)::text as drafts,
-		  count(*) filter (where ${i.status} = 'draft')::text                        as draft_count,
+		  coalesce(sum(b.owed) filter (where b.status = 'sent'), 0)::numeric(12,2)::text  as owed,
+		  count(*) filter (where b.status = 'sent' and b.owed > 0)::text              as owed_count,
+		  coalesce(sum(b.gross) filter (where b.status = 'draft'), 0)::numeric(12,2)::text as drafts,
+		  count(*) filter (where b.status = 'draft')::text                          as draft_count,
 		  -- Collected on somebody else's behalf, so the figure worth seeing is
 		  -- what is STILL HELD: charged on what has gone out, less the Reg 1701
 		  -- credit that comes off the return, less what has been handed to
 		  -- CDTFA. Whether a return was paid is a fact about the world, not
 		  -- something the invoices know, which is why it is subtracted from a
 		  -- table rather than inferred.
-		  (coalesce(sum(lt.tax) filter (where ${i.status} in ('sent', 'paid')), 0)
-		   - coalesce(sum(lt.credit) filter (where ${i.status} in ('sent', 'paid')), 0)
+		  (coalesce(sum(b.tax) filter (where b.status in ('sent', 'paid')), 0)
+		   - (select coalesce(sum(${il.exTaxCost} * ${il.taxRatePct} / 100), 0)
+		        from ${il} join ${i} on ${i.id} = ${il.invoiceId}
+		       where ${il.taxable} and ${i.status} in ('sent', 'paid')
+		         and (select ${t.operator.claimsTaxPaidPurchasesResold} from ${t.operator}))
 		   - (select coalesce(sum(${t.taxRemittance.amount}), 0) from ${t.taxRemittance}))::numeric(12,2)::text as tax_held
-		  from ${i}
-		  left join line_totals lt on lt.invoice_id = ${i.id}
-		  left join allocated a on a.invoice_id = ${i.id}
-		 where ${i.status} in ('sent', 'paid', 'draft')`);
+		  from ${owing} b
+		 where b.status in ('sent', 'paid', 'draft')`);
 
 	// Anything that cannot proceed until somebody decides. An invoice out past
 	// the operator's own chase-after figure, and an address CDTFA has not been
@@ -86,26 +71,17 @@ export const load: PageServerLoad = async ({ locals }) => {
 		amount: string | null;
 		days: number;
 	}>(sql`
-		with line_totals as (
-			select ${il.invoiceId} as invoice_id,
-			       sum(${il.amount} + ${il.amount} * ${il.taxRatePct} / 100) as gross
-			  from ${il} group by ${il.invoiceId}
-		),
-		allocated as (
-			select ${pa.invoiceId} as invoice_id, sum(${pa.amount}) as paid from ${pa} group by ${pa.invoiceId}
-		)
 		select * from (
 		select 'invoice' as kind, ${e.name} as client, ${i.number} as ref,
 		       ${personalDay(i.sentAt)}::text as dated_on,
-		       (coalesce(lt.gross, 0) - coalesce(a.paid, 0))::numeric(12,2)::text as amount,
+		       b.owed::numeric(12,2)::text as amount,
 		       ${businessToday()}::date - ${businessDay(i.sentAt)} as days,
 		       'Invoice ' || ${i.number} || ' · ' || ${e.name} as sort
 		  from ${i}
 		  join ${e} on ${e.id} = ${i.entityId}
-		  left join line_totals lt on lt.invoice_id = ${i.id}
-		  left join allocated a on a.invoice_id = ${i.id}
+		  join ${owing} b on b.invoice_id = ${i.id}
 		 where ${i.status} = 'sent'
-		   and coalesce(lt.gross, 0) > coalesce(a.paid, 0)
+		   and b.owed > 0
 		   and ${i.sentAt} is not null
 		   and ${businessToday()}::date - ${businessDay(i.sentAt)}
 		       > coalesce((select ${t.operator.ageingAlertDays} from ${t.operator}), 30)
@@ -142,21 +118,22 @@ export const load: PageServerLoad = async ({ locals }) => {
 				}
 	);
 
-	const drafts = await db
-		.select({
-			id: t.invoice.id,
-			number: t.invoice.number,
-			who: t.entity.name,
-			lines: sql<string>`count(${t.invoiceLine.id})::text`,
-			gross: sql<string>`coalesce(sum(${t.invoiceLine.amount} + ${t.invoiceLine.amount} * ${t.invoiceLine.taxRatePct} / 100), 0)::numeric(12,2)::text`
-		})
-		.from(t.invoice)
-		.innerJoin(t.entity, eq(t.entity.id, t.invoice.entityId))
-		.leftJoin(t.invoiceLine, eq(t.invoiceLine.invoiceId, t.invoice.id))
-		.where(eq(t.invoice.status, 'draft'))
-		.groupBy(t.invoice.id, t.invoice.number, t.entity.name)
-		.orderBy(desc(t.invoice.createdAt))
-		.limit(3);
+	const { rows: drafts } = await db.execute<{
+		id: string;
+		number: string;
+		who: string;
+		lines: string;
+		gross: string;
+	}>(sql`
+		select ${i.id} as id, ${i.number} as number, ${e.name} as who,
+		       (select count(*) from ${il} where ${il.invoiceId} = ${i.id})::text as lines,
+		       b.gross::numeric(12,2)::text as gross
+		  from ${i}
+		  join ${e} on ${e.id} = ${i.entityId}
+		  join ${owing} b on b.invoice_id = ${i.id}
+		 where ${i.status} = 'draft'
+		 order by ${i.createdAt} desc
+		 limit 3`);
 
 	// Work done and not yet put on an invoice, by how long it has waited.
 	// Worth what the valuation says it bills: the price in force on the day it
