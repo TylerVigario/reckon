@@ -47,9 +47,20 @@ const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise((r) => (ws.onopen = r));
 let id = 0;
 const waiting = new Map();
+/**
+ * Whatever the page throws and nothing catches. Without a connection is where
+ * a promise nobody handles is likeliest to reject -- every fetch fails -- and
+ * the screen can look right while one does.
+ * @type {string[]}
+ */
+const uncaught = [];
 ws.onmessage = (/** @type {{ data: string }} */ m) => {
 	const x = JSON.parse(m.data);
 	if (x.id && waiting.has(x.id)) waiting.get(x.id)(x);
+	if (x.method === 'Runtime.exceptionThrown') {
+		const d = x.params.exceptionDetails;
+		uncaught.push((d.exception?.description ?? d.text).split('\n')[0]);
+	}
 };
 /** @returns {Promise<any>} */
 const send = (/** @type {string} */ method, /** @type {Record<string, unknown>} */ params = {}) =>
@@ -278,6 +289,11 @@ if (phase === 'back') {
 	const cached = (await kept()) ?? [];
 	check(after === '/login' && cached.length === 0, 'signing out empties what the worker kept');
 }
+
+check(
+	uncaught.length === 0,
+	`nothing is left uncaught${uncaught.length ? `: ${[...new Set(uncaught)].join(' | ')}` : ''}`
+);
 
 ws.close();
 if (failures.length) {
