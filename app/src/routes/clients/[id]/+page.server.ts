@@ -25,7 +25,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	const c = t.contact;
 	const cn = t.creditNote;
 	const ca = t.creditApplication;
-	const stale = rateIsStale(t.site.areaVerifiedOn);
+	const stale = rateIsStale(t.site.areaVerifiedOn, businessToday());
 
 	const {
 		rows: [client]

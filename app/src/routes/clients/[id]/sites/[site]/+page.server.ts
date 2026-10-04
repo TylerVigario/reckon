@@ -1,4 +1,4 @@
-import { personalDay } from '#lib/server/calendar.ts';
+import { personalDay, businessToday } from '#lib/server/calendar.ts';
 import { error } from '@sveltejs/kit';
 import { and, asc, count, desc, eq, notExists, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
@@ -44,7 +44,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			jurisdiction: s.taxJurisdiction,
 			tax_area_code: s.taxAreaCode,
 			verified_on: s.areaVerifiedOn,
-			stale: rateIsStale(s.areaVerifiedOn),
+			stale: rateIsStale(s.areaVerifiedOn, businessToday()),
 			changes: sql<string>`(${db
 				.select({ n: count() })
 				.from(t.siteTaxCheck)

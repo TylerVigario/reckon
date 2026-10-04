@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { site } from '#lib/server/db/schema/index.ts';
 import { operatorRow } from '#lib/server/operator.ts';
+import { businessToday } from '#lib/server/calendar.ts';
 import { rateIsStale } from '#lib/server/stale.ts';
 import type { PageServerLoad } from './$types';
 
@@ -14,7 +15,7 @@ export const load: PageServerLoad = async () => {
 		db
 			.select({
 				sites: sql<string>`count(*)::text`,
-				stale: sql<string>`(count(*) filter (where ${rateIsStale(site.areaVerifiedOn)}))::text`,
+				stale: sql<string>`(count(*) filter (where ${rateIsStale(site.areaVerifiedOn, businessToday())}))::text`,
 				last: sql<string | null>`max(${site.areaVerifiedOn})::text`,
 				oldest: sql<string | null>`min(${site.areaVerifiedOn})::text`
 			})

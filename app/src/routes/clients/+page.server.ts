@@ -2,6 +2,7 @@ import { and, count, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
+import { businessToday } from '#lib/server/calendar.ts';
 import { rateIsStale } from '#lib/server/stale.ts';
 import type { PageServerLoad } from './$types';
 
@@ -50,7 +51,7 @@ export const load: PageServerLoad = async () => {
 		db
 			.select({ n: count() })
 			.from(t.site)
-			.where(and(eq(t.site.active, true), rateIsStale(t.site.areaVerifiedOn)))
+			.where(and(eq(t.site.active, true), rateIsStale(t.site.areaVerifiedOn, businessToday())))
 	]);
 
 	return {

@@ -136,7 +136,7 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 		         ', ' || (${businessToday()}::date - ${site.areaVerifiedOn}) || ' days ago' as why
 		  from ${site}
 		  join ${entity} on ${entity.id} = ${site.entityId}
-		 where ${site.active} and ${rateIsStale(site.areaVerifiedOn)}
+		 where ${site.active} and ${rateIsStale(site.areaVerifiedOn, businessToday())}
 		 order by ${site.areaVerifiedOn}, ${entity.name}, ${site.display}`);
 
 	// A rate that did not come from the site is never folded into an area.
