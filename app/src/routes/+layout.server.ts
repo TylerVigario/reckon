@@ -44,7 +44,16 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 			}
 		: null;
 
-	if (!locals.user) return { operator: operatorShown, user: null, counts: {}, zone: locals.zone };
+	// The person's zone and locale go with every page, so what the browser
+	// draws matches what the server drew (#lib/zone.svelte, hooks.client.ts).
+	if (!locals.user)
+		return {
+			operator: operatorShown,
+			user: null,
+			counts: {},
+			zone: locals.zone,
+			locale: locals.locale
+		};
 
 	const [[drafts], [entities], [month]] = await Promise.all([
 		db.select({ n: count() }).from(invoice).where(eq(invoice.status, 'draft')),
@@ -59,6 +68,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 		operator: operatorShown,
 		user: locals.user,
 		zone: locals.zone,
+		locale: locals.locale,
 		counts: { drafts: drafts.n, entities: entities.n, monthMinutes: month.minutes ?? 0 }
 	};
 };

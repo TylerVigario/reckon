@@ -19,11 +19,15 @@ import {
 	foreignKey,
 	index,
 	pgTable,
+	smallint,
 	text,
 	unique,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { createdAt, id, lowercaseEmail, tstz, updatedAt } from './columns.ts';
+import { createdAt, id, lowercaseEmail, oneOf, tstz, updatedAt } from './columns.ts';
+
+/** A 12-hour clock, or a 24-hour one, as Unicode names them (the locale key hc). */
+export const HOUR_CYCLES = ['h12', 'h23'] as const;
 
 /**
  * The operator's own list of the capacities people are paid in -- Partner,
@@ -72,12 +76,24 @@ export const user = pgTable(
 		 * which follows the business's zone.
 		 */
 		timezone: text(),
+		/**
+		 * How dates and figures read for this person: a locale, as BCP 47 writes
+		 * one ("en-GB") -- language, the order of day and month, the separators.
+		 * Null follows the business's locale. Theirs to set, in their profile.
+		 */
+		locale: text(),
+		/** A 12- or 24-hour clock, over what their locale says. Null keeps the locale's. */
+		hourCycle: text({ enum: HOUR_CYCLES }),
+		/** The day their week starts, 1 for Monday to 7 for Sunday. Null keeps the locale's. */
+		weekStart: smallint(),
 		createdAt: createdAt(),
 		updatedAt: updatedAt()
 	},
 	(t) => [
 		unique('user_email_key').on(t.email),
 		lowercaseEmail('user_email_lowercase', t.email),
+		oneOf('user_hour_cycle_check', t.hourCycle, HOUR_CYCLES),
+		check('user_week_start_check', sql`${t.weekStart} between 1 and 7`),
 		foreignKey({
 			name: 'user_role_id_fkey',
 			columns: [t.roleId],

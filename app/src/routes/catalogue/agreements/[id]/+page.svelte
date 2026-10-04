@@ -2,7 +2,7 @@
 	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import CoverageForm from '#lib/agreement/CoverageForm.svelte';
-	import { dated, hours } from '#lib/format.ts';
+	import { dated, hours, span } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import { paysWhat } from '#lib/pay-words.ts';
 	import { parseAgreementField } from '#lib/agreement-fields.ts';
@@ -287,7 +287,7 @@
 					{#each data.periods as p (p.id)}
 						<div class="rec" class:gone={p.given}>
 							<div class="rec-m">
-								<div class="rec-t">{dated(p.period_start)} – {dated(p.period_end)}</div>
+								<div class="rec-t">{span(p.period_start, p.period_end)}</div>
 								{#if p.given}<div class="rec-s">Given freely</div>{/if}
 							</div>
 							<div class="rec-n">

@@ -48,6 +48,7 @@ import {
 	type Parsed,
 	whole
 } from './field-rules.ts';
+import { pickLocale } from './locales.ts';
 
 export type { Parsed };
 
@@ -137,7 +138,12 @@ export const FIELDS: Record<string, Parse> = {
 	claims_tax_paid_purchases_resold: flag,
 
 	// --- How things are written, and driven ---------------------------------
-	date_format: orDefault('d MMM yyyy', cap(32)),
+	// How the business's figures read, and each person's until they choose:
+	// any locale Intl can write in, saved as Intl spells it.
+	locale: orDefault('en-US', (v) => {
+		const tag = pickLocale(v);
+		return tag ? ok(tag) : no('Not a locale. Try en-US or en-GB.');
+	}),
 	// NOT trip_leg.rule's vocabulary. That says what a leg IS; this says how
 	// legs are handed to clients, and they are different questions.
 	mileage_assignment: oneOf(['actual', 'round_trip_per_client'])

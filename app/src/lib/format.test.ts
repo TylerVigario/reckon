@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
 	clock,
 	dated,
@@ -20,10 +20,13 @@ import {
 	monthName,
 	monthOf,
 	pct,
+	percent,
 	quantity,
 	rateParts,
+	readLocaleFrom,
 	span,
 	todayIn,
+	weekdayName,
 	zoneName
 } from './format.ts';
 
@@ -31,10 +34,14 @@ import {
  * How a figure or a date is written.
  *
  * One shape for each, asserted: how a null is shown, and when a year is
- * printed, are the details copies of these would disagree about.
+ * printed, are the details copies of these would disagree about. Each block
+ * says the locale it reads in -- US English unless it says otherwise -- and the
+ * last shows the same figures across locales and clocks.
  */
 
 const ABSENT = '—';
+const inLocale = (tag: string) => beforeEach(() => readLocaleFrom(() => tag));
+inLocale('en-US');
 
 describe('formatMoney', () => {
 	it('takes the string Postgres actually sends', () => {
@@ -116,8 +123,8 @@ describe('rateParts', () => {
 
 describe('hours', () => {
 	it('bills at four places, the precision an invoice line uses', () => {
-		expect(hours('1.5')).toBe('1.5000 h');
-		expect(hours('0.25')).toBe('0.2500 h');
+		expect(hours('1.5')).toBe('1.5000 hr');
+		expect(hours('0.25')).toBe('0.2500 hr');
 	});
 
 	it('shows a dash for nothing', () => {
@@ -125,14 +132,14 @@ describe('hours', () => {
 	});
 
 	it('to two places for an allotment, one for a glance', () => {
-		expect(hours('10', 'allotted')).toBe('10.00 h');
-		expect(hours('3.25', 'glance')).toBe('3.3 h');
+		expect(hours('10', 'allotted')).toBe('10.00 hr');
+		expect(hours('3.25', 'glance')).toBe('3.3 hr');
 	});
 
 	it('from minutes, worked out exactly before it is rounded', () => {
-		expect(minutesAsHours(25)).toBe('0.4167 h');
-		expect(minutesAsHours(90, 'glance')).toBe('1.5 h');
-		expect(minutesAsHours(150, 'whole')).toBe('3 h');
+		expect(minutesAsHours(25)).toBe('0.4167 hr');
+		expect(minutesAsHours(90, 'glance')).toBe('1.5 hr');
+		expect(minutesAsHours(150, 'whole')).toBe('3 hr');
 	});
 
 	it('closed up for a count beside a menu item', () => {
@@ -170,7 +177,9 @@ describe('elapsed', () => {
 	});
 });
 
-describe('the dates', () => {
+describe('the dates, in British English', () => {
+	inLocale('en-GB');
+
 	it('writes each length the way its screen needs it', () => {
 		expect(day('2026-09-17')).toBe('17 Sept');
 		expect(dated('2026-09-17')).toBe('17 Sept 2026');
@@ -212,8 +221,14 @@ describe('the dates', () => {
 	});
 
 	it('spans two days, with the year on both ends only when they differ', () => {
-		expect(span('2026-10-01', '2026-10-04')).toBe('1 Oct to 4 Oct 2026');
-		expect(span('2025-07-01', '2026-06-30')).toBe('1 Jul 2025 to 30 Jun 2026');
+		// A range's dash sits between thin spaces, as Intl writes one.
+		expect(span('2026-10-01', '2026-10-04')).toBe('1\u2009–\u20094 Oct 2026');
+		expect(span('2025-07-01', '2026-06-30')).toBe('1 Jul 2025\u2009–\u200930 Jun 2026');
+	});
+
+	it('names a day of the week', () => {
+		expect(weekdayName(1)).toBe('Monday');
+		expect(weekdayName(7)).toBe('Sunday');
 	});
 
 	it('names a fiscal year by the calendar years it runs in', () => {
@@ -242,7 +257,9 @@ describe('increment', () => {
 	});
 });
 
-describe("a zone's clock", () => {
+describe("a zone's clock, in British English", () => {
+	inLocale('en-GB');
+
 	// 01:30 UTC on 15 March 2026, after the American clocks went forward.
 	const moment = Date.UTC(2026, 2, 15, 1, 30);
 
@@ -270,5 +287,53 @@ describe('zoneName', () => {
 	it('names a zone the way people say it, and gives back one it cannot name', () => {
 		expect(zoneName('America/Los_Angeles')).toBe('Pacific Time');
 		expect(zoneName('Not/AZone')).toBe('Not/AZone');
+	});
+});
+
+/**
+ * The same figures, read by people in different places. The locale decides
+ * the language, the order of day and month and the separators; a person's
+ * clock goes over it; the currency is the business's, whoever reads it.
+ */
+describe("in the reader's locale", () => {
+	const moment = Date.UTC(2026, 2, 15, 1, 30);
+
+	describe('US English', () => {
+		inLocale('en-US');
+		it('writes dates month first, and a 12-hour clock', () => {
+			expect(dated('2026-09-17')).toBe('Sep 17, 2026');
+			expect(fullDay('2026-09-17')).toBe('Thursday, September 17, 2026');
+			expect(span('2026-10-01', '2026-10-04')).toBe('Oct 1\u2009–\u20094, 2026');
+			expect(clock(moment, 'America/Los_Angeles')).toBe('6:30 PM');
+		});
+	});
+
+	describe('US English, on a 24-hour clock', () => {
+		inLocale('en-US-u-hc-h23');
+		it('keeps the dates and changes only the clock', () => {
+			expect(dated('2026-09-17')).toBe('Sep 17, 2026');
+			expect(clock(moment, 'America/Los_Angeles')).toBe('18:30');
+		});
+	});
+
+	describe('British English', () => {
+		inLocale('en-GB');
+		it('says whose dollars they are', () => {
+			expect(formatMoney('1234.50')).toBe('US$1,234.50');
+			expect(hours('1.5')).toBe('1.5000 hrs');
+		});
+	});
+
+	describe('German', () => {
+		inLocale('de-DE');
+		it('writes its own separators, units and ranges', () => {
+			expect(formatMoney('1234.50')).toBe('1.234,50\u00a0$');
+			expect(pct('7.75')).toBe('7,750\u00a0%');
+			expect(percent('16.5')).toBe('16,5\u00a0%');
+			expect(hours('1.5')).toBe('1,5000 Std.');
+			expect(dated('2026-09-17')).toBe('17. Sept. 2026');
+			expect(span('2026-10-01', '2026-10-04')).toBe('1.–4. Okt. 2026');
+			expect(weekdayName(1)).toBe('Montag');
+		});
 	});
 });

@@ -1460,4 +1460,23 @@ SELECT must_fail($$
   DELETE FROM role WHERE name = 'Partner'
 $$, 'deleting a role somebody holds');
 
+\echo ''
+\echo '=== 33. a person keeps a clock and a week that exist ==='
+
+SELECT must_fail($$
+  UPDATE "user" SET hour_cycle = 'h24' WHERE id = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+$$, 'a clock nobody keeps');
+
+SELECT must_pass($$
+  UPDATE "user" SET hour_cycle = 'h23' WHERE id = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+$$, 'a 24-hour clock');
+
+SELECT must_fail($$
+  UPDATE "user" SET week_start = 8 WHERE id = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+$$, 'an eighth day to start the week on');
+
+SELECT must_pass($$
+  UPDATE "user" SET week_start = 7, locale = 'en-GB' WHERE id = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+$$, 'a week from Sunday, in British English');
+
 \echo 'All guards hold.'

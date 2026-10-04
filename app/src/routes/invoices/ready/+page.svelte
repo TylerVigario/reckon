@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { day, pct } from '#lib/format.ts';
+	import { count, day, daysAgo, pct } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -56,7 +56,9 @@
 						{#if d.aged}
 							<div class="rec-c">
 								<span class="chip warn">
-									<span class="dot"></span>Worked {day(d.oldest_worked_on)}, {d.days_waiting} days ago
+									<span class="dot"></span>Worked {day(d.oldest_worked_on)}{d.days_waiting === null
+										? ''
+										: `, ${daysAgo(d.days_waiting)}`}
 								</span>
 							</div>
 						{/if}
@@ -72,8 +74,8 @@
 					<div class="rec-m">
 						<div class="rec-t"><span class="lt">Nothing drafted</span></div>
 						<div class="rec-s">
-							Nothing builds drafts yet. Work unbilled for more than {data.alertDays} days is flagged
-							on Unbilled.
+							Nothing builds drafts yet. Work unbilled for more than {count(data.alertDays, 'day')} is
+							flagged on Unbilled.
 						</div>
 					</div>
 				</div>

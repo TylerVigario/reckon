@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { zoneOptions } from '#lib/zone-options.ts';
+	import { localeOptions } from '#lib/locales.ts';
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import Top from '#lib/Top.svelte';
@@ -189,7 +190,13 @@
 						{ value: 'half_even', label: "Half even (banker's)" }
 					]}
 				/>
-				<Setting name="date_format" label="Date format" value={o?.date_format ?? 'd MMM yyyy'} />
+				<Setting
+					name="locale"
+					label="Locale"
+					value={o?.locale ?? 'en-US'}
+					options={localeOptions(o?.locale ?? 'en-US')}
+					hint="How the business's dates and figures read, and each person's until they choose their own."
+				/>
 			</div>
 			<Setting
 				name="default_markup_pct"

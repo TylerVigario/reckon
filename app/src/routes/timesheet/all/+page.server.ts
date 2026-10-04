@@ -15,7 +15,7 @@ import type { PageServerLoad } from './$types';
  * that changed last week must not silently restate what a job in June was
  * worth.
  */
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
 	// ?month=YYYY-MM, defaulting to this one. Parsed rather than interpolated.
 	const asked = url.searchParams.get('month') ?? '';
 	const day = businessToday();
@@ -52,7 +52,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		return {
 			id: e.id,
 			worked_on: e.workedOn,
-			week: weekOf(e.workedOn),
+			week: weekOf(e.workedOn, locals.weekStart),
 			minutes: e.minutes,
 			billable: e.billable,
 			crew: e.crew,
@@ -89,8 +89,11 @@ export const load: PageServerLoad = async ({ url }) => {
 	return { weeks, totals };
 };
 
-/** The Monday of the week a calendar day falls in. */
-function weekOf(d: string) {
+/**
+ * The first day of the week a calendar day falls in, for a week that starts on
+ * `first` -- 1 for Monday to 7 for Sunday: the person's own, or their locale's.
+ */
+function weekOf(d: string, first: number) {
 	const day = Temporal.PlainDate.from(d);
-	return day.subtract({ days: day.dayOfWeek - 1 }).toString();
+	return day.subtract({ days: (day.dayOfWeek - first + 7) % 7 }).toString();
 }

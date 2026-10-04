@@ -288,18 +288,27 @@ neither is wired in yet.
 
 **The server works in UTC, and there are two clocks.** Every database
 connection is opened in UTC whatever the host's default is, and every moment is
-stored as `timestamptz`. Each person keeps a time zone on their user record, taken
-from their browser the first time they sign in. After that, a phone in another
-zone asks before changing it. Their own timesheet, the day a new entry starts on,
-and every moment shown to them use it. The business keeps its own zone (Settings →
-Business), and whether an invoice is overdue, how long work has waited, report
-months and which price is in force use that, so everyone gets the same answer. A
-calendar date that is recorded — worked on, issued, due — is the string
-`2026-09-17` end to end, the same day to everyone. Moments are drawn with
-`Intl.DateTimeFormat`, each formatter built once and kept. Dates are worked with
-through Temporal: a browser or a Node that has it uses its own, and one that does
-not gets `temporal-polyfill` first — on a phone only where it is missing, kept by
-the service worker for offline, and on the server until Node 26.
+stored as `timestamptz`. Each person keeps a time zone, taken from their browser
+the first time they sign in. After that, a phone in another zone asks before
+changing it. Their own timesheet, the day a new entry starts on, and every moment
+shown to them use it. The business keeps its own zone (Settings → Business), and
+whether an invoice is overdue, how long work has waited, report months and which
+price is in force use that, so everyone gets the same answer. A calendar date that
+is recorded — worked on, issued, due — is the string `2026-09-17` end to end, the
+same day to everyone. Dates are worked with through Temporal: a browser or a Node
+that has it uses its own, and one that does not gets `temporal-polyfill` first —
+on a phone only where it is missing, kept by the service worker for offline, and
+on the server until Node 26.
+
+**Every figure is written in the reader's locale, from its exact value.**
+`#lib/format` is the one place that writes a date, a time, an amount or a quantity
+for a person to read, on the server and in the browser, through `Intl`. Figures go
+to `Intl` as their own decimal strings, never through a float. Each person sets a
+locale, a 12- or 24-hour clock and the first day of their week in their profile,
+beside their time zone; until they do, they follow the business's locale (Settings
+→ Business), and their browser's is offered as a one-tap start. The currency is
+the business's, whoever reads it. A date written in numbers alone is
+year-month-day, whatever the locale.
 
 adapter-node emits a standalone server. How it is then run — the service
 manager, the reverse proxy, the certificates — is the host's business, past

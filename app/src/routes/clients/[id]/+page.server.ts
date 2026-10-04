@@ -1,6 +1,6 @@
+import { hours } from '#lib/format.ts';
 import { error } from '@sveltejs/kit';
 import { and, desc, eq, gte, isNull, or, sql } from 'drizzle-orm';
-import { Decimal } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday, personalDay } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
@@ -150,12 +150,10 @@ export const load: PageServerLoad = async ({ params }) => {
 		const a = agreements.find((x) => x.id === agreementId)!;
 		const parts = a.services
 			.map((s) => {
-				const used = hoursOf(minutes.get(`${a.id}:${s.serviceId}`) ?? 0);
+				const used = hours(hoursOf(minutes.get(`${a.id}:${s.serviceId}`) ?? 0), 'allotted');
 				const of =
-					s.allotment === 'unlimited'
-						? 'unlimited'
-						: `${Decimal.from(s.includedHours ?? '0').toFixed(2)} h`;
-				return { name: nameOf.get(s.serviceId) ?? '', text: `${used} h of ${of}` };
+					s.allotment === 'unlimited' ? 'unlimited' : hours(s.includedHours ?? '0', 'allotted');
+				return { name: nameOf.get(s.serviceId) ?? '', text: `${used} of ${of}` };
 			})
 			.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
 		return parts.length ? parts.map((p) => `${p.name} ${p.text}`).join(', ') : null;

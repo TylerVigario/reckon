@@ -85,8 +85,12 @@ function createAuth() {
 			additionalFields: {
 				roleId: { type: 'string', required: false, input: false },
 				active: { type: 'boolean', required: false, defaultValue: true, input: false },
-				// Set through /api/people, where it is checked against Postgres's zones.
-				timezone: { type: 'string', required: false, input: false }
+				// Set through /api/people, where each is checked: the zone against
+				// Postgres's zones, the locale against Intl's.
+				timezone: { type: 'string', required: false, input: false },
+				locale: { type: 'string', required: false, input: false },
+				hourCycle: { type: 'string', required: false, input: false },
+				weekStart: { type: 'number', required: false, input: false }
 			}
 		},
 		// Lets a form action's sign-in and sign-out set and clear the cookie.
@@ -112,6 +116,10 @@ export type SessionUser = {
 	email: string;
 	/** Their own zone, or null until their browser has set it. */
 	timezone: string | null;
+	/** Their own locale, clock and first day of the week; null follows the business's. */
+	locale: string | null;
+	hourCycle: 'h12' | 'h23' | null;
+	weekStart: number | null;
 };
 
 /**

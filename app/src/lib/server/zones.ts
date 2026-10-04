@@ -1,6 +1,5 @@
 import { sql } from 'drizzle-orm';
 import { db } from './db/index.ts';
-import { operator } from './db/schema/index.ts';
 
 /**
  * Time zones as reckon stores them: a name both Postgres and Intl know, in
@@ -35,21 +34,4 @@ function postgresZones(): Promise<Map<string, string>> {
 /** A zone fit to store, in Postgres's spelling, or null if it is not one. */
 export async function knownZone(value: string): Promise<string | null> {
 	return pickZone(value.trim(), await postgresZones());
-}
-
-let business: string | null = null;
-/**
- * The operator's zone: the business's clock, and the zone a person follows
- * until their own is set. Read once and kept; the settings endpoint replaces it
- * the moment a new one is saved. UTC until there is an operator.
- */
-export async function operatorZone(): Promise<string> {
-	if (business !== null) return business;
-	const [row] = await db.select({ zone: operator.timezone }).from(operator).limit(1);
-	return (business = row?.zone ?? 'UTC');
-}
-
-/** What the business's clock is from now on, as just saved. */
-export function rememberOperatorZone(zone: string): void {
-	business = zone;
 }

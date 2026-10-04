@@ -125,12 +125,13 @@ export const operator = pgTable(
 		 */
 		claimsTaxPaidPurchasesResold: boolean().default(false).notNull(),
 		/**
-		 * UNUSED, PLANNED. How a date is to be written on screen and in print -- a
-		 * pattern rather than a locale, because "3 Sep 2026" is a choice about the
-		 * business's documents, not the reader's browser. The settings page saves
-		 * it; screens use one fixed format for now.
+		 * How dates and figures read for the business: a locale, as BCP 47 writes
+		 * one ("en-US"). Each person follows it until they set their own, and the
+		 * business's documents are written in it. A locale rather than a date
+		 * pattern, because a pattern does not translate: the locale carries the
+		 * language, the order of day and month, and the separators.
 		 */
-		dateFormat: text().default('d MMM yyyy').notNull(),
+		locale: text().default('en-US').notNull(),
 		/**
 		 * UNUSED, PLANNED: the settings page saves it, and nothing applies it to a
 		 * trip yet. actual: each leg goes to whoever caused it, and never more

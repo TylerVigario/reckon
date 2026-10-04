@@ -45,6 +45,10 @@ export const PROBLEM = {
 	upstream: {
 		type: '/problems/upstream-refused',
 		title: 'Something this depends on could not answer'
+	},
+	notYours: {
+		type: '/problems/not-yours',
+		title: 'Only its owner can change this'
 	}
 } as const;
 
