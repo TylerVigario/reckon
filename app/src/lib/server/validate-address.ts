@@ -20,6 +20,20 @@ import type { Verdict } from '#lib/verdict.ts';
 
 const ENDPOINT = 'https://addressvalidation.googleapis.com/v1:validateAddress';
 
+/**
+ * The same limit as place verification: the address field waits on this
+ * before it lets go, and a verdict is information, so a slow Google gets no
+ * verdict rather than a longer wait.
+ */
+const TIMEOUT_MS = 4000;
+
+/**
+ * Thrown when Google gives no verdict. The message is safe to show anyone.
+ * What Google actually said -- about this installation's key, its billing or
+ * its quota -- is for whoever runs it, and goes to the server's log.
+ */
+export class NoVerdict extends Error {}
+
 export const validationIsLive = () => GOOGLE_MAPS_API_KEY !== undefined;
 
 export type { Verdict } from '#lib/verdict.ts';
@@ -47,7 +61,8 @@ type ValidationAnswer = {
 /**
  * Returns null when no key is set, rather than throwing: validation is an
  * improvement on a chosen address, not a gate in front of one. An operator
- * without the second key still gets addresses.
+ * without the second key still gets addresses. Throws NoVerdict, and only
+ * that, when Google gives no verdict.
  */
 export async function validate(address: {
 	street?: string | null;
@@ -64,20 +79,32 @@ export async function validate(address: {
 	) as string[];
 	if (lines.length === 0) return null;
 
-	const r = await fetch(`${ENDPOINT}?key=${encodeURIComponent(key)}`, {
-		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({
-			address: {
-				regionCode: address.country ?? 'US',
-				addressLines: lines
-			}
-		})
-	});
+	let answer: ValidationAnswer;
+	try {
+		const r = await fetch(`${ENDPOINT}?key=${encodeURIComponent(key)}`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				address: {
+					regionCode: address.country ?? 'US',
+					addressLines: lines
+				}
+			}),
+			signal: AbortSignal.timeout(TIMEOUT_MS)
+		});
+		if (!r.ok) {
+			console.error('address validation refused', r.status, await r.text());
+			throw new NoVerdict(`Google answered ${r.status}.`);
+		}
+		answer = (await r.json()) as ValidationAnswer;
+	} catch (e) {
+		if (e instanceof NoVerdict) throw e;
+		if (e instanceof Error && e.name === 'TimeoutError')
+			throw new NoVerdict(`Google did not answer within ${TIMEOUT_MS / 1000} seconds.`);
+		console.error('address validation failed', e instanceof Error ? e.message : String(e));
+		throw new NoVerdict('Google could not be reached.');
+	}
 
-	if (!r.ok) throw new Error(`address validation: ${r.status} ${await r.text()}`);
-
-	const answer = (await r.json()) as ValidationAnswer;
 	const v = answer?.result ?? {};
 	const verdict = v.verdict ?? {};
 
