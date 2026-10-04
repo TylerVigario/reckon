@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
 	anId,
 	cap,
 	decimal,
 	flag,
 	isoDate,
+	money,
 	oneOf,
 	optional,
 	orDefault,
@@ -13,6 +14,7 @@ import {
 	required,
 	whole
 } from './field-rules.ts';
+import { readCurrencyFrom } from './currency.ts';
 
 /**
  * The rules that decide what a value may be.
@@ -73,6 +75,38 @@ describe('decimal', () => {
 
 	it('refuses a negative', () => {
 		expect(decimal(10, 2)('-1.00').ok).toBe(false);
+	});
+});
+
+describe('money', () => {
+	// The business's currency, as the hooks set it: the request's, or the page's.
+	const inCurrency = (code: string) => readCurrencyFrom(() => code);
+	afterEach(() => inCurrency('USD'));
+
+	it('takes as many places as the currency has, and keeps the string it was given', () => {
+		expect(money('95.50')).toEqual({ ok: true, value: '95.50' });
+		expect(money('95.5')).toEqual({ ok: true, value: '95.5' });
+		inCurrency('JPY');
+		expect(money('9500')).toEqual({ ok: true, value: '9500' });
+		inCurrency('KWD');
+		expect(money('12.345')).toEqual({ ok: true, value: '12.345' });
+	});
+
+	it('refuses a place the currency does not have, and says whose', () => {
+		const cents = money('95.125');
+		expect(!cents.ok && cents.why).toBe('At most 2 decimal places in USD.');
+		inCurrency('JPY');
+		const yen = money('9500.5');
+		expect(!yen.ok && yen.why).toBe('No decimal places in JPY.');
+		inCurrency('KWD');
+		expect(money('12.3456').ok).toBe(false);
+	});
+
+	it('holds ten whole digits, as the column does, and no negative', () => {
+		expect(money('9999999999.99').ok).toBe(true);
+		const big = money('10000000000');
+		expect(!big.ok && big.why).toMatch(/before the decimal/);
+		expect(money('-1.00').ok).toBe(false);
 	});
 });
 

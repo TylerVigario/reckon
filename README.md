@@ -318,6 +318,10 @@ description of one machine drifts from every other one.
 Money lives in `NUMERIC` and arrives as a string. Arithmetic on it is exact
 decimal on `BigInt`, in `#lib/decimal`, and never passes through a JS number:
 cent-level correctness is the point, and a float is how a cent goes missing.
+Every amount is rounded half up to its currency's own places, as `Intl` gives
+them — two for dollars, none for yen, three for dinars — and a money column holds
+three, enough for every currency the business can choose (`#lib/currency`). How a
+tax rounds is its own rule's.
 
 ## The app
 

@@ -24,6 +24,7 @@ import {
 	decimal,
 	flag,
 	isoDate,
+	money,
 	oneOf,
 	optional,
 	orDefault,
@@ -50,7 +51,7 @@ export const SERVICE_FIELDS = {
 	// Empty bills the exact time. Only for a service charged by the hour: the
 	// endpoint refuses it on anything else, as service_increment_is_for_time does.
 	bill_to_nearest_seconds: optional(whole(1)),
-	minimum_charge: optional(decimal(12, 2)),
+	minimum_charge: optional(money),
 	active: flag
 };
 
@@ -67,10 +68,10 @@ export const NEW_SERVICE_FIELDS = { name, unit: oneOf(UNITS) };
 export const PRICE_FIELDS = {
 	// Empty is every client.
 	entity_id: optional(anId),
-	rate: required('What it charges.', decimal(12, 2)),
+	rate: required('What it charges.', money),
 	// What each person after the first adds. Empty is nothing extra: the rate
 	// is for the job, however many work it.
-	additional_rate: orDefault('0', decimal(12, 2)),
+	additional_rate: orDefault('0', money),
 	effective_from: required('From which day.', isoDate)
 };
 

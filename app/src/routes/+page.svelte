@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { sumMoney } from '#lib/decimal.ts';
+	import { currencyPlaces } from '#lib/currency.ts';
 	import { onMount } from 'svelte';
 	import Top from '#lib/Top.svelte';
 	import { running, type Running } from '#lib/timers.ts';
@@ -26,7 +27,12 @@
 			Bucket | undefined
 		>
 	);
-	const unbilled = $derived(sumMoney(data.ageing.map((a: { worth: string }) => a.worth)));
+	const unbilled = $derived(
+		sumMoney(
+			data.ageing.map((a: { worth: string }) => a.worth),
+			currencyPlaces()
+		)
+	);
 
 	// The timer is the browser's own: it survives a refresh because it is
 	// written down here, not because the server was told about it. So it is

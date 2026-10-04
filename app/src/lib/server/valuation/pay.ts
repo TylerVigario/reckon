@@ -50,46 +50,52 @@ export function ruleOn(
 	return best;
 }
 
-const ZERO = Decimal.from('0.00');
-
 /**
  * What one person is paid for their time on one entry: an hourly rate counted
- * to the second, a share of the line, a fixed sum, or nothing. Null when no rule
- * reaches them. `line` is what the line billed, for a percentage rule.
+ * to the second, a share of the line, a fixed sum, or nothing, to the
+ * currency's `places` (#lib/currency). Null when no rule reaches them. `line` is
+ * what the line billed, for a percentage rule.
  */
 export function timePay(
 	rule: PayRule | null,
 	seconds: number,
-	line: Decimal | null
+	line: Decimal | null,
+	places: number
 ): Decimal | null {
 	if (!rule) return null;
 	const amount = Decimal.from(rule.amount ?? '0');
 	switch (rule.method) {
 		case 'per_hour':
-			return amount.mul(seconds).div(3600).round(2);
+			return amount.mul(seconds).div(3600).round(places);
 		case 'percent':
 			return amount
 				.mul(line ?? Decimal.ZERO)
 				.div(100)
-				.round(2);
+				.round(places);
 		case 'fixed':
-			return amount.round(2);
+			return amount.round(places);
 		case 'nothing':
-			return ZERO;
+			return Decimal.ZERO.round(places);
 	}
 }
 
 /**
  * What one person is paid for covered time on one entry: their rule's
- * percentage of `share`, their part of the retainer's charge. A rule of
- * nothing, or of 0%, pays 0.00 even when the charge is not known yet; any other
- * percentage of an unknown charge is unknown. Null when no rule reaches them.
+ * percentage of `share`, their part of the retainer's charge, to the currency's
+ * `places`. A rule of nothing, or of 0%, pays nothing even when the charge is
+ * not known yet; any other percentage of an unknown charge is unknown. Null
+ * when no rule reaches them.
  */
-export function coveredPay(rule: PayRule | null, share: Ratio | null): Decimal | null {
+export function coveredPay(
+	rule: PayRule | null,
+	share: Ratio | null,
+	places: number
+): Decimal | null {
 	if (!rule) return null;
-	if (rule.method === 'nothing') return ZERO;
+	const zero = Decimal.ZERO.round(places);
+	if (rule.method === 'nothing') return zero;
 	const amount = Decimal.from(rule.amount ?? '0');
-	if (amount.isZero()) return ZERO;
+	if (amount.isZero()) return zero;
 	if (share === null) return null;
-	return share.mul(amount).div(100n).round(2);
+	return share.mul(amount).div(100n).round(places);
 }

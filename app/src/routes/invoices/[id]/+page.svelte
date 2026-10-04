@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Decimal } from '#lib/decimal.ts';
+	import { currencyPlaces } from '#lib/currency.ts';
 	import Top from '#lib/Top.svelte';
 	import { clock, day, monthOf, pct, quantity, rateParts } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
@@ -14,7 +15,9 @@
 
 	// Reg 1701: the measure is what was sold taxable, less what was already
 	// taxed when it was bought. What is left is the markup.
-	const netTaxable = $derived(Decimal.from(t.taxable_measure).sub(t.resold).toFixed(2));
+	const netTaxable = $derived(
+		Decimal.from(t.taxable_measure).sub(t.resold).toFixed(currencyPlaces())
+	);
 	const dueOnReturn = $derived(t.due_on_return);
 
 	// The rate and the two obligations inside it: a return allocates the

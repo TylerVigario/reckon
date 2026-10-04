@@ -1,12 +1,13 @@
 import { monthOf } from '#lib/format.ts';
 import { and, count, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
-import { Decimal, sum } from '#lib/decimal.ts';
+import { sum } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { townsOf } from '#lib/server/trips.ts';
 import { loadCatalogue, valueLegs } from '#lib/server/valuation/load.ts';
 import { jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -70,7 +71,11 @@ export const load: PageServerLoad = async ({ url }) => {
 					)
 				)
 		: [];
-	const [worth, catalogue] = await Promise.all([valueLegs(db, legs), loadCatalogue(db)]);
+	const [worth, catalogue, places] = await Promise.all([
+		valueLegs(db, legs),
+		loadCatalogue(db),
+		moneyPlaces()
+	]);
 
 	const trips = found.map((f) => {
 		const mine = legs.filter((l) => l.tripId === f.id);
@@ -83,7 +88,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			miles: miles.toFixed(2),
 			assigned: assigned.toFixed(2),
 			// Each leg at its own service's price on the day.
-			value: sum(mine.map((l) => worth.get(l.id)?.billed ?? null)).toFixed(2),
+			value: sum(mine.map((l) => worth.get(l.id)?.billed ?? null)).toFixed(places),
 			billed: theirs.length > 0 && theirs.every((l) => l.invoiced),
 			// Whether every mile driven is some client's.
 			balanced: assigned.eq(miles)
@@ -100,7 +105,9 @@ export const load: PageServerLoad = async ({ url }) => {
 			.where(and(eq(t.service.unit, 'mile'), eq(t.service.active, true)))
 	).map((s) => s.id);
 	const rate =
-		perMile.length === 1 ? jobRate(priceOn(catalogue.prices, perMile[0], null, day), 1) : null;
+		perMile.length === 1
+			? jobRate(priceOn(catalogue.prices, perMile[0], null, day), 1, places)
+			: null;
 
 	return {
 		unbilled: trips.filter((x) => !x.billed),
@@ -109,7 +116,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			month: monthOf(from),
 			miles: sum(legs.map((l) => l.miles)).toFixed(2),
 			trips: String(found.length),
-			rate: rate === null ? null : Decimal.from(rate).toFixed(2)
+			rate: rate?.toString() ?? null
 		}
 	};
 };

@@ -5,7 +5,7 @@ import { db } from '#lib/server/db/index.ts';
 import { businessToday, personalDay } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
-import { taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { findClient } from '#lib/server/find.ts';
 import { loadAgreements, usedThisMonth } from '#lib/server/valuation/load.ts';
 import { hoursOf } from '#lib/server/valuation/misc.ts';
@@ -20,7 +20,8 @@ import type { PageServerLoad } from './$types';
  * client can work in two districts.
  */
 export const load: PageServerLoad = async ({ params }) => {
-	const owing = balances(await taxRounding());
+	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
+	const owing = balances(rounding, places);
 	const { id } = await findClient(params.id);
 	const e = t.entity;
 	const ec = t.entityContact;
@@ -61,7 +62,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		       ${e.exemptionExpiresOn}::text as expires_on,
 		       (select ${c.name} from ${ec} join ${c} on ${c.id} = ${ec.contactId}
 		         where ${ec.entityId} = ${e.id} and ${ec.isPrimary} limit 1) as contact,
-		       coalesce(o.owed, 0)::numeric(12,2)::text as owed,
+		       round(coalesce(o.owed, 0), ${places}::int)::text as owed,
 		       coalesce(o.out, 0)::text as out,
 		       -- Notes and what has been applied from them, each added up on its
 		       -- own: joined first, a note applied twice would count twice.
@@ -127,7 +128,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			.execute<{ id: string; number: string; status: string; gross: string; on: string }>(
 				sql`
 				select ${t.invoice.id} as id, ${t.invoice.number} as number, ${t.invoice.status} as status,
-				       b.gross::numeric(12,2)::text as gross,
+				       b.gross::text as gross,
 				       coalesce(${personalDay(t.invoice.sentAt)}, ${personalDay(t.invoice.createdAt)})::text as on
 				  from ${t.invoice}
 				  join ${owing} b on b.invoice_id = ${t.invoice.id}

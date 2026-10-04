@@ -6,6 +6,7 @@ import * as t from '#lib/server/db/schema/index.ts';
 import { townsOf } from '#lib/server/trips.ts';
 import { loadCatalogue, valueLegs } from '#lib/server/valuation/load.ts';
 import { billedAmount, jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
 import { UUID } from '#lib/field-rules.ts';
 import type { PageServerLoad } from './$types';
 
@@ -73,12 +74,13 @@ export const load: PageServerLoad = async ({ params }) => {
 	]);
 
 	const travelledOn = found.travelled_on;
-	const [worth, { services, prices }] = await Promise.all([
+	const [worth, { services, prices }, places] = await Promise.all([
 		valueLegs(
 			db,
 			rows.map((l) => ({ ...l, travelledOn }))
 		),
-		loadCatalogue(db)
+		loadCatalogue(db),
+		moneyPlaces()
 	]);
 
 	// What each client would have been charged driving out and back alone,
@@ -90,11 +92,11 @@ export const load: PageServerLoad = async ({ params }) => {
 		const key = `${l.siteId}:${l.entityId}:${l.serviceId}`;
 		if (alone.has(key)) continue;
 		const service = services.get(l.serviceId);
-		const rate = jobRate(priceOn(prices, l.serviceId, l.entityId, travelledOn), 1);
+		const rate = jobRate(priceOn(prices, l.serviceId, l.entityId, travelledOn), 1, places);
 		alone.set(
 			key,
 			service && l.roundTripMiles !== null
-				? billedAmount(service, rate, Ratio.of(l.roundTripMiles))
+				? billedAmount(service, rate, Ratio.of(l.roundTripMiles), places)
 				: null
 		);
 	}
@@ -103,8 +105,8 @@ export const load: PageServerLoad = async ({ params }) => {
 	const trip = {
 		...found,
 		miles: sum(rows.map((l) => l.miles)).toFixed(2),
-		billed: sum(rows.map((l) => worth.get(l.id)?.billed ?? null)).toFixed(2),
-		round_trips: roundTrips.length ? sum(roundTrips).toFixed(2) : null
+		billed: sum(rows.map((l) => worth.get(l.id)?.billed ?? null)).toFixed(places),
+		round_trips: roundTrips.length ? sum(roundTrips).toFixed(places) : null
 	};
 	const legs = rows.map((l) => ({
 		id: l.id,
@@ -112,7 +114,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		who: l.who,
 		rule: l.rule,
 		miles: l.miles,
-		value: worth.get(l.id)?.billed?.toFixed(2) ?? null
+		value: worth.get(l.id)?.billed?.toString() ?? null
 	}));
 
 	return { trip, stops, legs };

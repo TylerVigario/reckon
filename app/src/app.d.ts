@@ -22,6 +22,8 @@ declare global {
 			businessLocale: string;
 			/** The day this person's week starts, 1 for Monday to 7 for Sunday. */
 			weekStart: number;
+			/** The business's currency, which sets every amount's places (#lib/currency). */
+			currency: string;
 		}
 	}
 }

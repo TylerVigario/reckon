@@ -27,7 +27,7 @@ import {
 	unique,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { day, decimal, id, nonNegative, oneOf } from './columns.ts';
+import { day, decimal, id, money, nonNegative, oneOf } from './columns.ts';
 import { contact, entity, site } from './clients.ts';
 import { service } from './catalogue.ts';
 
@@ -42,7 +42,7 @@ export const agreement = pgTable(
 		id: id(),
 		entityId: uuid().notNull(),
 		/** What one period of the agreement charges. */
-		price: decimal(12, 2).notNull(),
+		price: money().notNull(),
 		startsOn: day().notNull(),
 		endsOn: day(),
 		/**
@@ -151,7 +151,7 @@ export const agreementPeriod = pgTable(
 		agreementId: uuid().notNull(),
 		periodStart: day().notNull(),
 		periodEnd: day().notNull(),
-		amount: decimal(12, 2).notNull(),
+		amount: money().notNull(),
 		/**
 		 * This period was given: covered, and deliberately not charged. Its amount
 		 * is 0, and given says the 0 is on purpose.

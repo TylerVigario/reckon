@@ -8,7 +8,8 @@
  * (taxSql, lineTaxSql) for balances and invoices and in TypeScript (roundTax)
  * for the valuation. Two implementations of one rule can drift by a cent, and
  * a cent is the whole difference. So the same lines go through both, for every
- * scope and method, and any invoice that comes to two different taxes fails.
+ * scope and method, to the places of dollars, yen and dinars (#lib/currency),
+ * and any invoice that comes to two different taxes fails.
  *
  * The lines are made up, many of them, at awkward amounts and several rates,
  * from a fixed seed so a failure can be run again. They go into a temporary
@@ -56,7 +57,7 @@ const client = await pool.connect();
 try {
 	await client.query('begin');
 	await client.query(
-		`create temporary table invoice_line (invoice_id uuid, amount numeric(12,2), tax_rate_pct numeric(7,4), taxable boolean) on commit drop`
+		`create temporary table invoice_line (invoice_id uuid, amount numeric(13,3), tax_rate_pct numeric(7,4), taxable boolean) on commit drop`
 	);
 	for (const l of lines)
 		await client.query(
@@ -64,44 +65,45 @@ try {
 			[l.invoice, l.amount, l.rate]
 		);
 
-	for (const scope of /** @type {const} */ (['invoice', 'line']))
-		for (const method of /** @type {const} */ (['half_up', 'down', 'up'])) {
-			const rounding = { scope, method };
-			const q = dialect.sqlToQuery(
-				sql`select invoice_id, tax::text as tax from ${taxSql(rounding, 2)} t`
-			);
-			const fromDb = new Map(
-				(await client.query(q.sql, q.params)).rows.map((r) => [r.invoice_id, r.tax])
-			);
-			let differ = 0;
-			for (const invoice of new Set(lines.map((l) => l.invoice))) {
-				const mine = lines.filter((l) => l.invoice === invoice);
-				const ts = roundTax(
-					mine.map((l) => ({ rate: l.rate, tax: Ratio.of(l.amount).mul(l.rate).div(100) })),
-					rounding,
-					2
+	for (const places of [2, 0, 3])
+		for (const scope of /** @type {const} */ (['invoice', 'line']))
+			for (const method of /** @type {const} */ (['half_up', 'down', 'up'])) {
+				const rounding = { scope, method };
+				const q = dialect.sqlToQuery(
+					sql`select invoice_id, tax::text as tax from ${taxSql(rounding, places)} t`
 				);
-				// One invoice through lineTaxSql too, the scalar form.
-				const one = dialect.sqlToQuery(
-					sql`select ${lineTaxSql(
-						sql`${invoiceLine.amount} * ${invoiceLine.taxRatePct} / 100`,
+				const fromDb = new Map(
+					(await client.query(q.sql, q.params)).rows.map((r) => [r.invoice_id, r.tax])
+				);
+				let differ = 0;
+				for (const invoice of new Set(lines.map((l) => l.invoice))) {
+					const mine = lines.filter((l) => l.invoice === invoice);
+					const ts = roundTax(
+						mine.map((l) => ({ rate: l.rate, tax: Ratio.of(l.amount).mul(l.rate).div(100) })),
 						rounding,
-						2,
-						sql`from ${invoiceLine} where ${invoiceLine.invoiceId} = ${invoice}`
-					)}::text as tax`
-				);
-				const scalar = (await client.query(one.sql, one.params)).rows[0].tax;
-				const db = fromDb.get(invoice);
-				if (ts === null || !ts.eq(db) || !ts.eq(scalar)) {
-					differ++;
-					failures.push(
-						`${scope} ${method} ${invoice}: SQL ${db}, scalar ${scalar}, TypeScript ${ts?.toString() ?? 'nothing'}`
+						places
 					);
+					// One invoice through lineTaxSql too, the scalar form.
+					const one = dialect.sqlToQuery(
+						sql`select ${lineTaxSql(
+							sql`${invoiceLine.amount} * ${invoiceLine.taxRatePct} / 100`,
+							rounding,
+							places,
+							sql`from ${invoiceLine} where ${invoiceLine.invoiceId} = ${invoice}`
+						)}::text as tax`
+					);
+					const scalar = (await client.query(one.sql, one.params)).rows[0].tax;
+					const db = fromDb.get(invoice);
+					if (ts === null || !ts.eq(db) || !ts.eq(scalar)) {
+						differ++;
+						failures.push(
+							`${places} places, ${scope} ${method} ${invoice}: SQL ${db}, scalar ${scalar}, TypeScript ${ts?.toString() ?? 'nothing'}`
+						);
+					}
 				}
+				const label = `${places} places, ${scope}, ${method}: ${fromDb.size} invoices, the same tax both ways`;
+				if (differ === 0) console.log(`  ✓ ${label}`);
 			}
-			const label = `${scope}, ${method}: ${fromDb.size} invoices, the same tax both ways`;
-			if (differ === 0) console.log(`  ✓ ${label}`);
-		}
 } finally {
 	await client.query('rollback');
 	client.release();

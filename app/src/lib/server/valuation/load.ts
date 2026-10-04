@@ -16,7 +16,7 @@ import {
 } from './entries.ts';
 import type { ServiceTerms } from './pricing.ts';
 import { legWorth } from './misc.ts';
-import { taxRounding } from '../business.ts';
+import { moneyPlaces, taxRounding } from '../business.ts';
 import { invoiceTax, type InvoiceTax } from './tax.ts';
 
 /** The columns of a time entry the valuation reads. */
@@ -34,7 +34,7 @@ export const entryColumns = {
 };
 
 /** Services, prices, pay rules and people: small tables, read whole. */
-export async function loadCatalogue(r: Reader): Promise<Omit<Context, 'agreements'>> {
+export async function loadCatalogue(r: Reader): Promise<Omit<Context, 'agreements' | 'places'>> {
 	const [services, prices, rules, people] = await Promise.all([
 		r
 			.select({
@@ -175,12 +175,13 @@ export async function valueEntries(
 	const entityIds = [
 		...new Set(entries.map((e) => e.entityId).filter((x): x is string => x !== null))
 	];
-	const [catalogue, agreements] = await Promise.all([
+	const [catalogue, agreements, places] = await Promise.all([
 		loadCatalogue(r),
-		loadAgreements(r, entityIds)
+		loadAgreements(r, entityIds),
+		moneyPlaces()
 	]);
 	const all = await withPeers(r, entries, agreements);
-	const valued = worth(all, { ...catalogue, agreements });
+	const valued = worth(all, { ...catalogue, agreements, places });
 	const wanted = new Set(entries.map((e) => e.id));
 	for (const id of valued.keys()) if (!wanted.has(id)) valued.delete(id);
 	return valued;
@@ -198,8 +199,8 @@ export async function valueLegs(
 	}[]
 ): Promise<Map<string, ReturnType<typeof legWorth>>> {
 	if (!legs.length) return new Map();
-	const { services, prices } = await loadCatalogue(r);
-	return new Map(legs.map((l) => [l.id, legWorth(l, l.travelledOn, services, prices)]));
+	const [{ services, prices }, places] = await Promise.all([loadCatalogue(r), moneyPlaces()]);
+	return new Map(legs.map((l) => [l.id, legWorth(l, l.travelledOn, services, prices, places)]));
 }
 
 /** The tax on each of these invoices, split by what CDTFA said about each line's site. */
@@ -247,6 +248,7 @@ export async function taxOfInvoices(
 		checks,
 		new Map(issued.map((i) => [i.id, i.issuedOn])),
 		day,
-		await taxRounding()
+		await taxRounding(),
+		await moneyPlaces()
 	);
 }

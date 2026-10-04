@@ -10,6 +10,8 @@
  * import from #lib/server.
  */
 
+import { currency, currencyPlaces, MONEY_WHOLE } from './currency.ts';
+
 export type Parsed =
 	{ ok: true; value: string | number | boolean | null } | { ok: false; why: string };
 
@@ -107,6 +109,30 @@ export const decimal =
 		if (after.length > scale) return no(`At most ${scale} decimal place${scale === 1 ? '' : 's'}.`);
 		return no(`At most ${room} digit${room === 1 ? '' : 's'} before the decimal point.`);
 	};
+
+/**
+ * An amount of money: no more places than the business's currency has -- two
+ * for dollars, none for yen, three for dinars (#lib/currency) -- and no more
+ * whole digits than a money column holds.
+ *
+ * The currency is asked when a value is checked, not when the registry is
+ * made, because it is a setting and the registry is a constant.
+ */
+export const money: Parse = (v) => {
+	const code = currency();
+	const places = currencyPlaces(code);
+	const shape = places ? `(\\.\\d{1,${places}})?` : '';
+	if (new RegExp(`^\\d{1,${MONEY_WHOLE}}${shape}$`).test(v)) return ok(v);
+	if (!/^\d+(\.\d+)?$/.test(v)) return no('Must be a number, and not negative.');
+	const [, after = ''] = v.split('.');
+	if (after.length > places)
+		return no(
+			places
+				? `At most ${places} decimal place${places === 1 ? '' : 's'} in ${code}.`
+				: `No decimal places in ${code}.`
+		);
+	return no(`At most ${MONEY_WHOLE} digits before the decimal point.`);
+};
 
 /**
  * A phone number, kept exactly as it was typed.

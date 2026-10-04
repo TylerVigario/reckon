@@ -1,6 +1,7 @@
 import { lte } from 'drizzle-orm';
 import { db } from './db/index.ts';
 import { businessToday } from './calendar.ts';
+import { moneyPlaces } from './business.ts';
 import { servicePrice } from './db/schema/index.ts';
 import type { Price } from '#lib/rates.ts';
 import { jobRate, priceOn } from './valuation/pricing.ts';
@@ -15,8 +16,9 @@ import { team } from './valuation/entries.ts';
  */
 export async function pricesToday(): Promise<Price[]> {
 	const day = businessToday();
-	const [catalogue, scopes] = await Promise.all([
+	const [catalogue, places, scopes] = await Promise.all([
 		loadCatalogue(db),
+		moneyPlaces(),
 		db
 			.selectDistinct({ serviceId: servicePrice.serviceId, entityId: servicePrice.entityId })
 			.from(servicePrice)
@@ -28,8 +30,8 @@ export async function pricesToday(): Promise<Price[]> {
 		return {
 			service_id: serviceId,
 			entity_id: entityId,
-			one: jobRate(p, 1)?.toString() ?? null,
-			team: jobRate(p, heads)?.toString() ?? null
+			one: jobRate(p, 1, places)?.toString() ?? null,
+			team: jobRate(p, heads, places)?.toString() ?? null
 		};
 	});
 }

@@ -48,6 +48,7 @@ import {
 	type Parsed,
 	whole
 } from './field-rules.ts';
+import { isCurrency } from './currency.ts';
 import { pickLocale } from './locales.ts';
 
 export type { Parsed };
@@ -84,9 +85,14 @@ export const FIELDS: Record<string, Parse> = {
 	),
 
 	// --- Money --------------------------------------------------------------
-	currency: orDefault('USD', (v) =>
-		/^[A-Za-z]{3}$/.test(v) ? ok(v.toUpperCase()) : no('A three-letter code, such as USD.')
-	),
+	// One Intl knows, because its places are Intl's (#lib/currency), and every
+	// money column is made to hold the places of every currency Intl knows.
+	currency: orDefault('USD', (v) => {
+		const code = v.toUpperCase();
+		return /^[A-Z]{3}$/.test(code) && isCurrency(code)
+			? ok(code)
+			: no('Not a currency. A three-letter code, such as USD or EUR.');
+	}),
 	// Asking Intl rather than keeping a list: the zone database changes, and a
 	// list copied into this file would be wrong by the time a zone is renamed.
 	timezone: orDefault(

@@ -10,6 +10,7 @@ import {
 	uuid,
 	type AnyPgColumn
 } from 'drizzle-orm/pg-core';
+import { MONEY_SCALE, MONEY_WHOLE } from '../../../currency.ts';
 
 /**
  * A uuid the database makes. v7 is time-ordered, so new rows append to the
@@ -44,6 +45,13 @@ export const day = () => date({ mode: 'string' });
  * #lib/decimal, never a JS number.
  */
 export const decimal = (precision: number, scale: number) => numeric({ precision, scale });
+
+/**
+ * An amount of money, at as many places as any currency has: a dollar amount
+ * is held as 95.500, a yen amount as 95.000. What is in it is rounded to the
+ * business's currency's own places before it gets here (#lib/currency).
+ */
+export const money = () => decimal(MONEY_WHOLE + MONEY_SCALE, MONEY_SCALE);
 
 /** Raw bytes. Drizzle 0.45 has no built-in for Postgres's `bytea`. */
 export const bytea = customType<{ data: Buffer; driverData: Buffer }>({

@@ -4,7 +4,7 @@ import { Decimal, sumMoney } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
-import { taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -15,7 +15,8 @@ import type { PageServerLoad } from './$types';
  * so an invoice sent in June still says what June said.
  */
 export const load: PageServerLoad = async () => {
-	const owing = balances(await taxRounding());
+	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
+	const owing = balances(rounding, places);
 	const i = t.invoice;
 	const e = t.entity;
 	const il = t.invoiceLine;
@@ -78,10 +79,19 @@ export const load: PageServerLoad = async () => {
 		out,
 		paid,
 		totals: {
-			owed: sumMoney(out.map((r) => r.owed)),
-			overdue: sumMoney(out.filter((r) => r.overdue).map((r) => r.owed)),
+			owed: sumMoney(
+				out.map((r) => r.owed),
+				places
+			),
+			overdue: sumMoney(
+				out.filter((r) => r.overdue).map((r) => r.owed),
+				places
+			),
 			overdueCount: out.filter((r) => r.overdue).length,
-			drafted: sumMoney(drafts.map((r) => r.gross))
+			drafted: sumMoney(
+				drafts.map((r) => r.gross),
+				places
+			)
 		}
 	};
 };

@@ -80,7 +80,18 @@ describe('Ratio', () => {
 describe('sum', () => {
 	it('adds a column of figures, skipping the empty ones', () => {
 		expect(sum(['0.10', '0.20', null, undefined, '']).toString()).toBe('0.30');
-		expect(sumMoney(Array.from({ length: 1000 }, () => '0.01'))).toBe('10.00');
-		expect(sumMoney([])).toBe('0.00');
+		expect(
+			sumMoney(
+				Array.from({ length: 1000 }, () => '0.01'),
+				2
+			)
+		).toBe('10.00');
+		expect(sumMoney([], 2)).toBe('0.00');
+	});
+
+	it("writes a money total to its currency's places", () => {
+		expect(sumMoney(['1200.000', '35.000'], 0)).toBe('1235');
+		expect(sumMoney(['1.250', '0.005'], 3)).toBe('1.255');
+		expect(sumMoney([], 3)).toBe('0.000');
 	});
 });

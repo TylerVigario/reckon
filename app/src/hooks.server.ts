@@ -13,6 +13,7 @@ import { db, schema } from '#lib/server/db/index.ts';
 import { getRequestEvent } from '$app/server';
 import { businessDefaults } from '#lib/server/business.ts';
 import { readLocaleFrom } from '#lib/format.ts';
+import { readCurrencyFrom } from '#lib/currency.ts';
 import { localeTag, weekStartOf, type HourCycle } from '#lib/locales.ts';
 
 /**
@@ -30,6 +31,14 @@ export const init: ServerInit = () => {
 			return getRequestEvent().locals.locale ?? 'en-US';
 		} catch {
 			return 'en-US';
+		}
+	});
+	// And every amount in the business's currency, to its places (#lib/currency).
+	readCurrencyFrom(() => {
+		try {
+			return getRequestEvent().locals.currency ?? 'USD';
+		} catch {
+			return 'USD';
 		}
 	});
 	// Chosen, and allowed, but never quietly: whoever reads the log should see
@@ -77,8 +86,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	// Whose clocks this request runs on (#lib/server/calendar) -- the
 	// business's, and the person's own, which follows the business's until they
-	// set it -- and how their figures read (#lib/format): their own locale,
-	// clock and week, or the business's where they have not chosen.
+	// set it -- how their figures read (#lib/format): their own locale, clock
+	// and week, or the business's where they have not chosen -- and what the
+	// business counts its money in.
 	const business = await businessDefaults();
 	const me = event.locals.user;
 	event.locals.businessZone = business.zone;
@@ -87,6 +97,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const locale = me?.locale ?? business.locale;
 	event.locals.locale = localeTag(locale, me?.hourCycle ?? null);
 	event.locals.weekStart = me?.weekStart ?? weekStartOf(locale);
+	event.locals.currency = business.currency;
 
 	const path = event.url.pathname;
 	if (!event.locals.user && !OPEN.has(path)) {

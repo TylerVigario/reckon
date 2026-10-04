@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Decimal } from '#lib/decimal.ts';
+	import { currencyPlaces } from '#lib/currency.ts';
 	import Top from '#lib/Top.svelte';
 	import { pct, rateParts } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
@@ -12,8 +13,10 @@
 	// gap is the Reg 1701 credit -- tax already paid to the supplier on goods
 	// that were then resold -- and showing the two figures without it side by
 	// side reads as an error rather than a rule.
-	const credit = $derived(Decimal.from(data.owed.charged).sub(data.due).toFixed(2));
-	const stillHeld = $derived(Decimal.from(data.due).sub(data.owed.remitted).toFixed(2));
+	const credit = $derived(Decimal.from(data.owed.charged).sub(data.due).toFixed(currencyPlaces()));
+	const stillHeld = $derived(
+		Decimal.from(data.due).sub(data.owed.remitted).toFixed(currencyPlaces())
+	);
 
 	const filing = (f: {
 		period_start: string;

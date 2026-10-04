@@ -226,6 +226,8 @@ export function sum(xs: Iterable<Decimal | string | null | undefined>): Decimal 
 	return total;
 }
 
-/** A money total, as the two-place string a page shows. */
-export const sumMoney = (xs: Iterable<Decimal | string | null | undefined>): string =>
-	sum(xs).toFixed(2);
+/** A money total, to its currency's places (#lib/currency): what a page shows. */
+export const sumMoney = (
+	xs: Iterable<Decimal | string | null | undefined>,
+	places: number
+): string => sum(xs).toFixed(places);

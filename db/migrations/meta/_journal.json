@@ -57,6 +57,13 @@
       "when": 1791150538644,
       "tag": "0007_tax_rounding_is_each_rules_own",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791156210246,
+      "tag": "0008_amounts_hold_every_currencys_places",
+      "breakpoints": true
     }
   ]
 }

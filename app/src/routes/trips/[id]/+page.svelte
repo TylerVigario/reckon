@@ -2,6 +2,7 @@
 	import Top from '#lib/Top.svelte';
 	import { dated, miles } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
+	import { Decimal } from '#lib/decimal.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -19,7 +20,7 @@
 
 	const saved = $derived(
 		data.trip.round_trips && data.trip.billed
-			? Number(data.trip.round_trips) - Number(data.trip.billed)
+			? Decimal.from(data.trip.round_trips).sub(data.trip.billed)
 			: null
 	);
 
@@ -44,10 +45,10 @@
 			<span class="v good">{money(data.trip.billed)}</span>
 			<span class="s">for {miles(data.trip.miles)} driven</span>
 		</div>
-		{#if saved !== null && saved > 0}
+		{#if saved !== null && saved.gt(0)}
 			<div class="tile">
 				<span class="k">Not over-billed</span>
-				<span class="v sm">{money(String(saved))}</span>
+				<span class="v sm">{money(saved.toString())}</span>
 				<span class="s">vs a round trip each</span>
 			</div>
 		{/if}

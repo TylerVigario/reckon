@@ -1,6 +1,7 @@
 import type { ClientInit } from '@sveltejs/kit/hooks';
 import { page } from '$app/state';
 import { readLocaleFrom } from '#lib/format.ts';
+import { readCurrencyFrom } from '#lib/currency.ts';
 
 /**
  * Temporal, before the app starts.
@@ -17,4 +18,8 @@ export const init: ClientInit = async () => {
 	// Figures read in the person's locale, as the server wrote them: the root
 	// layout carries it with every page.
 	readLocaleFrom(() => (page.data.locale as string | undefined) ?? 'en-US');
+	// And amounts in the business's currency, which it carries too.
+	readCurrencyFrom(
+		() => (page.data.operator as { currency?: string } | null | undefined)?.currency ?? 'USD'
+	);
 };

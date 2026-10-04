@@ -42,14 +42,16 @@ export type InvoiceTax = {
 /**
  * The split for each invoice that has a taxable line. `issuedOn` is null for a
  * draft, which splits as of today. The tax is rounded as `rounding` says, the
- * business's tax rule (#lib/server/tax-rules), as every balance rounds it.
+ * business's tax rule (#lib/server/tax-rules), as every balance rounds it, and
+ * every figure to the currency's `places` (#lib/currency).
  */
 export function invoiceTax(
 	lines: readonly TaxLine[],
 	checks: readonly TaxCheck[],
 	issuedOn: ReadonlyMap<string, string | null>,
 	today: string,
-	rounding: TaxRounding
+	rounding: TaxRounding,
+	places: number
 ): Map<string, InvoiceTax> {
 	const bySite = new Map<string, TaxCheck[]>();
 	for (const c of checks) {
@@ -103,7 +105,7 @@ export function invoiceTax(
 	for (const [invoiceId, ps] of parts) {
 		const add = (xs: (Ratio | null)[]) => {
 			const known = xs.filter((x): x is Ratio => x !== null);
-			return known.length ? known.reduce((a, b) => a.add(b)).round(2) : null;
+			return known.length ? known.reduce((a, b) => a.add(b)).round(places) : null;
 		};
 		const names = ps
 			.map((p) => p.jurisdiction)
@@ -112,8 +114,8 @@ export function invoiceTax(
 		out.set(invoiceId, {
 			invoiceId,
 			jurisdiction: names.at(-1) ?? null,
-			measure: sum(ps.map((p) => p.amount)).round(2),
-			tax: roundTax(ps, rounding, 2) ?? Decimal.ZERO,
+			measure: sum(ps.map((p) => p.amount)).round(places),
+			tax: roundTax(ps, rounding, places) ?? Decimal.ZERO.round(places),
 			stateTax: add(ps.map((p) => p.state)),
 			districtTax: add(ps.map((p) => p.district)),
 			estimatedLines: ps.filter((p) => p.estimated).length,

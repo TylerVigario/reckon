@@ -6,6 +6,7 @@ import { businessToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { theTeam } from '#lib/server/choices.ts';
 import { entryColumns, valueEntries, valueLegs } from '#lib/server/valuation/load.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -107,7 +108,11 @@ export const load: PageServerLoad = async () => {
 		// was there.
 		theTeam()
 	]);
-	const [worth, legWorth] = await Promise.all([valueEntries(db, entries), valueLegs(db, legs)]);
+	const [worth, legWorth, places] = await Promise.all([
+		valueEntries(db, entries),
+		valueLegs(db, legs),
+		moneyPlaces()
+	]);
 	const alertDays = operator?.days ?? 30;
 	const daysSince = (d: string) => Temporal.PlainDate.from(d).until(day).days;
 	const hours = (minutes: number) => Ratio.of(minutes).div(60).round(4).toFixed(4);
@@ -127,7 +132,7 @@ export const load: PageServerLoad = async () => {
 				worked_on: e.workedOn,
 				site: e.site,
 				hours: hours(e.minutes - (w.coveredMinutes ?? 0)),
-				worth: w.billed?.toFixed(2) ?? null,
+				worth: w.billed?.toString() ?? null,
 				heads: w.heads,
 				days: daysSince(e.workedOn)
 			}
@@ -138,7 +143,7 @@ export const load: PageServerLoad = async () => {
 	// clients, and two drives on one day are one morning's driving -- so the
 	// day is the row, and the trip screen is where it comes apart.
 	const days = [...new Set(legs.map((l) => l.travelledOn))].sort();
-	const places = days.length
+	const placeNames = days.length
 		? await db
 				.select({
 					day: t.trip.travelledOn,
@@ -153,19 +158,22 @@ export const load: PageServerLoad = async () => {
 		const mine = legs.filter((l) => l.travelledOn === d);
 		const worths = mine.map((l) => legWorth.get(l.id)?.billed ?? null).filter((x) => x !== null);
 		const named = [
-			...new Set(places.filter((p) => p.day === d && p.place !== null).map((p) => p.place))
+			...new Set(placeNames.filter((p) => p.day === d && p.place !== null).map((p) => p.place))
 		].sort();
 		return {
 			travelled_on: d,
 			trips: new Set(mine.map((l) => l.tripId)).size,
 			miles: sum(mine.map((l) => l.miles)).toFixed(2),
-			worth: worths.length ? sum(worths).toFixed(2) : null,
+			worth: worths.length ? sum(worths).toFixed(places) : null,
 			places: named.length ? named.join(' and ') : null,
 			days: daysSince(d)
 		};
 	});
 
-	const total = sumMoney([...work, ...mileage].map((r) => r.worth));
+	const total = sumMoney(
+		[...work, ...mileage].map((r) => r.worth),
+		places
+	);
 	const overdue =
 		work.filter((w) => w.days > alertDays).length +
 		mileage.filter((m) => m.days > alertDays).length;

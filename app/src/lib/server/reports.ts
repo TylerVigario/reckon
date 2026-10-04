@@ -2,6 +2,7 @@ import { and, asc, between, eq, inArray, lte, gte, isNull, or, sql } from 'drizz
 import { Decimal, sum, sumMoney } from '#lib/decimal.ts';
 import { db } from './db/index.ts';
 import { businessToday } from './calendar.ts';
+import { moneyPlaces } from './business.ts';
 import * as t from './db/schema/index.ts';
 import type { Period } from './periods.ts';
 import { agreementFor, team } from './valuation/entries.ts';
@@ -92,9 +93,10 @@ export type ScheduleA = {
  * added or ended in between would have been charged wrongly ever since.
  */
 export async function scheduleA(p: Period): Promise<ScheduleA> {
-	const [{ claims }] = await db
-		.select({ claims: t.operator.claimsTaxPaidPurchasesResold })
-		.from(t.operator);
+	const [[{ claims }], places] = await Promise.all([
+		db.select({ claims: t.operator.claimsTaxPaidPurchasesResold }).from(t.operator),
+		moneyPlaces()
+	]);
 	const { site, invoice, invoiceLine, entity } = t;
 
 	const { rows: districts } = await db.execute<DistrictRow>(sql`
@@ -111,18 +113,18 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 		       max(${site.taxRatePct})::text as rate_pct,
 		       max(${site.stateRatePct})::text as state_rate_pct,
 		       max(${site.districtRatePct})::text as district_rate_pct,
-		       coalesce(sum(b.amount), 0)::numeric(12,2)::text as measure,
+		       round(coalesce(sum(b.amount), 0), ${places}::int)::text as measure,
 		       -- Reg 1701: tax already paid on goods that were resold comes off
 		       -- the measure, and only if the operator has made that election.
-		       (case when ${claims} then coalesce(sum(b.ex_tax_cost), 0)
-		             else 0 end)::numeric(12,2)::text as deduction,
-		       (coalesce(sum(b.amount), 0)
-		        - case when ${claims} then coalesce(sum(b.ex_tax_cost), 0)
-		               else 0 end)::numeric(12,2)::text as net,
-		       ((coalesce(sum(b.amount), 0)
-		         - case when ${claims} then coalesce(sum(b.ex_tax_cost), 0)
-		                else 0 end)
-		        * coalesce(max(${site.taxRatePct}), 0) / 100)::numeric(12,2)::text as tax,
+		       round(case when ${claims} then coalesce(sum(b.ex_tax_cost), 0)
+		                  else 0 end, ${places}::int)::text as deduction,
+		       round(coalesce(sum(b.amount), 0)
+		             - case when ${claims} then coalesce(sum(b.ex_tax_cost), 0)
+		                    else 0 end, ${places}::int)::text as net,
+		       round((coalesce(sum(b.amount), 0)
+		              - case when ${claims} then coalesce(sum(b.ex_tax_cost), 0)
+		                     else 0 end)
+		             * coalesce(max(${site.taxRatePct}), 0) / 100, ${places}::int)::text as tax,
 		       count(b.*)::int as lines,
 		       count(distinct ${site.id})::int as sites
 		  from ${site}
@@ -167,7 +169,10 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 
 	return {
 		districts,
-		due: sumMoney(districts.map((d) => d.tax)),
+		due: sumMoney(
+			districts.map((d) => d.tax),
+			places
+		),
 		claimsResold: claims,
 		unchecked: stale.map(({ site, client, priced_on, days }) => ({
 			site,
@@ -212,6 +217,7 @@ export type Obligation = {
  */
 export async function taxObligation(p: Period): Promise<Obligation> {
 	const { invoice, taxRemittance: tr } = t;
+	const places = await moneyPlaces();
 	const raised = await db
 		.select({ id: invoice.id })
 		.from(invoice)
@@ -244,12 +250,18 @@ export async function taxObligation(p: Period): Promise<Obligation> {
 	const charged = sum(taxes.map((x) => x.tax));
 	const remitted = sum(filings.map((f) => f.amount));
 	return {
-		charged: charged.toFixed(2),
-		state: sumMoney(taxes.map((x) => x.stateTax)),
-		district: sumMoney(taxes.map((x) => x.districtTax)),
+		charged: charged.toFixed(places),
+		state: sumMoney(
+			taxes.map((x) => x.stateTax),
+			places
+		),
+		district: sumMoney(
+			taxes.map((x) => x.districtTax),
+			places
+		),
 		estimated_lines: taxes.reduce((n, x) => n + x.estimatedLines, 0),
-		remitted: remitted.toFixed(2),
-		outstanding: charged.sub(remitted).toFixed(2),
+		remitted: remitted.toFixed(places),
+		outstanding: charged.sub(remitted).toFixed(places),
 		filings
 	};
 }
@@ -293,6 +305,7 @@ const sumKnown = (xs: (Decimal | null)[]) => {
  * it, each by their own rule, so subtracting it gives what the business keeps.
  */
 export async function payOwed(p: Period): Promise<PayOwed> {
+	const places = await moneyPlaces();
 	const entries = await db
 		.select({
 			...entryColumns,
@@ -330,17 +343,23 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 				.div(60)
 				.round(4)
 				.toString(),
-			earned: earned?.toFixed(2) ?? null,
-			paid: paid?.toFixed(2) ?? null,
-			kept: earned && paid ? earned.sub(paid).toFixed(2) : null
+			earned: earned?.toFixed(places) ?? null,
+			paid: paid?.toFixed(places) ?? null,
+			kept: earned && paid ? earned.sub(paid).toFixed(places) : null
 		};
 	});
 	jobs.sort((a, b) => a.worked_on.localeCompare(b.worked_on) || a.job.localeCompare(b.job));
 
 	return {
 		jobs,
-		due: sumMoney(jobs.map((j) => j.paid)),
-		kept: sumMoney(jobs.map((j) => j.kept)),
+		due: sumMoney(
+			jobs.map((j) => j.paid),
+			places
+		),
+		kept: sumMoney(
+			jobs.map((j) => j.kept),
+			places
+		),
 		rates: await anHourNow()
 	};
 }
@@ -377,7 +396,7 @@ export type HourNow = {
  */
 export async function anHourNow(): Promise<HourNow[]> {
 	const day = businessToday();
-	const catalogue = await loadCatalogue(db);
+	const [catalogue, places] = await Promise.all([loadCatalogue(db), moneyPlaces()]);
 	const names = new Map(
 		(await db.select({ id: t.user.id, name: t.user.name }).from(t.user)).map((u) => [u.id, u.name])
 	);
@@ -404,11 +423,11 @@ export async function anHourNow(): Promise<HourNow[]> {
 		const terms = catalogue.services.get(s.id);
 		if (!price || !terms) continue;
 
-		const billed = billedAmount(terms, jobRate(price, 1), hour)!;
+		const billed = billedAmount(terms, jobRate(price, 1, places), hour, places)!;
 		const alike = new Map<string, { who: string[]; paid: Decimal | null; since: string | null }>();
 		for (const person of people) {
 			const rule = ruleOn(catalogue.rules, s.id, person, null, 'time', day);
-			const paid = timePay(rule, 3600, billed);
+			const paid = timePay(rule, 3600, billed, places);
 			const key = paid?.toString() ?? 'unpaid';
 			const row = alike.get(key) ?? { who: [], paid, since: null };
 			row.who.push(names.get(person.id) ?? '');
@@ -423,16 +442,19 @@ export async function anHourNow(): Promise<HourNow[]> {
 				who: row.who.sort().join(' and '),
 				billed: billed.toString(),
 				paid: row.paid?.toString() ?? null,
-				kept: billed.sub(row.paid ?? Decimal.ZERO).toFixed(2),
+				kept: billed.sub(row.paid ?? Decimal.ZERO).toFixed(places),
 				unpaid: row.paid === null,
 				since: row.since
 			});
 
 		if (people.length > 1 && (Decimal.from(price.additionalRate).gt(0) || teamWorked.has(s.id))) {
-			const teamBilled = billedAmount(terms, jobRate(price, people.length), hour)!;
+			const teamBilled = billedAmount(terms, jobRate(price, people.length, places), hour, places)!;
 			const each = people.map((person) => {
 				const rule = ruleOn(catalogue.rules, s.id, person, null, 'time', day);
-				return { paid: timePay(rule, 3600, teamBilled), since: rule?.effectiveFrom ?? null };
+				return {
+					paid: timePay(rule, 3600, teamBilled, places),
+					since: rule?.effectiveFrom ?? null
+				};
 			});
 			const paid = sumKnown(each.map((x) => x.paid));
 			const since = each.reduce<string | null>((a, x) => later(a, x.since), null);
@@ -442,8 +464,8 @@ export async function anHourNow(): Promise<HourNow[]> {
 				crew: 'team',
 				who: 'the team',
 				billed: teamBilled.toString(),
-				paid: paid?.toFixed(2) ?? null,
-				kept: teamBilled.sub(paid ?? Decimal.ZERO).toFixed(2),
+				paid: paid?.toFixed(places) ?? null,
+				kept: teamBilled.sub(paid ?? Decimal.ZERO).toFixed(places),
 				unpaid: each.some((x) => x.paid === null),
 				since: later(price.effectiveFrom, since)
 			});
@@ -538,7 +560,7 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 	if (!running.length) return { rows: [], charged: '0.00', paid: '0.00', kept: '0.00' };
 
 	const entityIds = [...new Set(running.map((r) => r.entityId))];
-	const [agreements, entries, serviceNames, names] = await Promise.all([
+	const [agreements, entries, serviceNames, names, places] = await Promise.all([
 		loadAgreements(db, entityIds),
 		db
 			.select(entryColumns)
@@ -547,7 +569,8 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 				and(inArray(t.timeEntry.entityId, entityIds), between(t.timeEntry.workedOn, p.start, p.end))
 			),
 		db.select({ id: t.service.id, name: t.service.name }).from(t.service),
-		db.select({ id: t.user.id, name: t.user.name }).from(t.user)
+		db.select({ id: t.user.id, name: t.user.name }).from(t.user),
+		moneyPlaces()
 	]);
 	const serviceName = new Map(serviceNames.map((s) => [s.id, s.name]));
 	const personName = new Map(names.map((u) => [u.id, u.name]));
@@ -629,11 +652,11 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 			responders,
 			retainer: {
 				state: periods.length === 0 ? 'uncharged' : given ? 'given' : 'charged',
-				amount: amount.toFixed(2),
-				charge: Decimal.from(r.price).toFixed(2)
+				amount: amount.toFixed(places),
+				charge: Decimal.from(r.price).toFixed(places)
 			},
-			charged: amount.add(sum(lines.map((l) => l.billed))).toFixed(2),
-			paid: lines.some((l) => l.payUnknown) ? null : sum(lines.map((l) => l.paid)).toFixed(2)
+			charged: amount.add(sum(lines.map((l) => l.billed))).toFixed(places),
+			paid: lines.some((l) => l.payUnknown) ? null : sum(lines.map((l) => l.paid)).toFixed(places)
 		});
 	}
 	rows.sort(
@@ -649,9 +672,9 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 	const paid = sum(rows.map((r) => r.paid));
 	return {
 		rows,
-		charged: charged.toFixed(2),
-		paid: known ? paid.toFixed(2) : null,
-		kept: known ? charged.sub(paid).toFixed(2) : null
+		charged: charged.toFixed(places),
+		paid: known ? paid.toFixed(places) : null,
+		kept: known ? charged.sub(paid).toFixed(places) : null
 	};
 }
 
@@ -664,6 +687,7 @@ export type GivenRow = { service: string; hours: string; worth: string | null };
  * choice somebody can see.
  */
 export async function nonBillable(p: Period) {
+	const places = await moneyPlaces();
 	const entries = await db
 		.select({ ...entryColumns, service: t.service.name })
 		.from(t.timeEntry)
@@ -683,12 +707,15 @@ export async function nonBillable(p: Period) {
 		.map(([service, g]) => ({
 			service,
 			hours: Ratio.of(g.minutes).div(60).round(4).toString(),
-			worth: sumKnown(g.billed)?.toFixed(2) ?? null
+			worth: sumKnown(g.billed)?.toFixed(places) ?? null
 		}));
 	const minutes = [...groups.values()].reduce((n, g) => n + g.minutes, 0);
 	return {
 		rows,
 		hours: Ratio.of(minutes).div(60).round(4).toString(),
-		worth: sumMoney(rows.map((r) => r.worth))
+		worth: sumMoney(
+			rows.map((r) => r.worth),
+			places
+		)
 	};
 }

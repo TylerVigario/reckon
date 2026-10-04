@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { readPrice } from '#lib/service-fields.ts';
 	import { readProblem } from '#lib/json.ts';
+	import { forInput } from '#lib/currency.ts';
 
 	/**
 	 * A price from a day: every client's, or one client's.
@@ -32,8 +33,10 @@
 	const start = untrack(() => preset);
 	let entity = $state<string | null>(start?.entity_id ?? null);
 	let one = $state(Boolean(start?.entity_id));
-	let rate = $state(start?.rate ?? '');
-	let additional = $state(start && Number(start.additional_rate) > 0 ? start.additional_rate : '');
+	let rate = $state(forInput(start?.rate));
+	let additional = $state(
+		start && Number(start.additional_rate) > 0 ? forInput(start.additional_rate) : ''
+	);
 	let from = $state(untrack(() => today));
 	let errors = $state<Record<string, string>>({});
 	let saying = $state('');
@@ -99,7 +102,13 @@
 	<div class="fld">
 		<label for="p-rate">{byTheHour ? 'Rate — one person' : 'Rate'}</label>
 		<span class="inp-wrap">
-			<input id="p-rate" class="inp" inputmode="decimal" placeholder="95.00" bind:value={rate} />
+			<input
+				id="p-rate"
+				class="inp"
+				inputmode="decimal"
+				placeholder={forInput('95')}
+				bind:value={rate}
+			/>
 			<span class="hint">{per}</span>
 		</span>
 		{#if errors.rate}<small class="why">{errors.rate}</small>{/if}
