@@ -1,3 +1,4 @@
+import { businessToday } from '#lib/server/calendar.ts';
 import { and, eq, sql } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
 import { PAY_METHODS, PAYS_FOR, payRule, service } from '#lib/server/db/schema/index.ts';
@@ -42,7 +43,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		effectiveFrom: String(values.effective_from)
 	};
 	const [same] = await db
-		.select({ id: payRule.id, started: sql<boolean>`${payRule.effectiveFrom} < current_date` })
+		.select({
+			id: payRule.id,
+			started: sql<boolean>`${payRule.effectiveFrom} < ${businessToday()}::date`
+		})
 		.from(payRule)
 		.where(
 			and(

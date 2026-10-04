@@ -1,7 +1,8 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, notExists, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { Ratio, sum, sumMoney } from '#lib/decimal.ts';
-import { db, today } from '#lib/server/db/index.ts';
+import { db } from '#lib/server/db/index.ts';
+import { businessToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { theTeam } from '#lib/server/choices.ts';
 import { entryColumns, valueEntries, valueLegs } from '#lib/server/valuation/load.ts';
@@ -28,7 +29,7 @@ import type { PageServerLoad } from './$types';
  * there is nothing to ask for; only what falls past its allotment is.
  */
 export const load: PageServerLoad = async () => {
-	const day = await today();
+	const day = businessToday();
 	const u = alias(t.user, 'u');
 	const notOnAnInvoice = (
 		column: typeof t.invoiceLine.timeEntryId | typeof t.invoiceLine.tripLegId,

@@ -11,7 +11,7 @@ import type { PageServerLoad } from './$types';
  * for. This screen says who holds which role -- which rules can reach them --
  * and how many rules name a person or a role directly.
  */
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ locals }) => {
 	const counted = (n: SQLWrapper) => sql<number>`(${n})::int`;
 	const holders = counted(
 		db
@@ -27,6 +27,7 @@ export const load: PageServerLoad = async () => {
 				email: user.email,
 				active: user.active,
 				role_id: user.roleId,
+				timezone: user.timezone,
 				role: role.name,
 				own_rules: counted(
 					db.select({ n: count() }).from(payRule).where(eq(payRule.userId, user.id))
@@ -46,5 +47,5 @@ export const load: PageServerLoad = async () => {
 			.orderBy(desc(holders), asc(role.name))
 	]);
 
-	return { people, roles };
+	return { people, roles, businessZone: locals.businessZone };
 };

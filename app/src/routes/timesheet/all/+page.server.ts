@@ -1,7 +1,8 @@
 import { monthOf } from '#lib/format.ts';
 import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { db, today } from '#lib/server/db/index.ts';
+import { db } from '#lib/server/db/index.ts';
+import { businessToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
 import type { PageServerLoad } from './$types';
@@ -17,7 +18,7 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ url }) => {
 	// ?month=YYYY-MM, defaulting to this one. Parsed rather than interpolated.
 	const asked = url.searchParams.get('month') ?? '';
-	const day = await today();
+	const day = businessToday();
 	const from = /^\d{4}-(0[1-9]|1[0-2])$/.test(asked) ? `${asked}-01` : `${day.slice(0, 8)}01`;
 	const [y, m] = from.split('-').map(Number);
 	const to = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);

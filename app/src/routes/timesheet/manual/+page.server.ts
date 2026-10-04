@@ -1,4 +1,4 @@
-import { today } from '#lib/server/db/index.ts';
+import { personalToday } from '#lib/server/calendar.ts';
 import { clientsAndSites, theTeam, timedServices } from '#lib/server/choices.ts';
 import { pricesToday } from '#lib/server/prices.ts';
 import type { PageServerLoad } from './$types';
@@ -11,8 +11,8 @@ import type { PageServerLoad } from './$types';
  * shows up as a wrong rate before anything is saved.
  */
 export const load: PageServerLoad = async ({ locals }) => {
-	const [day, people, entities, services, prices] = await Promise.all([
-		today(),
+	const day = personalToday();
+	const [people, entities, services, prices] = await Promise.all([
 		theTeam(),
 		clientsAndSites(),
 		timedServices(),

@@ -286,12 +286,16 @@ IndexedDB plus retry, not a sync engine.
 Printed invoices through Typst and card payments through Stripe are planned;
 neither is wired in yet.
 
-**Dates are the business's.** The operator's time zone (Settings → Business) is
-set on every database connection, so `current_date` — the day a form starts on,
-a month's edges, how long work has waited, whether an invoice is overdue — is
-the business's day wherever the server runs, and the database does that
-arithmetic in one place. A calendar date is the string `2026-09-17` end to end,
-never a JavaScript `Date`. A moment is shown in the business's zone with
+**The server works in UTC, and there are two clocks.** Every database
+connection is opened in UTC whatever the host's default is, and every moment is
+stored as `timestamptz`. Each person keeps a time zone on their user record, taken
+from their browser the first time they sign in. After that, a phone in another
+zone asks before changing it. Their own timesheet, the day a new entry starts on,
+and every moment shown to them use it. The business keeps its own zone (Settings →
+Business), and whether an invoice is overdue, how long work has waited, report
+months and which price is in force use that, so everyone gets the same answer. A
+calendar date that is recorded — worked on, issued, due — is the string
+`2026-09-17` end to end, the same day to everyone. Moments are drawn with
 `Intl.DateTimeFormat`, each formatter built once and kept. No date library:
 Temporal will replace the little this needs once Safari ships it and the server
 runs Node 26.

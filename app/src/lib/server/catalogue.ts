@@ -1,3 +1,4 @@
+import { businessToday } from './calendar.ts';
 import { sql } from 'drizzle-orm';
 import { db } from './db/index.ts';
 import { entity, payRule, role, servicePrice, user } from './db/schema/index.ts';
@@ -47,7 +48,7 @@ export async function prices(serviceId: string | null = null): Promise<PriceRow[
 		       ${servicePrice.effectiveFrom}::text as effective_from,
 		       (lead(${servicePrice.effectiveFrom}) over scope_by_date)::text as until,
 		       case
-		         when ${servicePrice.effectiveFrom} > current_date then 'scheduled'
+		         when ${servicePrice.effectiveFrom} > ${businessToday()}::date then 'scheduled'
 		         when ${servicePrice.id} = first_value(${servicePrice.id}) over scope_in_force then 'current'
 		         else 'superseded'
 		       end as state
@@ -57,7 +58,7 @@ export async function prices(serviceId: string | null = null): Promise<PriceRow[
 		window scope_by_date as (partition by ${servicePrice.serviceId}, ${servicePrice.entityId}
 		                         order by ${servicePrice.effectiveFrom}),
 		       scope_in_force as (partition by ${servicePrice.serviceId}, ${servicePrice.entityId}
-		                          order by (${servicePrice.effectiveFrom} <= current_date) desc,
+		                          order by (${servicePrice.effectiveFrom} <= ${businessToday()}::date) desc,
 		                                   ${servicePrice.effectiveFrom} desc)
 		 order by ${servicePrice.serviceId}, (${servicePrice.entityId} is not null), ${entity.name},
 		          ${servicePrice.effectiveFrom} desc`);
@@ -77,7 +78,7 @@ export async function rules(serviceId: string | null = null): Promise<RuleRow[]>
 		       ${payRule.amount}, ${payRule.effectiveFrom}::text as effective_from,
 		       (lead(${payRule.effectiveFrom}) over scope_by_date)::text as until,
 		       case
-		         when ${payRule.effectiveFrom} > current_date then 'scheduled'
+		         when ${payRule.effectiveFrom} > ${businessToday()}::date then 'scheduled'
 		         when ${payRule.id} = first_value(${payRule.id}) over scope_in_force then 'current'
 		         else 'superseded'
 		       end as state
@@ -91,7 +92,7 @@ export async function rules(serviceId: string | null = null): Promise<RuleRow[]>
 		                         order by ${payRule.effectiveFrom}),
 		       scope_in_force as (partition by ${payRule.serviceId}, ${payRule.roleId}, ${payRule.userId},
 		                                       ${payRule.entityId}, ${payRule.paysFor}
-		                          order by (${payRule.effectiveFrom} <= current_date) desc,
+		                          order by (${payRule.effectiveFrom} <= ${businessToday()}::date) desc,
 		                                   ${payRule.effectiveFrom} desc)
 		 order by ${payRule.serviceId}, (${payRule.entityId} is not null), ${entity.name},
 		          (${payRule.userId} is not null), payee, ${payRule.effectiveFrom} desc`);

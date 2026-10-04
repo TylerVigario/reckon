@@ -1,6 +1,7 @@
 import { desc, eq, gte, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { db, today } from '#lib/server/db/index.ts';
+import { db } from '#lib/server/db/index.ts';
+import { personalToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { clientsAndSites, theTeam, timedServices } from '#lib/server/choices.ts';
 import { pricesToday } from '#lib/server/prices.ts';
@@ -16,7 +17,7 @@ import type { PageServerLoad } from './$types';
  * timing, and everything already recorded today.
  */
 export const load: PageServerLoad = async ({ locals }) => {
-	const day = await today();
+	const day = personalToday();
 	const monthStart = `${day.slice(0, 8)}01`;
 	const u = alias(t.user, 'u');
 
@@ -38,7 +39,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 				entity: t.entity.name,
 				site: t.site.display,
 				service: t.service.name,
-				at: sql<string>`to_char(${t.timeEntry.createdAt}, 'HH24:MI')`,
+				// A moment: drawn on the page, in the person's own zone.
+				at: t.timeEntry.createdAt,
 				invoiced: sql<boolean>`${t.invoiceLine.invoiceId} is not null`
 			})
 			.from(t.timeEntry)

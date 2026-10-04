@@ -2,7 +2,8 @@ import { error } from '@sveltejs/kit';
 import { and, asc, desc, eq, inArray, lte, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { Decimal } from '#lib/decimal.ts';
-import { db, today as dbToday } from '#lib/server/db/index.ts';
+import { db } from '#lib/server/db/index.ts';
+import { businessToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { loadAgreements, usedThisMonth } from '#lib/server/valuation/load.ts';
 import { hoursOf } from '#lib/server/valuation/misc.ts';
@@ -33,7 +34,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			ends_on: t.agreement.endsOn,
 			final_period_proration: t.agreement.finalPeriodProration,
 			contact_id: t.agreement.contactId,
-			ended: sql<boolean>`coalesce(${t.agreement.endsOn} < current_date, false)`
+			ended: sql<boolean>`coalesce(${t.agreement.endsOn} < ${businessToday()}::date, false)`
 		})
 		.from(t.agreement)
 		.innerJoin(t.entity, eq(t.entity.id, t.agreement.entityId))
@@ -43,7 +44,8 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	const r = alias(t.role, 'r');
 	const u = alias(t.user, 'u');
-	const [theirs, services, contacts, rules, periods, today] = await Promise.all([
+	const today = businessToday();
+	const [theirs, services, contacts, rules, periods] = await Promise.all([
 		loadAgreements(db, [agreement.entity_id]),
 		db
 			.select({ id: t.service.id, name: t.service.name })
@@ -78,7 +80,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			.where(
 				and(
 					eq(t.payRule.entityId, agreement.entity_id),
-					lte(t.payRule.effectiveFrom, sql`current_date`)
+					lte(t.payRule.effectiveFrom, sql`${businessToday()}::date`)
 				)
 			)
 			.orderBy(
@@ -99,8 +101,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			.from(t.agreementPeriod)
 			.where(eq(t.agreementPeriod.agreementId, agreement.id))
 			.orderBy(desc(t.agreementPeriod.periodStart))
-			.limit(12),
-		dbToday()
+			.limit(12)
 	]);
 
 	// The hours that fell under this agreement: at its site, or for a client's

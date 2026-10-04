@@ -1,3 +1,4 @@
+import { businessToday, personalDay, businessDay } from '#lib/server/calendar.ts';
 import { sql } from 'drizzle-orm';
 import { Decimal, sumMoney } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
@@ -48,15 +49,15 @@ export const load: PageServerLoad = async () => {
 		)
 		select ${i.id} as id, ${i.number} as number, ${i.status} as status, ${e.name} as who,
 		       ${i.issuedOn}::text as issued_on, ${i.dueOn}::text as due_on,
-		       ${i.sentAt}::date::text as sent_on,
+		       ${personalDay(i.sentAt)}::text as sent_on,
 		       s.paid_on::text as paid_on,
 		       ${e.termsDays} as terms,
 		       k.kinds,
 		       b.gross::text as gross,
 		       b.owed::text as owed,
 		       case when ${i.sentAt} is not null
-		            then (current_date - ${i.sentAt}::date) end as days_out,
-		       (${i.dueOn} is not null and ${i.dueOn} < current_date and b.owed > 0) as overdue
+		            then (${businessToday()}::date - ${businessDay(i.sentAt)}) end as days_out,
+		       (${i.dueOn} is not null and ${i.dueOn} < ${businessToday()}::date and b.owed > 0) as overdue
 		  from ${i}
 		  join ${e} on ${e.id} = ${i.entityId}
 		  join ${balances} b on b.invoice_id = ${i.id}

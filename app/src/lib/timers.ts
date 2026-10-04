@@ -82,10 +82,10 @@ export function elapsedMinutes(t: Running, now = Date.now()): number {
 }
 
 /**
- * The entry a timer becomes when it stops: dated the day it started on the
- * business's calendar -- the same calendar the server's "today" keeps, not
- * whatever zone the phone is set to -- and carrying the timer's own id as its
- * client_uuid, so a stop whose post is retried still records the time once.
+ * The entry a timer becomes when it stops: dated the day it started where the
+ * person is -- their own zone, the same one the server's "today" uses for
+ * them -- and carrying the timer's own id as its client_uuid, so a stop whose
+ * post is retried still records the time once.
  */
 export function toEntry(t: Running, createdBy: string, zone: string, now = Date.now()): Entry {
 	return {

@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { Decimal } from '#lib/decimal.ts';
-import { asUser, db, today } from '#lib/server/db/index.ts';
+import { asUser, db } from '#lib/server/db/index.ts';
+import { businessToday } from '#lib/server/calendar.ts';
 import { camel } from '#lib/server/db/rows.ts';
 import { site as sites, siteTaxCheck } from '#lib/server/db/schema/index.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
@@ -106,7 +107,7 @@ export const PATCH: RequestHandler = async (event) => {
 			district_rate_pct: priced.district,
 			tax_jurisdiction: priced.jurisdiction,
 			tax_area_code: priced.tac,
-			area_verified_on: await today()
+			area_verified_on: businessToday()
 		});
 	}
 	const answer = priced;

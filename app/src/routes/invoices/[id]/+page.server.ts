@@ -1,3 +1,4 @@
+import { personalDay } from '#lib/server/calendar.ts';
 import { error } from '@sveltejs/kit';
 import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
@@ -37,8 +38,9 @@ export const load: PageServerLoad = async ({ params }) => {
 			>`coalesce(${e.termsDays}, (select ${t.operator.defaultTermsDays} from ${t.operator}))`,
 			issued_on: i.issuedOn,
 			due_on: i.dueOn,
-			sent_on: sql<string | null>`${i.sentAt}::date::text`,
-			assembled: sql<string>`to_char(${i.createdAt}, 'HH24:MI')`,
+			sent_on: sql<string | null>`${personalDay(i.sentAt)}::text`,
+			// A moment: drawn on the page, in the person's own zone.
+			assembled: i.createdAt,
 			period_start: i.periodStart,
 			period_end: i.periodEnd
 		})

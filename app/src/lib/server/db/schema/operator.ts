@@ -56,10 +56,10 @@ export const operator = pgTable(
 		phone: text(),
 		currency: text().default('USD').notNull(),
 		/**
-		 * The zone the business keeps its days in, as Postgres names it. Every
-		 * connection is set to it (#lib/server/db), so current_date and every
-		 * timestamp written as a date or a time are the business's; a stopped
-		 * timer dates its entry by it too, and screens show moments in it.
+		 * The business's clock, as Postgres names it: whether an invoice is
+		 * overdue, how long work has waited, where a report's month begins, which
+		 * price is in force -- one answer for everyone (#lib/server/calendar). A
+		 * person follows it until they set their own zone.
 		 */
 		timezone: text().default('UTC').notNull(),
 		/**

@@ -1,5 +1,6 @@
 import { lte } from 'drizzle-orm';
-import { db, today } from './db/index.ts';
+import { db } from './db/index.ts';
+import { businessToday } from './calendar.ts';
 import { servicePrice } from './db/schema/index.ts';
 import type { Price } from '#lib/rates.ts';
 import { jobRate, priceOn } from './valuation/pricing.ts';
@@ -13,7 +14,7 @@ import { team } from './valuation/entries.ts';
  * A team is everybody active who holds a role.
  */
 export async function pricesToday(): Promise<Price[]> {
-	const day = await today();
+	const day = businessToday();
 	const [catalogue, scopes] = await Promise.all([
 		loadCatalogue(db),
 		db

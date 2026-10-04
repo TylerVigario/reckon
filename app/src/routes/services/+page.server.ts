@@ -1,3 +1,4 @@
+import { businessToday } from '#lib/server/calendar.ts';
 import { asc, desc, eq, gte, isNull, or, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { agreement, agreementService, entity, service, site } from '#lib/server/db/schema/index.ts';
@@ -48,7 +49,7 @@ export const load: PageServerLoad = async () => {
 			.innerJoin(agreement, eq(agreement.id, agreementService.agreementId))
 			.innerJoin(entity, eq(entity.id, agreement.entityId))
 			.leftJoin(site, eq(site.id, agreement.siteId))
-			.where(or(isNull(agreement.endsOn), gte(agreement.endsOn, sql`current_date`)))
+			.where(or(isNull(agreement.endsOn), gte(agreement.endsOn, sql`${businessToday()}::date`)))
 			.orderBy(asc(entity.name), sql`${site.display} nulls first`),
 
 		// What an hour leaves the business, worked out once for this screen and

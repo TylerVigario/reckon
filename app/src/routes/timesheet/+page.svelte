@@ -6,7 +6,7 @@
 	import { refreshAll } from '$app/navigation';
 	import { money } from '#lib/money.svelte.ts';
 	import { clock as clockAt, day, increment } from '#lib/format.ts';
-	import { businessZone } from '#lib/zone.svelte.ts';
+	import { personalZone } from '#lib/zone.svelte.ts';
 	import { rateFor } from '#lib/rates.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -68,7 +68,7 @@
 		stopping = true;
 		why = '';
 		try {
-			await enqueue(toEntry(t, data.me, businessZone()));
+			await enqueue(toEntry(t, data.me, personalZone()));
 		} catch {
 			why = 'This phone would not save the entry, so the timer is still running.';
 			stopping = false;
@@ -122,7 +122,7 @@
 		return { hm, ss: String(s % 60).padStart(2, '0') };
 	};
 
-	const startedAt = (t: Running) => clockAt(t.started_at, businessZone());
+	const startedAt = (t: Running) => clockAt(t.started_at, personalZone());
 
 	const sub = $derived(
 		[
@@ -286,7 +286,10 @@
 							{#if !e.billable}<span class="lt">· non-billable</span>{/if}
 						</div>
 						<div class="rec-s">
-							{e.crew === 'team' ? 'The team' : (e.worked_by ?? 'Unassigned')} · {e.at} · {e.service}
+							{e.crew === 'team' ? 'The team' : (e.worked_by ?? 'Unassigned')} · {clockAt(
+								e.at,
+								personalZone()
+							)} · {e.service}
 						</div>
 					</div>
 					<div class="rec-n">

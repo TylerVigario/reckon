@@ -3,7 +3,8 @@
  * valued without knowing what that took.
  */
 import { and, between, eq, gte, inArray, or, sql } from 'drizzle-orm';
-import { today, type Reader } from '../db/index.ts';
+import { type Reader } from '../db/index.ts';
+import { businessToday, businessDay } from '../calendar.ts';
 import * as t from '../db/schema/index.ts';
 import {
 	agreementFor,
@@ -207,7 +208,8 @@ export async function taxOfInvoices(
 ): Promise<Map<string, InvoiceTax>> {
 	if (!invoiceIds.length) return new Map();
 	const ids = [...invoiceIds];
-	const [lines, issued, day] = await Promise.all([
+	const day = businessToday();
+	const [lines, issued] = await Promise.all([
 		r
 			.select({
 				invoiceId: t.invoiceLine.invoiceId,
@@ -221,8 +223,7 @@ export async function taxOfInvoices(
 		r
 			.select({ id: t.invoice.id, issuedOn: t.invoice.issuedOn })
 			.from(t.invoice)
-			.where(inArray(t.invoice.id, ids)),
-		today(r)
+			.where(inArray(t.invoice.id, ids))
 	]);
 	const sites = [...new Set(lines.map((l) => l.siteId).filter((x): x is string => x !== null))];
 	const checks = sites.length
@@ -230,7 +231,7 @@ export async function taxOfInvoices(
 				.select({
 					siteId: t.siteTaxCheck.siteId,
 					// The day it was asked, by the database's calendar.
-					checkedOn: sql<string>`${t.siteTaxCheck.checkedAt}::date::text`,
+					checkedOn: sql<string>`${businessDay(t.siteTaxCheck.checkedAt)}::text`,
 					checkedAt: t.siteTaxCheck.checkedAt,
 					ratePct: t.siteTaxCheck.ratePct,
 					statePct: t.siteTaxCheck.stateRatePct,

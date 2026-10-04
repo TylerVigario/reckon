@@ -1,3 +1,4 @@
+import { businessToday } from '#lib/server/calendar.ts';
 import { and, count, eq, gte, sql, sum } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { entity, invoice, operator, timeEntry } from '#lib/server/db/schema/index.ts';
@@ -22,7 +23,6 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 			short_name: operator.shortName,
 			accent_colour: operator.accentColour,
 			currency: operator.currency,
-			timezone: operator.timezone,
 			has_logo: sql<boolean>`${operator.logo} is not null`,
 			// Enough of the file to read a PNG's header or an SVG's root element,
 			// to say whether the logo can be the installed app's icon.
@@ -44,7 +44,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 			}
 		: null;
 
-	if (!locals.user) return { operator: operatorShown, user: null, counts: {} };
+	if (!locals.user) return { operator: operatorShown, user: null, counts: {}, zone: locals.zone };
 
 	const [[drafts], [entities], [month]] = await Promise.all([
 		db.select({ n: count() }).from(invoice).where(eq(invoice.status, 'draft')),
@@ -52,12 +52,13 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 		db
 			.select({ minutes: sum(timeEntry.minutes).mapWith(Number) })
 			.from(timeEntry)
-			.where(and(gte(timeEntry.workedOn, sql`date_trunc('month', current_date)::date`)))
+			.where(and(gte(timeEntry.workedOn, sql`date_trunc('month', ${businessToday()}::date)::date`)))
 	]);
 
 	return {
 		operator: operatorShown,
 		user: locals.user,
+		zone: locals.zone,
 		counts: { drafts: drafts.n, entities: entities.n, monthMinutes: month.minutes ?? 0 }
 	};
 };

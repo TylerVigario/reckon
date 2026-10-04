@@ -1,3 +1,4 @@
+import { businessToday } from '#lib/server/calendar.ts';
 import { asc, desc, eq, gt, lte, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
@@ -43,7 +44,7 @@ export const load: PageServerLoad = async () => {
 				price: t.materialPrice.price
 			})
 			.from(t.materialPrice)
-			.where(lte(t.materialPrice.effectiveFrom, sql`current_date`))
+			.where(lte(t.materialPrice.effectiveFrom, sql`${businessToday()}::date`))
 			.orderBy(t.materialPrice.materialId, desc(t.materialPrice.effectiveFrom)),
 		db.select({ markup: t.operator.defaultMarkupPct }).from(t.operator)
 	]);

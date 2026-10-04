@@ -1,7 +1,8 @@
 import { monthOf } from '#lib/format.ts';
 import { and, count, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import { Decimal, sum } from '#lib/decimal.ts';
-import { db, today } from '#lib/server/db/index.ts';
+import { db } from '#lib/server/db/index.ts';
+import { businessToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { townsOf } from '#lib/server/trips.ts';
 import { loadCatalogue, valueLegs } from '#lib/server/valuation/load.ts';
@@ -18,7 +19,7 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ url }) => {
 	const asked = url.searchParams.get('month') ?? '';
-	const day = await today();
+	const day = businessToday();
 	const from = /^\d{4}-(0[1-9]|1[0-2])$/.test(asked) ? `${asked}-01` : `${day.slice(0, 8)}01`;
 	const [y, m] = from.split('-').map(Number);
 	const to = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);

@@ -1,3 +1,4 @@
+import { businessToday } from './calendar.ts';
 import { sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 
@@ -10,4 +11,4 @@ export const STALE_AFTER_DAYS = 90;
  * stale says the answer is old, not that there is none.
  */
 export const rateIsStale = (areaVerifiedOn: AnyPgColumn | SQL.Aliased | SQL) =>
-	sql<boolean>`(${areaVerifiedOn} < current_date - ${STALE_AFTER_DAYS}::int)`;
+	sql<boolean>`(${areaVerifiedOn} < ${businessToday()}::date - ${STALE_AFTER_DAYS}::int)`;

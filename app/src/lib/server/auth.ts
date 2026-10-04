@@ -84,7 +84,9 @@ function createAuth() {
 			// person signing in.
 			additionalFields: {
 				roleId: { type: 'string', required: false, input: false },
-				active: { type: 'boolean', required: false, defaultValue: true, input: false }
+				active: { type: 'boolean', required: false, defaultValue: true, input: false },
+				// Set through /api/people, where it is checked against Postgres's zones.
+				timezone: { type: 'string', required: false, input: false }
 			}
 		},
 		// Lets a form action's sign-in and sign-out set and clear the cookie.
@@ -104,7 +106,13 @@ export function getAuth() {
 }
 
 /** Who is signed in, as every page sees it. */
-export type SessionUser = { id: string; name: string; email: string };
+export type SessionUser = {
+	id: string;
+	name: string;
+	email: string;
+	/** Their own zone, or null until their browser has set it. */
+	timezone: string | null;
+};
 
 /**
  * The headers to hand Better Auth for this request: the client's own, with the
