@@ -10,7 +10,8 @@ import {
 	increment,
 	monthOf,
 	pct,
-	todayIn
+	todayIn,
+	zoneName
 } from './format.ts';
 
 /**
@@ -156,5 +157,12 @@ describe('the business clock', () => {
 
 	it('pads a single-digit month and day', () => {
 		expect(todayIn('UTC', Date.UTC(2026, 0, 5, 12))).toBe('2026-01-05');
+	});
+});
+
+describe('zoneName', () => {
+	it('names a zone the way people say it, and gives back one it cannot name', () => {
+		expect(zoneName('America/Los_Angeles')).toBe('Pacific Time');
+		expect(zoneName('Not/AZone')).toBe('Not/AZone');
 	});
 });

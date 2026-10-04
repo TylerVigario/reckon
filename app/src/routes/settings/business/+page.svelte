@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { zoneOptions } from '#lib/zone-options.ts';
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import Top from '#lib/Top.svelte';
@@ -174,7 +175,8 @@
 					name="timezone"
 					label="Time zone"
 					value={o?.timezone ?? 'UTC'}
-					hint="Decides what day it is, everywhere — America/Los_Angeles"
+					options={zoneOptions(o?.timezone ?? 'UTC')}
+					hint="The business's clock: overdue, ageing and report months. Each person keeps their own."
 				/>
 			</div>
 			<div class="pair">

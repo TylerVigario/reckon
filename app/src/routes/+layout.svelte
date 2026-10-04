@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page, updated } from '$app/state';
-	import { afterNavigate } from '$app/navigation';
+	import { afterNavigate, invalidateAll } from '$app/navigation';
 	import { flush } from '#lib/queue.ts';
 	import type { LayoutProps } from './$types';
 	import { resolve } from '$app/paths';
 	import type { RouteId } from '$app/types';
 	import TabIcon, { type Tab } from '#lib/TabIcon.svelte';
+	import { zoneName } from '#lib/format.ts';
 
 	let { data, children }: LayoutProps = $props();
 
@@ -34,6 +35,61 @@
 		if ('serviceWorker' in navigator)
 			void navigator.serviceWorker.ready.then((r) => r.active?.postMessage({ type: 'warm' }));
 	});
+
+	// A PERSON'S TIME ZONE is theirs, on their user record (#lib/server/calendar).
+	// The first time they sign in it is taken from this browser, without asking.
+	// After that, a phone that finds itself in another zone asks before changing
+	// it: somebody away for a day may want to keep their own clock. Keeping it is
+	// remembered on this device, for that zone, so it asks once.
+	const KEPT = 'reckon.zone.kept';
+	let elsewhere = $state<string | null>(null);
+	const same = (a: string, b: string) => {
+		try {
+			const as = (z: string) =>
+				new Intl.DateTimeFormat('en-US', { timeZone: z }).resolvedOptions().timeZone;
+			return as(a) === as(b);
+		} catch {
+			return a === b;
+		}
+	};
+	async function saveZone(zone: string) {
+		if (!data.user) return;
+		const r = await fetch(`/api/people/${data.user.id}`, {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ fields: { timezone: zone } })
+		}).catch(() => null);
+		if (r?.ok) await invalidateAll();
+	}
+	onMount(() => {
+		if (!data.user || !navigator.onLine) return;
+		const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		if (!here) return;
+		if (data.user.timezone === null) {
+			void saveZone(here);
+			return;
+		}
+		let kept: string | null = null;
+		try {
+			kept = localStorage.getItem(KEPT);
+		} catch {
+			/* nothing remembered: it asks */
+		}
+		if (!same(here, data.user.timezone) && kept !== here) elsewhere = here;
+	});
+	function keepZone() {
+		try {
+			if (elsewhere) localStorage.setItem(KEPT, elsewhere);
+		} catch {
+			/* it will ask again next time */
+		}
+		elsewhere = null;
+	}
+	function useHere() {
+		const zone = elsewhere;
+		elsewhere = null;
+		if (zone) void saveZone(zone);
+	}
 
 	// A full-page load is the only thing that makes a browser look for a new
 	// service worker. Asking on every navigation picks up a deploy as eagerly as
@@ -135,6 +191,19 @@
 		</div>
 
 		<main>
+			{#if elsewhere && data.user?.timezone}
+				<div class="zone-ask" role="status">
+					<p>
+						This device is on {zoneName(elsewhere)}. Your clock is {zoneName(data.user.timezone)}.
+					</p>
+					<div class="acts">
+						<button type="button" class="btn sm pri" onclick={useHere}
+							>Use {zoneName(elsewhere)}</button
+						>
+						<button type="button" class="btn sm" onclick={keepZone}>Keep mine</button>
+					</div>
+				</div>
+			{/if}
 			<!-- SvelteKit notices a new deploy on navigation, on focus and hourly.
 			     Said, not done: a reload in the middle of entering something would
 			     lose it. -->
@@ -871,6 +940,26 @@
 	main {
 		flex: 1 0 auto;
 		min-width: 0;
+	}
+
+	/* Asks before a person's clock moves: the sentence on its own, the two
+	   answers under it, so neither is squeezed on a phone. */
+	.zone-ask {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		padding: 12px var(--pad);
+		background: var(--accent-wash);
+		border-bottom: 1px solid var(--accent-line);
+		font-size: 14px;
+	}
+	.zone-ask p {
+		margin: 0;
+	}
+	.zone-ask .acts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
 	}
 
 	/* A new version is out. A bar across the top of the screen, in the brand

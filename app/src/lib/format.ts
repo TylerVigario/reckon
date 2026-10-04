@@ -118,6 +118,19 @@ export function todayIn(zone: string, at: number = Date.now()): string {
 	return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
+/** "Pacific Time" -- a zone, as a person calls it, from its Postgres name. */
+export function zoneName(zone: string): string {
+	try {
+		return (
+			formatter('en-US', { timeZone: zone, timeZoneName: 'longGeneric' })
+				.formatToParts(Date.now())
+				.find((p) => p.type === 'timeZoneName')?.value ?? zone
+		);
+	} catch {
+		return zone;
+	}
+}
+
 /** "09:21" -- a moment, on the person's clock. */
 export function clock(at: number | string | Date, zone: string): string {
 	return formatter('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit' }).format(
