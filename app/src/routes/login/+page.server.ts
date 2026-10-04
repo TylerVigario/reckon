@@ -4,17 +4,14 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '#lib/server/db/index.ts';
 import { authHeaders, getAuth, rehashIfDated } from '#lib/server/auth.ts';
 import { clearFailures, recordFailure, waitFor } from '#lib/server/sign-in-limit.ts';
+import { safeNext } from '#lib/safe-next.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 // eslint-disable-next-line @typescript-eslint/require-await -- a load is async by contract
 export const load: PageServerLoad = async ({ locals, url }) => {
-	if (locals.user) redirect(303, safeNext(url.searchParams.get('next')));
+	if (locals.user) redirect(303, safeNext(url.searchParams.get('next'), url.origin));
 	return {};
 };
-
-/** Only ever within this site: an open redirect turns a login page into a way to make a phishing link look like yours. */
-const safeNext = (next: unknown) =>
-	typeof next === 'string' && next.startsWith('/') && !next.startsWith('//') ? next : '/';
 
 export const actions: Actions = {
 	default: async (event) => {
@@ -60,6 +57,6 @@ export const actions: Actions = {
 		}
 		clearFailures(address);
 		await rehashIfDated(userId, password);
-		redirect(303, safeNext(f.get('next')));
+		redirect(303, safeNext(f.get('next'), event.url.origin));
 	}
 };

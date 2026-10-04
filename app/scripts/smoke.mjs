@@ -148,6 +148,36 @@ let bad = 0;
 	if (!ok) bad++;
 	console.log(`  ${ok ? '✓' : '✗'} ${String(r.status).padEnd(3)} /operator/theme.css, signed out`);
 }
+
+// A sign-in link whose next names another site, as a browser reads
+// "/\example.com". Signing in through it, and opening it while signed in,
+// both land at home -- not off the site, and not on an error page.
+if (email) {
+	const crafted = '/\\example.com/';
+	const signingIn = await fetch(base + '/login', {
+		method: 'POST',
+		body: new URLSearchParams({ email, password: password ?? '', next: crafted }),
+		redirect: 'manual',
+		// As a browser's form post asks: otherwise SvelteKit answers in JSON,
+		// with the redirect described inside a 200.
+		headers: { origin: base, accept: 'text/html', ...PROXY }
+	});
+	const signedIn = await fetch(`${base}/login?next=${encodeURIComponent(crafted)}`, {
+		headers: { cookie, ...PROXY },
+		redirect: 'manual'
+	});
+	for (const [when, r] of /** @type {[string, Response][]} */ ([
+		['signing in', signingIn],
+		['already signed in', signedIn]
+	])) {
+		const to = new URL(r.headers.get('location') ?? '', base).href;
+		const ok = r.status === 303 && to === new URL('/', base).href;
+		if (!ok) bad++;
+		console.log(
+			`  ${ok ? '✓' : '✗'} ${String(r.status).padEnd(3)} a sign-in link to another site, ${when}, goes home`
+		);
+	}
+}
 for (const path of ROUTES) {
 	let line;
 	try {
