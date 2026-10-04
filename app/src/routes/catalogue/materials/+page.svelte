@@ -1,13 +1,11 @@
 <script lang="ts">
+	import { fixed, percent, quantity } from '#lib/format.ts';
 	import Top from '#lib/Top.svelte';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
-
-	const four = (v: string | null) => (v === null ? null : Number(v).toFixed(4));
-	const tidy = (v: string | null) => (v === null ? null : String(Number(v)));
 </script>
 
 <Top
@@ -23,7 +21,7 @@
 			<h2>Stock on hand</h2>
 			<span class="sp"></span>
 			{#if data.markup}
-				<span class="chip">{tidy(data.markup)}% markup on the ex-tax cost</span>
+				<span class="chip">{percent(data.markup)} markup on the ex-tax cost</span>
 			{/if}
 		</div>
 		<div class="rows">
@@ -35,7 +33,7 @@
 						<div class="rec-s">
 							{[m.brand, m.sku].filter(Boolean).join(' · ')}
 							{#if m.ex_tax}
-								<br />ex-tax {four(m.ex_tax)} · tax paid {four(m.tax_paid)}
+								<br />ex-tax {fixed(m.ex_tax, 4)} · tax paid {fixed(m.tax_paid, 4)}
 							{/if}
 						</div>
 						{#if out}
@@ -47,7 +45,7 @@
 					<div class="rec-n">
 						<span class="rec-v">{money(m.price)}</span>
 						<span class="rec-x">
-							{tidy(m.on_hand)}{m.unit === 'foot' ? ' ft' : ''}
+							{quantity(m.on_hand)}{m.unit === 'foot' ? ' ft' : ''}
 						</span>
 					</div>
 				</div>

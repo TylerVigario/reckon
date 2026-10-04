@@ -5,7 +5,7 @@
 	import { running, drop, toEntry, type Running } from '#lib/timers.ts';
 	import { refreshAll } from '$app/navigation';
 	import { money } from '#lib/money.svelte.ts';
-	import { clock as clockAt, day, increment } from '#lib/format.ts';
+	import { clock as clockAt, day, elapsed, increment, minutesAsHours } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import { rateFor } from '#lib/rates.ts';
 	import type { PageProps } from './$types';
@@ -13,8 +13,7 @@
 
 	let { data }: PageProps = $props();
 
-	const hhmm = (m: number) =>
-		`${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, '0')}`;
+	const hhmm = (m: number) => elapsed(m * 60, false);
 
 	// Everything here that is happening NOW is the browser's: the timer, and
 	// whatever is waiting to be posted. Both are read on mount rather than
@@ -118,8 +117,7 @@
 
 	const clock = (t: Running) => {
 		const s = Math.max(0, Math.floor((now - t.started_at) / 1000));
-		const hm = `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}`;
-		return { hm, ss: String(s % 60).padStart(2, '0') };
+		return { hm: elapsed(s, false), ss: String(s % 60).padStart(2, '0') };
 	};
 
 	const startedAt = (t: Running) => clockAt(t.started_at, personalZone());
@@ -128,7 +126,7 @@
 		[
 			notSaved.length ? `${notSaved.length} not saved` : null,
 			queued ? `${queued} queued` : null,
-			`${Math.round(data.monthMinutes / 60)} h this month`
+			`${minutesAsHours(data.monthMinutes, 'whole')} this month`
 		]
 			.filter(Boolean)
 			.join(' · ')

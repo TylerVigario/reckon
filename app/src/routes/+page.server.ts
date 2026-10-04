@@ -5,6 +5,8 @@ import * as t from '#lib/server/db/schema/index.ts';
 import { sum } from '#lib/decimal.ts';
 import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
 import { rateIsStale } from '#lib/server/stale.ts';
+import { count, dated } from '#lib/format.ts';
+import { ageOf, type Age } from '#lib/ageing.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -76,12 +78,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 	// Anything that cannot proceed until somebody decides. An invoice out past
 	// the operator's own chase-after figure, and an address CDTFA has not been
 	// asked about lately.
-	const { rows: decisions } = await db.execute<{
-		kind: string;
-		title: string;
-		detail: string;
+	const { rows: found } = await db.execute<{
+		kind: 'invoice' | 'district';
+		client: string;
+		ref: string;
+		dated_on: string;
 		amount: string | null;
-		chip: string;
+		days: number;
 	}>(sql`
 		with line_totals as (
 			select ${il.invoiceId} as invoice_id,
@@ -92,11 +95,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 			select ${pa.invoiceId} as invoice_id, sum(${pa.amount}) as paid from ${pa} group by ${pa.invoiceId}
 		)
 		select * from (
-		select 'invoice' as kind,
-		       'Invoice ' || ${i.number} || ' · ' || ${e.name} as title,
-		       'Sent ' || to_char(${personalDay(i.sentAt)}, 'FMDD Mon YYYY') || ', still unpaid.' as detail,
+		select 'invoice' as kind, ${e.name} as client, ${i.number} as ref,
+		       ${personalDay(i.sentAt)}::text as dated_on,
 		       (coalesce(lt.gross, 0) - coalesce(a.paid, 0))::numeric(12,2)::text as amount,
-		       'Unpaid ' || (${businessToday()}::date - ${businessDay(i.sentAt)}) || ' days' as chip
+		       ${businessToday()}::date - ${businessDay(i.sentAt)} as days,
+		       'Invoice ' || ${i.number} || ' · ' || ${e.name} as sort
 		  from ${i}
 		  join ${e} on ${e.id} = ${i.entityId}
 		  left join line_totals lt on lt.invoice_id = ${i.id}
@@ -107,20 +110,37 @@ export const load: PageServerLoad = async ({ locals }) => {
 		   and ${businessToday()}::date - ${businessDay(i.sentAt)}
 		       > coalesce((select ${t.operator.ageingAlertDays} from ${t.operator}), 30)
 		union all
-		select 'district',
-		       ${e.name} || ' · ' || ${s.display} || ' · rate is old',
-		       'CDTFA last priced this address on ' ||
-		         to_char(${s.areaVerifiedOn}, 'FMDD Mon YYYY') || '. A district can be '
-		         'added or ended in between, and every invoice since would be wrong.',
-		       null,
-		       (${businessToday()}::date - ${s.areaVerifiedOn}) || ' days since CDTFA was asked'
+		select 'district', ${e.name}, ${s.display}, ${s.areaVerifiedOn}::text, null,
+		       ${businessToday()}::date - ${s.areaVerifiedOn},
+		       ${e.name} || ' · ' || ${s.display} || ' · rate is old'
 		  from ${s}
 		  join ${e} on ${e.id} = ${s.entityId}
 		 where ${s.active} and ${rateIsStale(s.areaVerifiedOn, businessToday())}
 		) d
 		 -- Critical before warning, by severity rather than by how the kind
 		 -- column happens to sort.
-		 order by case kind when 'invoice' then 0 else 1 end, title`);
+		 order by case kind when 'invoice' then 0 else 1 end, sort`);
+	// Written here, with #lib/format, like every other date and count a person
+	// reads.
+	const decisions = found.map((d) =>
+		d.kind === 'invoice'
+			? {
+					kind: d.kind,
+					title: `Invoice ${d.ref} · ${d.client}`,
+					detail: `Sent ${dated(d.dated_on)}, still unpaid.`,
+					amount: d.amount,
+					chip: `Unpaid ${count(d.days, 'day')}`
+				}
+			: {
+					kind: d.kind,
+					title: `${d.client} · ${d.ref} · rate is old`,
+					detail:
+						`CDTFA last priced this address on ${dated(d.dated_on)}. A district can be ` +
+						'added or ended in between, and every invoice since would be wrong.',
+					amount: d.amount,
+					chip: `${count(d.days, 'day')} since CDTFA was asked`
+				}
+	);
 
 	const drafts = await db
 		.select({
@@ -160,12 +180,12 @@ export const load: PageServerLoad = async ({ locals }) => {
 		);
 	const worth = await valueEntries(db, unbilled);
 	const daysAgo = (d: string) => Temporal.PlainDate.from(d).until(today).days;
-	const buckets = new Map<string, { n: number; worth: (string | null)[]; oldest: number }>();
+	const buckets = new Map<Age, { n: number; worth: (string | null)[]; oldest: number }>();
 	for (const entry of unbilled) {
 		const w = worth.get(entry.id)!;
 		if (w.coveredMinutes !== null && w.coveredMinutes >= entry.minutes) continue;
 		const days = daysAgo(entry.workedOn);
-		const bucket = days <= 7 ? '0–7 days' : days <= 30 ? '8–30 days' : '31+ days';
+		const bucket = ageOf(days);
 		const b = buckets.get(bucket) ?? { n: 0, worth: [], oldest: 0 };
 		b.n += 1;
 		b.worth.push(w.billed?.toString() ?? null);

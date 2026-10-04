@@ -5,7 +5,7 @@
  * worded one way in one and another in the other is two answers to one
  * question.
  */
-import { pct } from './format.ts';
+import { percent } from './format.ts';
 
 export const PAYS_FOR = {
 	time: 'for their time',
@@ -27,7 +27,7 @@ export function paysWhat(
 			return { v: money(r.amount), x: 'an hour' };
 		case 'percent':
 			return {
-				v: pct(r.amount, 0),
+				v: percent(r.amount),
 				x: r.pays_for === 'covered_time' ? 'of the retainer' : 'of the line'
 			};
 		case 'fixed':

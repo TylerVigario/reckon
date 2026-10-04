@@ -4,6 +4,7 @@ import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
+import { day, monthName } from '#lib/format.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -56,12 +57,14 @@ export const load: PageServerLoad = async ({ params }) => {
 				seq: il.seq,
 				kind: il.kind,
 				description: il.description,
-				// Where the line came from, said in the terms of its source.
-				detail: sql<string | null>`coalesce(
-					${u.name} || ' · ' || to_char(${te.workedOn}, 'FMDD Mon') || coalesce(' · ' || ${te.note}, ''),
-					to_char(${tr.travelledOn}, 'FMDD Mon') || ' · leg of a trip',
-					${ml.supplier} || ' · from stock, weighted average',
-					'Recurring · ' || to_char(${ap.periodStart}, 'FMMonth'))`,
+				// Where the line came from, in the terms of its source: put into
+				// words below.
+				worker: u.name,
+				worked_on: te.workedOn,
+				note: te.note,
+				travelled_on: tr.travelledOn,
+				supplier: ml.supplier,
+				period_start: ap.periodStart,
 				qty: il.qty,
 				unit: il.unit,
 				unit_price: il.unitPrice,
@@ -130,5 +133,23 @@ export const load: PageServerLoad = async ({ params }) => {
 			.then((r) => r.rows)
 	]);
 
-	return { invoice, lines, totals };
+	return {
+		invoice,
+		lines: lines.map(({ worker, worked_on, note, travelled_on, supplier, period_start, ...l }) => ({
+			...l,
+			// The first source the line has, said with #lib/format. A team's entry
+			// names no worker, and says nothing here.
+			detail:
+				worker !== null && worked_on !== null
+					? `${worker} · ${day(worked_on)}${note !== null ? ` · ${note}` : ''}`
+					: travelled_on !== null
+						? `${day(travelled_on)} · leg of a trip`
+						: supplier !== null
+							? `${supplier} · from stock, weighted average`
+							: period_start !== null
+								? `Recurring · ${monthName(period_start)}`
+								: null
+		})),
+		totals
+	};
 };

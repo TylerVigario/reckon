@@ -3,7 +3,8 @@
 	import { onMount } from 'svelte';
 	import Top from '#lib/Top.svelte';
 	import { running, type Running } from '#lib/timers.ts';
-	import { fullDay } from '#lib/format.ts';
+	import { count, dayRange, elapsed, fullDay } from '#lib/format.ts';
+	import { AGES, type Age } from '#lib/ageing.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -16,15 +17,9 @@
 	// would wrap the tile label onto three lines.
 	const who = $derived(data.operator?.short_name || 'you');
 
-	// The three buckets always show, in order, whether or not anything is in
+	// The three bands always show, in order, whether or not anything is in
 	// them: "nothing older than a month" is the figure worth seeing.
-	const BUCKETS = ['0–7 days', '8–30 days', '31+ days'] as const;
-	const TONE: Record<string, string> = {
-		'0–7 days': 'good',
-		'8–30 days': 'warn',
-		'31+ days': 'crit'
-	};
-	type Bucket = { bucket: string; n: string; worth: string; oldest: string | null };
+	type Bucket = { bucket: Age; n: string; worth: string; oldest: string | null };
 	const byBucket = $derived(
 		Object.fromEntries((data.ageing as Bucket[]).map((a) => [a.bucket, a])) as Record<
 			string,
@@ -56,7 +51,7 @@
 	);
 	const clock = (t: Running) => {
 		const s = Math.max(0, Math.floor((now - t.started_at) / 1000));
-		return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+		return elapsed(s);
 	};
 </script>
 
@@ -159,15 +154,18 @@
 				<a class="seeall" href={resolve('/unbilled')}>All</a>
 			</div>
 			<div class="rows">
-				{#each BUCKETS as b (b)}
-					{@const row = byBucket[b]}
+				{#each AGES as b (b.key)}
+					{@const row = byBucket[b.key]}
 					<div class="rec">
 						<div class="rec-m">
-							<div class="rec-t">{b}</div>
+							<div class="rec-t">{dayRange(b.from, b.to)}</div>
 							<div class="rec-s">
 								{#if row}
 									{row.n}
-									{Number(row.n) === 1 ? 'entry' : 'entries'}{#if row.oldest}, oldest {row.oldest} days{/if}
+									{Number(row.n) === 1 ? 'entry' : 'entries'}{#if row.oldest}, oldest {count(
+											Number(row.oldest),
+											'day'
+										)}{/if}
 								{:else}
 									Nothing, and it should stay that way
 								{/if}
@@ -175,7 +173,7 @@
 						</div>
 						<div class="rec-n">
 							{#if row}
-								<span class="rec-v {TONE[b]}">{money(row.worth)}</span>
+								<span class="rec-v {b.tone}">{money(row.worth)}</span>
 							{:else}
 								<span class="rec-v mut">{money(0)}</span>
 							{/if}

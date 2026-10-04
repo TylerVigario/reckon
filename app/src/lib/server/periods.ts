@@ -1,15 +1,20 @@
 import { businessToday } from './calendar.ts';
 import { sql } from 'drizzle-orm';
+import { fiscalYear as fiscalYearName, monthOf, span } from '#lib/format.ts';
 import { db } from './db/index.ts';
 import { operator } from './db/schema/index.ts';
 
 export type Period = { start: string; end: string; label: string; spans: string };
+type Bounds = { start: string; end: string };
 
 /**
- * The windows every report is cut to, computed in Postgres so that a report
- * and the rows behind it agree about where a day falls. `new Date()` on a
- * server running UTC calls a Californian evening tomorrow, and a report that
- * moves an invoice into the next quarter is a filing problem.
+ * The windows every report is cut to.
+ *
+ * They are measured from the business's today (#lib/server/calendar), so every
+ * report agrees about which month it is whoever is looking, and the month
+ * arithmetic is Postgres's. What a window is called -- "September 2026",
+ * "1 Sept to 30 Sept 2026" -- is written by #lib/format, like every other date
+ * a person reads.
  *
  * THE FISCAL YEAR is the operator's own, taken from the month it ends in. It is
  * null when that has not been set: a return cut to a guessed year is worse than
@@ -21,7 +26,7 @@ export type Period = { start: string; end: string; label: string; spans: string 
  * in progress, the retainer meter, says "so far" in its label.
  */
 export async function fiscalYear(): Promise<Period | null> {
-	const { rows } = await db.execute<Period>(sql`
+	const { rows } = await db.execute<Bounds>(sql`
 		with o as (select ${operator.fiscalYearEndMonth} as m from ${operator}),
 		bounds as (
 			select (date_trunc('month', make_date(
@@ -31,25 +36,20 @@ export async function fiscalYear(): Promise<Period | null> {
 			  from o where o.m is not null
 		)
 		select (ends_on - interval '1 year' + interval '1 day')::date::text as start,
-		       ends_on::text as end,
-		       to_char(ends_on - interval '1 year' + interval '1 day', 'FMDD Mon YYYY')
-		         || ' to ' || to_char(ends_on, 'FMDD Mon YYYY') as spans,
-		       'FY' || to_char(ends_on - interval '1 year' + interval '1 day', 'YYYY')
-		            || '–' || to_char(ends_on, 'YY') as label
+		       ends_on::text as end
 		  from bounds`);
-	return rows[0] ?? null;
+	const b = rows[0];
+	return b ? { ...b, label: fiscalYearName(b.start, b.end), spans: span(b.start, b.end) } : null;
 }
 
 export async function lastFullMonth(): Promise<Period> {
-	const { rows } = await db.execute<Period>(sql`
+	const { rows } = await db.execute<Bounds>(sql`
 		with m as (select (date_trunc('month', ${businessToday()}::date) - interval '1 month')::date as first_day)
 		select first_day::text as start,
-		       (first_day + interval '1 month - 1 day')::date::text as end,
-		       to_char(first_day, 'FMMonth YYYY') as label,
-		       to_char(first_day, 'FMDD Mon') || ' to '
-		         || to_char(first_day + interval '1 month - 1 day', 'FMDD Mon YYYY') as spans
+		       (first_day + interval '1 month - 1 day')::date::text as end
 		  from m`);
-	return rows[0];
+	const b = rows[0];
+	return { ...b, label: monthOf(b.start), spans: span(b.start, b.end) };
 }
 
 /**
@@ -60,13 +60,9 @@ export async function lastFullMonth(): Promise<Period> {
  * close to show that usage hides the only month that is still happening.
  */
 export async function thisMonth(): Promise<Period> {
-	const { rows } = await db.execute<Period>(sql`
-		with m as (select date_trunc('month', ${businessToday()}::date)::date as first_day)
-		select first_day::text as start,
-		       ${businessToday()}::date::text as end,
-		       to_char(first_day, 'FMMonth YYYY') || ' so far' as label,
-		       to_char(first_day, 'FMDD Mon') || ' to '
-		         || to_char(${businessToday()}::date, 'FMDD Mon YYYY') as spans
-		  from m`);
-	return rows[0];
+	const { rows } = await db.execute<Bounds>(sql`
+		select date_trunc('month', ${businessToday()}::date)::date::text as start,
+		       ${businessToday()}::date::text as end`);
+	const b = rows[0];
+	return { ...b, label: `${monthOf(b.start)} so far`, spans: span(b.start, b.end) };
 }

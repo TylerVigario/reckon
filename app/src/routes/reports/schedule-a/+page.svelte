@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Decimal } from '#lib/decimal.ts';
 	import Top from '#lib/Top.svelte';
-	import { pct } from '#lib/format.ts';
+	import { pct, rateParts } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -46,12 +46,7 @@
 		rate_pct: string | null;
 		state_rate_pct: string | null;
 		district_rate_pct: string | null;
-	}) =>
-		Number(d.district_rate_pct) > 0
-			? `${pct(d.rate_pct)} — ${Number(d.state_rate_pct).toFixed(3)} state + ${Number(
-					d.district_rate_pct
-				).toFixed(3)} district`
-			: `${pct(d.rate_pct)} — all state, no district`;
+	}) => `${pct(d.rate_pct)} — ${rateParts(d.state_rate_pct, d.district_rate_pct)}`;
 
 	const basis = (d: {
 		lines: number;
@@ -233,7 +228,7 @@
 						<div class="rec-t">{o.invoice} · {o.description}</div>
 						<div class="rec-s">{o.reason ?? 'No reason recorded'}</div>
 					</div>
-					<div class="rec-n"><span class="rec-v">{Number(o.rate_pct).toFixed(3)}%</span></div>
+					<div class="rec-n"><span class="rec-v">{pct(o.rate_pct)}</span></div>
 				</div>
 			{:else}
 				<div class="rec">

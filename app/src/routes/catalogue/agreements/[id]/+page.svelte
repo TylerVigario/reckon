@@ -2,7 +2,7 @@
 	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import CoverageForm from '#lib/agreement/CoverageForm.svelte';
-	import { dated } from '#lib/format.ts';
+	import { dated, hours } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import { paysWhat } from '#lib/pay-words.ts';
 	import { parseAgreementField } from '#lib/agreement-fields.ts';
@@ -216,7 +216,7 @@
 							<div class="rec-m">
 								<div class="rec-t">{c.service}</div>
 								<div class="rec-s">
-									{allotment(c)} · {Number(c.used).toFixed(2)} h used this month
+									{allotment(c)} · {hours(c.used, 'allotted')} used this month
 								</div>
 								<div class="rec-c">
 									<button type="button" class="btn sm gho" onclick={() => (editing = { preset: c })}

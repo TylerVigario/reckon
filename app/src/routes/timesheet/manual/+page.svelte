@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { minutesAsHours, pct } from '#lib/format.ts';
 	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -88,9 +89,7 @@
 	});
 
 	const hours = $derived(
-		duration.trim() === '' || Number.isNaN(minutes) || minutes <= 0
-			? null
-			: (minutes / 60).toFixed(4)
+		duration.trim() === '' || Number.isNaN(minutes) || minutes <= 0 ? null : minutesAsHours(minutes)
 	);
 
 	async function save() {
@@ -174,7 +173,7 @@
 					<option value={null}>{entityId ? 'Which site' : 'Choose who pays first'}</option>
 					{#each sites as st (st.id)}<option value={st.id}>{st.label}</option>{/each}
 				</select>
-				{#if site?.rate_pct}<span class="hint">{Number(site.rate_pct).toFixed(3)}%</span>{/if}
+				{#if site?.rate_pct}<span class="hint">{pct(site.rate_pct)}</span>{/if}
 			</span>
 		</div>
 
@@ -227,7 +226,7 @@
 					placeholder="2:40"
 					bind:value={duration}
 				/>
-				{#if hours}<span class="hint">{hours} h</span>{/if}
+				{#if hours}<span class="hint">{hours}</span>{/if}
 			</span>
 			<!-- The three shapes the parser takes, said out loud. A box labelled
 			     "Duration" with "2:40" greyed in it is a guess about whether 4.5

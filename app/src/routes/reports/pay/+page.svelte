@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { day, dated } from '#lib/format.ts';
+	import { dated, day, hours } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -41,7 +41,7 @@
 					<div class="rec-m">
 						<div class="rec-t">{j.job} · {day(j.worked_on)}</div>
 						<div class="rec-s">
-							{who(j)} · {Number(j.hours).toFixed(4)} h{#if j.heads > 1}
+							{who(j)} · {hours(j.hours)}{#if j.heads > 1}
 								· {j.heads} on the job{/if}
 						</div>
 					</div>

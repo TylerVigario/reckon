@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { day } from '#lib/format.ts';
+	import { day, hours, miles } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -36,7 +36,7 @@
 					.filter(Boolean)
 					.join(' · '),
 				worth: w.worth,
-				measure: `${Number(w.hours).toFixed(4)} h${w.heads > 1 ? ` ×${w.heads}` : ''}`,
+				measure: `${hours(w.hours)}${w.heads > 1 ? ` ×${w.heads}` : ''}`,
 				days: w.days
 			})),
 			...data.mileage.map((m) => ({
@@ -48,7 +48,7 @@
 					.filter(Boolean)
 					.join(' · '),
 				worth: m.worth,
-				measure: `${Number(m.miles).toFixed(1)} mi`,
+				measure: miles(m.miles),
 				days: m.days
 			}))
 		].sort((a, b) => b.days - a.days)
@@ -126,7 +126,7 @@
 						</div>
 						<div class="rec-n">
 							<span class="rec-v mut">—</span>
-							<span class="rec-x">{Number(g.hours).toFixed(4)} h</span>
+							<span class="rec-x">{hours(g.hours)}</span>
 						</div>
 					</div>
 				{/each}

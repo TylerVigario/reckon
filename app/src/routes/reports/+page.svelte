@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { hours } from '#lib/format.ts';
 	import Top from '#lib/Top.svelte';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
@@ -73,7 +74,7 @@
 		<div class="sec-h">
 			<h2>Non-billable — {data.month.label}</h2>
 			<span class="sp"></span>
-			<span class="chip">{Number(data.given.hours).toFixed(1)} h</span>
+			<span class="chip">{hours(data.given.hours, 'glance')}</span>
 		</div>
 		<div class="rows">
 			{#each data.given.rows as g (g.service)}
@@ -81,7 +82,7 @@
 					<div class="rec-m"><div class="rec-t">{g.service}</div></div>
 					<div class="rec-n">
 						<span class="rec-v mut">{money(g.worth)}</span>
-						<span class="rec-x">{Number(g.hours).toFixed(4)} h</span>
+						<span class="rec-x">{hours(g.hours)}</span>
 					</div>
 				</div>
 			{:else}
@@ -97,7 +98,7 @@
 					<div class="rec-m"><div class="rec-t">What the business cost itself</div></div>
 					<div class="rec-n">
 						<span class="rec-v">{money(data.given.worth)}</span>
-						<span class="rec-x">{Number(data.given.hours).toFixed(4)} h</span>
+						<span class="rec-x">{hours(data.given.hours)}</span>
 					</div>
 				</div>
 			{/if}

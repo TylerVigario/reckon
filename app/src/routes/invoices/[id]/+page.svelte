@@ -1,15 +1,13 @@
 <script lang="ts">
 	import { Decimal } from '#lib/decimal.ts';
 	import Top from '#lib/Top.svelte';
-	import { clock, day, monthOf } from '#lib/format.ts';
+	import { clock, day, monthOf, pct, quantity, rateParts } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
-
-	const num = (v: string) => Number(v).toLocaleString('en-US', { maximumFractionDigits: 4 });
 
 	const i = $derived(data.invoice);
 	const t = $derived(data.totals);
@@ -26,12 +24,7 @@
 		rate_pct: string | null;
 		state_rate_pct: string | null;
 		district_rate_pct: string | null;
-	}) =>
-		Number(x.district_rate_pct) > 0
-			? `${Number(x.rate_pct).toFixed(3)}% (${Number(x.state_rate_pct).toFixed(3)} state + ${Number(
-					x.district_rate_pct
-				).toFixed(3)} district)`
-			: `${Number(x.rate_pct).toFixed(3)}% (all state)`;
+	}) => `${pct(x.rate_pct)} (${rateParts(x.state_rate_pct, x.district_rate_pct)})`;
 
 	// The schema's own words for what a line is. A label that says "goods" over
 	// a taxed labour line is the page asserting something the data did not.
@@ -92,7 +85,7 @@
 						</div>
 						<div class="rec-n">
 							<span class="rec-v">{money(l.amount)}</span>
-							<span class="rec-x">{num(l.qty)} × {num(l.unit_price)}</span>
+							<span class="rec-x">{quantity(l.qty)} × {quantity(l.unit_price)}</span>
 						</div>
 						<span class="arw" aria-hidden="true">›</span>
 					</a>
@@ -105,7 +98,7 @@
 						<div class="rec-n">
 							<span class="rec-v">{money(l.amount)}</span>
 							<span class="rec-x">
-								{num(l.qty)}{l.unit ? ` ${l.unit}` : ''} × {num(l.unit_price)}
+								{quantity(l.qty)}{l.unit ? ` ${l.unit}` : ''} × {quantity(l.unit_price)}
 							</span>
 						</div>
 					</div>

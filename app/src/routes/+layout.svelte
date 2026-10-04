@@ -7,7 +7,7 @@
 	import { resolve } from '$app/paths';
 	import type { RouteId } from '$app/types';
 	import TabIcon, { type Tab } from '#lib/TabIcon.svelte';
-	import { zoneName } from '#lib/format.ts';
+	import { hoursBadge, zoneName } from '#lib/format.ts';
 
 	let { data, children }: LayoutProps = $props();
 
@@ -127,7 +127,7 @@
 	] satisfies { href: RouteId; label: string; count: () => string | number | null | undefined }[];
 
 	const counts = $derived(data.counts ?? {});
-	const hours = (m: number | undefined) => (m === undefined ? null : `${Math.round(m / 60)}h`);
+	const hours = (m: number | undefined) => (m === undefined ? null : hoursBadge(m));
 
 	// Two letters, from a name nobody has to configure.
 	const initials = $derived(

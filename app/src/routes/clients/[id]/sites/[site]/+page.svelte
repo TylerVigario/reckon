@@ -3,7 +3,7 @@
 	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import { parseSiteField } from '#lib/site-fields.ts';
-	import { pct } from '#lib/format.ts';
+	import { hours, pct, rateParts } from '#lib/format.ts';
 	import Day from '#lib/Day.svelte';
 	import type { PageProps } from './$types';
 	import { readProblem } from '#lib/json.ts';
@@ -23,11 +23,7 @@
 	let version = $derived(s.version);
 	const api = $derived(`/api/clients/${s.client_slug}/sites/${s.slug}`);
 
-	const made = $derived(
-		Number(s.district_rate_pct) > 0
-			? `${Number(s.state_rate_pct).toFixed(3)} state + ${Number(s.district_rate_pct).toFixed(3)} district`
-			: `${Number(s.state_rate_pct).toFixed(3)} state, no district`
-	);
+	const made = $derived(rateParts(s.state_rate_pct, s.district_rate_pct));
 
 	// Adding somebody: an existing person of this client's, or a new one.
 	let adding = $state(false);
@@ -96,7 +92,7 @@
 		</div>
 		<div class="tile">
 			<span class="k">Worked</span>
-			<span class="v sm">{Number(data.worked.hours).toFixed(1)} h</span>
+			<span class="v sm">{hours(data.worked.hours, 'glance')}</span>
 			<span class="s">
 				{data.worked.entries}
 				{Number(data.worked.entries) === 1 ? 'entry' : 'entries'}{#if data.worked.last}, last <Day
