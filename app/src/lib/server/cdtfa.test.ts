@@ -7,10 +7,6 @@ import { NoAnswer, priceAddress } from './cdtfa.ts';
  *
  * This is the one module whose wrong answer becomes a wrong invoice, so every
  * refusal it makes has a case below.
- *
- * Tax area codes differ between tests on purpose: splitFor() memoises by TAC
- * for the life of the process, so reusing one would have a later test read an
- * earlier test's answer and pass for the wrong reason.
  */
 
 const HERE = { street: '8556 Gibson Ranch Park Rd', city: 'Elverta', postcode: '95626' };
@@ -259,5 +255,42 @@ describe('priceAddress', () => {
 
 	it('reports an HTTP failure as a refusal rather than a rate', async () => {
 		await expect(priceAddress(HERE, fakeCdtfa({}, {}, false))).rejects.toThrow(NoAnswer);
+	});
+});
+
+/**
+ * California's rates change on the first day of a quarter, and a server runs
+ * straight through it. Whatever it learnt about an area before then is not
+ * evidence of what the area pays after.
+ */
+describe('a tax area asked about again', () => {
+	const sacramento = (rate: number) => ({
+		taxRateInfo: [{ rate, jurisdiction: 'SACRAMENTO COUNTY', tac: 'T20' }],
+		geocodeInfo: CONFIDENT
+	});
+
+	it("is asked again, so a new quarter's rate is taken without a restart", async () => {
+		await priceAddress(HERE, fakeCdtfa(sacramento(0.0775), layer(0.06, 0.0175, 0)));
+		const after = await priceAddress(HERE, fakeCdtfa(sacramento(0.08), layer(0.06, 0.02, 0)));
+		expect(after).toMatchObject({ rate: '8.0000', district: '2.0000' });
+	});
+
+	it('is asked again, so a split that moved under the same total is taken', async () => {
+		await priceAddress(HERE, fakeCdtfa(sacramento(0.0775), layer(0.06, 0.0175, 0)));
+		const after = await priceAddress(HERE, fakeCdtfa(sacramento(0.0775), layer(0.0625, 0.015, 0)));
+		expect(after).toMatchObject({ state: '6.2500', district: '1.5000' });
+	});
+
+	it('is asked once within a run that shares what it learns', async () => {
+		let asked = 0;
+		const fake = fakeCdtfa(sacramento(0.0775), layer(0.06, 0.0175, 0));
+		const counting = ((url: string) => {
+			if (url.includes('arcgis')) asked++;
+			return fake(url);
+		}) as typeof fetch;
+		const run = new Map();
+		await priceAddress(HERE, counting, run);
+		await priceAddress(HERE, counting, run);
+		expect(asked).toBe(1);
 	});
 });

@@ -96,11 +96,16 @@ if (sites.length === 0 && unanswerable.length === 0) {
 let changed = 0;
 let failed = 0;
 const pct = (/** @type {string} */ x) => Decimal.from(x).toFixed(3);
+// What this run learns about each tax area, so it asks once per area. Made per
+// run and gone with it: a split kept longer could outlive the quarter it was
+// true for.
+/** @type {import('../src/lib/server/cdtfa.ts').Splits} */
+const splits = new Map();
 
 for (const s of sites) {
 	let answer;
 	try {
-		answer = await priceAddress(s);
+		answer = await priceAddress(s, fetch, splits);
 	} catch (e) {
 		console.error(`  ✗ ${s.display}: ${e instanceof NoAnswer ? e.message : String(e)}`);
 		failed++;

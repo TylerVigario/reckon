@@ -79,12 +79,27 @@ function percent(...fractions: unknown[]): string {
 
 export type Split = { state: string; district: string; total: string };
 
-const splits = new Map<string, Split>();
+/**
+ * What a run has learnt about tax areas, by code.
+ *
+ * KEPT BY THE CALLER, AND ONLY FOR ONE RUN. California's rates change on the
+ * first day of a quarter, and a server runs straight through it: a split it
+ * kept from before would be refused against CDTFA's new total, or stored
+ * without complaint where only the split moved. So the app keeps none, and
+ * every site it prices asks afresh -- one more request, when somebody saves a
+ * site. The refresh script keeps one for the length of a run, so it asks about
+ * an area once however many sites share it.
+ */
+export type Splits = Map<string, Split>;
 
-/** The state/district split for one tax area code, asked once per area. */
-export async function splitFor(tac: string, fetcher: typeof fetch = fetch): Promise<Split> {
-	const known = splits.get(tac);
-	if (known) return known;
+/** The state/district split for one tax area code, from `known` if this run has asked. */
+export async function splitFor(
+	tac: string,
+	fetcher: typeof fetch = fetch,
+	known?: Splits
+): Promise<Split> {
+	const kept = known?.get(tac);
+	if (kept) return kept;
 	const q = new URLSearchParams({
 		where: `TAC_txt='${tac}'`,
 		outFields: 'RATE,StateRate,CountyRate,CityRate',
@@ -103,7 +118,7 @@ export async function splitFor(tac: string, fetcher: typeof fetch = fetch): Prom
 		district: percent(a.CountyRate, a.CityRate),
 		total: percent(a.RATE)
 	};
-	splits.set(tac, split);
+	known?.set(tac, split);
 	return split;
 }
 
@@ -121,6 +136,9 @@ export type Priced = {
  * Price one address. Percentages come back as strings -- NUMERIC stays a
  * string the whole way, because a rate that round-trips through a float is a
  * rate that can be a cent out.
+ *
+ * `known` is what this run has already learnt about tax areas (Splits). Left
+ * out, the rate layer is asked every time.
  */
 export async function priceAddress(
 	{
@@ -128,7 +146,8 @@ export async function priceAddress(
 		city,
 		postcode
 	}: { street?: string | null; city?: string | null; postcode?: string | null },
-	fetcher: typeof fetch = fetch
+	fetcher: typeof fetch = fetch,
+	known?: Splits
 ): Promise<Priced> {
 	const missing = [
 		street ? null : 'a street',
@@ -195,7 +214,7 @@ export async function priceAddress(
 	}
 
 	const rate = percent(answer.rate);
-	const split = await splitFor(answer.tac, fetcher);
+	const split = await splitFor(answer.tac, fetcher, known);
 	if (!Decimal.from(split.total).eq(rate)) {
 		throw new NoAnswer(
 			`CDTFA's two sources disagree about ${answer.tac}: the rate API says ` +
