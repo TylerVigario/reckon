@@ -64,6 +64,42 @@ const asJson = (r: Response): Promise<unknown> => r.json();
 export class NoAnswer extends Error {}
 
 /**
+ * How long either question may take. CDTFA answers in well under a second --
+ * measured in October 2026, the rate API in about 0.5 s and the rate layer in
+ * 0.1 to 0.3 s -- so ten seconds is a bad day, not a normal one. A site cannot
+ * be saved without a rate, so this is generous rather than tight; but it is a
+ * limit, where none at all held the person saving a site for as long as the
+ * runtime allowed.
+ */
+const TIMEOUT_MS = 10_000;
+
+/**
+ * Asks one question, and gives back the parsed answer or a NoAnswer saying why
+ * not. Nothing else gets out: running out of time, no connection, an error
+ * status and a body that is not JSON are all CDTFA not answering, and the
+ * person saving a site is told so rather than shown a 500.
+ */
+async function ask(
+	url: string,
+	fetcher: typeof fetch,
+	refused: (status: number) => string
+): Promise<unknown> {
+	try {
+		const r = await fetcher(url, {
+			headers: { accept: 'application/json' },
+			signal: AbortSignal.timeout(TIMEOUT_MS)
+		});
+		if (!r.ok) throw new NoAnswer(refused(r.status));
+		return await asJson(r);
+	} catch (e) {
+		if (e instanceof NoAnswer) throw e;
+		if (e instanceof Error && e.name === 'TimeoutError')
+			throw new NoAnswer(`CDTFA did not answer within ${TIMEOUT_MS / 1000} seconds.`);
+		throw new NoAnswer(`Could not reach CDTFA: ${e instanceof Error ? e.message : String(e)}`);
+	}
+}
+
+/**
  * Fractions CDTFA sends as JSON numbers -- 0.0775 -- added up and made a
  * percentage to four places: "7.7500". A JSON number's shortest spelling is the
  * one CDTFA wrote, so each is read from that text and never multiplied as a
@@ -106,9 +142,11 @@ export async function splitFor(
 		returnGeometry: 'false',
 		f: 'json'
 	});
-	const r = await fetcher(`${RATE_LAYER}?${q}`, { headers: { accept: 'application/json' } });
-	if (!r.ok) throw new NoAnswer(`CDTFA's rate layer answered ${r.status}`);
-	const layer = (await asJson(r)) as RateLayerAnswer;
+	const layer = (await ask(
+		`${RATE_LAYER}?${q}`,
+		fetcher,
+		(status) => `CDTFA's rate layer answered ${status}`
+	)) as RateLayerAnswer;
 	const a = layer?.features?.[0]?.attributes;
 	if (!a) throw new NoAnswer(`CDTFA's rate layer knows no area ${tac}`);
 	// County and city both come back separately; both are district taxes, so
@@ -167,15 +205,11 @@ export async function priceAddress(
 		city: String(city),
 		zip: String(postcode)
 	});
-	let body: RateApiAnswer;
-	try {
-		const r = await fetcher(`${RATE_API}?${q}`, { headers: { accept: 'application/json' } });
-		if (!r.ok) throw new NoAnswer(`CDTFA answered ${r.status} for that address.`);
-		body = (await asJson(r)) as RateApiAnswer;
-	} catch (e) {
-		if (e instanceof NoAnswer) throw e;
-		throw new NoAnswer(`Could not reach CDTFA: ${e instanceof Error ? e.message : String(e)}`);
-	}
+	const body = (await ask(
+		`${RATE_API}?${q}`,
+		fetcher,
+		(status) => `CDTFA answered ${status} for that address.`
+	)) as RateApiAnswer;
 
 	const answer = body?.taxRateInfo?.[0];
 	if (!answer) throw new NoAnswer('CDTFA did not recognise that address.');

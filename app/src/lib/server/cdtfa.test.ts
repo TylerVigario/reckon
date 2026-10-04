@@ -294,3 +294,58 @@ describe('a tax area asked about again', () => {
 		expect(asked).toBe(1);
 	});
 });
+
+/**
+ * CDTFA not answering is CDTFA not answering, however it happens: the person
+ * saving a site is told so, rather than held, or shown a 500.
+ */
+describe('when CDTFA does not answer', () => {
+	const asked = {
+		taxRateInfo: [{ rate: 0.0775, jurisdiction: 'SACRAMENTO COUNTY', tac: 'T30' }],
+		geocodeInfo: CONFIDENT
+	};
+
+	it('puts a time limit on both questions', async () => {
+		const signals: unknown[] = [];
+		const fake = fakeCdtfa(asked, layer(0.06, 0.0175, 0));
+		const watching = ((url: string, init?: RequestInit) => {
+			signals.push(init?.signal);
+			return fake(url);
+		}) as typeof fetch;
+		await priceAddress(HERE, watching);
+		expect(signals).toHaveLength(2);
+		for (const s of signals) expect(s).toBeInstanceOf(AbortSignal);
+	});
+
+	it('says so when a question runs out of time', async () => {
+		const timedOut = (() =>
+			Promise.reject(
+				new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+			)) as unknown as typeof fetch;
+		await expect(priceAddress(HERE, timedOut)).rejects.toThrow(
+			new NoAnswer('CDTFA did not answer within 10 seconds.')
+		);
+	});
+
+	it('refuses, rather than throwing something else, when the rate layer cannot be reached', async () => {
+		const fake = fakeCdtfa(asked, layer(0.06, 0.0175, 0));
+		const noLayer = ((url: string) =>
+			url.includes('arcgis')
+				? Promise.reject(new TypeError('fetch failed'))
+				: fake(url)) as typeof fetch;
+		await expect(priceAddress(HERE, noLayer)).rejects.toThrow(NoAnswer);
+	});
+
+	it('refuses when the rate layer answers with something that is not JSON', async () => {
+		const fake = fakeCdtfa(asked, layer(0.06, 0.0175, 0));
+		const garbled = ((url: string) =>
+			url.includes('arcgis')
+				? Promise.resolve({
+						ok: true,
+						status: 200,
+						json: () => Promise.reject(new SyntaxError('<html>'))
+					})
+				: fake(url)) as unknown as typeof fetch;
+		await expect(priceAddress(HERE, garbled)).rejects.toThrow(NoAnswer);
+	});
+});
