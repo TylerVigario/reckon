@@ -83,6 +83,15 @@ const evaluate = async (/** @type {string} */ expression) =>
 	(await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result
 		?.result?.value;
 const settle = (ms = 2000) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Text that may have come from the page, made fit for one line of this log.
+ * Every control character -- a line break, a terminal escape -- goes, a line
+ * break leaving a space, so nothing a page says can start a line here or pass
+ * for one of GitHub's workflow commands.
+ */
+const line = (/** @type {string} */ s) =>
+	s.replace(/(?:(?!\n)\p{Cc})+|(?=\n)/gu, ' ').replace(/\n/g, '');
 const go = async (/** @type {string} */ path) => {
 	await send('Page.navigate', { url: base + path });
 	await settle(2500);
@@ -111,7 +120,7 @@ if (base.startsWith('http:'))
 /** @type {string[]} */
 const failures = [];
 const check = (/** @type {boolean} */ pass, /** @type {string} */ what) =>
-	pass ? console.log(`  ✓ ${what}`) : failures.push(what);
+	pass ? console.log(`  ✓ ${line(what)}`) : failures.push(what);
 
 try {
 	// Signed in in this browser, as a person whose zone has never been set.
@@ -165,7 +174,7 @@ try {
 }
 
 if (failures.length) {
-	for (const f of failures) console.error(`  ✗ ${f}`);
+	for (const f of failures) console.error(`  ✗ ${line(f)}`);
 	process.exit(1);
 }
 console.log("\nA person's zone comes from their browser, and travel asks first.");
