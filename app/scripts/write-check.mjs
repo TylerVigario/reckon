@@ -695,16 +695,19 @@ if (person)
 	});
 }
 
-// What day it is, by the business's clock rather than the database server's
-// (#26). Kiritimati and Pago Pago are 25 hours apart, so at any moment they
-// sit on different dates: a screen that followed the server's zone could match
-// one of them at most. The manual entry form starts on today and refuses
-// later, so its max is the server's today, as the page was drawn.
+/** The value chosen in the list with this id, as the server drew it. */
+const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
+	const list = new RegExp(`<select[^>]*id="${id}"[^>]*>([\\s\\S]*?)</select>`).exec(html)?.[1];
+	return list ? (/<option value="([^"]*)" selected/.exec(list)?.[1] ?? '') : null;
+};
+
+// Two clocks (#26). The server works in UTC. A person's own today -- their
+// timesheet, the day a new entry starts on -- follows the zone on their user
+// record. The business's today -- overdue, ageing, report months -- follows the
+// operator's zone, the same for everyone. Kiritimati and Pago Pago are 25 hours
+// apart: at any moment they sit on different dates, and their clocks read an
+// hour apart.
 {
-	const settingsPage = await (
-		await fetch(`${base}/settings/business`, { headers: { cookie } })
-	).text();
-	const original = /id="set-timezone"[^>]*value="([^"]+)"/.exec(settingsPage)?.[1] ?? 'UTC';
 	const zoneDay = (/** @type {string} */ zone) =>
 		new Intl.DateTimeFormat('en-CA', {
 			timeZone: zone,
@@ -712,41 +715,140 @@ if (person)
 			month: '2-digit',
 			day: '2-digit'
 		}).format(new Date());
-
-	/** @type {(string | null)[]} */
-	const shown = [];
-	for (const zone of ['Pacific/Kiritimati', 'Pacific/Pago_Pago']) {
-		const before = zoneDay(zone);
-		const saved = await call('PATCH', '/api/settings', { fields: { timezone: zone } });
-		const form = await (await fetch(`${base}/timesheet/manual`, { headers: { cookie } })).text();
-		const today = /id="m-day"[^>]*?max="(\d{4}-\d{2}-\d{2})"/.exec(form)?.[1] ?? null;
-		const after = zoneDay(zone);
-		shown.push(today);
-		const ok = saved.status === 200 && (today === before || today === after);
+	const page = async (/** @type {string} */ path) =>
+		(await fetch(base + path, { headers: { cookie } })).text();
+	/** @param {boolean} ok @param {string} label @param {string} detail */
+	const record = (ok, label, detail) => {
 		if (ok) passed++;
-		else
-			failures.push(
-				`today follows the business's zone, ${zone}: ${saved.status} ${today} vs ${before}`
-			);
-		console.log(`  ${ok ? '✓' : '✗'} today follows the business's zone: ${zone} says ${today}`);
-	}
-	const apart = shown[0] !== null && shown[1] !== null && shown[0] !== shown[1];
-	if (apart) passed++;
-	else failures.push(`two zones 25 hours apart gave the same today: ${shown.join(', ')}`);
-	console.log(`  ${apart ? '✓' : '✗'} two zones 25 hours apart are never on the same day`);
-
-	// Put back as it was, typed in lower case: it is saved under Postgres's
-	// own spelling, so the browser and the database name the same zone.
-	const back = await call('PATCH', '/api/settings', {
-		fields: { timezone: original.toLowerCase() }
-	});
-	const spelled = back.status === 200 && back.body?.saved?.timezone === original;
-	if (spelled) passed++;
-	else
-		failures.push(
-			`a zone is saved under the database's spelling: ${back.status} ${JSON.stringify(back.body?.saved)}`
+		else failures.push(`${label}: ${detail}`);
+		console.log(`  ${ok ? '✓' : '✗'} ${label}`);
+	};
+	const formDay = async () =>
+		/id="m-day"[^>]*?max="(\d{4}-\d{2}-\d{2})"/.exec(await page('/timesheet/manual'))?.[1] ?? null;
+	// "1 Oct to 4 Oct 2026": this month so far, on the business's calendar.
+	const businessDay = async () => {
+		const spans = /(\d{1,2} \w{3,4}) to (\d{1,2}) (\w{3,4}) (\d{4})/.exec(
+			await page('/reports/retainers')
 		);
-	console.log(`  ${spelled ? '✓' : '✗'} a zone typed in lower case is saved as ${original}`);
+		if (!spans) return null;
+		const month = new Date(`${spans[3].slice(0, 3)} 1 2000`).getMonth() + 1;
+		return `${spans[4]}-${String(month).padStart(2, '0')}-${spans[2].padStart(2, '0')}`;
+	};
+
+	// Who "me" is, and what both zones were, to put back afterwards.
+	const people = await page('/settings/people');
+	const blocks = people.split(/(?=id="set-[0-9a-f-]{36}-role_id")/);
+	const mine = blocks.find((b) => b.includes(email));
+	const me = mine && /id="set-([0-9a-f-]{36})-role_id"/.exec(mine)?.[1];
+	const ownBefore = me ? (chosen(people, `set-${me}-timezone`) ?? '') : '';
+	const business = chosen(await page('/settings/business'), 'set-timezone') || 'UTC';
+	const setOwn = (/** @type {string} */ zone) =>
+		call('PATCH', `/api/people/${me}`, { fields: { timezone: zone } });
+	const setBusiness = (/** @type {string} */ zone) =>
+		call('PATCH', '/api/settings', { fields: { timezone: zone } });
+
+	if (!me) {
+		record(
+			false,
+			"a person's own zone is theirs",
+			'could not find who is signed in on /settings/people'
+		);
+	} else {
+		// The person's day follows their own zone.
+		/** @type {(string | null)[]} */
+		const days = [];
+		for (const zone of ['Pacific/Kiritimati', 'Pacific/Pago_Pago']) {
+			const saved = await setOwn(zone);
+			const before = zoneDay(zone);
+			const day = await formDay();
+			days.push(day);
+			record(
+				saved.status === 200 && (day === before || day === zoneDay(zone)),
+				`a person's today is theirs: in ${zone} it is ${day}`,
+				`${saved.status} ${day} vs ${before}`
+			);
+		}
+		record(
+			days[0] !== null && days[1] !== null && days[0] !== days[1],
+			'two people 25 hours apart are never on the same day',
+			days.join(', ')
+		);
+
+		// One moment -- when a draft was assembled -- drawn on each person's clock.
+		await setOwn('Pacific/Kiritimati');
+		const listing = await page('/invoices');
+		const ids = [
+			...new Set([...listing.matchAll(/\/invoices\/([0-9a-f-]{36})/g)].map((m) => m[1]))
+		];
+		/** @type {string[]} */
+		const clocks = [];
+		for (const id of ids) {
+			await setOwn('Pacific/Kiritimati');
+			const k = /Assembled (\d{2}):(\d{2})/.exec(await page(`/invoices/${id}`));
+			await setOwn('Pacific/Pago_Pago');
+			const p = /Assembled (\d{2}):(\d{2})/.exec(await page(`/invoices/${id}`));
+			if (!k || !p) continue;
+			clocks.push(`${k[1]}:${k[2]}`, `${p[1]}:${p[2]}`);
+			break;
+		}
+		const minutes = (/** @type {string} */ hm) => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3));
+		record(
+			clocks.length === 2 && (minutes(clocks[0]) - minutes(clocks[1]) + 1440) % 1440 === 60,
+			"a moment is drawn on the person's clock",
+			clocks.length
+				? `Kiritimati ${clocks[0]}, Pago Pago ${clocks[1]}`
+				: 'no draft showed when it was assembled'
+		);
+
+		// The business's day follows the business's zone, whatever the person's.
+		// Either day may turn over while it is read, so either side of the
+		// read is right.
+		const around = async (
+			/** @type {string} */ zone,
+			/** @type {() => Promise<string | null>} */ read
+		) => {
+			const before = zoneDay(zone);
+			const day = await read();
+			return { day, ok: day === before || day === zoneDay(zone) };
+		};
+		await setOwn('Pacific/Pago_Pago');
+		await setBusiness('Pacific/Kiritimati');
+		const own = await around('Pacific/Pago_Pago', formDay);
+		const biz = await around('Pacific/Kiritimati', businessDay);
+		record(
+			own.ok && biz.ok,
+			"the business's today is the business's, whatever the person's",
+			`person ${own.day}, business ${biz.day}`
+		);
+
+		// A person with no zone of their own follows the business's.
+		await setOwn('');
+		const follows = await around('Pacific/Kiritimati', formDay);
+		record(
+			follows.ok,
+			"a person with no zone set follows the business's",
+			`${follows.day} vs ${zoneDay('Pacific/Kiritimati')}`
+		);
+
+		// A zone Postgres does not know is refused, for a person and for the business.
+		const nowhere = await setOwn('Mars/Olympus_Mons');
+		const nowhereBiz = await setBusiness('Mars/Olympus_Mons');
+		record(
+			nowhere.status === 400 && nowhereBiz.status === 400,
+			'a zone that does not exist is refused',
+			`${nowhere.status} ${nowhereBiz.status}`
+		);
+
+		// Put back as they were. The business's typed in lower case, to show it
+		// is saved under Postgres's spelling.
+		await setOwn(ownBefore);
+		const back = await setBusiness(business.toLowerCase());
+		record(
+			back.status === 200 && back.body?.saved?.timezone === business,
+			`a zone typed in lower case is saved as ${business}`,
+			`${back.status} ${JSON.stringify(back.body?.saved)}`
+		);
+	}
 }
 
 console.log('');

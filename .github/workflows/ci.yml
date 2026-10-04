@@ -157,8 +157,12 @@ jobs:
       - run: npm run build --prefix app
 
       - name: A business to run the checks against
+        # The database's default zone is set to one nobody keeps. reckon opens
+        # its connections in UTC and names a zone wherever it works out a day,
+        # so nothing it shows may depend on the host's zone, and here it would.
         run: |
           createdb reckon_ci
+          psql -q -d postgres -c "ALTER DATABASE reckon_ci SET TimeZone = 'Pacific/Kiritimati'"
           db/apply.sh reckon_ci
           psql -q -v ON_ERROR_STOP=1 -d reckon_ci -f db/seed/demo.sql
           printf 'ci-only-password\nci-only-password\n' \
@@ -201,6 +205,9 @@ jobs:
         # Needs the network: creating a site is a CDTFA lookup, and the check
         # reports that as skipped rather than failed if they cannot be reached.
         run: node app/scripts/write-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+
+      - name: A person's zone comes from their browser, and travel asks first
+        run: node app/scripts/zone-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: A sign-in replaces a password hash made at older parameters
         # Every hash the steps above meet was made at today's parameters, so
