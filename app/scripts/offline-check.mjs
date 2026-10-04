@@ -73,6 +73,15 @@ const evaluate = async (/** @type {string} */ expression) =>
 	(await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result
 		?.result?.value;
 const settle = (ms = 1800) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Text that may have come from the page, made fit for one line of this log.
+ * Every control character -- a line break, a terminal escape -- goes, a line
+ * break leaving a space, so nothing a page says can start a line here or pass
+ * for one of GitHub's workflow commands.
+ */
+const line = (/** @type {string} */ s) =>
+	s.replace(/(?:(?!\n)\p{Cc})+|(?=\n)/gu, ' ').replace(/\n/g, '');
 const go = async (/** @type {string} */ path) => {
 	await send('Page.navigate', { url: base + path });
 	await settle(2000);
@@ -92,7 +101,7 @@ await send('Emulation.setDeviceMetricsOverride', {
 
 /** @type {string[]} */
 const failures = [];
-const ok = (/** @type {string} */ what) => console.log(`  ✓ ${what}`);
+const ok = (/** @type {string} */ what) => console.log(`  ✓ ${line(what)}`);
 const check = (/** @type {boolean} */ pass, /** @type {string} */ what) =>
 	pass ? ok(what) : failures.push(what);
 
@@ -297,7 +306,7 @@ check(
 
 ws.close();
 if (failures.length) {
-	for (const f of failures) console.error(`  ✗ ${f}`);
+	for (const f of failures) console.error(`  ✗ ${line(f)}`);
 	process.exit(1);
 }
 console.log(`\nOffline, ${phase}: as expected.`);

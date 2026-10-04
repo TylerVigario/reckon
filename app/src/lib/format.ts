@@ -52,11 +52,10 @@ export function pct(v: string | number | null | undefined, places = 3): string {
  * record (#lib/zone.svelte), the same on every device they use. Two people in
  * two zones each see the moment on their own clock.
  *
- * Built-ins only. Temporal says all this more directly, but Safari, and so
- * every browser on an iPhone, does not have it yet, and the server's Node
- * gets it with Node 26. A polyfill would put 20-56 KB on every phone to save
- * a few lines here. Because a date is already Temporal's own string, moving
- * to it later changes this file and nothing that calls it.
+ * Still Intl.DateTimeFormat by hand, here. Temporal is in place everywhere
+ * (hooks.client.ts, hooks.server.ts) and this file moves onto it with the one
+ * display vocabulary. Because a date is already Temporal's own string, that
+ * changes this file and nothing that calls it.
  *
  * A formatter is built once per shape and kept: making an Intl.DateTimeFormat
  * costs far more than using one, and these run for every row of a list.

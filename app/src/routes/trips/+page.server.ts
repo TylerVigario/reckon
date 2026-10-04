@@ -21,8 +21,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	const asked = url.searchParams.get('month') ?? '';
 	const day = businessToday();
 	const from = /^\d{4}-(0[1-9]|1[0-2])$/.test(asked) ? `${asked}-01` : `${day.slice(0, 8)}01`;
-	const [y, m] = from.split('-').map(Number);
-	const to = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
+	const to = Temporal.PlainDate.from(from).add({ months: 1 }).toString();
 
 	const tr = t.trip;
 	const u = t.user;
@@ -107,7 +106,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		unbilled: trips.filter((x) => !x.billed),
 		billed: trips.filter((x) => x.billed),
 		totals: {
-			month: monthOf(`${y}-${String(m).padStart(2, '0')}-01`),
+			month: monthOf(from),
 			miles: sum(legs.map((l) => l.miles)).toFixed(2),
 			trips: String(found.length),
 			rate: rate === null ? null : Decimal.from(rate).toFixed(2)

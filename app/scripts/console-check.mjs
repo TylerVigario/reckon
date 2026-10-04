@@ -88,6 +88,15 @@ const evaluate = async (/** @type {string} */ expression) =>
 		?.result?.value;
 
 const settle = (ms = 1800) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Text that may have come from the page, made fit for one line of this log.
+ * Every control character -- a line break, a terminal escape -- goes, a line
+ * break leaving a space, so nothing a page says can start a line here or pass
+ * for one of GitHub's workflow commands.
+ */
+const line = (/** @type {string} */ s) =>
+	s.replace(/(?:(?!\n)\p{Cc})+|(?=\n)/gu, ' ').replace(/\n/g, '');
 const go = async (/** @type {string} */ path) => {
 	await send('Page.navigate', { url: base + path });
 	await settle(2200);
@@ -146,7 +155,7 @@ while (queue.length) {
 	if (!heading) complaints.push(`${path}: rendered no heading`);
 
 	const fresh = complaints.length - before;
-	console.log(`  ${fresh ? '✗' : '✓'} ${path}${heading ? `  ${heading}` : ''}`);
+	console.log(line(`  ${fresh ? '✗' : '✓'} ${path}${heading ? `  ${heading}` : ''}`));
 
 	for (const href of links) {
 		const clean = href.split('#')[0];
@@ -159,7 +168,7 @@ ws.close();
 console.log('');
 if (complaints.length) {
 	console.error(`${complaints.length} problem(s) across ${visited} screen(s):`);
-	for (const c of [...new Set(complaints)]) console.error(`  ${c}`);
+	for (const c of [...new Set(complaints)]) console.error(`  ${line(c)}`);
 	process.exit(1);
 }
 console.log(`${visited} screens walked, nothing on the console.`);
