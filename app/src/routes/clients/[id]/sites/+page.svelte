@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { miles, pct, rateParts } from '#lib/format.ts';
+	import { count, miles, pct, rateParts } from '#lib/format.ts';
 	import Day from '#lib/Day.svelte';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -82,7 +82,7 @@
 						{#if s.miles}
 							<span class="rec-x">
 								{miles(s.miles, 'distance')}{#if s.minutes}
-									· {s.minutes} min{/if}
+									· {count(s.minutes, 'minute', 'short')}{/if}
 							</span>
 						{/if}
 					</div>

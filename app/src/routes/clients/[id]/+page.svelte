@@ -3,7 +3,7 @@
 	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import { parseClientField } from '#lib/client-fields.ts';
-	import { day, miles, pct, rateParts } from '#lib/format.ts';
+	import { day, daysAgo, miles, pct, rateParts } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -174,7 +174,7 @@
 					{#if data.sites.unchecked}
 						<div class="rec-c">
 							<span class="chip warn">
-								<span class="dot"></span>{data.sites.unchecked} priced over 90 days ago
+								<span class="dot"></span>{data.sites.unchecked} priced over {daysAgo(90)}
 							</span>
 						</div>
 					{/if}

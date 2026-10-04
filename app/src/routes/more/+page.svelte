@@ -23,6 +23,11 @@
 			href: '/settings',
 			title: 'Settings',
 			sub: 'The mark, the rates, the tax rules — everything you supply'
+		},
+		{
+			href: '/profile',
+			title: 'Your profile',
+			sub: 'Your time zone, and how dates and figures read for you'
 		}
 	] satisfies { href: RouteId; title: string; sub: string }[];
 </script>

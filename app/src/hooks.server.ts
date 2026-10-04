@@ -10,7 +10,10 @@ import { eq } from 'drizzle-orm';
 import { SECURE_COOKIES } from '$app/env/private';
 import { authHeaders, getAuth } from '#lib/server/auth.ts';
 import { db, schema } from '#lib/server/db/index.ts';
-import { operatorZone } from '#lib/server/zones.ts';
+import { getRequestEvent } from '$app/server';
+import { businessDefaults } from '#lib/server/business.ts';
+import { readLocaleFrom } from '#lib/format.ts';
+import { localeTag, weekStartOf, type HourCycle } from '#lib/locales.ts';
 
 /**
  * Made when the server starts rather than at its first request, so a
@@ -19,6 +22,16 @@ import { operatorZone } from '#lib/server/zones.ts';
  */
 export const init: ServerInit = () => {
 	getAuth();
+	// Every figure and date is written in the locale of the person the request
+	// is for (#lib/format). Read from the request in hand, never kept in a
+	// module, because the server is rendering for several people at once.
+	readLocaleFrom(() => {
+		try {
+			return getRequestEvent().locals.locale ?? 'en-US';
+		} catch {
+			return 'en-US';
+		}
+	});
 	// Chosen, and allowed, but never quietly: whoever reads the log should see
 	// that the session token is travelling in the clear.
 	if (!SECURE_COOKIES)
@@ -53,16 +66,27 @@ export const handle: Handle = async ({ event, resolve }) => {
 					id: found.user.id,
 					name: found.user.name,
 					email: found.user.email,
-					timezone: found.user.timezone ?? null
+					timezone: found.user.timezone ?? null,
+					locale: found.user.locale ?? null,
+					hourCycle: (found.user.hourCycle as HourCycle | null | undefined) ?? null,
+					weekStart: found.user.weekStart ?? null
 				}
 			: null;
 	if (found && found.user.active === false)
 		await db.delete(schema.session).where(eq(schema.session.userId, found.user.id));
 
-	// Whose clocks this request runs on (#lib/server/calendar): the business's,
-	// and the person's own, which follows the business's until they set it.
-	event.locals.businessZone = await operatorZone();
-	event.locals.zone = event.locals.user?.timezone ?? event.locals.businessZone;
+	// Whose clocks this request runs on (#lib/server/calendar) -- the
+	// business's, and the person's own, which follows the business's until they
+	// set it -- and how their figures read (#lib/format): their own locale,
+	// clock and week, or the business's where they have not chosen.
+	const business = await businessDefaults();
+	const me = event.locals.user;
+	event.locals.businessZone = business.zone;
+	event.locals.zone = me?.timezone ?? business.zone;
+	event.locals.businessLocale = business.locale;
+	const locale = me?.locale ?? business.locale;
+	event.locals.locale = localeTag(locale, me?.hourCycle ?? null);
+	event.locals.weekStart = me?.weekStart ?? weekStartOf(locale);
 
 	const path = event.url.pathname;
 	if (!event.locals.user && !OPEN.has(path)) {

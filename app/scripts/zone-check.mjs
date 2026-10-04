@@ -11,7 +11,7 @@
  * Uses the browser on 9222, as console-check does, and makes it look like it is
  * somewhere else with Emulation.setTimezoneOverride -- the zone Intl reports,
  * which is all the app asks. Reads the stored zone back through HTTP, from
- * /settings/people. Puts the person's zone back as it was found.
+ * their profile. Puts the person's zone back as it was found.
  */
 const [, , base, email, password] = process.argv;
 if (!base || !email || !password) {
@@ -44,8 +44,8 @@ if (!me) {
 	process.exit(1);
 }
 const stored = async () => {
-	const html = await (await fetch(base + '/settings/people', { headers: { cookie } })).text();
-	return chosen(html, `set-${me}-timezone`);
+	const html = await (await fetch(base + '/profile', { headers: { cookie } })).text();
+	return chosen(html, 'set-timezone');
 };
 const setOwn = (/** @type {string} */ zone) =>
 	fetch(`${base}/api/people/${me}`, {

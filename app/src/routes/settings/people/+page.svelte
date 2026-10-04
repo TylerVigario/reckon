@@ -2,8 +2,6 @@
 	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import { parsePersonField, parseRoleField, ROLE_FIELDS } from '#lib/people-fields.ts';
-	import { zoneName } from '#lib/format.ts';
-	import { zoneOptions } from '#lib/zone-options.ts';
 	import { parseAll } from '#lib/field-rules.ts';
 	import { readProblem } from '#lib/json.ts';
 	import { refreshAll } from '$app/navigation';
@@ -84,19 +82,6 @@
 						]
 							.filter(Boolean)
 							.join(' · ')}
-						endpoint="/api/people/{p.id}"
-						validate={parsePersonField}
-						onsaved={() => refreshAll()}
-					/>
-					<Setting
-						name="timezone"
-						key={p.id}
-						label="Time zone"
-						value={p.timezone ?? ''}
-						options={zoneOptions(p.timezone, `The business's — ${zoneName(data.businessZone)}`)}
-						hint={p.timezone
-							? 'Their own clock, on every device'
-							: 'Set from their browser when they first sign in'}
 						endpoint="/api/people/{p.id}"
 						validate={parsePersonField}
 						onsaved={() => refreshAll()}

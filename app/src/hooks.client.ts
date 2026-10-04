@@ -1,4 +1,6 @@
 import type { ClientInit } from '@sveltejs/kit/hooks';
+import { page } from '$app/state';
+import { readLocaleFrom } from '#lib/format.ts';
 
 /**
  * Temporal, before the app starts.
@@ -12,4 +14,7 @@ import type { ClientInit } from '@sveltejs/kit/hooks';
  */
 export const init: ClientInit = async () => {
 	if (!('Temporal' in globalThis)) await import('temporal-polyfill/global');
+	// Figures read in the person's locale, as the server wrote them: the root
+	// layout carries it with every page.
+	readLocaleFrom(() => (page.data.locale as string | undefined) ?? 'en-US');
 };

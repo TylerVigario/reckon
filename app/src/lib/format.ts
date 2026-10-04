@@ -15,13 +15,22 @@
  * on the way, so none is rounded by a float before it is rounded on purpose:
  * 7.2505 to three places is 7.251, where a float makes it 7.250.
  *
- * The locale is fixed here for now -- dates in British English, numbers in US
- * English -- and becomes a setting; this file is the only one that changes.
+ * IN THE READER'S LOCALE. Everything is written in the locale of the person
+ * reading -- their own, or the business's until they set one, with their clock
+ * over it (#lib/locales). Where that comes from is set once by each side
+ * (readLocaleFrom): the request in hand on the server, the page's data in the
+ * browser. Units, percentages, ranges and clocks are Intl's own, so they read
+ * as the locale writes them. A date is always written with its month in words:
+ * a date in numbers alone is year-month-day, whatever the locale.
  */
 import { Decimal, Ratio } from './decimal.ts';
 
-const DATES = 'en-GB';
-const NUMBERS = 'en-US';
+let localeOf: () => string = () => 'en-US';
+
+/** Where the reader's locale comes from, set by hooks.server.ts and hooks.client.ts. */
+export function readLocaleFrom(source: () => string): void {
+	localeOf = source;
+}
 
 const ABSENT = '—';
 
@@ -32,9 +41,18 @@ const absent = (v: Figure): v is null | undefined | '' => v === null || v === un
 /** A figure as Intl takes it exactly: its own decimal string, never a float. */
 const exact = (v: string | number) => String(v) as `${number}`;
 
+/** A figure divided by a hundred by moving its point, exactly: "7.25" is "0.0725". */
+function hundredth(v: string | number): `${number}` {
+	const s = String(v);
+	const sign = s.startsWith('-') ? '-' : '';
+	const [whole, fraction = ''] = s.replace(/^[-+]/, '').split('.');
+	const digits = whole.padStart(3, '0');
+	return `${sign}${digits.slice(0, -2)}.${digits.slice(-2)}${fraction}` as `${number}`;
+}
+
 /**
- * Made once per shape and kept: making an Intl formatter costs far more than
- * using one, and these run for every row of a list.
+ * Made once per locale and shape and kept: making an Intl formatter costs far
+ * more than using one, and these run for every row of a list.
  */
 const kept = new Map<string, unknown>();
 function once<T>(key: string, make: () => T): T {
@@ -42,10 +60,20 @@ function once<T>(key: string, make: () => T): T {
 	if (f === undefined) kept.set(key, (f = make()));
 	return f;
 }
-const numbers = (options: Intl.NumberFormatOptions) =>
-	once(`n ${JSON.stringify(options)}`, () => new Intl.NumberFormat(NUMBERS, options));
-const dates = (locale: string, options: Intl.DateTimeFormatOptions) =>
-	once(`d ${locale} ${JSON.stringify(options)}`, () => new Intl.DateTimeFormat(locale, options));
+const numbers = (options: Intl.NumberFormatOptions) => {
+	const locale = localeOf();
+	return once(
+		`n ${locale} ${JSON.stringify(options)}`,
+		() => new Intl.NumberFormat(locale, options)
+	);
+};
+const dates = (options: Intl.DateTimeFormatOptions) => {
+	const locale = localeOf();
+	return once(
+		`d ${locale} ${JSON.stringify(options)}`,
+		() => new Intl.DateTimeFormat(locale, options)
+	);
+};
 
 // ---------------------------------------------------------------- money --
 
@@ -82,13 +110,17 @@ export function quantity(v: Figure): string {
 /** A tax rate, to three places, which is how CDTFA publishes them: "7.750%". */
 export function pct(v: Figure, places = 3): string {
 	if (absent(v)) return ABSENT;
-	return `${fixed(v, places)}%`;
+	return numbers({
+		style: 'percent',
+		minimumFractionDigits: places,
+		maximumFractionDigits: places
+	}).format(hundredth(v));
 }
 
 /** A markup or a share, to as many as four places: "25%", "33.33%". A tax rate is pct. */
 export function percent(v: Figure): string {
 	if (absent(v)) return ABSENT;
-	return `${quantity(v)}%`;
+	return numbers({ style: 'percent', maximumFractionDigits: 4 }).format(hundredth(v));
 }
 
 /**
@@ -116,10 +148,17 @@ export type HoursAs = keyof typeof HOURS;
 
 export function hours(v: Figure, as: HoursAs = 'billed'): string {
 	if (absent(v)) return ABSENT;
-	return `${fixed(v, HOURS[as])} h`;
+	const places = HOURS[as];
+	return numbers({
+		style: 'unit',
+		unit: 'hour',
+		unitDisplay: 'short',
+		minimumFractionDigits: places,
+		maximumFractionDigits: places
+	}).format(exact(v));
 }
 
-/** Minutes as hours, worked out exactly before they are rounded to show: 25 is "0.4167 h". */
+/** Minutes as hours, worked out exactly before they are rounded to show: 25 is "0.4167 hr". */
 export function minutesAsHours(minutes: number, as: HoursAs = 'billed'): string {
 	const places = HOURS[as];
 	return hours(Ratio.of(minutes).div(60).round(places).toFixed(places), as);
@@ -127,7 +166,9 @@ export function minutesAsHours(minutes: number, as: HoursAs = 'billed'): string 
 
 /** Whole hours, closed up for a count beside a menu item, where a space would read as two figures: "2h". */
 export function hoursBadge(minutes: number): string {
-	return `${Ratio.of(minutes).div(60).round(0).toFixed(0)}h`;
+	return numbers({ style: 'unit', unit: 'hour', unitDisplay: 'narrow' }).format(
+		exact(Ratio.of(minutes).div(60).round(0).toFixed(0))
+	);
 }
 
 /** Miles: driven, to the tenth ("57.0 mi"); a distance between places, to the mile ("64 mi"). */
@@ -135,20 +176,35 @@ const MILES = { driven: 1, distance: 0 } as const;
 
 export function miles(v: Figure, as: keyof typeof MILES = 'driven'): string {
 	if (absent(v)) return ABSENT;
-	return `${fixed(v, MILES[as])} mi`;
+	const places = MILES[as];
+	return numbers({
+		style: 'unit',
+		unit: 'mile',
+		unitDisplay: 'short',
+		minimumFractionDigits: places,
+		maximumFractionDigits: places
+	}).format(exact(v));
 }
 
-/** A count of days or minutes, one being one: "1 day", "12 days", "5 minutes". */
-export function count(n: number, unit: 'day' | 'minute'): string {
-	return numbers({ style: 'unit', unit, unitDisplay: 'long' }).format(n);
+/**
+ * A count of days, months or minutes, one being one: "1 day", "12 days",
+ * "5 minutes" -- or shorter, where the column is narrow: "36 min", "9d".
+ */
+export function count(
+	n: number,
+	unit: 'day' | 'month' | 'minute',
+	display: 'long' | 'short' | 'narrow' = 'long'
+): string {
+	return numbers({ style: 'unit', unit, unitDisplay: display }).format(n);
 }
 
 /** Days before today: "40 days ago". */
 export function daysAgo(n: number): string {
-	return once('r days', () => new Intl.RelativeTimeFormat(NUMBERS, { numeric: 'always' })).format(
-		-n,
-		'day'
-	);
+	const locale = localeOf();
+	return once(
+		`r ${locale}`,
+		() => new Intl.RelativeTimeFormat(locale, { numeric: 'always' })
+	).format(-n, 'day');
 }
 
 /** A band of days: "0–7 days", or open-ended, "31+ days". */
@@ -169,16 +225,18 @@ export function elapsed(seconds: number, withSeconds = true): string {
 	const s = Math.max(0, Math.floor(seconds));
 	const h = Math.floor(s / 3600);
 	const m = Math.floor((s % 3600) / 60);
-	if ('DurationFormat' in Intl)
+	if ('DurationFormat' in Intl) {
+		const locale = localeOf();
 		return once(
-			`t ${withSeconds}`,
+			`t ${locale} ${withSeconds}`,
 			() =>
-				new Intl.DurationFormat(NUMBERS, {
+				new Intl.DurationFormat(locale, {
 					style: 'digital',
 					hoursDisplay: 'always',
 					secondsDisplay: withSeconds ? 'always' : 'auto'
 				})
 		).format(withSeconds ? { hours: h, minutes: m, seconds: s % 60 } : { hours: h, minutes: m });
+	}
 	// A browser too old for DurationFormat still has a clock to show.
 	const two = (n: number) => String(n).padStart(2, '0');
 	return withSeconds ? `${h}:${two(m)}:${two(s % 60)}` : `${h}:${two(m)}`;
@@ -211,10 +269,10 @@ export function increment(seconds: number | null | undefined): string {
  * sent in UTC, and drawn on the person's own clock: the zone on their user
  * record (#lib/zone.svelte), the same on every device they use.
  */
+const midnight = (iso: string) =>
+	Temporal.PlainDate.from(iso.slice(0, 10)).toZonedDateTime('UTC').epochMilliseconds;
 const onTheDay = (iso: string, options: Intl.DateTimeFormatOptions) =>
-	dates(DATES, { ...options, timeZone: 'UTC' }).format(
-		Temporal.PlainDate.from(iso.slice(0, 10)).toZonedDateTime('UTC').epochMilliseconds
-	);
+	dates({ ...options, timeZone: 'UTC' }).format(midnight(iso));
 
 /** "17 Sept" -- for a date inside a period the screen has already named. */
 export function day(iso: string | null | undefined): string {
@@ -246,11 +304,19 @@ export function monthName(iso: string | null | undefined): string {
 	return onTheDay(iso, { month: 'long' });
 }
 
-/** Two days, as a span: "1 Oct to 4 Oct 2026", the year on both ends only when they differ. */
+/** "Thursday" -- a day of the week, 1 for Monday to 7 for Sunday. */
+export function weekdayName(n: number): string {
+	// 5 January 2026 was a Monday.
+	const date = Temporal.PlainDate.from('2026-01-05').add({ days: n - 1 });
+	return onTheDay(date.toString(), { weekday: 'long' });
+}
+
+/** Two days as a span, as the locale writes one: "1–4 Oct 2026", "1 Jul 2025 – 30 Jun 2026". */
 export function span(from: string, to: string): string {
-	return from.slice(0, 4) === to.slice(0, 4)
-		? `${day(from)} to ${dated(to)}`
-		: `${dated(from)} to ${dated(to)}`;
+	return dates({ day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).formatRange(
+		midnight(from),
+		midnight(to)
+	);
 }
 
 /**
@@ -278,7 +344,7 @@ export function todayIn(zone: string, at: number = Date.now()): string {
 export function zoneName(zone: string): string {
 	try {
 		return (
-			dates('en-US', { timeZone: zone, timeZoneName: 'longGeneric' })
+			dates({ timeZone: zone, timeZoneName: 'longGeneric' })
 				.formatToParts(Date.now())
 				.find((p) => p.type === 'timeZoneName')?.value ?? zone
 		);
@@ -287,14 +353,14 @@ export function zoneName(zone: string): string {
 	}
 }
 
-/** "09:21" -- a moment, on the person's clock. */
+/** "9:21 AM", "09:21" -- a moment, on the person's clock, as their locale and clock write it. */
 export function clock(at: number | string | Date, zone: string): string {
-	return dates(DATES, { timeZone: zone, hour: '2-digit', minute: '2-digit' }).format(new Date(at));
+	return dates({ timeZone: zone, timeStyle: 'short' }).format(new Date(at));
 }
 
 /** "17 Sept 2026" -- the date of a moment, on the person's clock. */
 export function datedAt(at: number | string | Date, zone: string): string {
-	return dates(DATES, {
+	return dates({
 		timeZone: zone,
 		day: 'numeric',
 		month: 'short',

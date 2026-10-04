@@ -725,25 +725,54 @@ const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
 	};
 	const formDay = async () =>
 		/id="m-day"[^>]*?max="(\d{4}-\d{2}-\d{2})"/.exec(await page('/timesheet/manual'))?.[1] ?? null;
-	// "1 Oct to 4 Oct 2026": this month so far, on the business's calendar.
-	const businessDay = async () => {
-		const spans = /(\d{1,2} \w{3,4}) to (\d{1,2}) (\w{3,4}) (\d{4})/.exec(
-			await page('/reports/retainers')
+	/** A calendar day as #lib/format draws one, in a locale: the same Intl the server runs. */
+	const utc = (/** @type {string} */ d) =>
+		Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+	const drawn = (
+		/** @type {string} */ locale,
+		/** @type {string} */ from,
+		/** @type {string} */ to = from,
+		/** @type {Intl.DateTimeFormatOptions} */ options = {
+			day: 'numeric',
+			month: 'short',
+			year: 'numeric'
+		}
+	) =>
+		new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' }).formatRange(
+			utc(from),
+			utc(to)
 		);
-		if (!spans) return null;
-		const month = new Date(`${spans[3].slice(0, 3)} 1 2000`).getMonth() + 1;
-		return `${spans[4]}-${String(month).padStart(2, '0')}-${spans[2].padStart(2, '0')}`;
+	// This month so far, on the business's calendar: whichever zone's span the
+	// retainer meter is showing. The person reads it in British English, set below.
+	const businessDay = async () => {
+		const html = await page('/reports/retainers');
+		for (const zone of ['Pacific/Kiritimati', 'Pacific/Pago_Pago']) {
+			const d = zoneDay(zone);
+			if (html.includes(drawn('en-GB', `${d.slice(0, 8)}01`, d))) return d;
+		}
+		return null;
 	};
 
-	// Who "me" is, and what both zones were, to put back afterwards.
+	// Who "me" is and somebody who is not, and what their settings were, to put
+	// back afterwards. Their zone and locale are in their own profile.
 	const people = await page('/settings/people');
 	const blocks = people.split(/(?=id="set-[0-9a-f-]{36}-role_id")/);
 	const mine = blocks.find((b) => b.includes(email));
 	const me = mine && /id="set-([0-9a-f-]{36})-role_id"/.exec(mine)?.[1];
-	const ownBefore = me ? (chosen(people, `set-${me}-timezone`) ?? '') : '';
+	const other = blocks
+		.map((b) => /id="set-([0-9a-f-]{36})-role_id"/.exec(b)?.[1])
+		.find((id) => id && id !== me);
+	const profile = await page('/profile');
+	const before = {
+		timezone: chosen(profile, 'set-timezone') ?? '',
+		locale: chosen(profile, 'set-locale') ?? '',
+		hour_cycle: chosen(profile, 'set-hour_cycle') ?? '',
+		week_start: chosen(profile, 'set-week_start') ?? ''
+	};
 	const business = chosen(await page('/settings/business'), 'set-timezone') || 'UTC';
-	const setOwn = (/** @type {string} */ zone) =>
-		call('PATCH', `/api/people/${me}`, { fields: { timezone: zone } });
+	const setMine = (/** @type {string} */ name, /** @type {string} */ value) =>
+		call('PATCH', `/api/people/${me}`, { fields: { [name]: value } });
+	const setOwn = (/** @type {string} */ zone) => setMine('timezone', zone);
 	const setBusiness = (/** @type {string} */ zone) =>
 		call('PATCH', '/api/settings', { fields: { timezone: zone } });
 
@@ -754,6 +783,11 @@ const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
 			'could not find who is signed in on /settings/people'
 		);
 	} else {
+		// Read in British English on a 24-hour clock while this block runs, so
+		// what it reads off the pages has one shape.
+		await setMine('locale', 'en-GB');
+		await setMine('hour_cycle', 'h23');
+
 		// The person's day follows their own zone.
 		/** @type {(string | null)[]} */
 		const days = [];
@@ -782,6 +816,8 @@ const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
 		];
 		/** @type {string[]} */
 		const clocks = [];
+		/** @type {string | null} */
+		let draft = null;
 		for (const id of ids) {
 			await setOwn('Pacific/Kiritimati');
 			const k = /Assembled (\d{2}):(\d{2})/.exec(await page(`/invoices/${id}`));
@@ -789,6 +825,7 @@ const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
 			const p = /Assembled (\d{2}):(\d{2})/.exec(await page(`/invoices/${id}`));
 			if (!k || !p) continue;
 			clocks.push(`${k[1]}:${k[2]}`, `${p[1]}:${p[2]}`);
+			draft = id;
 			break;
 		}
 		const minutes = (/** @type {string} */ hm) => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3));
@@ -799,6 +836,84 @@ const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
 				? `Kiritimati ${clocks[0]}, Pago Pago ${clocks[1]}`
 				: 'no draft showed when it was assembled'
 		);
+
+		// The same moment on a 12-hour clock: the clock is theirs too.
+		if (draft) {
+			await setMine('hour_cycle', 'h12');
+			const twelve = /Assembled (\d{1,2}):(\d{2})\s?([ap]m)/i.exec(
+				await page(`/invoices/${draft}`)
+			);
+			await setMine('hour_cycle', 'h23');
+			record(
+				twelve !== null,
+				'a 12-hour clock reads as one',
+				twelve ? twelve[0] : 'no am or pm on the assembled time'
+			);
+		}
+
+		// How their dates read is theirs: the same day, in two locales.
+		const today = await formDay();
+		if (today) {
+			const full = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+			const gb = (await page('/')).includes(
+				drawn('en-GB', today, today, /** @type {any} */ (full))
+			);
+			await setMine('locale', 'en-US');
+			const us = (await page('/')).includes(
+				drawn('en-US', today, today, /** @type {any} */ (full))
+			);
+			await setMine('locale', 'en-GB');
+			record(
+				gb && us,
+				"a person's locale is how their dates read",
+				`British ${gb}, American ${us} for ${today}`
+			);
+		}
+
+		// And so is the day their week starts: every week on All entries begins
+		// on it.
+		const weeksStartOn = async (/** @type {number} */ weekday) => {
+			const html = await page('/timesheet/all');
+			const starts = [...html.matchAll(/Week of (\d{1,2}) (\w{3})/g)].map(([, d, mon]) => {
+				const month = new Date(`${mon} 1 2000`).getMonth();
+				let at = Date.UTC(new Date().getUTCFullYear(), month, +d);
+				if (at > Date.now() + 2 * 86_400_000)
+					at = Date.UTC(new Date().getUTCFullYear() - 1, month, +d);
+				return new Date(at).getUTCDay();
+			});
+			return starts.length > 0 && starts.every((w) => w === weekday);
+		};
+		await setMine('week_start', '7');
+		const sundays = await weeksStartOn(0);
+		await setMine('week_start', '1');
+		const mondays = await weeksStartOn(1);
+		record(
+			sundays && mondays,
+			"a person's week starts on their own day",
+			`Sundays ${sundays}, Mondays ${mondays}`
+		);
+
+		// A locale is saved as Intl spells it, and only if Intl can write in it.
+		const spelled = await setMine('locale', 'en-gb');
+		const nowhereLocale = await setMine('locale', 'xx-QQ');
+		record(
+			spelled.body?.saved?.locale === 'en-GB' && nowhereLocale.status === 400,
+			'a locale is saved in its own spelling, and a made-up one is refused',
+			`${spelled.status} ${JSON.stringify(spelled.body?.saved)} · ${nowhereLocale.status}`
+		);
+
+		// These are a person's own: nobody else can change them.
+		if (other) {
+			const theirs = await call('PATCH', `/api/people/${other}`, { fields: { locale: 'en-US' } });
+			const theirZone = await call('PATCH', `/api/people/${other}`, {
+				fields: { timezone: 'UTC' }
+			});
+			record(
+				theirs.status === 403 && theirZone.status === 403,
+				"somebody else's locale and zone are theirs to change",
+				`${theirs.status} ${theirZone.status}`
+			);
+		}
 
 		// The business's day follows the business's zone, whatever the person's.
 		// Either day may turn over while it is read, so either side of the
@@ -841,7 +956,7 @@ const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
 
 		// Put back as they were. The business's typed in lower case, to show it
 		// is saved under Postgres's spelling.
-		await setOwn(ownBefore);
+		for (const [name, value] of Object.entries(before)) await setMine(name, value);
 		const back = await setBusiness(business.toLowerCase());
 		record(
 			back.status === 200 && back.body?.saved?.timezone === business,

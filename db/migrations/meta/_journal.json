@@ -36,6 +36,20 @@
       "when": 1791088661595,
       "tag": "0004_person_time_zone",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791141736656,
+      "tag": "0005_locale",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791141737489,
+      "tag": "0006_date_format_gives_way_to_locale",
+      "breakpoints": true
     }
   ]
 }

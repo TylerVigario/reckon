@@ -140,7 +140,7 @@
 	);
 
 	// Everything reached through More lights More.
-	const UNDER_MORE = ['/more', '/catalogue', '/clients', '/services', '/settings'];
+	const UNDER_MORE = ['/more', '/catalogue', '/clients', '/services', '/settings', '/profile'];
 	// And a screen that hangs off Today lights Today. Unbilled work is Today's
 	// second tile opened up -- it spans time and mileage, so it belongs to
 	// neither of their tabs.
@@ -189,8 +189,15 @@
 				{/each}
 			</nav>
 			<form class="rail-foot" method="POST" action="/logout">
-				<span class="avatar" aria-hidden="true">{initials}</span>
-				<span class="who">{data.user?.name}</span>
+				<a
+					class="me"
+					href={resolve('/profile')}
+					title="Your profile"
+					aria-current={page.url.pathname === '/profile' ? 'page' : undefined}
+				>
+					<span class="avatar" aria-hidden="true">{initials}</span>
+					<span class="who">{data.user?.name}</span>
+				</a>
 				<button type="submit">Sign out</button>
 			</form>
 		</div>
@@ -1139,9 +1146,23 @@
 			place-items: center;
 			flex: 0 0 auto;
 		}
+		.rail-foot .me {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			min-width: 0;
+			color: inherit;
+			text-decoration: none;
+			border-radius: 999px;
+		}
 		.rail-foot .who {
 			font-size: 13.5px;
 			color: var(--ink-2);
+		}
+		.rail-foot .me:hover .who,
+		.rail-foot .me[aria-current='page'] .who {
+			color: var(--ink);
+			text-decoration: underline;
 		}
 		.rail-foot button {
 			margin-left: auto;

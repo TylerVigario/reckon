@@ -1,13 +1,13 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { day } from '#lib/format.ts';
+	import { count, day } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
 
-	const months = (d: number) => (d >= 60 ? `${Math.round(d / 30)} months` : `${d} days`);
+	const months = (d: number) => (d >= 60 ? count(Math.round(d / 30), 'month') : count(d, 'day'));
 
 	const who = $derived(data.operator?.short_name || 'you');
 	const sub = $derived(`${money(data.totals.owed)} out · ${money(data.totals.drafted)} in draft`);

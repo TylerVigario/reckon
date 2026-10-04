@@ -89,6 +89,7 @@ const ROUTES = [
 	'/invoices/ready',
 	'/unbilled',
 	'/more',
+	'/profile',
 	'/clients',
 	'/clients/contacts',
 	'/catalogue',

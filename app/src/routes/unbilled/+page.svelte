@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { day, hours, miles } from '#lib/format.ts';
+	import { count, day, hours, miles } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -66,10 +66,10 @@
 			<span class="sp"></span>
 			{#if data.overdue}
 				<span class="chip warn">
-					<span class="dot"></span>{data.overdue} past {data.alertDays} days
+					<span class="dot"></span>{data.overdue} past {count(data.alertDays, 'day')}
 				</span>
 			{:else}
-				<span class="chip">Nothing past {data.alertDays} days</span>
+				<span class="chip">Nothing past {count(data.alertDays, 'day')}</span>
 			{/if}
 		</div>
 		<div class="rows">
@@ -89,7 +89,7 @@
 					</div>
 					<div class="rec-n">
 						<span class="rec-v">{money(r.worth)}</span>
-						<span class="rec-x">{r.measure} · {r.days} d</span>
+						<span class="rec-x">{r.measure} · {count(r.days, 'day', 'narrow')}</span>
 					</div>
 					{#if r.href}<span class="arw" aria-hidden="true">›</span>{/if}
 				</svelte:element>
