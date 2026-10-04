@@ -31,6 +31,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
+import { releaseVersion } from './release-version.mjs';
 
 const arg = (name, fallback) => {
 	const i = process.argv.indexOf(`--${name}`);
@@ -45,8 +46,16 @@ const die = (msg) => {
 
 // The root manifest is the version of record. app/package.json is private and
 // published to nobody, so it carries 0.0.0 rather than a second number to keep
-// in step.
-const version = arg('version', JSON.parse(fs.readFileSync('package.json', 'utf8')).version);
+// in step. Checked by the same rule the release workflow uses: it names the
+// staging directory this clears, and goes into the artifact's package.json.
+let version;
+try {
+	version = releaseVersion(
+		arg('version', JSON.parse(fs.readFileSync('package.json', 'utf8')).version)
+	);
+} catch (e) {
+	die(e.message);
+}
 const outDir = path.resolve(arg('out', 'dist-release'));
 const name = `reckon-${version}`;
 const staging = path.join(outDir, name);
