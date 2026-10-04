@@ -1,3 +1,4 @@
+import { businessToday } from './calendar.ts';
 import { sql } from 'drizzle-orm';
 import { db } from './db/index.ts';
 import { operator } from './db/schema/index.ts';
@@ -24,8 +25,8 @@ export async function fiscalYear(): Promise<Period | null> {
 		with o as (select ${operator.fiscalYearEndMonth} as m from ${operator}),
 		bounds as (
 			select (date_trunc('month', make_date(
-			          extract(year from current_date)::int
-			            + case when extract(month from current_date)::int <= o.m then 0 else 1 end,
+			          extract(year from ${businessToday()}::date)::int
+			            + case when extract(month from ${businessToday()}::date)::int <= o.m then 0 else 1 end,
 			          o.m, 1)) + interval '1 month - 1 day')::date as ends_on
 			  from o where o.m is not null
 		)
@@ -41,7 +42,7 @@ export async function fiscalYear(): Promise<Period | null> {
 
 export async function lastFullMonth(): Promise<Period> {
 	const { rows } = await db.execute<Period>(sql`
-		with m as (select (date_trunc('month', current_date) - interval '1 month')::date as first_day)
+		with m as (select (date_trunc('month', ${businessToday()}::date) - interval '1 month')::date as first_day)
 		select first_day::text as start,
 		       (first_day + interval '1 month - 1 day')::date::text as end,
 		       to_char(first_day, 'FMMonth YYYY') as label,
@@ -60,12 +61,12 @@ export async function lastFullMonth(): Promise<Period> {
  */
 export async function thisMonth(): Promise<Period> {
 	const { rows } = await db.execute<Period>(sql`
-		with m as (select date_trunc('month', current_date)::date as first_day)
+		with m as (select date_trunc('month', ${businessToday()}::date)::date as first_day)
 		select first_day::text as start,
-		       current_date::text as end,
+		       ${businessToday()}::date::text as end,
 		       to_char(first_day, 'FMMonth YYYY') || ' so far' as label,
 		       to_char(first_day, 'FMDD Mon') || ' to '
-		         || to_char(current_date, 'FMDD Mon YYYY') as spans
+		         || to_char(${businessToday()}::date, 'FMDD Mon YYYY') as spans
 		  from m`);
 	return rows[0];
 }

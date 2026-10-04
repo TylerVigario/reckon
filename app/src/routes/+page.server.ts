@@ -1,5 +1,6 @@
 import { and, desc, eq, notExists, sql } from 'drizzle-orm';
-import { db, today as dbToday } from '#lib/server/db/index.ts';
+import { db } from '#lib/server/db/index.ts';
+import { businessToday, personalDay, businessDay } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { sum } from '#lib/decimal.ts';
 import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
@@ -19,7 +20,7 @@ import type { PageServerLoad } from './$types';
  * in the afternoon.
  */
 export const load: PageServerLoad = async ({ locals }) => {
-	const today = await dbToday();
+	const today = businessToday();
 	const i = t.invoice;
 	const il = t.invoiceLine;
 	const pa = t.paymentAllocation;
@@ -93,9 +94,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 		select * from (
 		select 'invoice' as kind,
 		       'Invoice ' || ${i.number} || ' · ' || ${e.name} as title,
-		       'Sent ' || to_char(${i.sentAt}, 'FMDD Mon YYYY') || ', still unpaid.' as detail,
+		       'Sent ' || to_char(${personalDay(i.sentAt)}, 'FMDD Mon YYYY') || ', still unpaid.' as detail,
 		       (coalesce(lt.gross, 0) - coalesce(a.paid, 0))::numeric(12,2)::text as amount,
-		       'Unpaid ' || (current_date - ${i.sentAt}::date) || ' days' as chip
+		       'Unpaid ' || (${businessToday()}::date - ${businessDay(i.sentAt)}) || ' days' as chip
 		  from ${i}
 		  join ${e} on ${e.id} = ${i.entityId}
 		  left join line_totals lt on lt.invoice_id = ${i.id}
@@ -103,7 +104,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		 where ${i.status} = 'sent'
 		   and coalesce(lt.gross, 0) > coalesce(a.paid, 0)
 		   and ${i.sentAt} is not null
-		   and current_date - ${i.sentAt}::date
+		   and ${businessToday()}::date - ${businessDay(i.sentAt)}
 		       > coalesce((select ${t.operator.ageingAlertDays} from ${t.operator}), 30)
 		union all
 		select 'district',
@@ -112,7 +113,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		         to_char(${s.areaVerifiedOn}, 'FMDD Mon YYYY') || '. A district can be '
 		         'added or ended in between, and every invoice since would be wrong.',
 		       null,
-		       (current_date - ${s.areaVerifiedOn}) || ' days since CDTFA was asked'
+		       (${businessToday()}::date - ${s.areaVerifiedOn}) || ' days since CDTFA was asked'
 		  from ${s}
 		  join ${e} on ${e.id} = ${s.entityId}
 		 where ${s.active} and ${rateIsStale(s.areaVerifiedOn)}

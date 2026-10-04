@@ -1,4 +1,5 @@
-import { asUser, today } from '#lib/server/db/index.ts';
+import { asUser } from '#lib/server/db/index.ts';
+import { businessToday } from '#lib/server/calendar.ts';
 import { site as sites, siteTaxCheck } from '#lib/server/db/schema/index.ts';
 import { insertNamed } from '#lib/server/slugs.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
@@ -77,7 +78,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		const optional = <T>(v: unknown, as: (v: unknown) => T) =>
 			v === null || v === undefined ? null : as(v);
 		const site = await asUser(locals.user!.id, async (tx) => {
-			const areaVerifiedOn = await today(tx);
+			const areaVerifiedOn = businessToday();
 			const [made] = await insertNamed(
 				tx,
 				{

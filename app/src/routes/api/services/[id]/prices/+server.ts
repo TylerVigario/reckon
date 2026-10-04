@@ -1,3 +1,4 @@
+import { businessToday } from '#lib/server/calendar.ts';
 import { and, eq, sql } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
 import { service, servicePrice } from '#lib/server/db/schema/index.ts';
@@ -41,7 +42,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const [same] = await db
 		.select({
 			id: servicePrice.id,
-			started: sql<boolean>`${servicePrice.effectiveFrom} < current_date`
+			started: sql<boolean>`${servicePrice.effectiveFrom} < ${businessToday()}::date`
 		})
 		.from(servicePrice)
 		.where(

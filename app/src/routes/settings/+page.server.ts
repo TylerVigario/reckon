@@ -1,5 +1,6 @@
 import { and, count, eq } from 'drizzle-orm';
-import { db, today } from '#lib/server/db/index.ts';
+import { db } from '#lib/server/db/index.ts';
+import { businessToday } from '#lib/server/calendar.ts';
 import { integration, service, user } from '#lib/server/db/schema/index.ts';
 import { operatorRow } from '#lib/server/operator.ts';
 import { loadCatalogue } from '#lib/server/valuation/load.ts';
@@ -11,7 +12,8 @@ import type { PageServerLoad } from './$types';
  * set up" without opening it.
  */
 export const load: PageServerLoad = async () => {
-	const [row, [people], [connected], mileServices, catalogue, day] = await Promise.all([
+	const day = businessToday();
+	const [row, [people], [connected], mileServices, catalogue] = await Promise.all([
 		operatorRow(),
 		db.select({ n: count() }).from(user).where(eq(user.active, true)),
 		db.select({ n: count() }).from(integration).where(eq(integration.connected, true)),
@@ -19,8 +21,7 @@ export const load: PageServerLoad = async () => {
 			.select({ id: service.id })
 			.from(service)
 			.where(and(eq(service.unit, 'mile'), eq(service.active, true))),
-		loadCatalogue(db),
-		today()
+		loadCatalogue(db)
 	]);
 	// The mileage rate, when there is exactly one service charged by the mile.
 	const mileage =

@@ -1,3 +1,4 @@
+import { businessToday } from '#lib/server/calendar.ts';
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
 import { servicePrice } from '#lib/server/db/schema/index.ts';
@@ -21,7 +22,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 				and(
 					eq(servicePrice.id, params.price),
 					eq(servicePrice.serviceId, params.id),
-					gte(servicePrice.effectiveFrom, sql`current_date`)
+					gte(servicePrice.effectiveFrom, sql`${businessToday()}::date`)
 				)
 			)
 			.returning({ id: servicePrice.id })

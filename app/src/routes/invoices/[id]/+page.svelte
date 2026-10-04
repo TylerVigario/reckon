@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { Decimal } from '#lib/decimal.ts';
 	import Top from '#lib/Top.svelte';
-	import { day, monthOf } from '#lib/format.ts';
+	import { clock, day, monthOf } from '#lib/format.ts';
+	import { personalZone } from '#lib/zone.svelte.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -72,7 +73,9 @@
 				{i.status === 'draft' ? 'Draft' : 'Sent'}
 			</span>
 			<span class="s">
-				{i.status === 'draft' ? `Assembled ${i.assembled}` : `Sent ${day(i.sent_on)}`}
+				{i.status === 'draft'
+					? `Assembled ${clock(i.assembled, personalZone())}`
+					: `Sent ${day(i.sent_on)}`}
 			</span>
 		</div>
 	</div>

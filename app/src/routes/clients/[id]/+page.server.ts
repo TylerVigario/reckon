@@ -1,7 +1,8 @@
 import { error } from '@sveltejs/kit';
 import { and, desc, eq, gte, isNull, or, sql } from 'drizzle-orm';
 import { Decimal } from '#lib/decimal.ts';
-import { db, today as dbToday } from '#lib/server/db/index.ts';
+import { db } from '#lib/server/db/index.ts';
+import { businessToday, personalDay } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
 import { findClient } from '#lib/server/find.ts';
@@ -74,7 +75,8 @@ export const load: PageServerLoad = async ({ params }) => {
 	if (!client) error(404, 'no such client');
 
 	const active = and(eq(t.site.entityId, id), eq(t.site.active, true));
-	const [[sites], levies, running, recent, today] = await Promise.all([
+	const today = businessToday();
+	const [[sites], levies, running, recent] = await Promise.all([
 		// The client page says how many places and roughly where; the sites page
 		// says everything else, because a client's terms and its addresses are
 		// two subjects.
@@ -115,7 +117,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			.where(
 				and(
 					eq(t.agreement.entityId, id),
-					or(isNull(t.agreement.endsOn), gte(t.agreement.endsOn, sql`current_date`))
+					or(isNull(t.agreement.endsOn), gte(t.agreement.endsOn, sql`${businessToday()}::date`))
 				)
 			)
 			.orderBy(sql`${t.site.display} nulls first`),
@@ -125,15 +127,14 @@ export const load: PageServerLoad = async ({ params }) => {
 				number: t.invoice.number,
 				status: t.invoice.status,
 				gross: sql<string>`coalesce(sum(${t.invoiceLine.amount} + ${t.invoiceLine.amount} * ${t.invoiceLine.taxRatePct} / 100), 0)::numeric(12,2)::text`,
-				on: sql<string>`coalesce(${t.invoice.sentAt}::date, ${t.invoice.createdAt}::date)::text`
+				on: sql<string>`coalesce(${personalDay(t.invoice.sentAt)}, ${personalDay(t.invoice.createdAt)})::text`
 			})
 			.from(t.invoice)
 			.leftJoin(t.invoiceLine, eq(t.invoiceLine.invoiceId, t.invoice.id))
 			.where(eq(t.invoice.entityId, id))
 			.groupBy(t.invoice.id)
 			.orderBy(desc(sql`coalesce(${t.invoice.sentAt}, ${t.invoice.createdAt})`))
-			.limit(5),
-		dbToday()
+			.limit(5)
 	]);
 
 	// Each running agreement -- the client's, and each site's -- with this

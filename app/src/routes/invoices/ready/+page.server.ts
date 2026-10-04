@@ -1,3 +1,4 @@
+import { businessToday } from '#lib/server/calendar.ts';
 import { sql } from 'drizzle-orm';
 import { sumMoney } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
@@ -106,8 +107,8 @@ export const load: PageServerLoad = async () => {
 		       m.made_of,
 		       ${i.periodEnd}::text as period_end,
 		       g.oldest::text as oldest_worked_on,
-		       (current_date - g.oldest)::int as days_waiting,
-		       coalesce(current_date - g.oldest > a.days, false) as aged,
+		       (${businessToday()}::date - g.oldest)::int as days_waiting,
+		       coalesce(${businessToday()}::date - g.oldest > a.days, false) as aged,
 		       coalesce(n.lines, '0') as lines,
 		       b.gross::text as gross
 		  from ${i}

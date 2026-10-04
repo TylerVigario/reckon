@@ -47,13 +47,13 @@ export function pct(v: string | number | null | undefined, places = 3): string {
  * drawn by handing its own year, month and day to a formatter set to UTC, so
  * neither the server's zone nor the phone's can move it a day.
  *
- * A moment -- when a timer started, when a row was written -- is drawn in the
- * business's time zone, not the device's. Both partners then see the same
- * clock, and it is the one the invoices and reports keep. The zone comes from
- * the operator's settings, in the layout's data.
+ * A moment -- when a timer started, when a row was written -- is stored and
+ * sent in UTC, and drawn on the person's own clock: the zone on their user
+ * record (#lib/zone.svelte), the same on every device they use. Two people in
+ * two zones each see the moment on their own clock.
  *
  * Built-ins only. Temporal says all this more directly, but Safari, and so
- * every browser on an iPhone, does not have it yet, and production's Node
+ * every browser on an iPhone, does not have it yet, and the server's Node
  * gets it with Node 26. A polyfill would put 20-56 KB on every phone to save
  * a few lines here. Because a date is already Temporal's own string, moving
  * to it later changes this file and nothing that calls it.
@@ -118,14 +118,14 @@ export function todayIn(zone: string, at: number = Date.now()): string {
 	return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
-/** "09:21" -- a moment, on the business's clock. */
+/** "09:21" -- a moment, on the person's clock. */
 export function clock(at: number | string | Date, zone: string): string {
 	return formatter('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit' }).format(
 		new Date(at)
 	);
 }
 
-/** "17 Sept 2026" -- the date of a moment, on the business's clock. */
+/** "17 Sept 2026" -- the date of a moment, on the person's clock. */
 export function datedAt(at: number | string | Date, zone: string): string {
 	return formatter('en-GB', {
 		timeZone: zone,

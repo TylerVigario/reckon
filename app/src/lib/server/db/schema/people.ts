@@ -64,6 +64,14 @@ export const user = pgTable(
 		roleId: uuid(),
 		/** Whether they count: an inactive person is not on the team a team entry pays. */
 		active: boolean().default(true).notNull(),
+		/**
+		 * The zone this person keeps their days in, as Postgres names it. Their
+		 * own timesheet, the day a new entry starts on, and every moment shown to
+		 * them are on this clock (#lib/server/calendar). Set from their browser
+		 * the first time they sign in, and theirs to change; null until then,
+		 * which follows the business's zone.
+		 */
+		timezone: text(),
 		createdAt: createdAt(),
 		updatedAt: updatedAt()
 	},

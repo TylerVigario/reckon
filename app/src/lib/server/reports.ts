@@ -1,6 +1,7 @@
 import { and, asc, between, eq, inArray, lte, gte, isNull, or, sql } from 'drizzle-orm';
 import { Decimal, sum, sumMoney } from '#lib/decimal.ts';
-import { db, today } from './db/index.ts';
+import { db } from './db/index.ts';
+import { businessToday } from './calendar.ts';
 import * as t from './db/schema/index.ts';
 import type { Period } from './periods.ts';
 import { agreementFor, team } from './valuation/entries.ts';
@@ -132,7 +133,7 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 	const { rows: unchecked } = await db.execute<{ site: string; client: string; why: string }>(sql`
 		select ${site.display} as site, ${entity.name} as client,
 		       'Last priced ' || to_char(${site.areaVerifiedOn}, 'FMDD Mon YYYY') ||
-		         ', ' || (current_date - ${site.areaVerifiedOn}) || ' days ago' as why
+		         ', ' || (${businessToday()}::date - ${site.areaVerifiedOn}) || ' days ago' as why
 		  from ${site}
 		  join ${entity} on ${entity.id} = ${site.entityId}
 		 where ${site.active} and ${rateIsStale(site.areaVerifiedOn)}
@@ -365,7 +366,7 @@ export type HourNow = {
  * from the entries.
  */
 export async function anHourNow(): Promise<HourNow[]> {
-	const day = await today();
+	const day = businessToday();
 	const catalogue = await loadCatalogue(db);
 	const names = new Map(
 		(await db.select({ id: t.user.id, name: t.user.name }).from(t.user)).map((u) => [u.id, u.name])

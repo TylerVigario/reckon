@@ -40,21 +40,22 @@ const dry = process.argv.includes('--dry-run');
 // Same connection rule as the app: the unix socket peer-authenticates, and
 // DATABASE_URL wins outright for a host that wants TCP.
 const pool = process.env.DATABASE_URL
-	? new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 })
+	? new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1, options: '-c TimeZone=UTC' })
 	: new pg.Pool({
 			host: process.env.PGHOST ?? '/var/run/postgresql',
 			database: process.env.PGDATABASE ?? 'reckon_dev',
-			max: 1
+			max: 1,
+			options: '-c TimeZone=UTC'
 		});
 const q = (/** @type {string} */ text, /** @type {unknown[]} */ values = []) =>
 	pool.query(text, values).then((r) => r.rows);
 
-// The business's calendar, as the app keeps it (#26): "stale" and the day a
-// rate was checked are both current_date. One connection, so setting it once
-// holds for every statement after.
-await q(
-	`select set_config('TimeZone', coalesce((select timezone from operator limit 1),
-	                                        current_setting('TimeZone')), false)`
+// In UTC, like the app. This runs with nobody looking, so the day it stamps
+// and judges staleness by is the business's own: the operator's zone, said
+// outright, rather than whatever zone the host happens to keep.
+const [{ today }] = await q(
+	`select (now() at time zone coalesce((select timezone from operator limit 1), 'UTC'))::date::text
+	          as today`
 );
 
 // The API wants street, city AND zip -- any one of them missing is a 400, not
@@ -69,9 +70,9 @@ const sites = await q(
 	   from site s
 	  where s.active
 	    and ${answerable}
-	    and ($1 or s.area_verified_on < current_date - $2::int)
+	    and ($1 or s.area_verified_on < $3::date - $2::int)
 	  order by s.display`,
-	[all, STALE_AFTER_DAYS]
+	[all, STALE_AFTER_DAYS, today]
 );
 
 const unanswerable = await q(
@@ -134,9 +135,9 @@ for (const s of sites) {
 			await client.query(
 				`update site
 				    set tax_rate_pct = $2, state_rate_pct = $3, district_rate_pct = $4,
-				        tax_jurisdiction = $5, tax_area_code = $6, area_verified_on = current_date
+				        tax_jurisdiction = $5, tax_area_code = $6, area_verified_on = $7::date
 				  where id = $1`,
-				[s.id, answer.rate, answer.state, answer.district, answer.jurisdiction, answer.tac]
+				[s.id, answer.rate, answer.state, answer.district, answer.jurisdiction, answer.tac, today]
 			);
 			await client.query('commit');
 		} catch (e) {

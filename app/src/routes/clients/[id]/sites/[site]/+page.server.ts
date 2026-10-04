@@ -1,3 +1,4 @@
+import { personalDay } from '#lib/server/calendar.ts';
 import { error } from '@sveltejs/kit';
 import { and, asc, count, desc, eq, notExists, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
@@ -92,7 +93,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		db
 			.select({
 				id: t.siteTaxCheck.id,
-				on: sql<string>`${t.siteTaxCheck.checkedAt}::date::text`,
+				on: sql<string>`${personalDay(t.siteTaxCheck.checkedAt)}::text`,
 				rate_pct: t.siteTaxCheck.ratePct,
 				jurisdiction: t.siteTaxCheck.taxJurisdiction,
 				changed: t.siteTaxCheck.changed,

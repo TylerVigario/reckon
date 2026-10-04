@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { and, asc, count, desc, eq, gte, isNull, or, sql } from 'drizzle-orm';
-import { db, today as dbToday } from '#lib/server/db/index.ts';
+import { db } from '#lib/server/db/index.ts';
+import { businessToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { prices, rules } from '#lib/server/catalogue.ts';
@@ -38,68 +39,57 @@ export const load: PageServerLoad = async ({ params }) => {
 		.where(and(eq(t.user.roleId, t.role.id), eq(t.user.active, true)))})`;
 	const uses = (table: typeof t.timeEntry | typeof t.tripLeg | typeof t.agreementService) =>
 		db.select({ n: count() }).from(table).where(eq(table.serviceId, service.id));
-	const [
-		priced,
-		paying,
-		covered,
-		hour,
-		roles,
-		people,
-		clients,
-		today,
-		[entries],
-		[legs],
-		[agreements]
-	] = await Promise.all([
-		prices(service.id),
-		rules(service.id),
-		// The agreements that name this service: for those clients it is not
-		// billed by the hour, and the price rows above are not what they pay.
-		db
-			.select({
-				agreement_id: t.agreement.id,
-				who: t.entity.name,
-				site: t.site.display,
-				allotment: t.agreementService.allotment,
-				hours: sql<
-					string | null
-				>`(case when ${t.agreementService.allotment} = 'capped' then ${t.agreementService.includedHours} end)::numeric(10,2)::text`
-			})
-			.from(t.agreementService)
-			.innerJoin(t.agreement, eq(t.agreement.id, t.agreementService.agreementId))
-			.innerJoin(t.entity, eq(t.entity.id, t.agreement.entityId))
-			.leftJoin(t.site, eq(t.site.id, t.agreement.siteId))
-			.where(
-				and(
-					eq(t.agreementService.serviceId, service.id),
-					or(isNull(t.agreement.endsOn), gte(t.agreement.endsOn, sql`current_date`))
+	const today = businessToday();
+	const [priced, paying, covered, hour, roles, people, clients, [entries], [legs], [agreements]] =
+		await Promise.all([
+			prices(service.id),
+			rules(service.id),
+			// The agreements that name this service: for those clients it is not
+			// billed by the hour, and the price rows above are not what they pay.
+			db
+				.select({
+					agreement_id: t.agreement.id,
+					who: t.entity.name,
+					site: t.site.display,
+					allotment: t.agreementService.allotment,
+					hours: sql<
+						string | null
+					>`(case when ${t.agreementService.allotment} = 'capped' then ${t.agreementService.includedHours} end)::numeric(10,2)::text`
+				})
+				.from(t.agreementService)
+				.innerJoin(t.agreement, eq(t.agreement.id, t.agreementService.agreementId))
+				.innerJoin(t.entity, eq(t.entity.id, t.agreement.entityId))
+				.leftJoin(t.site, eq(t.site.id, t.agreement.siteId))
+				.where(
+					and(
+						eq(t.agreementService.serviceId, service.id),
+						or(isNull(t.agreement.endsOn), gte(t.agreement.endsOn, sql`${businessToday()}::date`))
+					)
 				)
-			)
-			.orderBy(asc(t.entity.name), sql`${t.site.display} nulls first`),
-		anHourNow(),
-		// The role people hold first, so a new rule starts on the one in use.
-		db
-			.select({ id: t.role.id, name: t.role.name })
-			.from(t.role)
-			.orderBy(desc(holders), asc(t.role.name)),
-		db
-			.select({ id: t.user.id, name: t.user.name })
-			.from(t.user)
-			.where(eq(t.user.active, true))
-			.orderBy(asc(t.user.name)),
-		db
-			.select({ id: t.entity.id, name: t.entity.name })
-			.from(t.entity)
-			.where(eq(t.entity.active, true))
-			.orderBy(asc(t.entity.name)),
-		dbToday(),
-		// What would stop it being deleted: the same three things the schema
-		// refuses a delete over. Its own prices and rules do not count -- they
-		// go with it.
-		uses(t.timeEntry),
-		uses(t.tripLeg),
-		uses(t.agreementService)
-	]);
+				.orderBy(asc(t.entity.name), sql`${t.site.display} nulls first`),
+			anHourNow(),
+			// The role people hold first, so a new rule starts on the one in use.
+			db
+				.select({ id: t.role.id, name: t.role.name })
+				.from(t.role)
+				.orderBy(desc(holders), asc(t.role.name)),
+			db
+				.select({ id: t.user.id, name: t.user.name })
+				.from(t.user)
+				.where(eq(t.user.active, true))
+				.orderBy(asc(t.user.name)),
+			db
+				.select({ id: t.entity.id, name: t.entity.name })
+				.from(t.entity)
+				.where(eq(t.entity.active, true))
+				.orderBy(asc(t.entity.name)),
+			// What would stop it being deleted: the same three things the schema
+			// refuses a delete over. Its own prices and rules do not count -- they
+			// go with it.
+			uses(t.timeEntry),
+			uses(t.tripLeg),
+			uses(t.agreementService)
+		]);
 	const used = { entries: entries.n, legs: legs.n, agreements: agreements.n };
 
 	return {

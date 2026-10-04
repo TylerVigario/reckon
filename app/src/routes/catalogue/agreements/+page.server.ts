@@ -1,5 +1,6 @@
 import { Decimal, sum } from '#lib/decimal.ts';
-import { db, today } from '#lib/server/db/index.ts';
+import { db } from '#lib/server/db/index.ts';
+import { businessToday } from '#lib/server/calendar.ts';
 import { loadAgreements, usedThisMonth } from '#lib/server/valuation/load.ts';
 import { hoursOf } from '#lib/server/valuation/misc.ts';
 import type { PageServerLoad } from './$types';
@@ -15,7 +16,7 @@ import type { PageServerLoad } from './$types';
  * its site's, or the client's where the site has none of its own.
  */
 export const load: PageServerLoad = async () => {
-	const day = await today();
+	const day = businessToday();
 	const [rows, agreements] = await Promise.all([
 		db.query.agreement.findMany({
 			columns: { id: true, entityId: true, price: true, billingInterval: true, endsOn: true },
