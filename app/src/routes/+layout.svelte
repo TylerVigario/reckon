@@ -93,10 +93,15 @@
 
 	// A full-page load is the only thing that makes a browser look for a new
 	// service worker. Asking on every navigation picks up a deploy as eagerly as
-	// the page itself notices one.
+	// the page itself notices one. The asking fails whenever it cannot be
+	// answered -- no connection, or a worker still installing -- and that is
+	// nothing to report: the next navigation asks again.
 	afterNavigate(() => {
 		if ('serviceWorker' in navigator)
-			void navigator.serviceWorker.getRegistration().then((r) => r?.update());
+			void navigator.serviceWorker
+				.getRegistration()
+				.then((r) => r?.update())
+				.catch(() => {});
 	});
 
 	// Five tabs, one per kind of work.
