@@ -54,7 +54,8 @@
 		"@node-rs/argon2": "^2.2.1",
 		"better-auth": "^1.7.7",
 		"drizzle-orm": "^0.45.3",
-		"pg": "^8.23.1"
+		"pg": "^8.23.1",
+		"temporal-polyfill": "^1.0.5"
 	},
 	"overrides": {
 		"better-auth": {

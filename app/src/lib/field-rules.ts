@@ -171,12 +171,12 @@ export const anId: Parse = (v) =>
  * it next.
  */
 export const isoDate: Parse = (v) => {
-	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
-	if (!m) return no('A date, as YYYY-MM-DD.');
-	const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-	const day = new Date(Date.UTC(y, mo - 1, d));
-	if (day.getUTCFullYear() !== y || day.getUTCMonth() !== mo - 1 || day.getUTCDate() !== d)
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return no('A date, as YYYY-MM-DD.');
+	try {
+		Temporal.PlainDate.from(v);
+	} catch {
 		return no('There is no such day.');
+	}
 	return ok(v);
 };
 

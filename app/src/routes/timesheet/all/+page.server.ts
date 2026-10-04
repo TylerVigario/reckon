@@ -20,8 +20,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	const asked = url.searchParams.get('month') ?? '';
 	const day = businessToday();
 	const from = /^\d{4}-(0[1-9]|1[0-2])$/.test(asked) ? `${asked}-01` : `${day.slice(0, 8)}01`;
-	const [y, m] = from.split('-').map(Number);
-	const to = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
+	const to = Temporal.PlainDate.from(from).add({ months: 1 }).toString();
 
 	const u = alias(t.user, 'u');
 	const [entries, [operator]] = await Promise.all([
@@ -68,14 +67,15 @@ export const load: PageServerLoad = async ({ url }) => {
 			covered: w.coveredMinutes === e.minutes,
 			heads: w.heads,
 			invoiced: e.invoiced,
-			stale: !e.invoiced && e.billable && daysBetween(e.workedOn, day) > alertDays
+			stale:
+				!e.invoiced && e.billable && Temporal.PlainDate.from(e.workedOn).until(day).days > alertDays
 		};
 	});
 
 	const totals = {
 		minutes: String(entries.reduce((n, e) => n + e.minutes, 0)),
 		idle: String(entries.filter((e) => !e.billable).reduce((n, e) => n + e.minutes, 0)),
-		month: monthOf(`${y}-${String(m).padStart(2, '0')}-01`)
+		month: monthOf(from)
 	};
 
 	// One entry per week, newest first, so the page draws rather than regroups.
@@ -89,13 +89,8 @@ export const load: PageServerLoad = async ({ url }) => {
 	return { weeks, totals };
 };
 
-const DAY = 86_400_000;
-const utc = (d: string) => Date.parse(`${d}T00:00:00Z`);
-const daysBetween = (a: string, b: string) => Math.round((utc(b) - utc(a)) / DAY);
-
 /** The Monday of the week a calendar day falls in. */
 function weekOf(d: string) {
-	const at = utc(d);
-	const back = (new Date(at).getUTCDay() + 6) % 7;
-	return new Date(at - back * DAY).toISOString().slice(0, 10);
+	const day = Temporal.PlainDate.from(d);
+	return day.subtract({ days: day.dayOfWeek - 1 }).toString();
 }

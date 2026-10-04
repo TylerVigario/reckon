@@ -216,6 +216,12 @@ jobs:
           done
           node app/scripts/console-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
+      - name: A browser without Temporal gets the polyfill, and keeps it for offline
+        # This Chrome has Temporal of its own, so every check above takes the
+        # browser's path. This one takes it away before the page runs, as a
+        # phone without it would be.
+        run: node app/scripts/temporal-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+
       - name: Every write works, and the wrong ones are refused
         # Needs the network: creating a site is a CDTFA lookup, and the check
         # reports that as skipped rather than failed if they cannot be reached.

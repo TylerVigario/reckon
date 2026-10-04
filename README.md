@@ -296,9 +296,10 @@ Business), and whether an invoice is overdue, how long work has waited, report
 months and which price is in force use that, so everyone gets the same answer. A
 calendar date that is recorded — worked on, issued, due — is the string
 `2026-09-17` end to end, the same day to everyone. Moments are drawn with
-`Intl.DateTimeFormat`, each formatter built once and kept. No date library:
-Temporal will replace the little this needs once Safari ships it and the server
-runs Node 26.
+`Intl.DateTimeFormat`, each formatter built once and kept. Dates are worked with
+through Temporal: a browser or a Node that has it uses its own, and one that does
+not gets `temporal-polyfill` first — on a phone only where it is missing, kept by
+the service worker for offline, and on the server until Node 26.
 
 adapter-node emits a standalone server. How it is then run — the service
 manager, the reverse proxy, the certificates — is the host's business, past

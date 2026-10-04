@@ -8,10 +8,8 @@ import { billedAmount, jobRate, priceOn, type Price, type ServiceTerms } from '.
  * onto the 28th.
  */
 export function billingDate(month: string, anchorDay: number): string {
-	const [y, m] = month.split('-').map(Number);
-	const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-	const d = Math.min(anchorDay, last);
-	return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+	// `with` keeps the day inside the month: the 31st of February is its last.
+	return Temporal.PlainDate.from(month).with({ day: anchorDay }).toString();
 }
 
 /** Minutes as hours to the hundredth: 75 is "1.25". */

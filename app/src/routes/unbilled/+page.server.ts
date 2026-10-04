@@ -41,9 +41,10 @@ export const load: PageServerLoad = async () => {
 				.from(t.invoiceLine)
 				.where(eq(column, id))
 		);
-	const lastMonth = new Date(Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 2, 1))
-		.toISOString()
-		.slice(0, 10);
+	const lastMonth = Temporal.PlainDate.from(day)
+		.with({ day: 1 })
+		.subtract({ months: 1 })
+		.toString();
 
 	const [entries, legs, given, [operator], team] = await Promise.all([
 		db
@@ -108,8 +109,7 @@ export const load: PageServerLoad = async () => {
 	]);
 	const [worth, legWorth] = await Promise.all([valueEntries(db, entries), valueLegs(db, legs)]);
 	const alertDays = operator?.days ?? 30;
-	const daysSince = (d: string) =>
-		Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${d}T00:00:00Z`)) / 86_400_000);
+	const daysSince = (d: string) => Temporal.PlainDate.from(d).until(day).days;
 	const hours = (minutes: number) => Ratio.of(minutes).div(60).round(4).toFixed(4);
 
 	const work = entries.flatMap((e) => {

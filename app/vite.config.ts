@@ -80,6 +80,8 @@ export default defineConfig({
 	 */
 	test: {
 		include: ['src/**/*.test.ts'],
-		environment: 'node'
+		environment: 'node',
+		// Temporal, as hooks.server.ts and hooks.client.ts provide it to the app.
+		setupFiles: ['temporal-polyfill/global']
 	}
 });

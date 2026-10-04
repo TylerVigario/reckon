@@ -159,8 +159,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			)
 		);
 	const worth = await valueEntries(db, unbilled);
-	const daysAgo = (d: string) =>
-		Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${d}T00:00:00Z`)) / 86_400_000);
+	const daysAgo = (d: string) => Temporal.PlainDate.from(d).until(today).days;
 	const buckets = new Map<string, { n: number; worth: (string | null)[]; oldest: number }>();
 	for (const entry of unbilled) {
 		const w = worth.get(entry.id)!;
