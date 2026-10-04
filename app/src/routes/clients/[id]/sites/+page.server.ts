@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { findClient } from '#lib/server/find.ts';
+import { businessToday } from '#lib/server/calendar.ts';
 import { rateIsStale } from '#lib/server/stale.ts';
 import type { PageServerLoad } from './$types';
 
@@ -54,7 +55,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		       ${si.districtRatePct}::text as district_rate_pct,
 		       ${si.taxJurisdiction} as jurisdiction,
 		       ${si.taxAreaCode} as tax_area_code,
-		       ${rateIsStale(si.areaVerifiedOn)} as stale,
+		       ${rateIsStale(si.areaVerifiedOn, businessToday())} as stale,
 		       ${si.roundTripMiles}::text as miles,
 		       ${si.driveMinutes} as minutes,
 		       ${si.areaVerifiedOn}::text as verified_on,

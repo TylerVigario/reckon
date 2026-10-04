@@ -156,6 +156,16 @@ jobs:
       - uses: ./.github/actions/setup
       - run: npm run build --prefix app
 
+      - name: The tax-rate refresh starts, outside SvelteKit
+        # It runs under plain Node and imports the app's own CDTFA client and
+        # staleness rule, so a $app import anywhere beneath them stops it before
+        # it asks about anything. An empty database has no sites, so this needs
+        # no network: it proves the script loads, connects and finds its day.
+        run: |
+          createdb reckon_empty
+          db/apply.sh reckon_empty
+          PGDATABASE=reckon_empty node app/scripts/refresh-tax-rates.mjs --dry-run
+
       - name: A business to run the checks against
         # The database's default zone is set to one nobody keeps. reckon opens
         # its connections in UTC and names a zone wherever it works out a day,

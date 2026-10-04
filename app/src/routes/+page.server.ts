@@ -116,7 +116,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		       (${businessToday()}::date - ${s.areaVerifiedOn}) || ' days since CDTFA was asked'
 		  from ${s}
 		  join ${e} on ${e.id} = ${s.entityId}
-		 where ${s.active} and ${rateIsStale(s.areaVerifiedOn)}
+		 where ${s.active} and ${rateIsStale(s.areaVerifiedOn, businessToday())}
 		) d
 		 -- Critical before warning, by severity rather than by how the kind
 		 -- column happens to sort.
