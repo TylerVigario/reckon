@@ -4,6 +4,9 @@ import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
+import { balances } from '#lib/server/balances.ts';
+import { taxRounding } from '#lib/server/business.ts';
+import { lineTaxSql } from '#lib/server/tax-rules.ts';
 import { day, monthName } from '#lib/format.ts';
 import type { PageServerLoad } from './$types';
 
@@ -15,6 +18,8 @@ import type { PageServerLoad } from './$types';
  * still says what June said, whatever the rate table says today.
  */
 export const load: PageServerLoad = async ({ params }) => {
+	const rounding = await taxRounding();
+	const owing = balances(rounding);
 	if (!UUID.test(params.id)) error(404, 'no such invoice');
 
 	const i = t.invoice;
@@ -103,19 +108,26 @@ export const load: PageServerLoad = async ({ params }) => {
 		select
 		  coalesce(sum(${il.amount}) filter (where not ${il.taxable}), 0)::text as untaxed,
 		  coalesce(sum(${il.amount}) filter (where ${il.taxable}), 0)::text     as taxable_measure,
-		  -- The tax to the cent, once for the invoice, and what is due with it:
-		  -- the same figure the invoice list and every balance use.
-		  round(coalesce(sum(${il.amount} * ${il.taxRatePct} / 100), 0), 2)::text as tax,
-		  (coalesce(sum(${il.amount}), 0)
-		   + round(coalesce(sum(${il.amount} * ${il.taxRatePct} / 100), 0), 2))::text as due,
+		  -- The tax, rounded as the business's tax rule rounds it, and what is due
+		  -- with it: the same figures the invoice list and every balance use.
+		  (select b.tax from ${owing} b where b.invoice_id = ${params.id})::text as tax,
+		  (select b.gross from ${owing} b where b.invoice_id = ${params.id})::text as due,
 		  -- Reg 1701, where the operator has made that election: goods resold
 		  -- after tax was paid on them come off the measure, at the cost
 		  -- recorded on each line, and the return is taxed line by line on
 		  -- what is left.
 		  coalesce(sum(${il.exTaxCost}) filter (where ${il.taxable} and o.claims), 0)::text as resold,
-		  round(coalesce(sum((${il.amount} - case when o.claims then coalesce(${il.exTaxCost}, 0)
-		                                         else 0 end) * ${il.taxRatePct} / 100)
-		                       filter (where ${il.taxable}), 0), 2)::text as due_on_return,
+		  ${lineTaxSql(
+				// The election read here rather than from o: this is a query of its
+				// own, and o belongs to the totals around it.
+				sql`(${il.amount} - case when (select coalesce(bool_or(${t.operator.claimsTaxPaidPurchasesResold}), false)
+				                                 from ${t.operator})
+				                         then coalesce(${il.exTaxCost}, 0) else 0 end)
+				    * ${il.taxRatePct} / 100`,
+				rounding,
+				2,
+				sql`from ${il} where ${il.invoiceId} = ${params.id} and ${il.taxable}`
+			)}::text as due_on_return,
 		  max(${si.taxJurisdiction}) as district,
 		  max(${il.taxRatePct})::text as rate_pct,
 		  max(${si.stateRatePct})::text as state_rate_pct,

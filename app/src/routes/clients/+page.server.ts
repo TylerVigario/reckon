@@ -2,6 +2,7 @@ import { and, count, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
+import { taxRounding } from '#lib/server/business.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { rateIsStale } from '#lib/server/stale.ts';
 import type { PageServerLoad } from './$types';
@@ -14,6 +15,7 @@ import type { PageServerLoad } from './$types';
  * a client is that client's sites, not the address book's.
  */
 export const load: PageServerLoad = async () => {
+	const owing = balances(await taxRounding());
 	const e = t.entity;
 	const si = t.site;
 	const ec = t.entityContact;
@@ -30,7 +32,7 @@ export const load: PageServerLoad = async () => {
 		owed: string;
 	}>(sql`
 		with owing as (
-			select entity_id, sum(owed) as owed from ${balances} b
+			select entity_id, sum(owed) as owed from ${owing} b
 			 where status = 'sent' group by entity_id
 		)
 		select ${e.id} as id, ${e.slug} as slug, ${e.name} as name, ${e.active} as active,

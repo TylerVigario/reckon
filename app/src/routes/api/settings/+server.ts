@@ -8,6 +8,7 @@ import { parseField } from '#lib/settings-fields.ts';
 import { verifyPlace } from '#lib/server/verify-place.ts';
 import { knownZone } from '#lib/server/zones.ts';
 import { rememberBusiness } from '#lib/server/business.ts';
+import type { TaxRuleSet } from '#lib/server/tax-rules.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
 import { readFields } from '#lib/json.ts';
@@ -145,6 +146,8 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 	// The business's clock and locale move the moment they are saved.
 	if (typeof row.timezone === 'string') await rememberBusiness({ zone: row.timezone });
 	if (typeof row.locale === 'string') await rememberBusiness({ locale: row.locale });
+	if (typeof row.tax_rule_set === 'string')
+		await rememberBusiness({ taxRuleSet: row.tax_rule_set as TaxRuleSet });
 
 	// The stored values go back, not the submitted ones: "usd" is saved as USD
 	// and #4F6D8A as #4f6d8a, and the field should show what is actually there.

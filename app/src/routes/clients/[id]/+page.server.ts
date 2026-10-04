@@ -1,10 +1,11 @@
 import { hours } from '#lib/format.ts';
 import { error } from '@sveltejs/kit';
-import { and, desc, eq, gte, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, gte, isNull, or, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday, personalDay } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
+import { taxRounding } from '#lib/server/business.ts';
 import { findClient } from '#lib/server/find.ts';
 import { loadAgreements, usedThisMonth } from '#lib/server/valuation/load.ts';
 import { hoursOf } from '#lib/server/valuation/misc.ts';
@@ -19,6 +20,7 @@ import type { PageServerLoad } from './$types';
  * client can work in two districts.
  */
 export const load: PageServerLoad = async ({ params }) => {
+	const owing = balances(await taxRounding());
 	const { id } = await findClient(params.id);
 	const e = t.entity;
 	const ec = t.entityContact;
@@ -48,7 +50,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	}>(sql`
 		with owing as (
 			select entity_id, sum(owed) as owed, count(*) filter (where owed > 0) as out
-			  from ${balances} b
+			  from ${owing} b
 			 where status = 'sent' group by entity_id
 		)
 		select ${e.id} as id, ${e.slug} as slug, ${e.name} as name, ${e.active} as active,
@@ -122,19 +124,18 @@ export const load: PageServerLoad = async ({ params }) => {
 			)
 			.orderBy(sql`${t.site.display} nulls first`),
 		db
-			.select({
-				id: t.invoice.id,
-				number: t.invoice.number,
-				status: t.invoice.status,
-				gross: sql<string>`coalesce(sum(${t.invoiceLine.amount} + ${t.invoiceLine.amount} * ${t.invoiceLine.taxRatePct} / 100), 0)::numeric(12,2)::text`,
-				on: sql<string>`coalesce(${personalDay(t.invoice.sentAt)}, ${personalDay(t.invoice.createdAt)})::text`
-			})
-			.from(t.invoice)
-			.leftJoin(t.invoiceLine, eq(t.invoiceLine.invoiceId, t.invoice.id))
-			.where(eq(t.invoice.entityId, id))
-			.groupBy(t.invoice.id)
-			.orderBy(desc(sql`coalesce(${t.invoice.sentAt}, ${t.invoice.createdAt})`))
-			.limit(5)
+			.execute<{ id: string; number: string; status: string; gross: string; on: string }>(
+				sql`
+				select ${t.invoice.id} as id, ${t.invoice.number} as number, ${t.invoice.status} as status,
+				       b.gross::numeric(12,2)::text as gross,
+				       coalesce(${personalDay(t.invoice.sentAt)}, ${personalDay(t.invoice.createdAt)})::text as on
+				  from ${t.invoice}
+				  join ${owing} b on b.invoice_id = ${t.invoice.id}
+				 where ${t.invoice.entityId} = ${id}
+				 order by coalesce(${t.invoice.sentAt}, ${t.invoice.createdAt}) desc
+				 limit 5`
+			)
+			.then((r) => r.rows)
 	]);
 
 	// Each running agreement -- the client's, and each site's -- with this

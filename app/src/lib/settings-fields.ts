@@ -100,7 +100,6 @@ export const FIELDS: Record<string, Parse> = {
 			}
 		})
 	),
-	rounding_mode: oneOf(['half_up', 'half_even']),
 	tax_rule_set: oneOf(['none', 'us_ca', 'flat_per_site']),
 	default_markup_pct: orDefault('25', decimal(7, 4)),
 

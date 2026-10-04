@@ -13,12 +13,21 @@
  * figure ever passes through a JS number on the way.
  */
 
-export type Rounding = 'half_up' | 'half_even';
+/**
+ * How a value is rounded to a number of places, each measured from zero, so a
+ * credit rounds as the mirror of a charge:
+ *
+ *   half_up    a half or more goes up, away from zero
+ *   half_even  a half goes to the even neighbour
+ *   down       towards zero: what is left over is dropped
+ *   up         away from zero: anything left over goes up
+ */
+export type Rounding = 'half_up' | 'half_even' | 'down' | 'up';
 
 const TEN = 10n;
 const pow10 = (n: number): bigint => TEN ** BigInt(n);
 
-/** a / b rounded to an integer, b > 0. half_up takes a tie away from zero. */
+/** a / b rounded to an integer, b > 0, by `mode` (see Rounding). */
 function divRound(a: bigint, b: bigint, mode: Rounding): bigint {
 	if (b <= 0n) throw new RangeError('Division by zero or a negative divisor.');
 	const negative = a < 0n;
@@ -26,7 +35,13 @@ function divRound(a: bigint, b: bigint, mode: Rounding): bigint {
 	let q = m / b;
 	const r = m % b;
 	const twice = r * 2n;
-	if (twice > b || (twice === b && (mode === 'half_up' || q % 2n === 1n))) q += 1n;
+	const up =
+		mode === 'up'
+			? r > 0n
+			: mode === 'down'
+				? false
+				: twice > b || (twice === b && (mode === 'half_up' || q % 2n === 1n));
+	if (up) q += 1n;
 	return negative ? -q : q;
 }
 

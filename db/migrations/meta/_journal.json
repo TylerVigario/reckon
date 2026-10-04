@@ -50,6 +50,13 @@
       "when": 1791141737489,
       "tag": "0006_date_format_gives_way_to_locale",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791150538644,
+      "tag": "0007_tax_rounding_is_each_rules_own",
+      "breakpoints": true
     }
   ]
 }
