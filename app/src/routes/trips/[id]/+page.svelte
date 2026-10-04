@@ -1,13 +1,11 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { dated } from '#lib/format.ts';
+	import { dated, miles } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
-
-	const miles = (v: string) => `${Number(v).toFixed(1)} mi`;
 
 	// house_to_a and the rest say what a leg IS; this says it in words.
 	const RULE: Record<string, string> = {

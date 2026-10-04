@@ -15,6 +15,7 @@ import {
 import { billedAmount, jobRate, priceOn } from './valuation/pricing.ts';
 import { ruleOn, timePay } from './valuation/pay.ts';
 import { rateIsStale } from './stale.ts';
+import { dated, daysAgo } from '#lib/format.ts';
 import { Ratio } from '#lib/decimal.ts';
 
 /**
@@ -130,10 +131,15 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 		 group by ${site.taxJurisdiction}
 		 order by 1`);
 
-	const { rows: unchecked } = await db.execute<{ site: string; client: string; why: string }>(sql`
+	const { rows: stale } = await db.execute<{
+		site: string;
+		client: string;
+		priced_on: string;
+		days: number;
+	}>(sql`
 		select ${site.display} as site, ${entity.name} as client,
-		       'Last priced ' || to_char(${site.areaVerifiedOn}, 'FMDD Mon YYYY') ||
-		         ', ' || (${businessToday()}::date - ${site.areaVerifiedOn}) || ' days ago' as why
+		       ${site.areaVerifiedOn}::text as priced_on,
+		       ${businessToday()}::date - ${site.areaVerifiedOn} as days
 		  from ${site}
 		  join ${entity} on ${entity.id} = ${site.entityId}
 		 where ${site.active} and ${rateIsStale(site.areaVerifiedOn, businessToday())}
@@ -163,7 +169,11 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 		districts,
 		due: sumMoney(districts.map((d) => d.tax)),
 		claimsResold: claims,
-		unchecked,
+		unchecked: stale.map(({ site, client, priced_on, days }) => ({
+			site,
+			client,
+			why: `Last priced ${dated(priced_on)}, ${daysAgo(days)}`
+		})),
 		overrides
 	};
 }

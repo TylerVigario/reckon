@@ -1,20 +1,18 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { day } from '#lib/format.ts';
+	import { day, minutesAsHours } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
 
-	const hours = (m: number) => (m / 60).toFixed(4);
-
 	const sub = $derived(
 		[
 			data.totals?.month,
-			`${Math.round(Number(data.totals?.minutes ?? 0) / 60)} h`,
+			minutesAsHours(Number(data.totals?.minutes ?? 0), 'whole'),
 			Number(data.totals?.idle ?? 0) > 0
-				? `${(Number(data.totals.idle) / 60).toFixed(1)} h non-billable`
+				? `${minutesAsHours(Number(data.totals.idle), 'glance')} non-billable`
 				: null
 		]
 			.filter(Boolean)
@@ -54,7 +52,7 @@
 								<span class="rec-v mut">—</span>
 							{/if}
 							<span class="rec-x">
-								{hours(e.minutes)} h{#if e.heads > 1}
+								{minutesAsHours(e.minutes)}{#if e.heads > 1}
 									×{e.heads}{/if}
 							</span>
 						</div>

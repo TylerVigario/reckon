@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { hours } from '#lib/format.ts';
 	import Top from '#lib/Top.svelte';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
@@ -6,7 +7,7 @@
 
 	let { data }: PageProps = $props();
 
-	const hrs = (v: string | null | undefined) => (v ? `${Number(v).toFixed(2)} h` : '—');
+	const hrs = (v: string | null | undefined) => hours(v, 'allotted');
 	const PERIOD: Record<string, string> = {
 		weekly: 'week',
 		monthly: 'month',

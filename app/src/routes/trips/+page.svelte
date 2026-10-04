@@ -1,13 +1,11 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { day } from '#lib/format.ts';
+	import { day, miles } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
-
-	const miles = (v: string) => `${Number(v).toFixed(1)} mi`;
 
 	// Built here rather than in the markup: an {#if} inside a sentence eats the
 	// space in front of its separator, which reads as "Avery Lind· Harbor Light Dental".

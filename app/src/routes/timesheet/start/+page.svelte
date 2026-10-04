@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { pct } from '#lib/format.ts';
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import Top from '#lib/Top.svelte';
@@ -104,7 +105,7 @@
 					<option value={null}>{entityId ? 'Which site' : 'Choose who pays first'}</option>
 					{#each sites as st (st.id)}<option value={st.id}>{st.label}</option>{/each}
 				</select>
-				{#if site?.rate_pct}<span class="hint">{Number(site.rate_pct).toFixed(3)}%</span>{/if}
+				{#if site?.rate_pct}<span class="hint">{pct(site.rate_pct)}</span>{/if}
 			</span>
 		</div>
 

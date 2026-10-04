@@ -3,7 +3,7 @@
 	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import { parseClientField } from '#lib/client-fields.ts';
-	import { day, pct } from '#lib/format.ts';
+	import { day, miles, pct, rateParts } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -32,11 +32,7 @@
 		district_rate_pct: string;
 	}) =>
 		[
-			Number(l.district_rate_pct) > 0
-				? `${Number(l.state_rate_pct).toFixed(3)}% state + ${Number(l.district_rate_pct).toFixed(
-						3
-					)}% district`
-				: `${Number(l.state_rate_pct).toFixed(3)}% state, no district`,
+			rateParts(l.state_rate_pct, l.district_rate_pct),
 			`${l.sites} ${Number(l.sites) === 1 ? 'site' : 'sites'}`,
 			`priced ${day(l.priced_on)}`
 		].join(' · ');
@@ -186,7 +182,7 @@
 				<div class="rec-n">
 					<span class="rec-v mut">{data.sites.n}</span>
 					{#if data.sites.miles}
-						<span class="rec-x">up to {Number(data.sites.miles).toFixed(0)} mi</span>
+						<span class="rec-x">up to {miles(data.sites.miles, 'distance')}</span>
 					{/if}
 				</div>
 				<span class="arw" aria-hidden="true">›</span>

@@ -1,21 +1,15 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { pct } from '#lib/format.ts';
+	import { miles, pct, rateParts } from '#lib/format.ts';
 	import Day from '#lib/Day.svelte';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
 
-	// What the total is made of. A county with no district tax says so rather
-	// than showing a 0.000 that reads like a figure -- Tuolumne really does charge
-	// the state's share and nothing else.
+	// What the total is made of.
 	const made = (s: { state_rate_pct: string; district_rate_pct: string }) =>
-		Number(s.district_rate_pct) > 0
-			? `${Number(s.state_rate_pct).toFixed(3)} state + ${Number(s.district_rate_pct).toFixed(
-					3
-				)} district`
-			: `${Number(s.state_rate_pct).toFixed(3)} state, no district`;
+		rateParts(s.state_rate_pct, s.district_rate_pct);
 
 	// Who to ask for when you get there. A site that names nobody falls back to
 	// the client's primary, and says so -- asking for the wrong person at the
@@ -87,7 +81,7 @@
 						<span class="rec-v">{pct(s.rate_pct)}</span>
 						{#if s.miles}
 							<span class="rec-x">
-								{Number(s.miles).toFixed(0)} mi{#if s.minutes}
+								{miles(s.miles, 'distance')}{#if s.minutes}
 									· {s.minutes} min{/if}
 							</span>
 						{/if}

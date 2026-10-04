@@ -1,3 +1,4 @@
+import { count } from '#lib/format.ts';
 import { fail, redirect } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
 import { eq } from 'drizzle-orm';
@@ -28,7 +29,7 @@ export const actions: Actions = {
 		if (wait)
 			return fail(429, {
 				email,
-				message: `Too many tries from here. Try again in ${Math.ceil(wait / 60)} minutes.`
+				message: `Too many tries from here. Try again in ${count(Math.ceil(wait / 60), 'minute')}.`
 			});
 
 		let userId: string;

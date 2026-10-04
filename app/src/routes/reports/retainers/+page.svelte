@@ -1,12 +1,11 @@
 <script lang="ts">
+	import { hours, percent } from '#lib/format.ts';
 	import Top from '#lib/Top.svelte';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
-
-	const hours = (v: string | null) => (v === null ? '—' : `${Number(v).toFixed(2)} h`);
 
 	/** Usage, read against what the allotment allows. */
 	const usage = (m: {
@@ -16,10 +15,10 @@
 		hours_left: string | null;
 	}) =>
 		m.allotment === 'unlimited'
-			? `${hours(m.hours_used)} used of unlimited`
+			? `${hours(m.hours_used, 'allotted')} used of unlimited`
 			: m.allotment === 'capped'
-				? `${hours(m.hours_used)} used of ${hours(m.cap_hours)} · ${hours(m.hours_left)} left`
-				: `${hours(m.hours_used)} used, nothing included`;
+				? `${hours(m.hours_used, 'allotted')} used of ${hours(m.cap_hours, 'allotted')} · ${hours(m.hours_left, 'allotted')} left`
+				: `${hours(m.hours_used, 'allotted')} used, nothing included`;
 </script>
 
 <Top
@@ -47,8 +46,8 @@
 							{/each}
 							{#each r.responders as who (who.person)}
 								<div class="rec-s">
-									{who.person} · {hours(who.hours)}, {who.share}% of the covered time · {who.paid ===
-									null
+									{who.person} · {hours(who.hours, 'allotted')}, {percent(who.share)} of the covered time
+									· {who.paid === null
 										? 'pay not known until the month is charged'
 										: `${money(who.paid)} for it`}
 								</div>

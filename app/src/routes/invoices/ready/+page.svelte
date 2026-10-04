@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { day } from '#lib/format.ts';
+	import { day, pct } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -21,7 +21,7 @@
 		const who = [
 			d.contact,
 			d.rate_pct && Number(d.rate_pct) > 0
-				? `${d.area ? d.area + ' ' : ''}${Number(d.rate_pct).toFixed(3)}%`
+				? `${d.area ? d.area + ' ' : ''}${pct(d.rate_pct)}`
 				: null,
 			d.period_end ? 'period close' : null
 		]
