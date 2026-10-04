@@ -115,6 +115,11 @@ jobs:
       # at: parsed at midnight, 1 Jan reads as 31 Dec at UTC-11.
       - name: And again at both ends of the date line
         run: npm run test:tz --prefix app
+      # The rule a release's version is checked by, before it becomes a tag.
+      # Node's own runner: the release workflow runs the rule before anything
+      # is installed, so it has no dependencies to test with either.
+      - name: What a release may be numbered
+        run: node --test 'scripts/*.test.mjs'
 
   behaviour:
     name: Behaviour
