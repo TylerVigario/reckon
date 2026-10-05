@@ -58,6 +58,23 @@ const send = (/** @type {string} */ method, /** @type {Record<string, unknown>} 
 const evaluate = async (/** @type {string} */ expression) =>
 	(await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result
 		?.result?.value;
+/**
+ * Runs `fn` in the page with `args` handed to it as values. The function's
+ * source is this file's own; nothing is written into it, so no value -- a
+ * password, what is typed into a field -- can become code the page runs.
+ */
+const run = async (/** @type {Function} */ fn, /** @type {unknown[]} */ ...args) => {
+	const page = await send('Runtime.evaluate', { expression: 'globalThis' });
+	return (
+		await send('Runtime.callFunctionOn', {
+			objectId: page.result?.result?.objectId,
+			functionDeclaration: fn.toString(),
+			arguments: args.map((value) => ({ value })),
+			awaitPromise: true,
+			returnByValue: true
+		})
+	).result?.result?.value;
+};
 const settle = (ms = 2000) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -87,11 +104,15 @@ const check = (/** @type {boolean} */ pass, /** @type {string} */ what) =>
 
 /** A field typed into, as a person does: its value, then the event the page listens for. */
 const type = (/** @type {string} */ field, /** @type {string} */ value) =>
-	evaluate(`(() => {
-		const f = document.querySelector(${JSON.stringify(field)});
-		f.value = ${JSON.stringify(value)};
-		f.dispatchEvent(new Event('input', { bubbles: true }));
-	})()`);
+	run(
+		(/** @type {string} */ selector, /** @type {string} */ typed) => {
+			const f = /** @type {HTMLInputElement} */ (document.querySelector(selector));
+			f.value = typed;
+			f.dispatchEvent(new Event('input', { bubbles: true }));
+		},
+		field,
+		value
+	);
 /** @returns {Promise<{ start: string; took: string; end: string; nextDay: boolean }>} */
 const fields = () =>
 	evaluate(`({
@@ -114,11 +135,17 @@ const shows = async (
 
 await go('/login');
 if (await evaluate(`!!document.querySelector('input[name=password]')`)) {
-	await evaluate(`(() => {
-		document.querySelector('input[name=email]').value = ${JSON.stringify(email)};
-		document.querySelector('input[name=password]').value = ${JSON.stringify(password)};
-		document.querySelector('form').requestSubmit();
-	})()`);
+	await run(
+		(/** @type {string} */ who, /** @type {string} */ secret) => {
+			const field = (/** @type {string} */ name) =>
+				/** @type {HTMLInputElement} */ (document.querySelector(`input[name=${name}]`));
+			field('email').value = who;
+			field('password').value = secret;
+			document.querySelector('form')?.requestSubmit();
+		},
+		email,
+		password
+	);
 	await settle(2500);
 }
 await go('/timesheet/manual');
