@@ -106,7 +106,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		db
 			.select({
 				entries: sql<string>`count(*)::text`,
-				hours: sql<string>`coalesce(sum(${t.timeEntry.minutes}) / 60.0, 0)::numeric(10,2)::text`,
+				hours: sql<string>`coalesce(sum(${t.timeEntry.seconds}) / 3600.0, 0)::numeric(10,2)::text`,
 				last: sql<string | null>`max(${t.timeEntry.workedOn})::text`
 			})
 			.from(t.timeEntry)

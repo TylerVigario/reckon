@@ -92,7 +92,7 @@ export const load: PageServerLoad = async () => {
 				worked_by: u.name,
 				worked_on: t.timeEntry.workedOn,
 				site: t.site.display,
-				minutes: t.timeEntry.minutes
+				seconds: t.timeEntry.seconds
 			})
 			.from(t.timeEntry)
 			.innerJoin(t.service, eq(t.service.id, t.timeEntry.serviceId))
@@ -115,13 +115,13 @@ export const load: PageServerLoad = async () => {
 	]);
 	const alertDays = operator?.days ?? 30;
 	const daysSince = (d: string) => Temporal.PlainDate.from(d).until(day).days;
-	const hours = (minutes: number) => Ratio.of(minutes).div(60).round(4).toFixed(4);
+	const hours = (seconds: number) => Ratio.of(seconds).div(3600).round(4).toFixed(4);
 
 	const work = entries.flatMap((e) => {
 		const w = worth.get(e.id)!;
 		// The hours still to be asked for: a retainer has charged for any it
 		// covered.
-		if (w.coveredMinutes !== null && w.coveredMinutes >= e.minutes) return [];
+		if (w.coveredSeconds !== null && w.coveredSeconds >= e.seconds) return [];
 		return [
 			{
 				id: e.id,
@@ -131,7 +131,7 @@ export const load: PageServerLoad = async () => {
 				crew: e.crew,
 				worked_on: e.workedOn,
 				site: e.site,
-				hours: hours(e.minutes - (w.coveredMinutes ?? 0)),
+				hours: hours(e.seconds - (w.coveredSeconds ?? 0)),
 				worth: w.billed?.toString() ?? null,
 				heads: w.heads,
 				days: daysSince(e.workedOn)
@@ -181,7 +181,7 @@ export const load: PageServerLoad = async () => {
 	return {
 		work,
 		mileage,
-		given: given.map(({ minutes, ...g }) => ({ ...g, hours: hours(minutes) })),
+		given: given.map(({ seconds, ...g }) => ({ ...g, hours: hours(seconds) })),
 		alertDays,
 		total,
 		overdue,

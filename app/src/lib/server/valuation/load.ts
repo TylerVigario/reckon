@@ -26,7 +26,7 @@ export const entryColumns = {
 	siteId: t.timeEntry.siteId,
 	serviceId: t.timeEntry.serviceId,
 	workedOn: t.timeEntry.workedOn,
-	minutes: t.timeEntry.minutes,
+	seconds: t.timeEntry.seconds,
 	billable: t.timeEntry.billable,
 	crew: t.timeEntry.crew,
 	workedBy: t.timeEntry.workedBy,
@@ -97,7 +97,7 @@ export async function loadAgreements(
 }
 
 /**
- * Minutes worked this month under each of these agreements, service by
+ * Seconds worked this month under each of these agreements, service by
  * service, keyed `agreementId:serviceId`. Every hour counts against the
  * agreement it falls under -- its site's, or its client's where the site has
  * none of its own -- billable or not: the meter shows use, not charge.
@@ -125,7 +125,7 @@ export async function usedThisMonth(
 		const hit = agreementFor(e, agreements);
 		if (!hit) continue;
 		const key = `${hit.a.id}:${e.serviceId}`;
-		used.set(key, (used.get(key) ?? 0) + e.minutes);
+		used.set(key, (used.get(key) ?? 0) + e.seconds);
 	}
 	return used;
 }

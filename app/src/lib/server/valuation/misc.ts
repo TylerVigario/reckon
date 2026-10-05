@@ -12,8 +12,8 @@ export function billingDate(month: string, anchorDay: number): string {
 	return Temporal.PlainDate.from(month).with({ day: anchorDay }).toString();
 }
 
-/** Minutes as hours to the hundredth: 75 is "1.25". */
-export const hoursOf = (minutes: number) => Ratio.of(minutes).div(60).round(2).toFixed(2);
+/** Seconds as hours to the hundredth: 4500 is "1.25". */
+export const hoursOf = (seconds: number) => Ratio.of(seconds).div(3600).round(2).toFixed(2);
 
 /**
  * What one trip leg bills: one person's rate for its service on the day, times

@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import Top from '#lib/Top.svelte';
-	import { enqueue, find, flush, type Entry, type Queued } from '#lib/queue.ts';
+	import { enqueue, find, flush, secondsOf, type Entry, type Queued } from '#lib/queue.ts';
 	import { unitPrice } from '#lib/money.svelte.ts';
 	import { rateFor } from '#lib/rates.ts';
 	import type { PageProps } from './$types';
@@ -49,6 +49,9 @@
 	// replaces the refused copy rather than adding a second entry. Whatever
 	// the server named as gone is left empty to be chosen again.
 	let fixing = $state<Queued | null>(null);
+	// A timed entry being fixed keeps its own start and end unless its length or
+	// its day is changed here, where only a length can be typed.
+	let asTimed = $state<{ duration: string; day: string } | null>(null);
 	onMount(async () => {
 		const id = page.url.searchParams.get('fix');
 		const q = id ? await find(id).catch(() => undefined) : undefined;
@@ -63,7 +66,9 @@
 		crew = e.crew;
 		workedBy = e.crew === 'team' ? workedBy : known(data.people, e.worked_by);
 		day = e.worked_on;
-		duration = `${Math.floor(e.minutes / 60)}:${String(e.minutes % 60).padStart(2, '0')}`;
+		const m = Math.max(1, Math.round(secondsOf(e) / 60));
+		duration = `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+		if (e.started_at) asTimed = { duration, day };
 		billable = e.billable ?? true;
 		note = e.note ?? '';
 	});
@@ -115,10 +120,13 @@
 			return;
 		}
 
+		const kept = asTimed?.duration === duration && asTimed.day === day ? fixing?.entry : null;
 		const entry: Entry = {
 			client_uuid: fixing?.entry.client_uuid ?? crypto.randomUUID(),
 			worked_on: day,
-			minutes,
+			...(kept
+				? { started_at: kept.started_at, ended_at: kept.ended_at, zone: kept.zone }
+				: { minutes }),
 			crew,
 			worked_by: crew === 'team' ? null : workedBy,
 			created_by: data.me,

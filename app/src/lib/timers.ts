@@ -76,22 +76,20 @@ export function drop(id: string): Running[] {
 	return running();
 }
 
-/** Whole minutes elapsed, never zero: a timer that ran at all ran for a minute. */
-export function elapsedMinutes(t: Running, now = Date.now()): number {
-	return Math.max(1, Math.round((now - t.started_at) / 60_000));
-}
-
 /**
- * The entry a timer becomes when it stops: dated the day it started where the
- * person is -- their own zone, the same one the server's "today" uses for
- * them -- and carrying the timer's own id as its client_uuid, so a stop whose
- * post is retried still records the time once.
+ * The entry a timer becomes when it stops: the moment it started and the
+ * moment it stopped, in the zone the person is in -- their own, the same one
+ * the server's "today" uses for them -- dated the day it started, and carrying
+ * the timer's own id as its client_uuid, so a stop whose post is retried still
+ * records the time once. The server works out how long it ran, to the second.
  */
 export function toEntry(t: Running, createdBy: string, zone: string, now = Date.now()): Entry {
 	return {
 		client_uuid: t.id,
 		worked_on: todayIn(zone, t.started_at),
-		minutes: elapsedMinutes(t, now),
+		started_at: new Date(t.started_at).toISOString(),
+		ended_at: new Date(Math.max(now, t.started_at + 1)).toISOString(),
+		zone,
 		crew: t.crew,
 		worked_by: t.crew === 'team' ? null : t.worked_by,
 		created_by: createdBy,

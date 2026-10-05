@@ -30,8 +30,17 @@ const OLD_KEY = 'reckon.queue';
 
 export type Entry = {
 	client_uuid: string;
+	/** The day it is dated, as this phone worked it out: for showing. The server works out its own. */
 	worked_on: string;
-	minutes: number;
+	/**
+	 * When it started and ended, as moments ("2026-10-04T16:05:00.000Z"), and the
+	 * zone it was worked in. The server works out the length from them.
+	 */
+	started_at?: string;
+	ended_at?: string;
+	zone?: string;
+	/** A length alone, in place of the moments: what an entry carried before it kept its times. */
+	minutes?: number;
 	crew: 'one' | 'team';
 	/** Null on a team entry: the team worked it, so no one name is right. */
 	worked_by: string | null;
@@ -67,7 +76,10 @@ function isEntry(e: unknown): e is Entry {
 	return (
 		typeof r.client_uuid === 'string' &&
 		typeof r.worked_on === 'string' &&
-		typeof r.minutes === 'number' &&
+		(typeof r.minutes === 'number' ||
+			(typeof r.started_at === 'string' &&
+				typeof r.ended_at === 'string' &&
+				typeof r.zone === 'string')) &&
 		(r.crew === 'one' || r.crew === 'team') &&
 		typeof r.service_id === 'string' &&
 		typeof r.created_by === 'string'
@@ -284,4 +296,11 @@ export function flush(): Promise<Flushed> {
 	const run = chain.then(post, post);
 	chain = run.catch(() => {});
 	return run;
+}
+
+/** How long a queued entry took, in seconds: from its moments, or its minutes. */
+export function secondsOf(e: Entry): number {
+	if (e.started_at && e.ended_at)
+		return Math.max(1, Math.round((Date.parse(e.ended_at) - Date.parse(e.started_at)) / 1000));
+	return (e.minutes ?? 0) * 60;
 }

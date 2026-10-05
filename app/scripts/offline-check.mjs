@@ -224,13 +224,19 @@ if (phase === 'offline') {
 
 	// The same entry again, but naming a service that is not there: an entry
 	// recorded offline whose service someone deleted before the phone got back.
+	// It ran 80 minutes, so its length can be read back as 1:20.
 	const planted =
 		await inQueue(`const store = db.transaction('queue', 'readwrite').objectStore('queue');
 		const all = store.getAll();
 		all.onsuccess = () => {
 			const q = all.result[0];
 			store.put({
-				entry: { ...q.entry, client_uuid: crypto.randomUUID(), service_id: crypto.randomUUID(), minutes: 80 },
+				entry: {
+					...q.entry,
+					client_uuid: crypto.randomUUID(),
+					service_id: crypto.randomUUID(),
+					ended_at: new Date(Date.parse(q.entry.started_at) + 80 * 60_000).toISOString()
+				},
 				queued_at: q.queued_at + 1
 			});
 			store.transaction.oncomplete = () => done(true);

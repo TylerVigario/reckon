@@ -8,12 +8,16 @@ import {
 } from '#lib/server/field-errors.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
+import { knownZone } from '#lib/server/zones.ts';
 import { readBody } from '#lib/json.ts';
 
 /** What the body carries, for a database complaint to be laid against. */
 const FIELDS = [
 	'client_uuid',
 	'worked_on',
+	'started_at',
+	'ended_at',
+	'zone',
 	'minutes',
 	'crew',
 	'worked_by',
@@ -39,6 +43,16 @@ const GONE: Record<string, [field: string, why: string]> = {
  * The queue retries on reconnect, so this must be safe to call twice with the
  * same body. client_uuid is generated on the phone and carries a unique index;
  * a repeat returns the row that already exists rather than a conflict.
+ *
+ * AN ENTRY IS ITS START AND ITS END: two moments and the zone it was worked
+ * in. The server works out from them how long it took, to the second, and the
+ * day it is dated -- the day it started, where it was worked -- so the phone's
+ * figures are for showing and never what is billed. The start is kept to the
+ * second, and a part of a second's length is counted whole, so work that took
+ * any time took a second.
+ *
+ * An entry queued before entries kept their times carries minutes and the day
+ * instead, and is taken as that length, with no times.
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const body = await readBody(request);
@@ -47,7 +61,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const refuse = (field: string, why: string) =>
 		problem('invalidField', 400, `${field}: ${why}`, { errors: { [field]: why } });
 
-	for (const f of ['client_uuid', 'worked_on', 'minutes', 'crew', 'service_id'])
+	const timed = body.started_at !== undefined && body.started_at !== null;
+	for (const f of [
+		'client_uuid',
+		...(timed ? ['ended_at', 'zone'] : ['worked_on', 'minutes']),
+		'crew',
+		'service_id'
+	])
 		if (body[f] === undefined || body[f] === null) return refuse(f, 'Required.');
 
 	// Each of these is checked for its TYPE and not only its presence. The
@@ -58,18 +78,54 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const optionalText = (f: string) => (body[f] === undefined || body[f] === null ? null : text(f));
 
 	const client_uuid = text('client_uuid');
-	const worked_on = text('worked_on');
 	const service_id = text('service_id');
 	for (const [f, v] of [
 		['client_uuid', client_uuid],
-		['worked_on', worked_on],
 		['service_id', service_id]
 	] as const)
 		if (v === null) return refuse(f, 'Expected text.');
 
-	const minutes = body.minutes;
-	if (typeof minutes !== 'number' || !Number.isInteger(minutes) || minutes <= 0)
-		return refuse('minutes', 'A positive whole number of minutes.');
+	let length: {
+		worked_on: string;
+		seconds: number;
+		started_at: Date | null;
+		ended_at: Date | null;
+		zone: string | null;
+	};
+	if (timed) {
+		const zone = typeof body.zone === 'string' ? await knownZone(body.zone) : null;
+		if (zone === null) return refuse('zone', 'Not a time zone.');
+		const moment = (f: string) => {
+			try {
+				return Temporal.Instant.from(text(f) ?? '');
+			} catch {
+				return null;
+			}
+		};
+		const from = moment('started_at');
+		if (from === null) return refuse('started_at', 'A moment, such as 2026-10-04T16:05:00Z.');
+		const to = moment('ended_at');
+		if (to === null) return refuse('ended_at', 'A moment, such as 2026-10-04T18:45:00Z.');
+		const took = from.until(to).total('milliseconds');
+		if (took <= 0) return refuse('ended_at', 'It ends before it starts.');
+		const started = from.round({ smallestUnit: 'second', roundingMode: 'floor' });
+		const seconds = Math.ceil(took / 1000);
+		const ended = started.add({ seconds });
+		length = {
+			worked_on: started.toZonedDateTimeISO(zone).toPlainDate().toString(),
+			seconds,
+			started_at: new Date(started.epochMilliseconds),
+			ended_at: new Date(ended.epochMilliseconds),
+			zone
+		};
+	} else {
+		const worked_on = text('worked_on');
+		if (worked_on === null) return refuse('worked_on', 'Expected text.');
+		const minutes = body.minutes;
+		if (typeof minutes !== 'number' || !Number.isInteger(minutes) || minutes <= 0)
+			return refuse('minutes', 'A positive whole number of minutes.');
+		length = { worked_on, seconds: minutes * 60, started_at: null, ended_at: null, zone: null };
+	}
 
 	// crew decides the rate, so it is never implied. The database holds the same
 	// rule; this is here to answer with something a person can read.
@@ -103,8 +159,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				.insert(timeEntry)
 				.values({
 					clientUuid: client_uuid!,
-					workedOn: worked_on!,
-					minutes,
+					workedOn: length.worked_on,
+					seconds: length.seconds,
+					startedAt: length.started_at,
+					endedAt: length.ended_at,
+					zone: length.zone,
 					crew,
 					workedBy: worked_by,
 					createdBy: created_by,
@@ -123,7 +182,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					id: timeEntry.id,
 					client_uuid: timeEntry.clientUuid,
 					worked_on: timeEntry.workedOn,
-					minutes: timeEntry.minutes,
+					seconds: timeEntry.seconds,
 					crew: timeEntry.crew,
 					billable: timeEntry.billable
 				})

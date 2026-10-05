@@ -162,7 +162,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const buckets = new Map<Age, { n: number; worth: (string | null)[]; oldest: number }>();
 	for (const entry of unbilled) {
 		const w = worth.get(entry.id)!;
-		if (w.coveredMinutes !== null && w.coveredMinutes >= entry.minutes) continue;
+		if (w.coveredSeconds !== null && w.coveredSeconds >= entry.seconds) continue;
 		const days = daysAgo(entry.workedOn);
 		const bucket = ageOf(days);
 		const b = buckets.get(bucket) ?? { n: 0, worth: [], oldest: 0 };

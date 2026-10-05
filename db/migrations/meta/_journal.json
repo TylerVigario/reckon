@@ -71,6 +71,20 @@
       "when": 1791158939377,
       "tag": "0009_a_rate_is_a_price_to_four_places",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791160380175,
+      "tag": "0010_an_entry_keeps_its_start_and_end",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791160396974,
+      "tag": "0011_seconds_replace_minutes",
+      "breakpoints": true
     }
   ]
 }

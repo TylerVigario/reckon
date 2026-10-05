@@ -205,7 +205,9 @@ T["material_price"] = [("PK","id","uuid"),("FK","material_id","uuid"),
     ("","price","numeric"),("","effective_from","date")]
 
 T["time_entry"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the phone"),
-    ("","worked_on","date"),("","minutes","int"),
+    ("","worked_on","date · the day it started"),("","seconds","int · from its times"),
+    ("","started_at","timestamptz · null = a length"),("","ended_at","timestamptz"),
+    ("","zone","text · where it was worked"),
     ("","crew","one | team"),
     ("FK","worked_by","uuid · null when team"),("FK","created_by","uuid · ran the timer"),
     ("FK","entity_id","uuid · null = internal"),
@@ -275,7 +277,7 @@ T["operator"] = [("PK","id","uuid"),("","singleton","bool · one row only"),("",
     ("","address_verified_on","date"),
     ("","tax_number","text"),("","tax_number_label","EIN | VAT | ABN"),
     ("","email","text"),("","phone","text"),
-    ("","currency","text"),("","timezone","text"),("","rounding_mode","text"),
+    ("","currency","text"),("","timezone","text"),("","locale","text · BCP 47"),
     ("","tax_rule_set","us_ca|flat_per_site|none"),("","invoice_number_format","text"),
     ("","next_invoice_number","int"),
     ("","default_terms_days","int"),("","ageing_alert_days","int"),
@@ -286,11 +288,12 @@ T["operator"] = [("PK","id","uuid"),("","singleton","bool · one row only"),("",
     ("","filing_basis","annual|quarterly|monthly"),
     ("","fiscal_year_end_month","1–12"),
     ("","claims_tax_paid_purchases_resold","bool"),
-    ("","date_format","text"),
     ("","mileage_assignment","actual|round_trip_per_client")]
 T["user"] = [("PK","id","uuid"),("","name","text"),("UK","email","text · lowercase"),
     ("","email_verified","bool"),("","image","text"),
     ("FK","role_id","uuid · null = not paid"),("","active","bool"),
+    ("","timezone","text · null = the business's"),("","locale","text · null = the business's"),
+    ("","hour_cycle","h12|h23 · null = the locale's"),("","week_start","1–7 · null = the locale's"),
     ("","created_at","timestamptz"),("","updated_at","timestamptz")]
 T["session"] = [("PK","id","uuid"),("FK","user_id","uuid"),
     ("UK","token","text · signed in the cookie"),("","expires_at","timestamptz"),
@@ -430,7 +433,7 @@ files.append(write("03-catalogue.drawio", "What you sell", c, 1620, 950))
 
 # 04 -- work captured
 c = at("time_entry",40,60) + at("trip",480,60) + at("trip_stop",480,220) \
-  + at("trip_leg",880,60) + at("user",40,420) + at("entity",880,300)
+  + at("trip_leg",880,60) + at("user",40,480) + at("entity",880,300)
 c += [edge("e40","user","time_entry","worked / created",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=0")
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1")),
@@ -441,7 +444,11 @@ c += [edge("e40","user","time_entry","worked / created",
       edge("e43","entity","trip_leg","caused",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=0")
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1"))]
-c += [note("n4", "worked_by is who worked the hour, and crew says whether it bills at one "
+c += [note("n4", "started_at and ended_at are when the work was done and zone is where, so it "
+                 "is shown as it was worked; seconds is worked out from them by the server, and "
+                 "worked_on is the day it started there. An entry recorded before it kept its "
+                 "times has its length alone.\n\n"
+                 "worked_by is who worked the hour, and crew says whether it bills at one "
                  "person's rate or the team's; created_by is who entered it, which is how the row "
                  "is explained later.\n\n"
                  "client_uuid is made on the phone: the offline queue retries, "
@@ -455,8 +462,8 @@ c += [note("n4", "worked_by is who worked the hour, and crew says whether it bil
                  "head count a team row is priced and paid at.\n\n"
                  "trip_leg.service_id is what a billed leg bills as, so nothing "
                  "has to assume that only one service is charged per mile.",
-           40, 700, 1180, 290)]
-files.append(write("04-work-captured.drawio", "Work as it is captured", c, 1340, 1020))
+           40, 830, 1180, 350)]
+files.append(write("04-work-captured.drawio", "Work as it is captured", c, 1340, 1220))
 
 # 05 -- agreements
 c = at("entity",40,60) + at("agreement",440,60) \
@@ -533,8 +540,8 @@ c += [note("n7", "Stripe pays one deposit covering several invoices, net of "
 files.append(write("07-money-in.drawio", "Money in", c, 1260, 620))
 
 # 08 -- operator and record
-c = at("operator",40,60) + at("user",480,60) + at("session",480,320) \
-  + at("account",480,560) + at("record_history",900,410) + at("account_map",900,60) \
+c = at("operator",40,60) + at("user",480,60) + at("session",480,410) \
+  + at("account",480,650) + at("record_history",900,410) + at("account_map",900,60) \
   + at("ledger_export",900,180) + at("integration",900,650) + at("verification",900,800)
 c += [edge("e80","operator","account_map","maps"),
       edge("e82","user","session","is signed in by",
@@ -546,6 +553,9 @@ c += [edge("e80","operator","account_map","maps"),
 c += [note("n8", "Anyone who can sign in can see and change everything: "
                  "user has no permission columns. role_id is not access: it is the "
                  "capacity someone is paid in, which pay rules are written against.\n\n"
+                 "Each person keeps a time zone, a locale, a clock and a first day of the "
+                 "week. Empty follows the business's -- its own timezone and locale -- or "
+                 "what the locale says.\n\n"
                  "user, session, account and verification are Better Auth's, in its "
                  "shape. A password is an account whose provider_id is credential, and "
                  "what it holds is an argon2id hash. There is no sign-up: people are "
@@ -563,8 +573,8 @@ c += [note("n8", "Anyone who can sign in can see and change everything: "
                  "An included-hours figure is a client's, on their agreement, "
                  "and what is paid to whoever answers is a dated pay_rule.\n\n"
                  "record_history is append-only and exists to explain a figure,"
-                 " not to police one.", 40, 1000, 1300, 280)]
-files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 1320))
+                 " not to police one.", 40, 1000, 1300, 330)]
+files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 1370))
 
 for f in files:
     print(f"  {f}")

@@ -117,7 +117,7 @@
 	// not a place, it is four more rows.
 	const rail = [
 		{ href: '/', label: 'Today', count: () => counts.drafts },
-		{ href: '/timesheet', label: 'Time', count: () => hours(counts.monthMinutes) },
+		{ href: '/timesheet', label: 'Time', count: () => hours(counts.monthSeconds) },
 		{ href: '/trips', label: 'Trips', count: () => null },
 		{ href: '/invoices', label: 'Invoices', count: () => counts.drafts },
 		{ href: '/catalogue', label: 'Catalogue', count: () => null },
@@ -127,7 +127,7 @@
 	] satisfies { href: RouteId; label: string; count: () => string | number | null | undefined }[];
 
 	const counts = $derived(data.counts ?? {});
-	const hours = (m: number | undefined) => (m === undefined ? null : hoursBadge(m));
+	const hours = (s: number | undefined) => (s === undefined ? null : hoursBadge(s));
 
 	// Two letters, from a name nobody has to configure.
 	const initials = $derived(

@@ -59,7 +59,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 		db.select({ n: count() }).from(invoice).where(eq(invoice.status, 'draft')),
 		db.select({ n: count() }).from(entity).where(eq(entity.active, true)),
 		db
-			.select({ minutes: sum(timeEntry.minutes).mapWith(Number) })
+			.select({ seconds: sum(timeEntry.seconds).mapWith(Number) })
 			.from(timeEntry)
 			.where(and(gte(timeEntry.workedOn, sql`date_trunc('month', ${businessToday()}::date)::date`)))
 	]);
@@ -69,6 +69,6 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 		user: locals.user,
 		zone: locals.zone,
 		locale: locals.locale,
-		counts: { drafts: drafts.n, entities: entities.n, monthMinutes: month.minutes ?? 0 }
+		counts: { drafts: drafts.n, entities: entities.n, monthSeconds: month.seconds ?? 0 }
 	};
 };
