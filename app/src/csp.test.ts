@@ -29,4 +29,33 @@ describe('the content security policy', () => {
 		);
 		expect(config).toMatch(directive);
 	});
+
+	// The Maps JavaScript API, for the address field, and nothing more of
+	// Google's: its scripts, and its requests for places.
+	it("admits Google's address lookup, and no more than it uses", () => {
+		const config = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
+		const sources = (directive: string) =>
+			(new RegExp(String.raw`'${directive}':\s*\[([^\]]*)\]`).exec(config)?.[1] ?? '')
+				.split(',')
+				.map((s) => s.trim().replace(/^'|'$/g, ''))
+				.filter(Boolean);
+		expect(sources('script-src')).toEqual(['self', 'https://maps.googleapis.com']);
+		expect(sources('connect-src')).toEqual([
+			'self',
+			'https://maps.googleapis.com',
+			'https://places.googleapis.com'
+		]);
+		// In no directive -- the comments may say why not.
+		const every = [...config.matchAll(/'[a-z-]+':\s*\[([^\]]*)\]/g)].map((m) => m[1]).join(',');
+		expect(every).not.toMatch(/unsafe-eval|unsafe-inline/);
+	});
+
+	// With loading=async the script's load event says nothing about whether the
+	// API is ready; the callback does.
+	it('waits for the Maps API to say it is ready', () => {
+		const loader = readFileSync(new URL('./lib/google.ts', import.meta.url), 'utf8');
+		expect(loader).toMatch(/maps\.googleapis\.com\/maps\/api\/js\?/);
+		expect(loader).toMatch(/&callback=\$\{READY\}/);
+		expect(loader).not.toMatch(/script\.onload/);
+	});
 });

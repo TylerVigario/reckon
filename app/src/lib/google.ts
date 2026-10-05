@@ -23,6 +23,8 @@ export const KEY = PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
 export const addressesAreLive = KEY !== '';
 
 let loading: Promise<void> | null = null;
+/** The global the Maps API calls once it is ready. */
+const READY = '__reckonMapsReady';
 
 /** Idempotent: several fields on a page share one load. */
 function boot(): Promise<void> {
@@ -33,6 +35,11 @@ function boot(): Promise<void> {
 		return Promise.resolve();
 
 	return (loading ??= new Promise<void>((res, rej) => {
+		// Ready when the API says so, not when its script has loaded: with
+		// loading=async, "no JavaScript code is triggered by the script's load
+		// event", and the callback parameter is what is called once importLibrary
+		// can be.
+		(window as unknown as Record<string, () => void>)[READY] = () => res();
 		const script = document.createElement('script');
 		script.async = true;
 		// v=weekly rather than a pinned version: Google retires versions on a
@@ -42,8 +49,7 @@ function boot(): Promise<void> {
 		// the page may never use.
 		script.src =
 			`https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(KEY)}` +
-			`&loading=async&v=weekly`;
-		script.onload = () => res();
+			`&loading=async&v=weekly&callback=${READY}`;
 		script.onerror = () => {
 			loading = null;
 			rej(new Error('could not load the Google Maps SDK'));

@@ -23,10 +23,12 @@ export default defineConfig({
 			 * the server, and the fonts are vendored from press and served from
 			 * here.
 			 *
-			 * Google's address lookup is the exception, and this policy does not
-			 * yet make room for it: with PUBLIC_GOOGLE_MAPS_API_KEY set, the page
-			 * loads the Maps JavaScript API from maps.googleapis.com, which
-			 * script-src and connect-src refuse.
+			 * Google's address lookup is the exception, and admitted as narrowly
+			 * as it works (#lib/google): the Maps JavaScript API's scripts from
+			 * maps.googleapis.com, and its requests to maps.googleapis.com and
+			 * places.googleapis.com. Not the whole of Google's published list,
+			 * which is for drawing maps -- none is drawn here -- and asks for
+			 * 'unsafe-eval' and inline styles besides.
 			 *
 			 * mode 'auto' lets SvelteKit hash or nonce its own inline bits
 			 * rather than being handed 'unsafe-inline', which would defeat the
@@ -36,7 +38,7 @@ export default defineConfig({
 				mode: 'auto',
 				directives: {
 					'default-src': ['self'],
-					'script-src': ['self'],
+					'script-src': ['self', 'https://maps.googleapis.com'],
 					'style-src': ['self'],
 					// No style attribute is admitted but one: SvelteKit's route
 					// announcer, which hides itself with one and would otherwise
@@ -52,7 +54,7 @@ export default defineConfig({
 					],
 					'img-src': ['self', 'data:'],
 					'font-src': ['self'],
-					'connect-src': ['self'],
+					'connect-src': ['self', 'https://maps.googleapis.com', 'https://places.googleapis.com'],
 					'form-action': ['self'],
 					'base-uri': ['none'],
 					'object-src': ['none'],
