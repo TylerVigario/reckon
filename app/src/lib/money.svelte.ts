@@ -1,5 +1,5 @@
 import { currency } from './currency.ts';
-import { formatMoney } from './format.ts';
+import { formatMoney, formatPrice } from './format.ts';
 
 /**
  * A figure in the operator's own currency.
@@ -19,4 +19,12 @@ import { formatMoney } from './format.ts';
  */
 export function money(v: string | number | null | undefined): string {
 	return formatMoney(v, currency());
+}
+
+/**
+ * A price for one of something in the operator's own currency -- a rate, a
+ * material's price, an hourly wage -- as finely as it is held: "$0.725".
+ */
+export function unitPrice(v: string | number | null | undefined): string {
+	return formatPrice(v, currency());
 }

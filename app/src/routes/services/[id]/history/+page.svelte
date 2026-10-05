@@ -2,7 +2,7 @@
 	import Top from '#lib/Top.svelte';
 	import { dated } from '#lib/format.ts';
 	import { PAYS_FOR, paysWhat } from '#lib/pay-words.ts';
-	import { money } from '#lib/money.svelte.ts';
+	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -38,12 +38,12 @@
 						<div class="rec-t">{p.client ?? 'Every client'}</div>
 						<div class="rec-s">
 							{span(p)}{Number(p.additional_rate) > 0
-								? ` · +${money(p.additional_rate)} for each additional person`
+								? ` · +${unitPrice(p.additional_rate)} for each additional person`
 								: ''}
 						</div>
 					</div>
 					<div class="rec-n">
-						<span class="rec-v">{money(p.rate)}</span>
+						<span class="rec-v">{unitPrice(p.rate)}</span>
 						<span class="rec-x">{per(data.service.unit)}</span>
 					</div>
 				</div>
@@ -59,7 +59,7 @@
 		<div class="sec-h"><h2>Who was paid, and how</h2></div>
 		<div class="rows">
 			{#each data.rules as r (r.id)}
-				{@const w = paysWhat(r, money)}
+				{@const w = paysWhat(r, { money, unitPrice })}
 				<div class="rec" class:gone={r.state === 'superseded'} class:acc={r.state === 'scheduled'}>
 					<div class="rec-m">
 						<div class="rec-t">{r.payee}&nbsp;<span class="lt">· {PAYS_FOR[r.pays_for]}</span></div>

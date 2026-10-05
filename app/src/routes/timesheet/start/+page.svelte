@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import Top from '#lib/Top.svelte';
 	import { start } from '#lib/timers.ts';
-	import { money } from '#lib/money.svelte.ts';
+	import { unitPrice } from '#lib/money.svelte.ts';
 	import { rateFor } from '#lib/rates.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -116,7 +116,7 @@
 					{#each data.services as sv (sv.id)}<option value={sv.id}>{sv.name}</option>{/each}
 				</select>
 				<span class="hint">
-					{rate ? `${money(rate)}/${service?.unit === 'mile' ? 'mi' : 'h'}` : 'not priced'}
+					{rate ? `${unitPrice(rate)}/${service?.unit === 'mile' ? 'mi' : 'h'}` : 'not priced'}
 				</span>
 			</span>
 		</div>

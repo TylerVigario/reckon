@@ -68,10 +68,12 @@ export const NEW_SERVICE_FIELDS = { name, unit: oneOf(UNITS) };
 export const PRICE_FIELDS = {
 	// Empty is every client.
 	entity_id: optional(anId),
-	rate: required('What it charges.', money),
+	// A price for one of something, to four places: it may be finer than the
+	// currency, as 0.725 a mile is. What it bills is rounded to the currency's.
+	rate: required('What it charges.', decimal(12, 4)),
 	// What each person after the first adds. Empty is nothing extra: the rate
 	// is for the job, however many work it.
-	additional_rate: orDefault('0', money),
+	additional_rate: orDefault('0', decimal(12, 4)),
 	effective_from: required('From which day.', isoDate)
 };
 

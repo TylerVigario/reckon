@@ -208,7 +208,7 @@ export function worth(entries: readonly Entry[], ctx: Context): Map<string, Wort
 		const c = covered.get(e.id)!;
 		const heads = headsOf(e);
 		const service = ctx.services.get(e.serviceId);
-		const rate = jobRate(priceOn(ctx.prices, e.serviceId, e.entityId, e.workedOn), heads, places);
+		const rate = jobRate(priceOn(ctx.prices, e.serviceId, e.entityId, e.workedOn), heads);
 		const billedMinutes = c.coveredMinutes === null ? null : e.minutes - c.coveredMinutes;
 
 		let billed: Decimal | null;

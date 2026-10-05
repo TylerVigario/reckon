@@ -24,6 +24,7 @@
  * a date in numbers alone is year-month-day, whatever the locale.
  */
 import { Decimal, Ratio } from './decimal.ts';
+import { currencyPlaces } from './currency.ts';
 
 let localeOf: () => string = () => 'en-US';
 
@@ -87,6 +88,23 @@ const dates = (options: Intl.DateTimeFormatOptions) => {
 export function formatMoney(v: Figure, currency = 'USD'): string {
 	if (absent(v)) return ABSENT;
 	return numbers({ style: 'currency', currency }).format(exact(v));
+}
+
+/**
+ * A price for one of something, in a stated currency: a service's rate, a
+ * material's price, an hourly wage. It may be finer than the currency -- 72.5¢
+ * a mile -- so it is written to at least the currency's places and to as many
+ * as four, the places a price is held to: "$0.725", "$95.00", "¥9,500".
+ */
+export function formatPrice(v: Figure, currency = 'USD'): string {
+	if (absent(v)) return ABSENT;
+	const places = currencyPlaces(currency);
+	return numbers({
+		style: 'currency',
+		currency,
+		minimumFractionDigits: places,
+		maximumFractionDigits: Math.max(places, 4)
+	}).format(exact(v));
 }
 
 // --------------------------------------------------------------- figures --

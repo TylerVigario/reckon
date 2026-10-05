@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { money } from '#lib/money.svelte.ts';
+	import { unitPrice } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 	import type { RouteId } from '$app/types';
@@ -37,7 +37,7 @@
 			href: '/settings/travel',
 			title: 'Travel',
 			sub: 'Where trips start, the mileage rate, how legs are assigned',
-			value: data.counts.mileage ? money(data.counts.mileage) : 'not priced'
+			value: data.counts.mileage ? unitPrice(data.counts.mileage) : 'not priced'
 		},
 		{
 			href: '/settings/integrations',

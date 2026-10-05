@@ -15,6 +15,7 @@ import {
 	whole
 } from './field-rules.ts';
 import { readCurrencyFrom } from './currency.ts';
+import { readPrice } from './service-fields.ts';
 
 /**
  * The rules that decide what a value may be.
@@ -107,6 +108,22 @@ describe('money', () => {
 		const big = money('10000000000');
 		expect(!big.ok && big.why).toMatch(/before the decimal/);
 		expect(money('-1.00').ok).toBe(false);
+	});
+});
+
+describe("a service's rate", () => {
+	// A price for one of something, not an amount: finer than the currency
+	// where it needs to be, as 72.5¢ a mile is.
+	const rate = (v: string) =>
+		readPrice({ rate: v, additional_rate: '', effective_from: '2026-01-01' }).errors.rate;
+
+	it('takes four places, finer than the currency', () => {
+		expect(rate('0.725')).toBeUndefined();
+		expect(rate('95.1875')).toBeUndefined();
+	});
+
+	it('and no more', () => {
+		expect(rate('0.72501')).toMatch(/decimal places/);
 	});
 });
 

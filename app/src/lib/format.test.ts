@@ -11,6 +11,7 @@ import {
 	fiscalYear,
 	fixed,
 	formatMoney,
+	formatPrice,
 	fullDay,
 	hours,
 	hoursBadge,
@@ -74,6 +75,26 @@ describe('formatMoney', () => {
 	// Past fifteen digits a float has already changed the figure.
 	it('writes the figure it was given, digit for digit', () => {
 		expect(formatMoney('12345678901234567.89')).toBe('$12,345,678,901,234,567.89');
+	});
+});
+
+describe('formatPrice', () => {
+	// A price for one of something may be finer than its currency: 72.5¢ a
+	// mile written as 73¢ is a different price.
+	it('writes as many places as the price has, up to four', () => {
+		expect(formatPrice('0.7250')).toBe('$0.725');
+		expect(formatPrice('22.1875')).toBe('$22.1875');
+	});
+
+	it("and never fewer than the currency's", () => {
+		expect(formatPrice('95.0000')).toBe('$95.00');
+		expect(formatPrice('9500.0000', 'JPY')).toBe('¥9,500');
+		expect(formatPrice('9500.5000', 'JPY')).toBe('¥9,500.5');
+		expect(formatPrice('1.2000', 'KWD')).toBe('KWD\u00a01.200');
+	});
+
+	it('is a dash when there is no price', () => {
+		expect(formatPrice(null)).toBe(ABSENT);
 	});
 });
 

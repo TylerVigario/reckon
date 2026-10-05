@@ -321,7 +321,10 @@ cent-level correctness is the point, and a float is how a cent goes missing.
 Every amount is rounded half up to its currency's own places, as `Intl` gives
 them — two for dollars, none for yen, three for dinars — and a money column holds
 three, enough for every currency the business can choose (`#lib/currency`). How a
-tax rounds is its own rule's.
+tax rounds is its own rule's. A price for one of something — a service's rate, a
+material's price, an hourly wage — is not an amount: it is held to four places, so
+it can be finer than the currency, as 72.5¢ a mile is, and what it bills is
+rounded.
 
 ## The app
 

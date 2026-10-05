@@ -4,7 +4,7 @@
 	import PriceForm from '#lib/service/PriceForm.svelte';
 	import RuleForm from '#lib/service/RuleForm.svelte';
 	import { dated, increment } from '#lib/format.ts';
-	import { money } from '#lib/money.svelte.ts';
+	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { forInput } from '#lib/currency.ts';
 	import { PAYS_FOR, paysWhat } from '#lib/pay-words.ts';
 	import { parseServiceField } from '#lib/service-fields.ts';
@@ -210,7 +210,7 @@
 	<div class="tiles">
 		<div class="tile">
 			<span class="k">{s.unit === 'hour' ? 'One person' : 'Charged'}</span>
-			<span class="v">{price ? money(price.rate) : '—'}</span>
+			<span class="v">{price ? unitPrice(price.rate) : '—'}</span>
 			<span class="s">{price ? per : 'not priced for every client'}</span>
 		</div>
 		{#if team}
@@ -245,7 +245,7 @@
 								<div class="rec-s">
 									{when(p)}{s.unit === 'hour'
 										? Number(p.additional_rate) > 0
-											? ` · +${money(p.additional_rate)} for each additional person`
+											? ` · +${unitPrice(p.additional_rate)} for each additional person`
 											: ' · the same however many work it'
 										: ''}
 								</div>
@@ -267,7 +267,7 @@
 								</div>
 							</div>
 							<div class="rec-n">
-								<span class="rec-v">{money(p.rate)}</span>
+								<span class="rec-v">{unitPrice(p.rate)}</span>
 								<span class="rec-x">{perShort}</span>
 							</div>
 						</div>
@@ -318,7 +318,7 @@
 				<div class="sec-h"><h2>Who is paid, and how</h2></div>
 				<div class="rows">
 					{#each data.rules as r (r.id)}
-						{@const w = paysWhat(r, money)}
+						{@const w = paysWhat(r, { money, unitPrice })}
 						<div class="rec" class:acc={r.state === 'scheduled'}>
 							<div class="rec-m">
 								<div class="rec-t">

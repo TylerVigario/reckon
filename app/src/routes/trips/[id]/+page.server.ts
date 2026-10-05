@@ -92,7 +92,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		const key = `${l.siteId}:${l.entityId}:${l.serviceId}`;
 		if (alone.has(key)) continue;
 		const service = services.get(l.serviceId);
-		const rate = jobRate(priceOn(prices, l.serviceId, l.entityId, travelledOn), 1, places);
+		const rate = jobRate(priceOn(prices, l.serviceId, l.entityId, travelledOn), 1);
 		alone.set(
 			key,
 			service && l.roundTripMiles !== null

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { fixed, percent, quantity } from '#lib/format.ts';
 	import Top from '#lib/Top.svelte';
-	import { money } from '#lib/money.svelte.ts';
+	import { unitPrice } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -43,7 +43,7 @@
 						{/if}
 					</div>
 					<div class="rec-n">
-						<span class="rec-v">{money(m.price)}</span>
+						<span class="rec-v">{unitPrice(m.price)}</span>
 						<span class="rec-x">
 							{quantity(m.on_hand)}{m.unit === 'foot' ? ' ft' : ''}
 						</span>

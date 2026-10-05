@@ -87,14 +87,19 @@ export const servicePrice = pgTable(
 		id: id(),
 		serviceId: uuid().notNull(),
 		entityId: uuid(),
-		/** The rate for the first person -- per hour, per mile or each, in the service's unit. */
-		rate: money().notNull(),
+		/**
+		 * The rate for the first person -- per hour, per mile or each, in the
+		 * service's unit. A price for one of something, so to four places, finer
+		 * than the currency where it needs to be: 0.725 a mile. What it bills is
+		 * rounded to the currency's places.
+		 */
+		rate: decimal(12, 4).notNull(),
 		effectiveFrom: day().notNull(),
 		/**
 		 * What each person after the first adds to the hourly price: at 120.00 and
-		 * 70.00, a crew of three is 260.00 an hour.
+		 * 70.00, a crew of three is 260.00 an hour. To four places, as the rate.
 		 */
-		additionalRate: money().default('0').notNull()
+		additionalRate: decimal(12, 4).default('0').notNull()
 	},
 	(t) => [
 		unique('service_price_scope').on(t.serviceId, t.entityId, t.effectiveFrom).nullsNotDistinct(),

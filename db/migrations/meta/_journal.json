@@ -64,6 +64,13 @@
       "when": 1791156210246,
       "tag": "0008_amounts_hold_every_currencys_places",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791158939377,
+      "tag": "0009_a_rate_is_a_price_to_four_places",
+      "breakpoints": true
     }
   ]
 }

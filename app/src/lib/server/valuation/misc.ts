@@ -28,7 +28,7 @@ export function legWorth(
 ): { rate: Decimal | null; billed: Decimal | null } {
 	const service = leg.serviceId ? services.get(leg.serviceId) : undefined;
 	if (!service || !leg.serviceId) return { rate: null, billed: null };
-	const rate = jobRate(priceOn(prices, leg.serviceId, leg.entityId, travelledOn), 1, places);
+	const rate = jobRate(priceOn(prices, leg.serviceId, leg.entityId, travelledOn), 1);
 	return { rate, billed: billedAmount(service, rate, Ratio.of(leg.miles), places) };
 }
 

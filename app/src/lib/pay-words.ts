@@ -15,16 +15,17 @@ export const PAYS_FOR = {
 
 /**
  * "$22.00 an hour", "12% of the retainer", "nothing" -- as a figure and its unit.
- * `money` is the caller's, so a component passes the one that knows the
- * operator's currency.
+ * An hourly rate is a price, written as finely as it is held; a fixed sum is an
+ * amount. `money` and `unitPrice` are the caller's, so a component passes the
+ * ones that know the operator's currency.
  */
 export function paysWhat(
 	r: { pays_for: string; method: string; amount: string | null },
-	money: (v: string | null) => string
+	{ money, unitPrice }: Record<'money' | 'unitPrice', (v: string | null) => string>
 ): { v: string; x: string } {
 	switch (r.method) {
 		case 'per_hour':
-			return { v: money(r.amount), x: 'an hour' };
+			return { v: unitPrice(r.amount), x: 'an hour' };
 		case 'percent':
 			return {
 				v: percent(r.amount),
