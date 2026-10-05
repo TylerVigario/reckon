@@ -24,6 +24,19 @@ export function at(day: string, time: string, zone: string): Temporal.ZonedDateT
 	});
 }
 
+/**
+ * The last moment, at or before `now`, a clock in `zone` read `time`: today's,
+ * or yesterday's while today's is still to come. When a running timer started,
+ * told as a time of day.
+ */
+export function lastAt(time: string, zone: string, now: Temporal.Instant): Temporal.ZonedDateTime {
+	const today = now.toZonedDateTimeISO(zone).toPlainDate();
+	const then = at(today.toString(), time, zone);
+	return Temporal.Instant.compare(then.toInstant(), now) <= 0
+		? then
+		: at(today.subtract({ days: 1 }).toString(), time, zone);
+}
+
 /** Where work ends that started at `start` and took `seconds`. */
 export function endAfter(start: Temporal.ZonedDateTime, seconds: number): Temporal.ZonedDateTime {
 	return start.add({ seconds });

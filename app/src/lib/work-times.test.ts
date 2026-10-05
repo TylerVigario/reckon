@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { at, clockOf, endAfter, endingAt, lengthText, parseLength } from './work-times.ts';
+import { at, clockOf, endAfter, endingAt, lastAt, lengthText, parseLength } from './work-times.ts';
 
 const LA = 'America/Los_Angeles';
 
@@ -66,5 +66,24 @@ describe('a length as it is typed, and as it is shown', () => {
 			'1:32',
 			'0:45'
 		]);
+	});
+});
+
+describe('when a running timer started, told as a time of day', () => {
+	// 10:00 in the morning in Los Angeles.
+	const now = Temporal.Instant.from('2026-10-04T17:00:00Z');
+
+	it('is today, at a time already past', () => {
+		expect(lastAt('09:15', LA, now).toString()).toBe(
+			'2026-10-04T09:15:00-07:00[America/Los_Angeles]'
+		);
+	});
+
+	it('is yesterday, at a time still to come today', () => {
+		expect(lastAt('23:00', LA, now).toPlainDate().toString()).toBe('2026-10-03');
+	});
+
+	it('is now, at the minute it is now', () => {
+		expect(Temporal.Instant.compare(lastAt('10:00', LA, now).toInstant(), now)).toBe(0);
 	});
 });

@@ -215,11 +215,43 @@ if (phase === 'offline') {
 	check(await click('Start the clock'), 'the timer starts');
 	await settle(1500);
 	check((await stored('reckon.running')) === 1, 'it is running, on the phone');
+
+	// Set going late: its start moved back an hour, with no signal, as on a
+	// jobsite. The time box opens on when it started, to the minute.
+	const startOf = () =>
+		evaluate(`JSON.parse(localStorage.getItem('reckon.running'))[0].started_at`);
+	const was = await startOf();
+	await evaluate(`document.querySelector('button.since')?.click()`);
+	await settle(300);
+	await evaluate(`(() => {
+		const f = document.querySelector('.move input');
+		const [h, m] = f.value.split(':').map(Number);
+		const back = (h * 60 + m + 1440 - 60) % 1440;
+		f.value = String(Math.floor(back / 60)).padStart(2, '0') + ':' + String(back % 60).padStart(2, '0');
+		f.dispatchEvent(new Event('input', { bubbles: true }));
+	})()`);
+	check(await click('Set'), 'its start can be changed');
+	await settle(300);
+	const moved = await startOf();
+	const back = was - moved;
+	check(
+		back > 59 * 60_000 && back <= 61 * 60_000,
+		`it moves back an hour, still running (${Math.round(back / 60_000)} minutes)`
+	);
+
 	check(await click('Stop'), 'the timer stops');
 	await settle(1500);
 	check(
 		(await stored('reckon.running')) === 0 && (await queued())?.length === 1,
 		'its entry waits in the queue'
+	);
+	const startedAt =
+		await inQueue(`const all = db.transaction('queue').objectStore('queue').getAll();
+		all.onsuccess = () => done(all.result[0]?.entry.started_at ?? null);
+		all.onerror = () => done(null);`);
+	check(
+		typeof startedAt === 'string' && Date.parse(startedAt) === moved,
+		'its entry starts where the start was moved to'
 	);
 
 	// The same entry again, but naming a service that is not there: an entry

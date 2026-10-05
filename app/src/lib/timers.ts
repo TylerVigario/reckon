@@ -77,6 +77,20 @@ export function drop(id: string): Running[] {
 }
 
 /**
+ * A timer set going late -- somebody arrived, dealt with the first thing, and
+ * only then remembered it -- started when the work did. Moves its start to
+ * `startedAt`, epoch ms, which must be before now; null when it is not, or
+ * there is no such timer.
+ */
+export function moveStart(id: string, startedAt: number, now = Date.now()): Running[] | null {
+	if (!(startedAt < now)) return null;
+	const list = read();
+	if (!list.some((t) => t.id === id)) return null;
+	write(list.map((t) => (t.id === id ? { ...t, started_at: startedAt } : t)));
+	return running();
+}
+
+/**
  * The entry a timer becomes when it stops: the moment it started and the
  * moment it stopped, in the zone the person is in -- their own, the same one
  * the server's "today" uses for them -- dated the day it started, and carrying
