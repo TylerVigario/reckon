@@ -1,4 +1,4 @@
-import { and, count, eq } from 'drizzle-orm';
+import { and, asc, count, eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { integration, service, unit, user } from '#lib/server/db/schema/index.ts';
@@ -8,16 +8,17 @@ import { jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
 import type { PageServerLoad } from './$types';
 
 /**
- * The settings menu: seven screens, each with the figure that answers "is this
- * set up" without opening it.
+ * The settings menu: seven screens, each saying what it is set to now -- the
+ * business's name, its terms, its tax rules -- so whether something is set up
+ * is answered without opening it.
  */
 export const load: PageServerLoad = async () => {
 	const day = businessToday();
-	const [row, [people], [connected], [units], mileServices, catalogue] = await Promise.all([
+	const [row, [people], [connected], units, mileServices, catalogue] = await Promise.all([
 		operatorRow(),
 		db.select({ n: count() }).from(user).where(eq(user.active, true)),
 		db.select({ n: count() }).from(integration).where(eq(integration.connected, true)),
-		db.select({ n: count() }).from(unit),
+		db.select({ name: unit.name }).from(unit).orderBy(asc(unit.name)),
 		db
 			.select({ id: service.id })
 			.from(service)
@@ -33,10 +34,10 @@ export const load: PageServerLoad = async () => {
 	return {
 		operator: row,
 		counts: {
-			people: String(people.n),
+			people: people.n,
 			mileage,
-			units: String(units.n),
-			integrations: String(connected.n)
+			units: units.map((u) => u.name),
+			integrations: connected.n
 		}
 	};
 };
