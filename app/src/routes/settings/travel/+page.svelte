@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
-	import { money } from '#lib/money.svelte.ts';
+	import { unitPrice } from '#lib/money.svelte.ts';
 	import Day from '#lib/Day.svelte';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -48,7 +48,7 @@
 						</div>
 					</div>
 					<div class="rec-n">
-						<span class="rec-v">{money(r.rate)}</span><span class="rec-x">/mi</span>
+						<span class="rec-v">{unitPrice(r.rate)}</span><span class="rec-x">/mi</span>
 					</div>
 				</div>
 			{:else}

@@ -4,7 +4,7 @@
 	import { held, flush, enqueue, discard, type Queued } from '#lib/queue.ts';
 	import { running, drop, toEntry, type Running } from '#lib/timers.ts';
 	import { refreshAll } from '$app/navigation';
-	import { money } from '#lib/money.svelte.ts';
+	import { unitPrice } from '#lib/money.svelte.ts';
 	import { clock as clockAt, day, elapsed, increment, minutesAsHours } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import { rateFor } from '#lib/rates.ts';
@@ -228,7 +228,9 @@
 				<div class="kv">
 					<span class="k">Rate</span>
 					<span class="v">
-						{#if liveRate}{money(liveRate)}/h · {live.crew === 'team' ? 'the team' : 'one person'}
+						{#if liveRate}{unitPrice(liveRate)}/h · {live.crew === 'team'
+								? 'the team'
+								: 'one person'}
 						{:else}not priced{/if}
 					</span>
 				</div>

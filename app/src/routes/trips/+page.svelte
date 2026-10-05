@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
 	import { day, miles } from '#lib/format.ts';
-	import { money } from '#lib/money.svelte.ts';
+	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -40,7 +40,7 @@
 					<h2>{group.head}</h2>
 					{#if group.key === 'unbilled' && data.totals?.rate}
 						<span class="sp"></span>
-						<span class="chip">Rate {money(data.totals.rate)}/mi</span>
+						<span class="chip">Rate {unitPrice(data.totals.rate)}/mi</span>
 					{/if}
 				</div>
 				<div class="rows">

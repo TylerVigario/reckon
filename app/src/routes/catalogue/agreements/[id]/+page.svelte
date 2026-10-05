@@ -3,7 +3,7 @@
 	import Setting from '#lib/Setting.svelte';
 	import CoverageForm from '#lib/agreement/CoverageForm.svelte';
 	import { dated, hours, span } from '#lib/format.ts';
-	import { money } from '#lib/money.svelte.ts';
+	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { forInput } from '#lib/currency.ts';
 	import { paysWhat } from '#lib/pay-words.ts';
 	import { parseAgreementField } from '#lib/agreement-fields.ts';
@@ -107,7 +107,7 @@
 	}
 
 	const pays = (r: { pays_for: string; method: string; amount: string | null }) => {
-		const w = paysWhat(r, money);
+		const w = paysWhat(r, { money, unitPrice });
 		return w.x ? `${w.v} ${w.x}` : w.v;
 	};
 	const FOR: Record<string, string> = {

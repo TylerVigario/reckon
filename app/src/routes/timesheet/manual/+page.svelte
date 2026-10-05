@@ -5,7 +5,7 @@
 	import { page } from '$app/state';
 	import Top from '#lib/Top.svelte';
 	import { enqueue, find, flush, type Entry, type Queued } from '#lib/queue.ts';
-	import { money } from '#lib/money.svelte.ts';
+	import { unitPrice } from '#lib/money.svelte.ts';
 	import { rateFor } from '#lib/rates.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -186,7 +186,7 @@
 				</select>
 				{#if serviceId}
 					<span class="hint">
-						{rate ? `${money(rate)}/${service?.unit === 'mile' ? 'mi' : 'h'}` : 'not priced'}
+						{rate ? `${unitPrice(rate)}/${service?.unit === 'mile' ? 'mi' : 'h'}` : 'not priced'}
 					</span>
 				{/if}
 			</span>

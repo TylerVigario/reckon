@@ -69,9 +69,9 @@ const CENTS = 2;
 describe('a price counts heads', () => {
 	const p = price('field', '95.00', '45.00', '2026-08-03');
 	it('is the first person and each one after', () => {
-		expect(money(jobRate(p, 1, CENTS))).toBe('95.00');
-		expect(money(jobRate(p, 2, CENTS))).toBe('140.00');
-		expect(money(jobRate(p, 3, CENTS))).toBe('185.00');
+		expect(money(jobRate(p, 1))).toBe('95.00');
+		expect(money(jobRate(p, 2))).toBe('140.00');
+		expect(money(jobRate(p, 3))).toBe('185.00');
 	});
 
 	it("takes the client's own price, then the newest that has started", () => {
@@ -704,6 +704,40 @@ describe('tax is rounded by its rule', () => {
 	});
 });
 
+/**
+ * A rate is a price for one of something, held to four places, so it can be
+ * finer than the currency: 72.5¢ a mile, the IRS business rate for the first
+ * half of 2026. What it bills is rounded to the currency's places, once.
+ */
+describe('a rate is a price, finer than the currency where it needs to be', () => {
+	const travel: ServiceTerms = {
+		id: 'travel',
+		unit: 'mile',
+		billToNearestSeconds: null,
+		minimumCharge: null
+	};
+	const leg = (rate: string) =>
+		legWorth(
+			{ serviceId: 'travel', entityId: ALDER, miles: '28.00' },
+			'2026-03-02',
+			new Map([['travel', travel]]),
+			[price('travel', rate)],
+			CENTS
+		);
+
+	it("72.5¢ a mile is 72.5¢, and 28 miles of it bill $20.30, not 73¢'s $20.44", () => {
+		expect(money(leg('0.7250').rate)).toBe('0.7250');
+		expect(money(leg('0.7250').billed)).toBe('20.30');
+	});
+
+	it('a crew at finer rates bills what they come to, rounded once', () => {
+		const rate = jobRate(price('field', '95.125', '45.0625'), 2);
+		expect(money(rate)).toBe('140.1875');
+		const hour = hourly('field', { billToNearestSeconds: null });
+		expect(money(billedAmount(hour, rate, Ratio.of(1), CENTS))).toBe('140.19');
+	});
+});
+
 describe('the rest', () => {
 	it("a leg bills its miles at one person's rate on the day", () => {
 		const travel: ServiceTerms = {
@@ -732,9 +766,10 @@ describe("every amount is rounded to its currency's places", () => {
 	const YEN = 0;
 	const DINARS = 3;
 
-	it('a rate with heads', () => {
-		expect(money(jobRate(price('field', '9500', '4500'), 2, YEN))).toBe('14000');
-		expect(money(jobRate(price('field', '12.345', '4.5'), 2, DINARS))).toBe('16.845');
+	it('a rate with heads, which is a price and is not rounded', () => {
+		expect(money(jobRate(price('field', '9500', '4500'), 2))).toBe('14000');
+		expect(money(jobRate(price('field', '9500.5', '4500'), 2))).toBe('14000.5');
+		expect(money(jobRate(price('field', '12.345', '4.5'), 2))).toBe('16.845');
 	});
 
 	it('23 minutes billed: ¥3,641.67 is ¥3,642, and 4.73225 dinars is 4.732', () => {

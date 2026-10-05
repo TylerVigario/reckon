@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
 	import { dated, increment } from '#lib/format.ts';
-	import { money } from '#lib/money.svelte.ts';
+	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { paysWhat } from '#lib/pay-words.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -24,7 +24,7 @@
 		const p = priceOf(s);
 		const bits = [`Per ${s.unit}`];
 		if (p && s.unit === 'hour' && Number(p.additional_rate) > 0)
-			bits.push(`+${money(p.additional_rate)} each additional person`);
+			bits.push(`+${unitPrice(p.additional_rate)} each additional person`);
 		if (s.unit === 'hour') bits.push(`billed ${increment(s.bill_to_nearest_seconds)}`);
 		if (s.minimum_charge) bits.push(`at least ${money(s.minimum_charge)}`);
 		return bits.join(' · ');
@@ -42,7 +42,7 @@
 		// the service.
 		const live = s.rules.filter((r) => r.state === 'current');
 		for (const r of live.filter((r) => r.client === null)) {
-			const w = paysWhat(r, money);
+			const w = paysWhat(r, { money, unitPrice });
 			out.push({ text: `${r.payee} ${w.v}${w.x ? ` ${w.x}` : ''}`, tone: '' });
 		}
 		const theirs = live.filter((r) => r.client !== null).length;
@@ -119,7 +119,7 @@
 								{/if}
 							</div>
 							<div class="rec-n">
-								<span class="rec-v" class:mut={!p}>{p ? money(p.rate) : '—'}</span>
+								<span class="rec-v" class:mut={!p}>{p ? unitPrice(p.rate) : '—'}</span>
 								{#if p}<span class="rec-x">{per(s.unit)}</span>{/if}
 							</div>
 							<span class="arw" aria-hidden="true">›</span>

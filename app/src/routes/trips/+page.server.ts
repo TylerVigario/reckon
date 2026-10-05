@@ -105,9 +105,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			.where(and(eq(t.service.unit, 'mile'), eq(t.service.active, true)))
 	).map((s) => s.id);
 	const rate =
-		perMile.length === 1
-			? jobRate(priceOn(catalogue.prices, perMile[0], null, day), 1, places)
-			: null;
+		perMile.length === 1 ? jobRate(priceOn(catalogue.prices, perMile[0], null, day), 1) : null;
 
 	return {
 		unbilled: trips.filter((x) => !x.billed),

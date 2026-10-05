@@ -42,13 +42,14 @@ export function priceOn(
 
 /**
  * What the job costs an hour (or a mile, or each) with this many people on it:
- * the first person's rate and the additional rate for each one after, to the
- * currency's `places` (#lib/currency). Null when there is no price.
+ * the first person's rate and the additional rate for each one after, exactly.
+ * A price, so it may be finer than the currency -- 0.725 a mile -- and is never
+ * rounded: what it bills is (billedAmount). Null when there is no price.
  */
-export function jobRate(price: Price | null, heads: number, places: number): Decimal | null {
+export function jobRate(price: Price | null, heads: number): Decimal | null {
 	if (!price) return null;
 	const extra = BigInt(Math.max(heads - 1, 0));
-	return Decimal.from(price.rate).add(Decimal.from(price.additionalRate).mul(extra)).round(places);
+	return Decimal.from(price.rate).add(Decimal.from(price.additionalRate).mul(extra));
 }
 
 /**

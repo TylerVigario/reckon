@@ -423,7 +423,7 @@ export async function anHourNow(): Promise<HourNow[]> {
 		const terms = catalogue.services.get(s.id);
 		if (!price || !terms) continue;
 
-		const billed = billedAmount(terms, jobRate(price, 1, places), hour, places)!;
+		const billed = billedAmount(terms, jobRate(price, 1), hour, places)!;
 		const alike = new Map<string, { who: string[]; paid: Decimal | null; since: string | null }>();
 		for (const person of people) {
 			const rule = ruleOn(catalogue.rules, s.id, person, null, 'time', day);
@@ -448,7 +448,7 @@ export async function anHourNow(): Promise<HourNow[]> {
 			});
 
 		if (people.length > 1 && (Decimal.from(price.additionalRate).gt(0) || teamWorked.has(s.id))) {
-			const teamBilled = billedAmount(terms, jobRate(price, people.length, places), hour, places)!;
+			const teamBilled = billedAmount(terms, jobRate(price, people.length), hour, places)!;
 			const each = people.map((person) => {
 				const rule = ruleOn(catalogue.rules, s.id, person, null, 'time', day);
 				return {

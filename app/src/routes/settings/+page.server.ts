@@ -5,7 +5,6 @@ import { integration, service, user } from '#lib/server/db/schema/index.ts';
 import { operatorRow } from '#lib/server/operator.ts';
 import { loadCatalogue } from '#lib/server/valuation/load.ts';
 import { jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
-import { moneyPlaces } from '#lib/server/business.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -14,7 +13,7 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async () => {
 	const day = businessToday();
-	const [row, [people], [connected], mileServices, catalogue, places] = await Promise.all([
+	const [row, [people], [connected], mileServices, catalogue] = await Promise.all([
 		operatorRow(),
 		db.select({ n: count() }).from(user).where(eq(user.active, true)),
 		db.select({ n: count() }).from(integration).where(eq(integration.connected, true)),
@@ -22,14 +21,12 @@ export const load: PageServerLoad = async () => {
 			.select({ id: service.id })
 			.from(service)
 			.where(and(eq(service.unit, 'mile'), eq(service.active, true))),
-		loadCatalogue(db),
-		moneyPlaces()
+		loadCatalogue(db)
 	]);
 	// The mileage rate, when there is exactly one service charged by the mile.
 	const mileage =
 		mileServices.length === 1
-			? (jobRate(priceOn(catalogue.prices, mileServices[0].id, null, day), 1, places)?.toString() ??
-				null)
+			? (jobRate(priceOn(catalogue.prices, mileServices[0].id, null, day), 1)?.toString() ?? null)
 			: null;
 
 	return {
