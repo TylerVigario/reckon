@@ -182,10 +182,16 @@ export function minutesAsHours(minutes: number, as: HoursAs = 'billed'): string 
 	return hours(Ratio.of(minutes).div(60).round(places).toFixed(places), as);
 }
 
+/** Seconds as hours, worked out exactly before they are rounded to show: 1500 is "0.4167 hr". */
+export function secondsAsHours(seconds: number, as: HoursAs = 'billed'): string {
+	const places = HOURS[as];
+	return hours(Ratio.of(seconds).div(3600).round(places).toFixed(places), as);
+}
+
 /** Whole hours, closed up for a count beside a menu item, where a space would read as two figures: "2h". */
-export function hoursBadge(minutes: number): string {
+export function hoursBadge(seconds: number): string {
 	return numbers({ style: 'unit', unit: 'hour', unitDisplay: 'narrow' }).format(
-		exact(Ratio.of(minutes).div(60).round(0).toFixed(0))
+		exact(Ratio.of(seconds).div(3600).round(0).toFixed(0))
 	);
 }
 
@@ -384,4 +390,28 @@ export function datedAt(at: number | string | Date, zone: string): string {
 		month: 'short',
 		year: 'numeric'
 	}).format(new Date(at));
+}
+
+/**
+ * When work was done, shown as it was worked: on the clock of the zone it was
+ * done in, so a 9:00 job reads 9:00 to everyone -- "9:00 – 11:40 AM". Past
+ * midnight it says so, rather than writing two dates in numbers: "9:00 PM –
+ * 2:00 AM the next day". The zone is named when it is not the reader's own:
+ * "9:00 – 11:40 AM, Central Time".
+ */
+export function workedTimes(
+	start: number | string | Date,
+	end: number | string | Date,
+	zone: string,
+	reader: string
+): string {
+	const [from, to] = [new Date(start), new Date(end)];
+	const days = Temporal.PlainDate.from(todayIn(zone, from.getTime())).until(
+		todayIn(zone, to.getTime())
+	).days;
+	const times =
+		days === 0
+			? dates({ timeZone: zone, timeStyle: 'short' }).formatRange(from, to)
+			: `${clock(from, zone)} – ${clock(to, zone)} ${days === 1 ? 'the next day' : `on ${datedAt(to, zone)}`}`;
+	return zone === reader ? times : `${times}, ${zoneName(zone)}`;
 }

@@ -268,7 +268,7 @@ describe('the month-end rule does not drift', () => {
 
 let n = 0;
 const entry = (
-	over: Partial<Entry> & Pick<Entry, 'entityId' | 'serviceId' | 'workedOn' | 'minutes'>
+	over: Partial<Entry> & Pick<Entry, 'entityId' | 'serviceId' | 'workedOn' | 'seconds'>
 ): Entry => ({
 	id: `t-${String(++n).padStart(3, '0')}`,
 	siteId: null,
@@ -377,13 +377,13 @@ describe('a retainer pays a share of itself, split by the hours each spent', () 
 		entityId: RETAINED,
 		serviceId: 'retained',
 		workedOn: '2026-10-05',
-		minutes: 45
+		seconds: 45 * 60
 	});
 	const r2 = entry({
 		entityId: RETAINED,
 		serviceId: 'retained',
 		workedOn: '2026-10-06',
-		minutes: 30,
+		seconds: 30 * 60,
 		crew: 'team',
 		workedBy: null
 	});
@@ -391,38 +391,38 @@ describe('a retainer pays a share of itself, split by the hours each spent', () 
 		entityId: CAPPED,
 		serviceId: 'retained',
 		workedOn: '2026-10-02',
-		minutes: 60
+		seconds: 60 * 60
 	});
 	const c4 = entry({
 		entityId: CAPPED,
 		serviceId: 'retained',
 		workedOn: '2026-10-03',
-		minutes: 45,
+		seconds: 45 * 60,
 		workedBy: SAM.id
 	});
 	const c5 = entry({
 		entityId: CAPPED,
 		serviceId: 'retained',
 		workedOn: '2026-10-04',
-		minutes: 30
+		seconds: 30 * 60
 	});
 	const r6 = entry({
 		entityId: RETAINED,
 		serviceId: 'retained',
 		workedOn: '2026-11-03',
-		minutes: 45
+		seconds: 45 * 60
 	});
 	const c7 = entry({
 		entityId: CAPPED,
 		serviceId: 'retained',
 		workedOn: '2026-11-03',
-		minutes: 45
+		seconds: 45 * 60
 	});
 	const k8 = entry({
 		entityId: KINGFISHER,
 		serviceId: 'helpdesk',
 		workedOn: '2026-10-10',
-		minutes: 30
+		seconds: 30 * 60
 	});
 	const all = [r1, r2, c3, c4, c5, r6, c7, k8];
 
@@ -443,7 +443,7 @@ describe('a retainer pays a share of itself, split by the hours each spent', () 
 
 	it('a capped pool is drawn in the order the work was done', () => {
 		const c = coverage(all, agreements);
-		expect([c3, c4, c5].map((e) => c.get(e.id)!.coveredMinutes)).toEqual([60, 30, 0]);
+		expect([c3, c4, c5].map((e) => c.get(e.id)!.coveredSeconds)).toEqual([3600, 1800, 0]);
 	});
 
 	it('partly covered bills the rest at the going rate and pays it by the hour', () => {
@@ -452,6 +452,19 @@ describe('a retainer pays a share of itself, split by the hours each spent', () 
 		expect(money(w.get(c4.id)!.paid)).toBe('19.30');
 		expect(money(w.get(c5.id)!.billed)).toBe('30.00');
 		expect(money(w.get(c5.id)!.paid)).toBe('13.00');
+	});
+
+	it('bills to the increment and pays to the second', () => {
+		// 22 min 40 s for a client with no retainer: billed as 23 minutes at
+		// $60.00, and paid for the 1,360 seconds worked at $26.00 an hour.
+		const walkIn = entry({
+			entityId: 'e-walk-in',
+			serviceId: 'retained',
+			workedOn: '2026-10-05',
+			seconds: 1360
+		});
+		const w = worth([walkIn], ctx()).get(walkIn.id)!;
+		expect([w.billedSeconds, money(w.billed), money(w.paid)]).toEqual([1360, '23.00', '9.82']);
 	});
 
 	it("is worked out to the currency's places: none for yen, three for dinars", () => {
@@ -472,14 +485,14 @@ describe('a retainer pays a share of itself, split by the hours each spent', () 
 
 	it('unlimited and not yet charged: covered, billed nothing, pay unknown', () => {
 		const w = worth(all, ctx()).get(r6.id)!;
-		expect(w.coveredMinutes).toBe(45);
+		expect(w.coveredSeconds).toBe(45 * 60);
 		expect(money(w.billed)).toBe('0.00');
 		expect(w.paid).toBeNull();
 	});
 
 	it('capped and not yet charged: no pool to draw, so no value at all', () => {
 		const w = worth(all, ctx()).get(c7.id)!;
-		expect(w.coveredMinutes).toBeNull();
+		expect(w.coveredSeconds).toBeNull();
 		expect(w.billed).toBeNull();
 	});
 
@@ -545,14 +558,14 @@ describe("a site's own agreement comes before the client's", () => {
 			siteId: 's-one',
 			serviceId: 'helpdesk',
 			workedOn: '2026-09-15',
-			minutes: 30
+			seconds: 30 * 60
 		});
 		const two = entry({
 			entityId: CLIENT,
 			siteId: 's-two',
 			serviceId: 'helpdesk',
 			workedOn: '2026-09-15',
-			minutes: 30
+			seconds: 30 * 60
 		});
 		const c = coverage([one, two], agreements);
 		expect(c.get(one.id)!.agreementId).toBe('a-client');
@@ -563,12 +576,12 @@ describe("a site's own agreement comes before the client's", () => {
 			entityId: CLIENT,
 			serviceId: 'helpdesk',
 			workedOn: '2026-09-15',
-			minutes: 30,
+			seconds: 30 * 60,
 			billable: false
 		});
 		expect(coverage([e], agreements).get(e.id)!).toMatchObject({
 			agreementId: null,
-			coveredMinutes: 0
+			coveredSeconds: 0
 		});
 	});
 	it('but the meter counts it against the agreement it falls under', () => {
@@ -577,22 +590,27 @@ describe("a site's own agreement comes before the client's", () => {
 			siteId: 's-two',
 			serviceId: 'helpdesk',
 			workedOn: '2026-09-15',
-			minutes: 75,
+			seconds: 75 * 60,
 			billable: false
 		});
 		expect(agreementFor(e, agreements)?.a.id).toBe('a-site-two');
-		expect(hoursOf(e.minutes)).toBe('1.25');
+		expect(hoursOf(e.seconds)).toBe('1.25');
 	});
 	it("nothing falls under an agreement that has not started, or another service's", () => {
 		expect(
 			agreementFor(
-				entry({ entityId: CLIENT, serviceId: 'helpdesk', workedOn: '2026-08-31', minutes: 30 }),
+				entry({
+					entityId: CLIENT,
+					serviceId: 'helpdesk',
+					workedOn: '2026-08-31',
+					seconds: 30 * 60
+				}),
 				agreements
 			)
 		).toBeNull();
 		expect(
 			agreementFor(
-				entry({ entityId: CLIENT, serviceId: 'field', workedOn: '2026-09-15', minutes: 30 }),
+				entry({ entityId: CLIENT, serviceId: 'field', workedOn: '2026-09-15', seconds: 30 * 60 }),
 				agreements
 			)
 		).toBeNull();

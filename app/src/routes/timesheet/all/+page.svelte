@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { day, minutesAsHours } from '#lib/format.ts';
+	import { day, secondsAsHours, workedTimes } from '#lib/format.ts';
+	import { personalZone } from '#lib/zone.svelte.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -10,9 +11,9 @@
 	const sub = $derived(
 		[
 			data.totals?.month,
-			minutesAsHours(Number(data.totals?.minutes ?? 0), 'whole'),
+			secondsAsHours(Number(data.totals?.seconds ?? 0), 'whole'),
 			Number(data.totals?.idle ?? 0) > 0
-				? `${minutesAsHours(Number(data.totals.idle), 'glance')} non-billable`
+				? `${secondsAsHours(Number(data.totals.idle), 'glance')} non-billable`
 				: null
 		]
 			.filter(Boolean)
@@ -37,9 +38,9 @@
 								{/if}
 							</div>
 							<div class="rec-s">
-								{day(e.worked_on)} · {e.crew === 'team'
-									? 'the team'
-									: (e.worked_by ?? 'unassigned')}
+								{day(e.worked_on)}{#if e.started_at && e.ended_at && e.zone}
+									· {workedTimes(e.started_at, e.ended_at, e.zone, personalZone())}{/if}
+								· {e.crew === 'team' ? 'the team' : (e.worked_by ?? 'unassigned')}
 								· {e.note ?? e.service}
 							</div>
 						</div>
@@ -52,7 +53,7 @@
 								<span class="rec-v mut">—</span>
 							{/if}
 							<span class="rec-x">
-								{minutesAsHours(e.minutes)}{#if e.heads > 1}
+								{secondsAsHours(e.seconds)}{#if e.heads > 1}
 									×{e.heads}{/if}
 							</span>
 						</div>

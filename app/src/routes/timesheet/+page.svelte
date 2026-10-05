@@ -1,11 +1,18 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Top from '#lib/Top.svelte';
-	import { held, flush, enqueue, discard, type Queued } from '#lib/queue.ts';
+	import { held, flush, enqueue, discard, secondsOf, type Queued } from '#lib/queue.ts';
 	import { running, drop, toEntry, type Running } from '#lib/timers.ts';
 	import { refreshAll } from '$app/navigation';
 	import { unitPrice } from '#lib/money.svelte.ts';
-	import { clock as clockAt, day, elapsed, increment, minutesAsHours } from '#lib/format.ts';
+	import {
+		clock as clockAt,
+		day,
+		elapsed,
+		increment,
+		secondsAsHours,
+		workedTimes
+	} from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import { rateFor } from '#lib/rates.ts';
 	import type { PageProps } from './$types';
@@ -13,7 +20,7 @@
 
 	let { data }: PageProps = $props();
 
-	const hhmm = (m: number) => elapsed(m * 60, false);
+	const hhmm = (seconds: number) => elapsed(seconds, false);
 
 	// Everything here that is happening NOW is the browser's: the timer, and
 	// whatever is waiting to be posted. Both are read on mount rather than
@@ -126,7 +133,7 @@
 		[
 			notSaved.length ? `${notSaved.length} not saved` : null,
 			queued ? `${queued} queued` : null,
-			`${minutesAsHours(data.monthMinutes, 'whole')} this month`
+			`${secondsAsHours(data.monthSeconds, 'whole')} this month`
 		]
 			.filter(Boolean)
 			.join(' · ')
@@ -170,7 +177,7 @@
 								{e.crew === 'team'
 									? 'The team'
 									: (nameOf(data.people, e.worked_by) ?? 'Unassigned')}
-								· {day(e.worked_on)} · {hhmm(e.minutes)}
+								· {day(e.worked_on)} · {hhmm(secondsOf(e))}
 							</div>
 							<div class="rec-s refusal">
 								Refused: {q.refused?.detail} It is kept on this phone until it is fixed or let go.
@@ -286,14 +293,14 @@
 							{#if !e.billable}<span class="lt">· non-billable</span>{/if}
 						</div>
 						<div class="rec-s">
-							{e.crew === 'team' ? 'The team' : (e.worked_by ?? 'Unassigned')} · {clockAt(
-								e.at,
-								personalZone()
-							)} · {e.service}
+							{e.crew === 'team' ? 'The team' : (e.worked_by ?? 'Unassigned')} ·
+							{e.started_at && e.ended_at && e.zone
+								? workedTimes(e.started_at, e.ended_at, e.zone, personalZone())
+								: clockAt(e.at, personalZone())} · {e.service}
 						</div>
 					</div>
 					<div class="rec-n">
-						<span class="rec-v" class:mut={!e.billable}>{hhmm(e.minutes)}</span>
+						<span class="rec-v" class:mut={!e.billable}>{hhmm(e.seconds)}</span>
 						<span class="rec-x">{e.invoiced ? 'billed' : 'unbilled'}</span>
 					</div>
 				</div>

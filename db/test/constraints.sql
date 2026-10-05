@@ -90,18 +90,18 @@ INSERT INTO site (id, entity_id, label, slug, street, city, region, postcode,
 \echo '=== 1. an entry cannot arrive twice from a retry ==='
 
 SELECT must_pass($$
-  INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, created_by,
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, crew, worked_by, created_by,
                           entity_id, site_id, service_id)
-  VALUES ('a1000000-0000-4000-8000-000000000001','2026-08-24',253,'one',
+  VALUES ('a1000000-0000-4000-8000-000000000001','2026-08-24',253 * 60,'one',
           'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
           '44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333',
           'b5000000-0000-4000-8000-000000000055')
 $$, 'an entry posts');
 
 SELECT must_fail($$
-  INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, created_by,
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, crew, worked_by, created_by,
                           entity_id, site_id, service_id)
-  VALUES ('a1000000-0000-4000-8000-000000000001','2026-08-24',253,'one',
+  VALUES ('a1000000-0000-4000-8000-000000000001','2026-08-24',253 * 60,'one',
           'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
           '44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333',
           'b5000000-0000-4000-8000-000000000055')
@@ -111,26 +111,26 @@ $$, 'the same entry retried after a timeout');
 \echo '=== 2. who worked an hour is not who entered it ==='
 
 SELECT must_pass($$
-  INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, created_by,
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, crew, worked_by, created_by,
                           entity_id, site_id, service_id)
-  VALUES ('a1000000-0000-4000-8000-000000000002','2026-08-28',150,'one',
+  VALUES ('a1000000-0000-4000-8000-000000000002','2026-08-28',150 * 60,'one',
           'a0a0a0a0-0000-4000-8000-0000000000a2','a0a0a0a0-0000-4000-8000-0000000000a1',
           '44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333',
           'b5000000-0000-4000-8000-000000000055')
 $$, 'Sam worked it, Avery typed it');
 
 SELECT must_pass($$
-  INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, created_by,
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, crew, worked_by, created_by,
                           service_id, billable)
-  VALUES ('a1000000-0000-4000-8000-000000000003','2026-08-31',89,'one',
+  VALUES ('a1000000-0000-4000-8000-000000000003','2026-08-31',89 * 60,'one',
           'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
           'b5000000-0000-4000-8000-000000000055', false)
 $$, 'non-billable time with no client');
 
 SELECT must_fail($$
-  INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, created_by,
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, crew, worked_by, created_by,
                           service_id, billable)
-  VALUES ('a1000000-0000-4000-8000-000000000004','2026-08-31',89,'one',
+  VALUES ('a1000000-0000-4000-8000-000000000004','2026-08-31',89 * 60,'one',
           'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
           'b5000000-0000-4000-8000-000000000055', true)
 $$, 'billable time with nobody to bill');
@@ -443,27 +443,27 @@ END $$;
 \echo '=== 13. crew = team is one row for the whole crew ==='
 
 SELECT must_pass($$
-  INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, created_by,
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, crew, worked_by, created_by,
                           entity_id, site_id, service_id)
-  VALUES ('dddddddd-0000-4000-8000-000000000001','2026-09-16',150,'team',NULL,
+  VALUES ('dddddddd-0000-4000-8000-000000000001','2026-09-16',150 * 60,'team',NULL,
           'a0a0a0a0-0000-4000-8000-0000000000a1',
           '44444444-0000-4000-8000-000000000003','c5000000-0000-4000-8000-00000000000a',
           'b5000000-0000-4000-8000-000000000055')
 $$, 'a team entry, worked_by left empty');
 
 SELECT must_fail($$
-  INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, created_by,
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, crew, worked_by, created_by,
                           entity_id, site_id, service_id)
-  VALUES ('dddddddd-0000-4000-8000-000000000002','2026-09-16',150,'team',
+  VALUES ('dddddddd-0000-4000-8000-000000000002','2026-09-16',150 * 60,'team',
           'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
           '44444444-0000-4000-8000-000000000003','c5000000-0000-4000-8000-00000000000a',
           'b5000000-0000-4000-8000-000000000055')
 $$, 'a team entry naming one person');
 
 SELECT must_fail($$
-  INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, created_by,
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, crew, worked_by, created_by,
                           entity_id, site_id, service_id)
-  VALUES ('dddddddd-0000-4000-8000-000000000003','2026-09-16',150,'one',NULL,
+  VALUES ('dddddddd-0000-4000-8000-000000000003','2026-09-16',150 * 60,'one',NULL,
           'a0a0a0a0-0000-4000-8000-0000000000a1',
           '44444444-0000-4000-8000-000000000003','c5000000-0000-4000-8000-00000000000a',
           'b5000000-0000-4000-8000-000000000055')
@@ -589,9 +589,9 @@ END $$;
 
 -- A site is its client's. A time entry cannot point at another client's site.
 SELECT must_fail($$
-  INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, created_by,
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, crew, worked_by, created_by,
                           entity_id, site_id, service_id)
-  VALUES (gen_random_uuid(), current_date, 30, 'one',
+  VALUES (gen_random_uuid(), current_date,30 * 60,'one',
           'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
           '44444444-4444-4444-4444-444444444444','c5000000-0000-4000-8000-00000000000b',
           'b5000000-0000-4000-8000-000000000055')
@@ -600,9 +600,9 @@ $$, 'billing one client for work at another client''s site');
 -- Two clients at one address each have a site there, so work for either is an
 -- entry against that client's own site.
 SELECT must_pass($$
-  INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, created_by,
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, crew, worked_by, created_by,
                           entity_id, site_id, service_id)
-  VALUES (gen_random_uuid(),'2026-09-16',60,'one',
+  VALUES (gen_random_uuid(),'2026-09-16',60 * 60,'one',
           'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
           '44444444-0000-4000-8000-000000000002','c5000000-0000-4000-8000-00000000000b',
           'b5000000-0000-4000-8000-000000000055')
@@ -985,9 +985,9 @@ END $$;
 DO $$
 DECLARE t uuid; n int;
 BEGIN
-  INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, created_by,
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, crew, worked_by, created_by,
                           entity_id, site_id, service_id)
-  VALUES (gen_random_uuid(),'2026-09-16',30,'one',
+  VALUES (gen_random_uuid(),'2026-09-16',30 * 60,'one',
           'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
           '44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333',
           'b5000000-0000-4000-8000-000000000055')
@@ -1007,9 +1007,9 @@ END $$;
 
 -- Built explicitly: a WHERE that matches nothing deletes nothing and raises
 -- nothing, which reads as a guard holding when it was never exercised.
-INSERT INTO time_entry (id, client_uuid, worked_on, minutes, crew, worked_by, created_by,
+INSERT INTO time_entry (id, client_uuid, worked_on, seconds, crew, worked_by, created_by,
                         entity_id, site_id, service_id)
-VALUES ('7777cccc-7777-7777-7777-777777777777', gen_random_uuid(),'2026-09-16',120,'one',
+VALUES ('7777cccc-7777-7777-7777-777777777777', gen_random_uuid(),'2026-09-16',120 * 60,'one',
         'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
         '44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333',
         'b5000000-0000-4000-8000-000000000055');
@@ -1478,5 +1478,67 @@ $$, 'an eighth day to start the week on');
 SELECT must_pass($$
   UPDATE "user" SET week_start = 7, locale = 'en-GB' WHERE id = 'a0a0a0a0-0000-4000-8000-0000000000a1'
 $$, 'a week from Sunday, in British English');
+
+\echo ''
+\echo '=== 34. an entry keeps its start and end, and its length is theirs ==='
+
+SELECT must_pass($$
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, started_at, ended_at, zone, crew,
+                          worked_by, created_by, entity_id, site_id, service_id)
+  VALUES ('a1000000-0000-4000-8000-000000000034','2026-09-16', 9600,
+          '2026-09-16 09:00-07', '2026-09-16 11:40-07', 'America/Los_Angeles','one',
+          'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
+          '44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333',
+          'b5000000-0000-4000-8000-000000000055')
+$$, '9:00 to 11:40 in Los Angeles, 9,600 seconds');
+
+SELECT must_fail($$
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, started_at, ended_at, zone, crew,
+                          worked_by, created_by, entity_id, site_id, service_id)
+  VALUES (gen_random_uuid(),'2026-09-16', 9000,
+          '2026-09-16 09:00-07', '2026-09-16 11:40-07', 'America/Los_Angeles','one',
+          'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
+          '44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333',
+          'b5000000-0000-4000-8000-000000000055')
+$$, 'a length that is not its times');
+
+SELECT must_fail($$
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, started_at, ended_at, zone, crew,
+                          worked_by, created_by, entity_id, site_id, service_id)
+  VALUES (gen_random_uuid(),'2026-09-16', 9600,
+          '2026-09-16 11:40-07', '2026-09-16 09:00-07', 'America/Los_Angeles','one',
+          'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
+          '44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333',
+          'b5000000-0000-4000-8000-000000000055')
+$$, 'an end before its start');
+
+SELECT must_fail($$
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, started_at, ended_at, crew,
+                          worked_by, created_by, entity_id, site_id, service_id)
+  VALUES (gen_random_uuid(),'2026-09-16', 9600,
+          '2026-09-16 09:00-07', '2026-09-16 11:40-07','one',
+          'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
+          '44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333',
+          'b5000000-0000-4000-8000-000000000055')
+$$, 'times with no zone to show them in');
+
+SELECT must_fail($$
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, started_at, zone, crew,
+                          worked_by, created_by, entity_id, site_id, service_id)
+  VALUES (gen_random_uuid(),'2026-09-16', 9600,
+          '2026-09-16 09:00-07', 'America/Los_Angeles','one',
+          'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
+          '44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333',
+          'b5000000-0000-4000-8000-000000000055')
+$$, 'a start with no end');
+
+SELECT must_fail($$
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, crew,
+                          worked_by, created_by, entity_id, site_id, service_id)
+  VALUES (gen_random_uuid(),'2026-09-16', 0,'one',
+          'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
+          '44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333',
+          'b5000000-0000-4000-8000-000000000055')
+$$, 'work that took no time');
 
 \echo 'All guards hold.'

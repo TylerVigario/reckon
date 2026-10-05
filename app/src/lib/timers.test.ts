@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { toEntry, type Running } from './timers.ts';
+import { secondsOf } from './queue.ts';
 
 const timer = (over: Partial<Running> = {}): Running => ({
 	id: '0f0e0d0c-0000-4000-8000-000000000001',
@@ -35,10 +36,22 @@ describe('toEntry', () => {
 		expect(toEntry(t, 'me', 'UTC', late).worked_on).toBe('2026-03-14');
 	});
 
-	it('counts whole minutes, and never none', () => {
+	it('is the moment it started and the moment it stopped, in the zone it ran in', () => {
 		const t = timer();
-		expect(toEntry(t, 'me', 'UTC', t.started_at + 95 * 60_000).minutes).toBe(95);
-		expect(toEntry(t, 'me', 'UTC', t.started_at + 5_000).minutes).toBe(1);
+		const e = toEntry(t, 'me', 'Europe/London', t.started_at + 95 * 60_000 + 7_000);
+		expect([e.started_at, e.ended_at, e.zone]).toEqual([
+			new Date(t.started_at).toISOString(),
+			new Date(t.started_at + 95 * 60_000 + 7_000).toISOString(),
+			'Europe/London'
+		]);
+		expect(e.minutes).toBeUndefined();
+		expect(secondsOf(e)).toBe(95 * 60 + 7);
+	});
+
+	it('never ends before it starts', () => {
+		const t = timer();
+		const e = toEntry(t, 'me', 'UTC', t.started_at);
+		expect(Date.parse(e.ended_at!)).toBeGreaterThan(Date.parse(e.started_at!));
 	});
 
 	it('names nobody on a team entry, and records who stopped it', () => {

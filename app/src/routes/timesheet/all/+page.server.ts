@@ -27,6 +27,9 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		db
 			.select({
 				...entryColumns,
+				startedAt: t.timeEntry.startedAt,
+				endedAt: t.timeEntry.endedAt,
+				zone: t.timeEntry.zone,
 				note: t.timeEntry.note,
 				workedByName: u.name,
 				entity: t.entity.name,
@@ -53,7 +56,12 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			id: e.id,
 			worked_on: e.workedOn,
 			week: weekOf(e.workedOn, locals.weekStart),
-			minutes: e.minutes,
+			seconds: e.seconds,
+			// When it was worked, where it was worked; none for an entry recorded
+			// as a length alone.
+			started_at: e.startedAt,
+			ended_at: e.endedAt,
+			zone: e.zone,
 			billable: e.billable,
 			crew: e.crew,
 			note: e.note,
@@ -64,7 +72,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			value: e.billable ? (w.billed?.toString() ?? null) : null,
 			// Wholly inside a retainer: it bills nothing by the hour because the
 			// retainer has already charged for it.
-			covered: w.coveredMinutes === e.minutes,
+			covered: w.coveredSeconds === e.seconds,
 			heads: w.heads,
 			invoiced: e.invoiced,
 			stale:
@@ -73,8 +81,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 	});
 
 	const totals = {
-		minutes: String(entries.reduce((n, e) => n + e.minutes, 0)),
-		idle: String(entries.filter((e) => !e.billable).reduce((n, e) => n + e.minutes, 0)),
+		seconds: String(entries.reduce((n, e) => n + e.seconds, 0)),
+		idle: String(entries.filter((e) => !e.billable).reduce((n, e) => n + e.seconds, 0)),
 		month: monthOf(from)
 	};
 

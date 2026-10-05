@@ -328,8 +328,11 @@
     size: sz.micro,
     [*PK*], [id], [uuid],
     [*UK*], [client\_uuid], [uuid · from the phone],
-    [], [worked\_on], [date],
-    [], [minutes], [int],
+    [], [worked\_on], [date · the day it started],
+    [], [seconds], [int · from its times],
+    [], [started\_at], [timestamptz · null = a length],
+    [], [ended\_at], [timestamptz],
+    [], [zone], [text · where it was worked],
     [], [crew], [one | team],
     [*FK*], [worked\_by], [uuid · null when team],
     [*FK*], [created\_by], [uuid · ran the timer],
@@ -410,13 +413,17 @@
     [], [image], [text],
     [*FK*], [role\_id], [uuid · null = not paid],
     [], [active], [bool],
+    [], [timezone], [text · null = the business's],
+    [], [locale], [text · null = the business's],
+    [], [hour\_cycle], [h12|h23 · null = the locale's],
+    [], [week\_start], [1–7 · null = the locale's],
     [], [created\_at], [timestamptz],
     [], [updated\_at], [timestamptz],
   )
 ]
 #v(7pt)
 
-#callout(tone: "note")[worked\_by is who worked the hour, and crew says whether it bills at one person's rate or the team's; created\_by is who entered it, which is how the row is explained later.  client\_uuid is made on the phone: the offline queue retries, and without it a retry that timed out enters the hour twice.  Work done by the whole crew is one row with crew = team, so its billable quantity is recorded, not worked out. Anyone who carries on alone afterwards gets a row of their own at crew = one.  A team row has no worked\_by. created\_by is whoever ran the timer, and user.role\_id is what decides pay.  The team is every active person with a role; that number is the head count a team row is priced and paid at.  trip\_leg.service\_id is what a billed leg bills as, so nothing has to assume that only one service is charged per mile.]
+#callout(tone: "note")[started\_at and ended\_at are when the work was done and zone is where, so it is shown as it was worked; seconds is worked out from them by the server, and worked\_on is the day it started there. An entry recorded before it kept its times has its length alone.  worked\_by is who worked the hour, and crew says whether it bills at one person's rate or the team's; created\_by is who entered it, which is how the row is explained later.  client\_uuid is made on the phone: the offline queue retries, and without it a retry that timed out enters the hour twice.  Work done by the whole crew is one row with crew = team, so its billable quantity is recorded, not worked out. Anyone who carries on alone afterwards gets a row of their own at crew = one.  A team row has no worked\_by. created\_by is whoever ran the timer, and user.role\_id is what decides pay.  The team is every active person with a role; that number is the head count a team row is priced and paid at.  trip\_leg.service\_id is what a billed leg bills as, so nothing has to assume that only one service is charged per mile.]
 #v(4pt)
 
 #v(6pt)
@@ -690,7 +697,7 @@
     [], [phone], [text],
     [], [currency], [text],
     [], [timezone], [text],
-    [], [rounding\_mode], [text],
+    [], [locale], [text · BCP 47],
     [], [tax\_rule\_set], [us\_ca|flat\_per\_site|none],
     [], [invoice\_number\_format], [text],
     [], [next\_invoice\_number], [int],
@@ -706,7 +713,6 @@
     [], [filing\_basis], [annual|quarterly|monthly],
     [], [fiscal\_year\_end\_month], [1–12],
     [], [claims\_tax\_paid\_purchases\_resold], [bool],
-    [], [date\_format], [text],
     [], [mileage\_assignment], [actual|round\_trip\_per\_client],
   )
 ]
@@ -837,7 +843,7 @@
 ]
 #v(7pt)
 
-#callout(tone: "note")[Anyone who can sign in can see and change everything: user has no permission columns. role\_id is not access: it is the capacity someone is paid in, which pay rules are written against.  user, session, account and verification are Better Auth's, in its shape. A password is an account whose provider\_id is credential, and what it holds is an argon2id hash. There is no sign-up: people are added from the command line.  A session is a row, not a stateless token: one server, one database, and every page reads it anyway, so a stateless token would save no round trip and cost revocation. The cookie is the token signed with the server's secret, so a copy of this table lets nobody in without the secret as well.  Which migrations a database has seen is Drizzle's record, in drizzle.\_\_drizzle\_migrations, so re-running db/apply.sh applies only what is new.  Everything that identifies the business is the operator's to supply: logo is nullable and the interface renders trading\_name in its place.  An included-hours figure is a client's, on their agreement, and what is paid to whoever answers is a dated pay\_rule.  record\_history is append-only and exists to explain a figure, not to police one.]
+#callout(tone: "note")[Anyone who can sign in can see and change everything: user has no permission columns. role\_id is not access: it is the capacity someone is paid in, which pay rules are written against.  Each person keeps a time zone, a locale, a clock and a first day of the week. Empty follows the business's -- its own timezone and locale -- or what the locale says.  user, session, account and verification are Better Auth's, in its shape. A password is an account whose provider\_id is credential, and what it holds is an argon2id hash. There is no sign-up: people are added from the command line.  A session is a row, not a stateless token: one server, one database, and every page reads it anyway, so a stateless token would save no round trip and cost revocation. The cookie is the token signed with the server's secret, so a copy of this table lets nobody in without the secret as well.  Which migrations a database has seen is Drizzle's record, in drizzle.\_\_drizzle\_migrations, so re-running db/apply.sh applies only what is new.  Everything that identifies the business is the operator's to supply: logo is nullable and the interface renders trading\_name in its place.  An included-hours figure is a client's, on their agreement, and what is paid to whoever answers is a dated pay\_rule.  record\_history is append-only and exists to explain a figure, not to police one.]
 #v(4pt)
 
 #v(6pt)

@@ -23,7 +23,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	const [[month], entries, people, entities, services, prices] = await Promise.all([
 		db
-			.select({ minutes: sql<string>`coalesce(sum(${t.timeEntry.minutes}), 0)::text` })
+			.select({ seconds: sql<string>`coalesce(sum(${t.timeEntry.seconds}), 0)::text` })
 			.from(t.timeEntry)
 			.where(gte(t.timeEntry.workedOn, monthStart)),
 		// Today's, newest first. A client's own name for the site, because that
@@ -31,7 +31,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 		db
 			.select({
 				id: t.timeEntry.id,
-				minutes: t.timeEntry.minutes,
+				seconds: t.timeEntry.seconds,
+				// When it was worked, where it was worked, to be shown as it was.
+				started_at: t.timeEntry.startedAt,
+				ended_at: t.timeEntry.endedAt,
+				zone: t.timeEntry.zone,
 				billable: t.timeEntry.billable,
 				note: t.timeEntry.note,
 				crew: t.timeEntry.crew,
@@ -61,7 +65,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	return {
 		today: day,
 		me: locals.user!.id,
-		monthMinutes: Number(month.minutes),
+		monthSeconds: Number(month.seconds),
 		entries,
 		people,
 		entities,

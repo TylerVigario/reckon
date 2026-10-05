@@ -339,8 +339,8 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 			crew: es[0].crew,
 			who: es[0].who,
 			heads: Math.max(...w.map((x) => x.heads)),
-			hours: Ratio.of(es.reduce((n, e) => n + e.minutes, 0))
-				.div(60)
+			hours: Ratio.of(es.reduce((n, e) => n + e.seconds, 0))
+				.div(3600)
 				.round(4)
 				.toString(),
 			earned: earned?.toFixed(places) ?? null,
@@ -592,8 +592,8 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 		const lines = a.services.map((s) => {
 			const es = mine.filter((e) => e.serviceId === s.serviceId);
 			const ws = es.map((e) => worth.get(e.id)!);
-			const hours = Ratio.of(es.reduce((n, e) => n + e.minutes, 0))
-				.div(60)
+			const hours = Ratio.of(es.reduce((n, e) => n + e.seconds, 0))
+				.div(3600)
 				.round(2);
 			const cap = s.allotment === 'capped' ? Decimal.from(s.includedHours ?? '0') : null;
 			return {
@@ -606,7 +606,7 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 				},
 				billed: sum(es.filter((e) => e.billable).map((e) => worth.get(e.id)!.billed)),
 				paid: sum(ws.map((w) => w.paid)),
-				payUnknown: ws.some((w) => w.paid === null && (w.coveredMinutes ?? 0) > 0)
+				payUnknown: ws.some((w) => w.paid === null && (w.coveredSeconds ?? 0) > 0)
 			};
 		});
 
@@ -620,24 +620,24 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 
 		// Everyone who worked covered time under it, and their share of it in
 		// person-hours: a team hour is one each.
-		const byPerson = new Map<string, { minutes: number; paid: Decimal[]; unknown: boolean }>();
+		const byPerson = new Map<string, { seconds: number; paid: Decimal[]; unknown: boolean }>();
 		for (const e of mine)
 			for (const pp of worth.get(e.id)!.people) {
-				if (!pp.coveredMinutes || pp.coveredMinutes <= 0) continue;
+				if (!pp.coveredSeconds || pp.coveredSeconds <= 0) continue;
 				const name = personName.get(pp.userId) ?? '';
-				const g = byPerson.get(name) ?? { minutes: 0, paid: [], unknown: false };
-				g.minutes += pp.coveredMinutes;
+				const g = byPerson.get(name) ?? { seconds: 0, paid: [], unknown: false };
+				g.seconds += pp.coveredSeconds;
 				if (pp.coveredPaid === null) g.unknown = true;
 				else g.paid.push(pp.coveredPaid);
 				byPerson.set(name, g);
 			}
-		const total = [...byPerson.values()].reduce((n, g) => n + g.minutes, 0);
+		const total = [...byPerson.values()].reduce((n, g) => n + g.seconds, 0);
 		const responders: Responder[] = [...byPerson.entries()]
-			.sort(([an, a1], [bn, b1]) => b1.minutes - a1.minutes || an.localeCompare(bn))
+			.sort(([an, a1], [bn, b1]) => b1.seconds - a1.seconds || an.localeCompare(bn))
 			.map(([person, g]) => ({
 				person,
-				hours: Ratio.of(g.minutes).div(60).round(2).toString(),
-				share: Ratio.of(g.minutes * 100)
+				hours: Ratio.of(g.seconds).div(3600).round(2).toString(),
+				share: Ratio.of(g.seconds * 100)
 					.div(total)
 					.round(1)
 					.toString(),
@@ -695,24 +695,24 @@ export async function nonBillable(p: Period) {
 		.where(and(eq(t.timeEntry.billable, false), between(t.timeEntry.workedOn, p.start, p.end)));
 	const worth = await valueEntries(db, entries);
 
-	const groups = new Map<string, { minutes: number; billed: (Decimal | null)[] }>();
+	const groups = new Map<string, { seconds: number; billed: (Decimal | null)[] }>();
 	for (const e of entries) {
-		const g = groups.get(e.service) ?? { minutes: 0, billed: [] };
-		g.minutes += e.minutes;
+		const g = groups.get(e.service) ?? { seconds: 0, billed: [] };
+		g.seconds += e.seconds;
 		g.billed.push(worth.get(e.id)!.billed);
 		groups.set(e.service, g);
 	}
 	const rows: GivenRow[] = [...groups.entries()]
-		.sort(([, a], [, b]) => b.minutes - a.minutes)
+		.sort(([, a], [, b]) => b.seconds - a.seconds)
 		.map(([service, g]) => ({
 			service,
-			hours: Ratio.of(g.minutes).div(60).round(4).toString(),
+			hours: Ratio.of(g.seconds).div(3600).round(4).toString(),
 			worth: sumKnown(g.billed)?.toFixed(places) ?? null
 		}));
-	const minutes = [...groups.values()].reduce((n, g) => n + g.minutes, 0);
+	const seconds = [...groups.values()].reduce((n, g) => n + g.seconds, 0);
 	return {
 		rows,
-		hours: Ratio.of(minutes).div(60).round(4).toString(),
+		hours: Ratio.of(seconds).div(3600).round(4).toString(),
 		worth: sumMoney(
 			rows.map((r) => r.worth),
 			places

@@ -221,53 +221,59 @@ SELECT 'f13e8550-7aec-431c-86e5-856cb36910d7', (SELECT id FROM role WHERE name =
 
 -- ------------------------------------------------------------- the work --
 
--- Dates count back from today.
-INSERT INTO time_entry (client_uuid, worked_on, minutes, crew, worked_by, created_by,
+-- Dates count back from today. Field work not yet invoiced, four, nineteen and
+-- thirty-three days old; the oldest took the whole team. The newest was timed, so
+-- it keeps its start and end, 9:00 to 11:20 in the morning where it was worked.
+INSERT INTO time_entry (client_uuid, worked_on, seconds, started_at, ended_at, zone, crew,
+                        worked_by, created_by, entity_id, site_id, service_id, billable, note)
+VALUES (gen_random_uuid(), current_date - 4, 140 * 60,
+        (current_date - 4 + time '09:00') AT TIME ZONE 'America/Los_Angeles',
+        (current_date - 4 + time '11:20') AT TIME ZONE 'America/Los_Angeles',
+        'America/Los_Angeles', 'one', 'c54bf38d-b83d-422f-af31-14a2a01aee5e','c54bf38d-b83d-422f-af31-14a2a01aee5e',
+        'adaf8510-48a7-4ce1-a78f-6f7eab7ea29e','4c42978a-ace1-4a79-a7f0-0d9e7efed2da','2d15bc02-d08e-4242-860c-5d461bf2b1c2', true, 'Replaced the front desk switch');
+
+INSERT INTO time_entry (client_uuid, worked_on, seconds, crew, worked_by, created_by,
                         entity_id, site_id, service_id, billable, note) VALUES
-  -- Field work not yet invoiced, four, nineteen and thirty-three days old. The
-  -- oldest took the whole team.
-  (gen_random_uuid(), current_date - 4, 140, 'one', 'c54bf38d-b83d-422f-af31-14a2a01aee5e','c54bf38d-b83d-422f-af31-14a2a01aee5e',
-   'adaf8510-48a7-4ce1-a78f-6f7eab7ea29e','4c42978a-ace1-4a79-a7f0-0d9e7efed2da','2d15bc02-d08e-4242-860c-5d461bf2b1c2', true, 'Replaced the front desk switch'),
-  (gen_random_uuid(), current_date - 19, 75, 'one', 'd1496a1c-9d8d-42ac-bf41-d059ed2a634c','c41b2fab-5b71-4954-bb86-1bc803daf7ee',
+  (gen_random_uuid(), current_date - 19, 75 * 60, 'one', 'd1496a1c-9d8d-42ac-bf41-d059ed2a634c','c41b2fab-5b71-4954-bb86-1bc803daf7ee',
    'b652b696-5037-4fe8-822c-9caed8f21c68','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','2d15bc02-d08e-4242-860c-5d461bf2b1c2', true, 'Mounted and patched two access points'),
-  (gen_random_uuid(), current_date - 33, 105, 'team', NULL,'c41b2fab-5b71-4954-bb86-1bc803daf7ee',
+  (gen_random_uuid(), current_date - 33, 105 * 60, 'team', NULL,'c41b2fab-5b71-4954-bb86-1bc803daf7ee',
    '46b1aaa1-0ade-4002-bfb5-9a80b547c2ed','75aea465-ad04-43e1-b6b4-d7132872a870','2d15bc02-d08e-4242-860c-5d461bf2b1c2', true, 'Moved the server rack to the new closet'),
   -- A visit given free.
-  (gen_random_uuid(), current_date - 26, 45, 'one', 'c54bf38d-b83d-422f-af31-14a2a01aee5e','c54bf38d-b83d-422f-af31-14a2a01aee5e',
+  (gen_random_uuid(), current_date - 26, 45 * 60, 'one', 'c54bf38d-b83d-422f-af31-14a2a01aee5e','c54bf38d-b83d-422f-af31-14a2a01aee5e',
    '46b1aaa1-0ade-4002-bfb5-9a80b547c2ed','75aea465-ad04-43e1-b6b4-d7132872a870','2d15bc02-d08e-4242-860c-5d461bf2b1c2', false, 'Waiting-room screen, no charge'),
   -- Help desk under the retainers.
-  (gen_random_uuid(), LEAST(date_trunc('month', current_date)::date + 3, current_date), 50, 'one',
+  (gen_random_uuid(), LEAST(date_trunc('month', current_date)::date + 3, current_date), 50 * 60, 'one',
    'c41b2fab-5b71-4954-bb86-1bc803daf7ee','c41b2fab-5b71-4954-bb86-1bc803daf7ee','adaf8510-48a7-4ce1-a78f-6f7eab7ea29e','4c42978a-ace1-4a79-a7f0-0d9e7efed2da','f13e8550-7aec-431c-86e5-856cb36910d7', true,
    'Front desk scanner stopped saving to the share'),
-  (gen_random_uuid(), LEAST(date_trunc('month', current_date)::date + 6, current_date), 35, 'one',
+  (gen_random_uuid(), LEAST(date_trunc('month', current_date)::date + 6, current_date), 35 * 60, 'one',
    'c54bf38d-b83d-422f-af31-14a2a01aee5e','c54bf38d-b83d-422f-af31-14a2a01aee5e','adaf8510-48a7-4ce1-a78f-6f7eab7ea29e','52e62dcd-9dd8-4ddb-a985-a1ad40c24109','f13e8550-7aec-431c-86e5-856cb36910d7', true,
    'Imaging workstation would not join the domain'),
-  (gen_random_uuid(), (date_trunc('month', current_date) - interval '20 days')::date, 80, 'one',
+  (gen_random_uuid(), (date_trunc('month', current_date) - interval '20 days')::date, 80 * 60, 'one',
    'c41b2fab-5b71-4954-bb86-1bc803daf7ee','c41b2fab-5b71-4954-bb86-1bc803daf7ee','adaf8510-48a7-4ce1-a78f-6f7eab7ea29e','4c42978a-ace1-4a79-a7f0-0d9e7efed2da','f13e8550-7aec-431c-86e5-856cb36910d7', true,
    'Mailboxes moved to the new server'),
   -- Before Valley Oak's retainer began, so billed.
-  (gen_random_uuid(), (date_trunc('month', current_date) - interval '25 days')::date, 70, 'one',
+  (gen_random_uuid(), (date_trunc('month', current_date) - interval '25 days')::date, 70 * 60, 'one',
    'c41b2fab-5b71-4954-bb86-1bc803daf7ee','c41b2fab-5b71-4954-bb86-1bc803daf7ee','46b1aaa1-0ade-4002-bfb5-9a80b547c2ed','75aea465-ad04-43e1-b6b4-d7132872a870','f13e8550-7aec-431c-86e5-856cb36910d7', true,
    'Backup job failing on the X-ray share'),
-  (gen_random_uuid(), LEAST(date_trunc('month', current_date)::date + 1, current_date), 25, 'one',
+  (gen_random_uuid(), LEAST(date_trunc('month', current_date)::date + 1, current_date), 25 * 60, 'one',
    'c54bf38d-b83d-422f-af31-14a2a01aee5e','c54bf38d-b83d-422f-af31-14a2a01aee5e','46b1aaa1-0ade-4002-bfb5-9a80b547c2ed','75aea465-ad04-43e1-b6b4-d7132872a870','f13e8550-7aec-431c-86e5-856cb36910d7', true,
    'Label printer queue jammed'),
   -- Help desk with no retainer behind it, so it bills.
-  (gen_random_uuid(), (date_trunc('month', current_date) - interval '6 days')::date, 20, 'one',
+  (gen_random_uuid(), (date_trunc('month', current_date) - interval '6 days')::date, 20 * 60, 'one',
    'c41b2fab-5b71-4954-bb86-1bc803daf7ee','c41b2fab-5b71-4954-bb86-1bc803daf7ee','426f8d3b-fc9a-4cf9-a82f-6caf96c90a8f', NULL,'f13e8550-7aec-431c-86e5-856cb36910d7', true,
    'Set up email on a new laptop'),
   -- Work on Kestrel itself.
-  (gen_random_uuid(), (date_trunc('month', current_date) - interval '2 days')::date, 95, 'one',
+  (gen_random_uuid(), (date_trunc('month', current_date) - interval '2 days')::date, 95 * 60, 'one',
    'c54bf38d-b83d-422f-af31-14a2a01aee5e','c54bf38d-b83d-422f-af31-14a2a01aee5e', NULL, NULL,'423bddde-4f8e-4e98-aabc-529a817a57a0', false,
    'Testing a restore from the offsite backup'),
-  (gen_random_uuid(), (date_trunc('month', current_date) - interval '15 days')::date, 40, 'one',
+  (gen_random_uuid(), (date_trunc('month', current_date) - interval '15 days')::date, 40 * 60, 'one',
    'c41b2fab-5b71-4954-bb86-1bc803daf7ee','c41b2fab-5b71-4954-bb86-1bc803daf7ee', NULL, NULL,'423bddde-4f8e-4e98-aabc-529a817a57a0', false,
    'Writing the new-client onboarding checklist');
 
 -- An assessment, charged by the visit however long it took, and on INV-0209.
-INSERT INTO time_entry (id, client_uuid, worked_on, minutes, crew, worked_by, created_by,
+INSERT INTO time_entry (id, client_uuid, worked_on, seconds, crew, worked_by, created_by,
                         entity_id, site_id, service_id, billable, note)
-VALUES ('7c9a60be-d9be-4472-b06c-415c6a235f35', gen_random_uuid(), current_date - 9, 90, 'one', 'c41b2fab-5b71-4954-bb86-1bc803daf7ee','c41b2fab-5b71-4954-bb86-1bc803daf7ee',
+VALUES ('7c9a60be-d9be-4472-b06c-415c6a235f35', gen_random_uuid(), current_date - 9, 90 * 60, 'one', 'c41b2fab-5b71-4954-bb86-1bc803daf7ee','c41b2fab-5b71-4954-bb86-1bc803daf7ee',
         'b652b696-5037-4fe8-822c-9caed8f21c68','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','08cc4be7-1955-4be8-a90c-0b95e4f31a9c', true, 'Wi-Fi coverage survey');
 
 -- Sam's drive today -- so every month's trips screen has one: Harbor Light's

@@ -15,6 +15,8 @@ import {
 	fullDay,
 	hours,
 	hoursBadge,
+	workedTimes,
+	secondsAsHours,
 	increment,
 	miles,
 	minutesAsHours,
@@ -163,8 +165,13 @@ describe('hours', () => {
 		expect(minutesAsHours(150, 'whole')).toBe('3 hr');
 	});
 
+	it('from seconds, worked out exactly before it is rounded', () => {
+		expect(secondsAsHours(1500)).toBe('0.4167 hr');
+		expect(secondsAsHours(5407, 'glance')).toBe('1.5 hr');
+	});
+
 	it('closed up for a count beside a menu item', () => {
-		expect(hoursBadge(150)).toBe('3h');
+		expect(hoursBadge(9000)).toBe('3h');
 	});
 });
 
@@ -356,5 +363,31 @@ describe("in the reader's locale", () => {
 			expect(span('2026-10-01', '2026-10-04')).toBe('1.–4. Okt. 2026');
 			expect(weekdayName(1)).toBe('Montag');
 		});
+	});
+});
+
+describe('workedTimes', () => {
+	const NINE_CHICAGO = '2026-10-04T14:00:00Z';
+	it('is the clock where the work was done', () => {
+		expect(
+			workedTimes(NINE_CHICAGO, '2026-10-04T16:40:00Z', 'America/Chicago', 'America/Chicago')
+		).toBe('9:00\u2009–\u200911:40\u202fAM');
+	});
+
+	it('names that zone to a reader in another', () => {
+		expect(
+			workedTimes(NINE_CHICAGO, '2026-10-04T16:40:00Z', 'America/Chicago', 'America/Los_Angeles')
+		).toBe('9:00\u2009–\u200911:40\u202fAM, Central Time');
+	});
+
+	it('says when it ran past midnight, without a date in numbers', () => {
+		expect(
+			workedTimes(
+				'2026-10-04T02:00:00Z',
+				'2026-10-04T07:00:00Z',
+				'America/Chicago',
+				'America/Chicago'
+			)
+		).toBe('9:00 PM – 2:00 AM the next day');
 	});
 });

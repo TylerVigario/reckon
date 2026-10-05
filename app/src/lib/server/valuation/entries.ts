@@ -16,7 +16,8 @@ export type Entry = {
 	siteId: string | null;
 	serviceId: string;
 	workedOn: string;
-	minutes: number;
+	/** How long it took, in seconds. */
+	seconds: number;
 	billable: boolean;
 	crew: 'one' | 'team';
 	workedBy: string | null;
@@ -45,8 +46,8 @@ export type Coverage = {
 	periodId: string | null;
 	periodCharge: Decimal | null;
 	overage: Agreement['services'][number]['overage'];
-	/** Minutes a retainer covered. Null when the pool cannot be drawn yet: capped, and its period not charged. */
-	coveredMinutes: number | null;
+	/** Seconds a retainer covered. Null when the pool cannot be drawn yet: capped, and its period not charged. */
+	coveredSeconds: number | null;
 };
 
 const NONE: Coverage = {
@@ -54,7 +55,7 @@ const NONE: Coverage = {
 	periodId: null,
 	periodCharge: null,
 	overage: null,
-	coveredMinutes: 0
+	coveredSeconds: 0
 };
 
 /**
@@ -112,10 +113,10 @@ export function coverage(
 			periodId: period?.id ?? null,
 			periodCharge: period ? Decimal.from(period.amount) : null,
 			overage: hit.s.overage,
-			coveredMinutes: null
+			coveredSeconds: null
 		};
 		found.set(e.id, c);
-		if (hit.s.allotment === 'unlimited') c.coveredMinutes = e.minutes;
+		if (hit.s.allotment === 'unlimited') c.coveredSeconds = e.seconds;
 		else if (period) {
 			const key = `${period.id}:${e.serviceId}`;
 			byPool.set(key, [...(byPool.get(key) ?? []), { e, s: hit.s, c }]);
@@ -133,11 +134,11 @@ export function coverage(
 		for (const { e, s, c } of drawn) {
 			const pool = Number(
 				Decimal.from(s.includedHours ?? '0')
-					.mul(60)
+					.mul(3600)
 					.toBigInt()
 			);
-			c.coveredMinutes = Math.max(Math.min(e.minutes, pool - before), 0);
-			before += e.minutes;
+			c.coveredSeconds = Math.max(Math.min(e.seconds, pool - before), 0);
+			before += e.seconds;
 		}
 	}
 	return found;
@@ -155,7 +156,7 @@ export type Context = {
 
 export type PersonPay = {
 	userId: string;
-	coveredMinutes: number | null;
+	coveredSeconds: number | null;
 	timePaid: Decimal | null;
 	coveredPaid: Decimal | null;
 	paid: Decimal | null;
@@ -166,11 +167,11 @@ export type Worth = {
 	heads: number;
 	/** The job's rate with this many people on it. */
 	rate: Decimal | null;
-	coveredMinutes: number | null;
-	billedMinutes: number | null;
-	/** What the uncovered minutes bill. Null when unknown: no price, or a pool not yet drawable. */
+	coveredSeconds: number | null;
+	billedSeconds: number | null;
+	/** What the uncovered seconds bill. Null when unknown: no price, or a pool not yet drawable. */
 	billed: Decimal | null;
-	/** The covered minutes' part of the retainer's charge, for everyone on the entry. */
+	/** The covered seconds' part of the retainer's charge, for everyone on the entry. */
 	coveredShare: Decimal | null;
 	/** Billed plus the covered share: what the work brought in. */
 	earned: Decimal | null;
@@ -190,14 +191,14 @@ export function worth(entries: readonly Entry[], ctx: Context): Map<string, Wort
 	const crew = team(ctx.people);
 	const headsOf = (e: Entry) => (e.crew === 'team' ? crew.length : 1);
 
-	// Each period's covered person-minutes, which its charge is divided by.
-	const personMinutes = new Map<string, bigint>();
+	// Each period's covered person-seconds, which its charge is divided by.
+	const personSeconds = new Map<string, bigint>();
 	for (const e of entries) {
 		const c = covered.get(e.id)!;
-		if (c.periodId === null || !c.coveredMinutes) continue;
-		personMinutes.set(
+		if (c.periodId === null || !c.coveredSeconds) continue;
+		personSeconds.set(
 			c.periodId,
-			(personMinutes.get(c.periodId) ?? 0n) + BigInt(c.coveredMinutes * headsOf(e))
+			(personSeconds.get(c.periodId) ?? 0n) + BigInt(c.coveredSeconds * headsOf(e))
 		);
 	}
 
@@ -209,39 +210,39 @@ export function worth(entries: readonly Entry[], ctx: Context): Map<string, Wort
 		const heads = headsOf(e);
 		const service = ctx.services.get(e.serviceId);
 		const rate = jobRate(priceOn(ctx.prices, e.serviceId, e.entityId, e.workedOn), heads);
-		const billedMinutes = c.coveredMinutes === null ? null : e.minutes - c.coveredMinutes;
+		const billedSeconds = c.coveredSeconds === null ? null : e.seconds - c.coveredSeconds;
 
 		let billed: Decimal | null;
-		if (billedMinutes === null || !service) billed = null;
-		else if (billedMinutes === 0) billed = zero;
+		if (billedSeconds === null || !service) billed = null;
+		else if (billedSeconds === 0) billed = zero;
 		else if (c.agreementId !== null && c.overage === 'no_charge') billed = zero;
 		else
 			billed = billedAmount(
 				service,
 				rate,
-				service.unit === 'each' ? Ratio.of(1) : Ratio.of(billedMinutes).div(60),
+				service.unit === 'each' ? Ratio.of(1) : Ratio.of(billedSeconds).div(3600),
 				places
 			);
 
-		const pm = c.periodId !== null ? personMinutes.get(c.periodId) : undefined;
+		const pm = c.periodId !== null ? personSeconds.get(c.periodId) : undefined;
 		const shareEach: Ratio | null =
-			c.coveredMinutes && c.coveredMinutes > 0 && c.periodCharge && pm
-				? Ratio.of(c.periodCharge).mul(c.coveredMinutes).div(pm)
+			c.coveredSeconds && c.coveredSeconds > 0 && c.periodCharge && pm
+				? Ratio.of(c.periodCharge).mul(c.coveredSeconds).div(pm)
 				: null;
 
 		const payees = e.crew === 'team' ? crew : ctx.people.filter((p) => p.id === e.workedBy);
 		const people: PersonPay[] = payees.map((p) => {
 			const timePaid =
-				billedMinutes !== null && billedMinutes > 0
+				billedSeconds !== null && billedSeconds > 0
 					? timePay(
 							ruleOn(ctx.rules, e.serviceId, p, e.entityId, 'time', e.workedOn),
-							billedMinutes * 60,
+							billedSeconds,
 							billed,
 							places
 						)
 					: zero;
 			const coveredPaid =
-				c.coveredMinutes && c.coveredMinutes > 0
+				c.coveredSeconds && c.coveredSeconds > 0
 					? coveredPay(
 							ruleOn(ctx.rules, e.serviceId, p, e.entityId, 'covered_time', e.workedOn),
 							shareEach,
@@ -250,7 +251,7 @@ export function worth(entries: readonly Entry[], ctx: Context): Map<string, Wort
 					: zero;
 			return {
 				userId: p.id,
-				coveredMinutes: c.coveredMinutes,
+				coveredSeconds: c.coveredSeconds,
 				timePaid,
 				coveredPaid,
 				paid: timePaid && coveredPaid ? timePaid.add(coveredPaid) : null
@@ -262,7 +263,7 @@ export function worth(entries: readonly Entry[], ctx: Context): Map<string, Wort
 		const coveredShare = shareEach ? shareEach.mul(heads).round(places) : null;
 		let earned: Decimal | null = null;
 		if (billed !== null) {
-			if (!c.coveredMinutes || c.coveredMinutes <= 0) earned = billed;
+			if (!c.coveredSeconds || c.coveredSeconds <= 0) earned = billed;
 			else if (shareEach) earned = shareEach.mul(heads).add(billed).round(places);
 		}
 
@@ -270,8 +271,8 @@ export function worth(entries: readonly Entry[], ctx: Context): Map<string, Wort
 			entryId: e.id,
 			heads,
 			rate,
-			coveredMinutes: c.coveredMinutes,
-			billedMinutes,
+			coveredSeconds: c.coveredSeconds,
+			billedSeconds,
 			billed,
 			coveredShare,
 			earned,

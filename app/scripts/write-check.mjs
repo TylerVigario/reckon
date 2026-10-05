@@ -164,6 +164,58 @@ if (serviceId) {
 		{ ...one, client_uuid: crypto.randomUUID(), minutes: 0 },
 		400
 	);
+	// A timed entry: its start, its end and the zone it was worked in. The
+	// server works out the length and the day itself -- the day sent here is
+	// wrong on purpose, and is not the one kept.
+	const timed = {
+		...one,
+		client_uuid: crypto.randomUUID(),
+		minutes: undefined,
+		worked_on: '2001-01-01',
+		started_at: '2026-09-16T16:00:00.400Z',
+		ended_at: '2026-09-16T18:40:00.200Z',
+		zone: 'America/Los_Angeles'
+	};
+	await check(
+		'a timed entry is its start and end, its length and day worked out',
+		'POST',
+		'/api/time',
+		timed,
+		(/** @type {{ status: number, body: any }} */ r) =>
+			r.status === 200 && r.body?.seconds === 9600 && r.body?.worked_on === '2026-09-16'
+	);
+	await check(
+		'a part of a second counts as one',
+		'POST',
+		'/api/time',
+		{
+			...timed,
+			client_uuid: crypto.randomUUID(),
+			started_at: '2026-09-16T16:00:00.900Z',
+			ended_at: '2026-09-16T16:00:01.100Z'
+		},
+		(/** @type {{ status: number, body: any }} */ r) => r.status === 200 && r.body?.seconds === 1
+	);
+	await check(
+		'an end before its start is refused',
+		'POST',
+		'/api/time',
+		{
+			...timed,
+			client_uuid: crypto.randomUUID(),
+			started_at: timed.ended_at,
+			ended_at: timed.started_at
+		},
+		400
+	);
+	await check(
+		'a zone that is not one is refused',
+		'POST',
+		'/api/time',
+		{ ...timed, client_uuid: crypto.randomUUID(), zone: 'Mars/Olympus_Mons' },
+		(/** @type {{ status: number, body: any }} */ r) =>
+			r.status === 400 && r.body?.errors?.zone === 'Not a time zone.'
+	);
 	// What the phone shows when an entry recorded offline names a service
 	// deleted before it got back: the queue keeps it, and this is the sentence.
 	await check(

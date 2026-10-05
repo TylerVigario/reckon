@@ -41,7 +41,20 @@ export const timeEntry = pgTable(
 		id: id(),
 		clientUuid: uuid().notNull(),
 		workedOn: day().notNull(),
-		minutes: integer().notNull(),
+		/**
+		 * How long it took, in seconds: worked out by the server from the two
+		 * moments, never sent. An entry recorded before it kept its times has only
+		 * its length.
+		 */
+		seconds: integer().notNull(),
+		/**
+		 * When the work started and ended, as moments (UTC), and the zone it was
+		 * done in, so it is shown as it was worked: a 9:00 job reads 9:00 to
+		 * everyone. All three or none -- an entry recorded as a length alone.
+		 */
+		startedAt: tstz(),
+		endedAt: tstz(),
+		zone: text(),
 		workedBy: uuid(),
 		createdBy: uuid().notNull(),
 		entityId: uuid(),
@@ -100,7 +113,15 @@ export const timeEntry = pgTable(
 			sql`((${t.crew} = 'one') AND (${t.workedBy} IS NOT NULL)) OR ((${t.crew} = 'team') AND (${t.workedBy} IS NULL))`
 		),
 		oneOf('time_entry_crew_check', t.crew, CREWS),
-		check('time_entry_minutes_check', sql`${t.minutes} > 0`)
+		check('time_entry_seconds_check', sql`${t.seconds} > 0`),
+		check(
+			'time_entry_times_come_together',
+			sql`((${t.startedAt} IS NULL) = (${t.endedAt} IS NULL)) AND ((${t.startedAt} IS NULL) = (${t.zone} IS NULL))`
+		),
+		check(
+			'time_entry_seconds_are_its_times',
+			sql`(${t.startedAt} IS NULL) OR ((${t.endedAt} > ${t.startedAt}) AND (${t.seconds} = extract(epoch FROM ${t.endedAt} - ${t.startedAt})))`
+		)
 	]
 );
 
