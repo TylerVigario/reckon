@@ -176,12 +176,6 @@ export function hours(v: Figure, as: HoursAs = 'billed'): string {
 	}).format(exact(v));
 }
 
-/** Minutes as hours, worked out exactly before they are rounded to show: 25 is "0.4167 hr". */
-export function minutesAsHours(minutes: number, as: HoursAs = 'billed'): string {
-	const places = HOURS[as];
-	return hours(Ratio.of(minutes).div(60).round(places).toFixed(places), as);
-}
-
 /** Seconds as hours, worked out exactly before they are rounded to show: 1500 is "0.4167 hr". */
 export function secondsAsHours(seconds: number, as: HoursAs = 'billed'): string {
 	const places = HOURS[as];

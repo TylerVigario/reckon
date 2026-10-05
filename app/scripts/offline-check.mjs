@@ -278,12 +278,16 @@ if (phase === 'back') {
 	await settle(2000);
 	const form = await evaluate(`({
 		heading: document.querySelector('h1')?.textContent?.trim() ?? '',
-		duration: document.querySelector('#m-duration')?.value ?? '',
+		start: document.querySelector('#m-start')?.value ?? '',
+		took: document.querySelector('#m-length')?.value ?? '',
+		end: document.querySelector('#m-end')?.value ?? '',
 		service: document.querySelector('#m-service')?.selectedOptions[0]?.textContent?.trim() ?? ''
 	})`);
 	const filledIn =
 		form.heading.startsWith('Fix an entry') &&
-		form.duration === '1:20' &&
+		/^\d\d:\d\d$/.test(form.start) &&
+		form.took === '1:20' &&
+		/^\d\d:\d\d$/.test(form.end) &&
 		form.service === 'Choose what was done';
 	check(
 		filledIn,

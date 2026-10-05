@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { minutesAsHours, pct } from '#lib/format.ts';
+	import { pct, secondsAsHours, zoneName } from '#lib/format.ts';
 	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -7,6 +7,8 @@
 	import { enqueue, find, flush, secondsOf, type Entry, type Queued } from '#lib/queue.ts';
 	import { unitPrice } from '#lib/money.svelte.ts';
 	import { rateFor } from '#lib/rates.ts';
+	import { personalZone } from '#lib/zone.svelte.ts';
+	import { at, clockOf, endAfter, endingAt, lengthText, parseLength } from '#lib/work-times.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -35,10 +37,18 @@
 	);
 	let crew = $state<'one' | 'team'>('one');
 	let workedBy = $state<string | null>(untrack(() => data.me));
-	let duration = $state('');
-	// Not every entry is today's -- an evening spent writing up Tuesday is the
+	// WHEN: a day, and a start, a length and an end, any two of which give the
+	// third (#lib/work-times), worked out here as they are typed, offline. Not
+	// every entry is today's -- an evening spent writing up Tuesday is the
 	// ordinary case, so the day is asked for rather than assumed.
 	let day = $state(untrack(() => data.today));
+	let start = $state('');
+	let length = $state('');
+	let end = $state('');
+	// The person's own zone, or the zone an entry being fixed was worked in.
+	let zone = $state(untrack(() => personalZone()));
+	// Whether any of the four has been touched since the form was filled in.
+	let moved = $state(false);
 	let billable = $state(true);
 	let note = $state('');
 	let saving = $state(false);
@@ -49,9 +59,6 @@
 	// replaces the refused copy rather than adding a second entry. Whatever
 	// the server named as gone is left empty to be chosen again.
 	let fixing = $state<Queued | null>(null);
-	// A timed entry being fixed keeps its own start and end unless its length or
-	// its day is changed here, where only a length can be typed.
-	let asTimed = $state<{ duration: string; day: string } | null>(null);
 	onMount(async () => {
 		const id = page.url.searchParams.get('fix');
 		const q = id ? await find(id).catch(() => undefined) : undefined;
@@ -66,9 +73,14 @@
 		crew = e.crew;
 		workedBy = e.crew === 'team' ? workedBy : known(data.people, e.worked_by);
 		day = e.worked_on;
-		const m = Math.max(1, Math.round(secondsOf(e) / 60));
-		duration = `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
-		if (e.started_at) asTimed = { duration, day };
+		length = lengthText(secondsOf(e));
+		// A timed entry is shown on the clock it was worked on. One recorded as a
+		// length alone has no start to show, and may be saved as a length again.
+		if (e.started_at && e.ended_at && e.zone) {
+			zone = e.zone;
+			start = clockOf(Temporal.Instant.from(e.started_at).toZonedDateTimeISO(zone));
+			end = clockOf(Temporal.Instant.from(e.ended_at).toZonedDateTimeISO(zone));
+		}
 		billable = e.billable ?? true;
 		note = e.note ?? '';
 	});
@@ -80,22 +92,30 @@
 
 	const rate = $derived(rateFor(data.prices, serviceId, entityId, crew));
 
-	/** "2:40" or "4.5" or "45m" -- all things a person actually types. */
-	const minutes = $derived.by(() => {
-		const v = duration.trim().toLowerCase();
-		if (!v) return 0;
-		let m = /^(\d+):([0-5]?\d)$/.exec(v);
-		if (m) return Number(m[1]) * 60 + Number(m[2]);
-		m = /^(\d+(?:\.\d+)?)\s*h?$/.exec(v);
-		if (m) return Math.round(Number(m[1]) * 60);
-		m = /^(\d+)\s*m$/.exec(v);
-		if (m) return Number(m[1]);
-		return NaN;
-	});
-
-	const hours = $derived(
-		duration.trim() === '' || Number.isNaN(minutes) || minutes <= 0 ? null : minutesAsHours(minutes)
+	const seconds = $derived(parseLength(length));
+	const took = $derived(seconds !== null && seconds > 0 ? seconds : null);
+	const hours = $derived(took === null ? null : secondsAsHours(took));
+	const nextDay = $derived(
+		day && start && end ? endingAt(at(day, start, zone), end).nextDay : false
 	);
+
+	/**
+	 * The start is the anchor. A changed start or day moves the end and keeps the
+	 * length; a changed length moves the end; a changed end changes the length.
+	 * Until there is a start, whatever else is typed waits for one.
+	 */
+	function follow(changed: 'start' | 'length' | 'end') {
+		moved = true;
+		if (!day || !start) return;
+		const from = at(day, start, zone);
+		if (changed === 'end') {
+			if (end) length = lengthText(endingAt(from, end).seconds);
+			return;
+		}
+		const len = parseLength(length);
+		if (len !== null && len > 0) end = clockOf(endAfter(from, len));
+		else if (changed === 'start' && end) length = lengthText(endingAt(from, end).seconds);
+	}
 
 	async function save() {
 		why = '';
@@ -103,8 +123,19 @@
 			why = 'Pick the day it was worked. It cannot be in the future.';
 			return;
 		}
-		if (Number.isNaN(minutes) || minutes <= 0) {
-			why = 'How long it took: 2:40, or 4.5, or 45m.';
+		// Fixing an entry recorded as a length alone, with no start given: it is
+		// saved as a length again.
+		const untimed = !!fixing && !fixing.entry.started_at && !start;
+		if (!start && !untimed) {
+			why = 'When it started.';
+			return;
+		}
+		if (took === null) {
+			why = 'How long it took -- 2:40, 4.5 or 45m -- or when it ended.';
+			return;
+		}
+		if (took >= 86_400) {
+			why = 'Under a day. Work that ran longer is more than one entry.';
 			return;
 		}
 		if (billable && !entityId) {
@@ -120,13 +151,25 @@
 			return;
 		}
 
-		const kept = asTimed?.duration === duration && asTimed.day === day ? fixing?.entry : null;
+		// The two moments, worked out where the work was done. A fixed entry whose
+		// times nobody touched keeps them to the second, as they were recorded.
+		let when: Pick<Entry, 'started_at' | 'ended_at' | 'zone' | 'minutes'>;
+		const kept = fixing?.entry.started_at && !moved ? fixing.entry : null;
+		if (untimed) when = { minutes: Math.round(took / 60) };
+		else if (kept) when = { started_at: kept.started_at, ended_at: kept.ended_at, zone: kept.zone };
+		else {
+			const from = at(day, start, zone);
+			const to = endAfter(from, took);
+			if (Temporal.Instant.compare(to.toInstant(), Temporal.Now.instant()) > 0) {
+				why = 'That ends after now. Still working? Start a timer instead.';
+				return;
+			}
+			when = { started_at: from.toInstant().toString(), ended_at: to.toInstant().toString(), zone };
+		}
 		const entry: Entry = {
 			client_uuid: fixing?.entry.client_uuid ?? crypto.randomUUID(),
 			worked_on: day,
-			...(kept
-				? { started_at: kept.started_at, ended_at: kept.ended_at, zone: kept.zone }
-				: { minutes }),
+			...when,
 			crew,
 			worked_by: crew === 'team' ? null : workedBy,
 			created_by: data.me,
@@ -221,18 +264,48 @@
 
 		<div class="fld">
 			<label for="m-day">Day it was worked</label>
-			<input id="m-day" class="inp" type="date" max={data.today} bind:value={day} />
+			<input
+				id="m-day"
+				class="inp"
+				type="date"
+				max={data.today}
+				value={day}
+				oninput={(e) => {
+					day = e.currentTarget.value;
+					follow('start');
+				}}
+			/>
+		</div>
+
+		<!-- The start and one other; the third fills itself in, and any of the
+		     three can be changed after. -->
+		<div class="fld">
+			<label for="m-start">Started</label>
+			<input
+				id="m-start"
+				class="inp"
+				type="time"
+				value={start}
+				oninput={(e) => {
+					start = e.currentTarget.value;
+					follow('start');
+				}}
+			/>
 		</div>
 
 		<div class="fld">
-			<label for="m-duration">How long it took</label>
+			<label for="m-length">Took</label>
 			<span class="inp-wrap">
 				<input
-					id="m-duration"
+					id="m-length"
 					class="inp"
 					inputmode="text"
 					placeholder="2:40"
-					bind:value={duration}
+					value={length}
+					oninput={(e) => {
+						length = e.currentTarget.value;
+						follow('length');
+					}}
 				/>
 				{#if hours}<span class="hint">{hours}</span>{/if}
 			</span>
@@ -240,6 +313,27 @@
 			     "Duration" with "2:40" greyed in it is a guess about whether 4.5
 			     or 45m will be understood, and leaves the answer invisible. -->
 			<small class="lt">2:40 for hours and minutes · 4.5 for hours · 45m for minutes</small>
+		</div>
+
+		<div class="fld">
+			<label for="m-end">Ended</label>
+			<span class="inp-wrap">
+				<input
+					id="m-end"
+					class="inp"
+					type="time"
+					value={end}
+					oninput={(e) => {
+						end = e.currentTarget.value;
+						follow('end');
+					}}
+				/>
+				{#if nextDay}<span class="hint">the next day</span>{/if}
+			</span>
+			<small class="lt"
+				>A start and either how long it took or when it ended{#if zone !== personalZone()}
+					· on the clock in {zoneName(zone)}{/if}</small
+			>
 		</div>
 
 		<button type="button" class="tog" class:on={billable} onclick={() => (billable = !billable)}>
