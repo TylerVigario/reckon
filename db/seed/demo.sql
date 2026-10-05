@@ -80,10 +80,13 @@ SELECT r.service, (SELECT id FROM role WHERE name = r.role), r.pays_for, r.metho
 
 -- Three stock items from one wholesaler. The raceway has no markup of its own,
 -- so it takes the operator's default.
-INSERT INTO material (id, sku, name, brand, unit, markup_pct, taxable) VALUES
-  ('427ec8a1-9038-4fca-9323-ca62625622a3','AP6-CE','Access point · Wi-Fi 6 · Ceiling','Ridgeline','each',18.0,true),
-  ('b144a78b-750a-4bd2-a84e-7d1551328565','RW-075','Raceway · Surface · 3/4 in','Ridgeline','foot',NULL,true),
-  ('cf86d35e-06ad-4d9d-b3e9-104390b24ea0','FL-LC-3M','Fibre patch lead · LC-LC · 3 m','Cordwell','each',30.0,true);
+-- Counted in the two units the migrations start the list with, and a box of
+-- the business's own.
+INSERT INTO unit (name, short, places) VALUES ('box of 25', 'box', 0);
+INSERT INTO material (id, sku, name, brand, unit_id, markup_pct, taxable) VALUES
+  ('427ec8a1-9038-4fca-9323-ca62625622a3','AP6-CE','Access point · Wi-Fi 6 · Ceiling','Ridgeline',(SELECT id FROM unit WHERE name = 'each'),18.0,true),
+  ('b144a78b-750a-4bd2-a84e-7d1551328565','RW-075','Raceway · Surface · 3/4 in','Ridgeline',(SELECT id FROM unit WHERE name = 'foot'),NULL,true),
+  ('cf86d35e-06ad-4d9d-b3e9-104390b24ea0','FL-LC-3M','Fibre patch lead · LC-LC · 3 m','Cordwell',(SELECT id FROM unit WHERE name = 'each'),30.0,true);
 
 INSERT INTO material_lot (id, material_id, received_on, supplier, qty_received, qty_remaining,
                           ex_tax_cost_per_unit, tax_paid_per_unit) VALUES

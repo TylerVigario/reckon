@@ -40,6 +40,12 @@
 			value: data.counts.mileage ? unitPrice(data.counts.mileage) : 'not priced'
 		},
 		{
+			href: '/settings/units',
+			title: 'Units',
+			sub: 'What stock and lines are counted in',
+			value: data.counts.units
+		},
+		{
 			href: '/settings/integrations',
 			title: 'Integrations',
 			sub: 'Payments, the ledger, the PDF renderer and email',

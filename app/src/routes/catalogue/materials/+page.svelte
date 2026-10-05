@@ -45,7 +45,8 @@
 					<div class="rec-n">
 						<span class="rec-v">{unitPrice(m.price)}</span>
 						<span class="rec-x">
-							{quantity(m.on_hand)}{m.unit === 'foot' ? ' ft' : ''}
+							{quantity(m.on_hand)}
+							{m.unit}
 						</span>
 					</div>
 				</div>

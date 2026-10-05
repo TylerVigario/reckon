@@ -34,7 +34,6 @@ import { role, user } from './people.ts';
 export const UNITS = ['hour', 'mile', 'each'] as const;
 export const PAYS_FOR = ['time', 'covered_time', 'vehicle'] as const;
 export const PAY_METHODS = ['per_hour', 'percent', 'fixed', 'nothing'] as const;
-export const MATERIAL_UNITS = ['each', 'foot'] as const;
 
 export const service = pgTable(
 	'service',
@@ -190,6 +189,34 @@ export const payRule = pgTable(
 	]
 );
 
+/**
+ * What things are counted in: the operator's own list, named once and used
+ * wherever stock or a line counts something -- a foot of cable, a box of 25, a
+ * painter's gallon, a caterer's tray. `short` is how it is written beside a
+ * figure ("ft"); `places` is how many decimal places a quantity in it may have,
+ * 0 for whole things and at most 4, as quantities are held.
+ *
+ * Not what a service is charged by: hour, mile and each decide how time and
+ * trips are counted, so they are the service's own (UNITS).
+ *
+ * No conversion between units: a box of 25 is a unit of its own.
+ */
+export const unit = pgTable(
+	'unit',
+	{
+		id: id(),
+		name: text().notNull(),
+		short: text(),
+		places: integer().default(0).notNull(),
+		createdAt: createdAt()
+	},
+	(t) => [
+		unique('unit_name_key').on(t.name),
+		check('unit_name_is_something', sql`btrim(${t.name}) <> ''`),
+		check('unit_places_check', sql`${t.places} BETWEEN 0 AND 4`)
+	]
+);
+
 export const material = pgTable(
 	'material',
 	{
@@ -197,7 +224,8 @@ export const material = pgTable(
 		sku: text(),
 		name: text().notNull(),
 		brand: text(),
-		unit: text({ enum: MATERIAL_UNITS }).notNull(),
+		/** What it is counted in, one of the operator's units. */
+		unitId: uuid().notNull(),
 		/** Null takes operator.default_markup_pct. Set it here to override one item. */
 		markupPct: decimal(7, 4),
 		taxable: boolean().default(true).notNull(),
@@ -209,7 +237,11 @@ export const material = pgTable(
 		unique('material_sku_key').on(t.sku),
 		nonNegative('material_markup_pct_check', t.markupPct),
 		nonNegative('material_reorder_level_check', t.reorderLevel),
-		oneOf('material_unit_check', t.unit, MATERIAL_UNITS)
+		foreignKey({
+			name: 'material_unit_id_fkey',
+			columns: [t.unitId],
+			foreignColumns: [unit.id]
+		}).onDelete('restrict')
 	]
 );
 

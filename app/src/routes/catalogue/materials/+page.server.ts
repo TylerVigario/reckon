@@ -22,10 +22,12 @@ export const load: PageServerLoad = async () => {
 				name: t.material.name,
 				sku: t.material.sku,
 				brand: t.material.brand,
-				unit: t.material.unit,
+				// How its unit is written beside a figure: "ft", or the name.
+				unit: sql<string>`coalesce(${t.unit.short}, ${t.unit.name})`,
 				markupPct: t.material.markupPct
 			})
 			.from(t.material)
+			.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
 			.where(eq(t.material.active, true))
 			.orderBy(asc(t.material.name)),
 		db
