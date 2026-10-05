@@ -24,7 +24,7 @@ if (!base || !email || !password) {
 
 const DAY = '2026-09-16';
 /** On the entry, so it can be found again among the month's. */
-const NOTE = `past-work-check ${crypto.randomUUID().slice(0, 8)}`;
+const NOTE = 'Entered by past-work-check';
 
 const targets = /** @type {{ type: string; webSocketDebuggerUrl: string }[]} */ (
 	await (await fetch('http://127.0.0.1:9222/json')).json()
@@ -160,11 +160,14 @@ check((await evaluate('location.pathname')) === '/timesheet', 'it saves, and goe
 
 // What the server kept: the row with the note, on All entries for September.
 await go(`/timesheet/all?month=${DAY.slice(0, 7)}`);
-const row = /** @type {string} */ (
-	await evaluate(
-		`[...document.querySelectorAll('.rec')].find((r) => r.textContent.includes(${JSON.stringify(NOTE)}))?.textContent.replace(/\\s+/g, ' ') ?? ''`
-	)
+// Every row's text, and the note looked for here rather than written into code
+// the page runs.
+const rows = /** @type {string[]} */ (
+	(await evaluate(
+		`[...document.querySelectorAll('.rec')].map((r) => r.textContent.replace(/\\s+/g, ' '))`
+	)) ?? []
 );
+const row = rows.find((r) => r.includes(NOTE)) ?? '';
 check(
 	/\b0?8:00\b/.test(row) && /\b10:00\b/.test(row) && /\b2[.,]0000\b/.test(row),
 	`it is kept as 8:00 to 10:00, two hours${row ? '' : ', but no row has its note'}`
