@@ -194,8 +194,10 @@ T["pay_rule"] = [("PK","id","uuid"),("FK","service_id","uuid"),
     ("","effective_from","date"),("","created_at","timestamptz")]
 T["role"] = [("PK","id","uuid"),("UK","name","text · the operator's word"),
     ("","created_at","timestamptz")]
+T["unit"] = [("PK","id","uuid"),("UK","name","text · the operator's"),
+    ("","short","text · beside a figure"),("","places","int · 0–4"),("","created_at","timestamptz")]
 T["material"] = [("PK","id","uuid"),("","sku","text"),("","name","text"),
-    ("","brand","text"),("","unit","each | foot"),("","markup_pct","numeric"),
+    ("","brand","text"),("FK","unit_id","uuid · counted in"),("","markup_pct","numeric"),
     ("","taxable","bool"),("","reorder_level","numeric"),("","active","bool")]
 T["material_lot"] = [("PK","id","uuid"),("FK","material_id","uuid"),
     ("","received_on","date"),("","supplier","text"),("","document_ref","text"),
@@ -242,7 +244,7 @@ T["invoice"] = [("PK","id","uuid"),("UK","number","text"),("FK","entity_id","uui
     ("FK","created_by","uuid"),("","void_reason","text"),("","created_at","timestamptz")]
 T["invoice_line"] = [("PK","id","uuid"),("FK","invoice_id","uuid"),("","seq","int"),
     ("","kind","service|material|recurring|adjustment"),("","description","text"),
-    ("","qty","numeric"),("","unit","hour|mile|each|foot|month"),
+    ("","qty","numeric"),("","unit","text · as billed"),
     ("","unit_price","numeric · as billed"),
     ("FK","site_id","uuid"),("","taxable","bool"),
     ("","tax_rate_pct","numeric · as applied"),("","tax_source","none|site|override|exempt"),
@@ -399,13 +401,15 @@ files.append(write("02-who-and-where.drawio", "Who and where", c, 1560, 1040))
 # 03 -- catalogue
 c = at("service",40,60) + at("service_price",440,60) + at("pay_rule",440,280) \
   + at("role",840,400) \
-  + at("material",840,60) + at("material_lot",1240,60) + at("material_price",1240,320)
+  + at("material",840,60) + at("material_lot",1240,60) + at("material_price",1240,320) \
+  + at("unit",1240,520)
 c += [edge("e30","service","service_price","priced by"),
       edge("e31","service","pay_rule","pays by"),
       edge("e34","role","pay_rule","is paid by",
            S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1")),
       edge("e32","material","material_lot","received as"),
-      edge("e33","material","material_price","may pin")]
+      edge("e33","material","material_price","may pin"),
+      edge("e35","material","unit","counted in")]
 c += [note("n3", "A service is configured, not categorised: what it is charged per, how "
                  "finely, at least what, and whom it pays.\n\n"
                  "rate is the first person's and additional_rate each extra person's: "
@@ -428,8 +432,12 @@ c += [note("n3", "A service is configured, not categorised: what it is charged p
                  "counted as worked.\n\n"
                  "material_lot is where stock enters, and where the Reg 1701 "
                  "ex-tax purchase price is sourced. Weighted-average cost needs lots to "
-                 "average.", 40, 580, 1540, 330)]
-files.append(write("03-catalogue.drawio", "What you sell", c, 1620, 950))
+                 "average.\n\n"
+                 "A material is counted in one of the operator's units -- each, the foot, "
+                 "a box of 25 -- each with how it is written and how many places a "
+                 "quantity may have. Nothing converts one unit into another, and a line "
+                 "keeps its unit's name as it was billed.", 40, 740, 1540, 360)]
+files.append(write("03-catalogue.drawio", "What you sell", c, 1620, 1140))
 
 # 04 -- work captured
 c = at("time_entry",40,60) + at("trip",480,60) + at("trip_stop",480,220) \

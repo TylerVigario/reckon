@@ -34,7 +34,6 @@ import { user } from './people.ts';
 export const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'void'] as const;
 export const LINE_KINDS = ['service', 'material', 'recurring', 'adjustment'] as const;
 export const TAX_SOURCES = ['none', 'site', 'override', 'exempt'] as const;
-export const LINE_UNITS = ['hour', 'mile', 'each', 'foot', 'month'] as const;
 export const CREDIT_KINDS = ['reg1700b', 'correction', 'goodwill'] as const;
 export const PAYMENT_METHODS = ['card', 'transfer', 'cheque', 'cash', 'other'] as const;
 
@@ -117,7 +116,7 @@ export const invoiceLine = pgTable(
 		 * What qty counts, frozen at issue. Null when the quantity counts nothing,
 		 * as on a flat charge or an adjustment.
 		 */
-		unit: text({ enum: LINE_UNITS }),
+		unit: text(),
 		siteId: uuid()
 	},
 	(t) => [
@@ -159,7 +158,9 @@ export const invoiceLine = pgTable(
 		oneOf('invoice_line_kind_check', t.kind, LINE_KINDS),
 		nonNegative('invoice_line_tax_rate_pct_check', t.taxRatePct),
 		oneOf('invoice_line_tax_source_check', t.taxSource, TAX_SOURCES),
-		oneOf('invoice_line_unit_check', t.unit, LINE_UNITS),
+		// The unit as it was billed, in words: a line keeps saying what it counted
+		// after a unit is renamed or a service changes how it is charged.
+		check('invoice_line_unit_is_something', sql`(${t.unit} IS NULL) OR (btrim(${t.unit}) <> '')`),
 		check(
 			'one_source_at_most',
 			sql`((${t.timeEntryId} IS NOT NULL)::integer + (${t.tripLegId} IS NOT NULL)::integer + (${t.agreementPeriodId} IS NOT NULL)::integer + (${t.materialLotId} IS NOT NULL)::integer) <= 1`

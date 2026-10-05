@@ -59,8 +59,9 @@ VALUES
   ('b5000000-0000-4000-8000-000000000056','helpdesk','Help desk','hour',60),
   ('b5000000-0000-4000-8000-000000000057','travel','Travel','mile',NULL);
 
-INSERT INTO material (id, name, unit) VALUES
-  ('66666666-6666-6666-6666-666666666666','Coax - RG6 - Quad shield','foot');
+INSERT INTO material (id, name, unit_id) VALUES
+  ('66666666-6666-6666-6666-666666666666','Coax - RG6 - Quad shield',
+   (SELECT id FROM unit WHERE name = 'foot'));
 
 INSERT INTO invoice (id, number, entity_id, created_by) VALUES
   ('77777777-7777-7777-7777-777777777777','INV-0412',
@@ -483,11 +484,13 @@ SELECT must_pass($$
 $$, 'and $1.10 a mile is a dated price row');
 
 SELECT must_pass($$
-  INSERT INTO material (name, unit, markup_pct) VALUES ('Wall plate off the default','each',NULL)
+  INSERT INTO material (name, unit_id, markup_pct)
+  VALUES ('Wall plate off the default', (SELECT id FROM unit WHERE name = 'each'), NULL)
 $$, 'a material with no markup takes the operator default');
 
 SELECT must_pass($$
-  INSERT INTO material (name, unit, markup_pct) VALUES ('Wall plate with its own','each',35)
+  INSERT INTO material (name, unit_id, markup_pct)
+  VALUES ('Wall plate with its own', (SELECT id FROM unit WHERE name = 'each'), 35)
 $$, 'and one item may override it');
 
 -- Kingfisher's September, charged.
@@ -537,9 +540,13 @@ INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit_pric
   VALUES ('7777bbbb-7777-7777-7777-777777777777','7777aaaa-7777-7777-7777-777777777777',
           1,'service','Delivery, Coloma',44.00,1.10,'mile',48.40);
 
+SELECT must_pass($$
+  UPDATE invoice_line SET unit = 'box of 25' WHERE id = '7777bbbb-7777-7777-7777-777777777777'
+$$, 'whatever the operator counts in, in words');
+
 SELECT must_fail($$
-  UPDATE invoice_line SET unit = 'furlong' WHERE id = '7777bbbb-7777-7777-7777-777777777777'
-$$, 'a unit outside the vocabulary');
+  UPDATE invoice_line SET unit = '  ' WHERE id = '7777bbbb-7777-7777-7777-777777777777'
+$$, 'a unit that is only spaces');
 
 SELECT must_pass($$
   UPDATE invoice_line SET unit = NULL WHERE id = '7777bbbb-7777-7777-7777-777777777777'
@@ -1540,5 +1547,36 @@ SELECT must_fail($$
           '44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333',
           'b5000000-0000-4000-8000-000000000055')
 $$, 'work that took no time');
+
+\echo ''
+\echo '=== 35. the operator names its own units, and a material is counted in one ==='
+
+SELECT must_pass($$
+  INSERT INTO unit (name, short, places) VALUES ('gallon', 'gal', 2)
+$$, 'a gallon, to two places');
+
+SELECT must_fail($$
+  INSERT INTO unit (name, places) VALUES ('gallon', 0)
+$$, 'a second gallon');
+
+SELECT must_fail($$
+  INSERT INTO unit (name, places) VALUES ('grain', 5)
+$$, 'more places than a quantity holds');
+
+SELECT must_fail($$
+  INSERT INTO unit (name, places) VALUES ('   ', 0)
+$$, 'a unit with no name');
+
+SELECT must_fail($$
+  INSERT INTO material (name) VALUES ('Counted in nothing')
+$$, 'a material counted in nothing');
+
+SELECT must_fail($$
+  DELETE FROM unit WHERE name = 'foot'
+$$, 'taking away a unit stock is counted in');
+
+SELECT must_pass($$
+  DELETE FROM unit WHERE name = 'gallon'
+$$, 'and letting go of one nothing is counted in');
 
 \echo 'All guards hold.'

@@ -709,6 +709,69 @@ if (person)
 		400
 	);
 
+console.log('\n  units — named, written, counted, and let go');
+
+await check(
+	'a unit with no name is refused',
+	'POST',
+	'/api/units',
+	{ fields: { name: ' ', places: '0' } },
+	400
+);
+await check(
+	'more places than a quantity holds is refused',
+	'POST',
+	'/api/units',
+	{ fields: { name: `grain ${stamp}`, places: '5' } },
+	400
+);
+const gallon = await check(
+	'a unit is added',
+	'POST',
+	'/api/units',
+	{ fields: { name: `gallon ${stamp}`, short: 'gal', places: '2' } },
+	201
+);
+await check(
+	'the same name twice is refused',
+	'POST',
+	'/api/units',
+	{ fields: { name: `gallon ${stamp}`, places: '0' } },
+	400
+);
+if (gallon.body?.id) {
+	await check(
+		'its places change',
+		'PATCH',
+		`/api/units/${gallon.body.id}`,
+		{ fields: { places: '1' } },
+		(/** @type {{ status: number, body: any }} */ r) =>
+			r.status === 200 && r.body?.saved?.places === 1
+	);
+	await check(
+		'a unit nothing is counted in is removed',
+		'DELETE',
+		`/api/units/${gallon.body.id}`,
+		undefined,
+		200
+	);
+}
+// The foot, which the demo's raceway is counted in.
+const unitsPage = await (await fetch(`${base}/settings/units`, { headers: { cookie } })).text();
+const foot = unitsPage
+	.split('id="set-')
+	.find((chunk) => /^[0-9a-f-]{36}-name"/.test(chunk) && chunk.includes('value="foot"'))
+	?.slice(0, 36);
+if (foot)
+	await check(
+		'a unit stock is counted in is not removed',
+		'DELETE',
+		`/api/units/${foot}`,
+		undefined,
+		409
+	);
+else failures.push('could not find the foot on /settings/units');
+
 // An SVG logo with a script in it, uploaded through the settings form the way
 // a browser would, and then asked for by someone who is not signed in. It is
 // still served as an image -- the favicon and the installed icon depend on

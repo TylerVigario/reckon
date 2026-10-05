@@ -23,7 +23,7 @@
 #v(6pt)
 
 #text(size: sz.small)[
-  Thirty-eight tables across seven clusters. The eight `.drawio` files in
+  39 tables across seven clusters. The eight `.drawio` files in
   `docs/schema/` carry the relationships; the schema's comments carry the reasoning.
   A table drawn in more than one cluster is listed once, under the first.
 ]
@@ -266,7 +266,7 @@
     [], [sku], [text],
     [], [name], [text],
     [], [brand], [text],
-    [], [unit], [each | foot],
+    [*FK*], [unit\_id], [uuid · counted in],
     [], [markup\_pct], [numeric],
     [], [taxable], [bool],
     [], [reorder\_level], [numeric],
@@ -310,7 +310,23 @@
 ]
 #v(7pt)
 
-#callout(tone: "note")[A service is configured, not categorised: what it is charged per, how finely, at least what, and whom it pays.  rate is the first person's and additional\_rate each extra person's: at \$120 and +\$70 a crew of three costs \$260 an hour.  Pay is for work done. Each pay\_rule is for a role or for one person, pays for time or a vehicle — hourly to the second, as a share of the line, as a fixed sum, or not at all. Among rules in force, a client's own comes first, then a person's own, then the role's.  A vehicle rule pays whoever owns the vehicle, so a vehicle the business owns pays nobody.  A covered\_time rule pays a percentage of the period's retainer charge, divided by each person's part of the covered time.  unit each charges per entry, whatever its length: a flat rate.  unit is how a service is charged; time\_tracked is whether time is captured against it. Mileage may be timed and still billed per mile.  Allotments live on agreements, service by service, never on the service itself.  bill\_to\_nearest\_seconds and minimum\_charge are the usual next questions about an hourly price. Pay is never rounded to them; it is counted as worked.  material\_lot is where stock enters, and where the Reg 1701 ex-tax purchase price is sourced. Weighted-average cost needs lots to average.]
+#block(breakable: false)[
+  #text(font: face-mono, size: sz.fine, weight: "bold")[unit]
+  #v(3pt)
+  #sheet(
+    (auto, auto, 1fr),
+    ([], [Column], [Type]),
+    size: sz.micro,
+    [*PK*], [id], [uuid],
+    [*UK*], [name], [text · the operator's],
+    [], [short], [text · beside a figure],
+    [], [places], [int · 0–4],
+    [], [created\_at], [timestamptz],
+  )
+]
+#v(7pt)
+
+#callout(tone: "note")[A service is configured, not categorised: what it is charged per, how finely, at least what, and whom it pays.  rate is the first person's and additional\_rate each extra person's: at \$120 and +\$70 a crew of three costs \$260 an hour.  Pay is for work done. Each pay\_rule is for a role or for one person, pays for time or a vehicle — hourly to the second, as a share of the line, as a fixed sum, or not at all. Among rules in force, a client's own comes first, then a person's own, then the role's.  A vehicle rule pays whoever owns the vehicle, so a vehicle the business owns pays nobody.  A covered\_time rule pays a percentage of the period's retainer charge, divided by each person's part of the covered time.  unit each charges per entry, whatever its length: a flat rate.  unit is how a service is charged; time\_tracked is whether time is captured against it. Mileage may be timed and still billed per mile.  Allotments live on agreements, service by service, never on the service itself.  bill\_to\_nearest\_seconds and minimum\_charge are the usual next questions about an hourly price. Pay is never rounded to them; it is counted as worked.  material\_lot is where stock enters, and where the Reg 1701 ex-tax purchase price is sourced. Weighted-average cost needs lots to average.  A material is counted in one of the operator's units -- each, the foot, a box of 25 -- each with how it is written and how many places a quantity may have. Nothing converts one unit into another, and a line keeps its unit's name as it was billed.]
 #v(4pt)
 
 #v(6pt)
@@ -534,7 +550,7 @@
     [], [kind], [service|material|recurring|adjustment],
     [], [description], [text],
     [], [qty], [numeric],
-    [], [unit], [hour|mile|each|foot|month],
+    [], [unit], [text · as billed],
     [], [unit\_price], [numeric · as billed],
     [*FK*], [site\_id], [uuid],
     [], [taxable], [bool],
