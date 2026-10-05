@@ -143,9 +143,10 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 		throw e;
 	}
 
-	// The business's clock and locale move the moment they are saved.
+	// The business's clock, locale and currency move the moment they are saved.
 	if (typeof row.timezone === 'string') await rememberBusiness({ zone: row.timezone });
 	if (typeof row.locale === 'string') await rememberBusiness({ locale: row.locale });
+	if (typeof row.currency === 'string') await rememberBusiness({ currency: row.currency });
 	if (typeof row.tax_rule_set === 'string')
 		await rememberBusiness({ taxRuleSet: row.tax_rule_set as TaxRuleSet });
 

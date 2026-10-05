@@ -60,14 +60,18 @@ const rule = (over: Partial<PayRule> & Pick<PayRule, 'serviceId' | 'method'>): P
 	...over
 });
 
-const money = (d: Decimal | null) => (d === null ? null : d.toFixed(2));
+/** A figure exactly as the valuation returns it: to the cent, written as it is held. */
+const money = (d: Decimal | null) => (d === null ? null : d.toString());
+
+/** Dollars. Yen and dinars have their own cases at the end. */
+const CENTS = 2;
 
 describe('a price counts heads', () => {
 	const p = price('field', '95.00', '45.00', '2026-08-03');
 	it('is the first person and each one after', () => {
-		expect(money(jobRate(p, 1))).toBe('95.00');
-		expect(money(jobRate(p, 2))).toBe('140.00');
-		expect(money(jobRate(p, 3))).toBe('185.00');
+		expect(money(jobRate(p, 1, CENTS))).toBe('95.00');
+		expect(money(jobRate(p, 2, CENTS))).toBe('140.00');
+		expect(money(jobRate(p, 3, CENTS))).toBe('185.00');
 	});
 
 	it("takes the client's own price, then the newest that has started", () => {
@@ -86,15 +90,17 @@ describe('a price counts heads', () => {
 describe('an entry bills to the increment, and never below the minimum', () => {
 	const rate = Decimal.from('95.00');
 	it('rounds 22 min 40 s to the nearest minute: 23 min, $36.42', () => {
-		expect(money(billedAmount(hourly('field'), rate, Ratio.of(1360).div(3600)))).toBe('36.42');
+		expect(money(billedAmount(hourly('field'), rate, Ratio.of(1360).div(3600), CENTS))).toBe(
+			'36.42'
+		);
 	});
 	it('floors the same visit at a $50.00 minimum', () => {
 		const s = hourly('field', { minimumCharge: '50.00' });
-		expect(money(billedAmount(s, rate, Ratio.of(1360).div(3600)))).toBe('50.00');
+		expect(money(billedAmount(s, rate, Ratio.of(1360).div(3600), CENTS))).toBe('50.00');
 	});
 	it('bills exact time when there is no increment', () => {
 		const s = hourly('field', { billToNearestSeconds: null });
-		expect(money(billedAmount(s, rate, Ratio.of(1360).div(3600)))).toBe('35.89');
+		expect(money(billedAmount(s, rate, Ratio.of(1360).div(3600), CENTS))).toBe('35.89');
 	});
 	it('bills a service charged each one unit, however long the entry ran', () => {
 		const survey: ServiceTerms = {
@@ -103,10 +109,10 @@ describe('an entry bills to the increment, and never below the minimum', () => {
 			billToNearestSeconds: null,
 			minimumCharge: null
 		};
-		expect(money(billedAmount(survey, Decimal.from('180.00'), Ratio.of(1)))).toBe('180.00');
+		expect(money(billedAmount(survey, Decimal.from('180.00'), Ratio.of(1), CENTS))).toBe('180.00');
 	});
 	it('bills nothing without a price', () => {
-		expect(billedAmount(hourly('field'), null, Ratio.of(1))).toBeNull();
+		expect(billedAmount(hourly('field'), null, Ratio.of(1), CENTS)).toBeNull();
 	});
 });
 
@@ -205,7 +211,8 @@ describe('time pays by the second, by the line, by the entry, or not', () => {
 			timePay(
 				ruleOn(rules, 'callout', who, entityId, 'time', '2026-10-15'),
 				1360,
-				Decimal.from(line)
+				Decimal.from(line),
+				CENTS
 			)
 		);
 
@@ -217,7 +224,7 @@ describe('time pays by the second, by the line, by the entry, or not', () => {
 		expect(pay(SAM, BLUEGILL, '36.42')).toBe('0.00'));
 	it('no rule: null, not a zero', () => {
 		expect(
-			timePay(ruleOn(rules, 'callout', VISITOR, BLUEGILL, 'time', '2026-10-15'), 3600, null)
+			timePay(ruleOn(rules, 'callout', VISITOR, BLUEGILL, 'time', '2026-10-15'), 3600, null, CENTS)
 		).toBeNull();
 	});
 });
@@ -226,18 +233,19 @@ describe('covered time pays a share of the retainer', () => {
 	const pct = (amount: string) =>
 		rule({ serviceId: 'helpdesk', paysFor: 'covered_time', method: 'percent', amount });
 	it('15% of a $210 month is $31.50', () => {
-		expect(money(coveredPay(pct('15'), Ratio.of('210.00')))).toBe('31.50');
+		expect(money(coveredPay(pct('15'), Ratio.of('210.00'), CENTS))).toBe('31.50');
 	});
 	it('a share of a charge not yet made is unknown', () => {
-		expect(coveredPay(pct('15'), null)).toBeNull();
+		expect(coveredPay(pct('15'), null, CENTS)).toBeNull();
 	});
 	it('0%, or nothing, is known without a charge', () => {
-		expect(money(coveredPay(pct('0'), null))).toBe('0.00');
+		expect(money(coveredPay(pct('0'), null, CENTS))).toBe('0.00');
 		expect(
 			money(
 				coveredPay(
 					rule({ serviceId: 'helpdesk', paysFor: 'covered_time', method: 'nothing' }),
-					null
+					null,
+					CENTS
 				)
 			)
 		).toBe('0.00');
@@ -361,6 +369,7 @@ describe('a retainer pays a share of itself, split by the hours each spent', () 
 		rules: rules('percent', '15'),
 		people: PEOPLE,
 		agreements,
+		places: CENTS,
 		...over
 	});
 
@@ -443,6 +452,13 @@ describe('a retainer pays a share of itself, split by the hours each spent', () 
 		expect(money(w.get(c4.id)!.paid)).toBe('19.30');
 		expect(money(w.get(c5.id)!.billed)).toBe('30.00');
 		expect(money(w.get(c5.id)!.paid)).toBe('13.00');
+	});
+
+	it("is worked out to the currency's places: none for yen, three for dinars", () => {
+		const figures = (w: ReturnType<typeof worth>) =>
+			[w.get(c5.id)!.billed, w.get(c5.id)!.paid, w.get(r1.id)!.billed].map(money);
+		expect(figures(worth(all, ctx({ places: 0 })))).toEqual(['30', '13', '0']);
+		expect(figures(worth(all, ctx({ places: 3 })))).toEqual(['30.000', '13.000', '0.000']);
 	});
 
 	it('past a no-charge pool bills nothing', () => {
@@ -605,7 +621,8 @@ describe('tax collected is split by what CDTFA said', () => {
 			[{ ...check, checkedOn: '2026-09-01', checkedAt: new Date('2026-09-01T12:00:00Z') }],
 			new Map([['i', '2026-09-30']]),
 			'2026-09-30',
-			TAX_ROUNDING.us_ca
+			TAX_ROUNDING.us_ca,
+			CENTS
 		).get('i')!;
 		expect([t.tax, t.stateTax, t.districtTax].map(money)).toEqual(['8.00', '7.25', '0.75']);
 		expect(t.estimatedLines).toBe(0);
@@ -625,7 +642,8 @@ describe('tax collected is split by what CDTFA said', () => {
 			[{ ...check, checkedOn: '2026-09-01', checkedAt: new Date('2026-09-01T12:00:00Z') }],
 			new Map([['i', '2026-08-01']]),
 			'2026-09-30',
-			TAX_ROUNDING.us_ca
+			TAX_ROUNDING.us_ca,
+			CENTS
 		).get('i')!;
 		expect(t.estimatedLines).toBe(1);
 		expect(money(t.stateTax)).toBe('7.25');
@@ -636,7 +654,8 @@ describe('tax collected is split by what CDTFA said', () => {
 			[],
 			new Map([['i', null]]),
 			'2026-09-30',
-			TAX_ROUNDING.us_ca
+			TAX_ROUNDING.us_ca,
+			CENTS
 		).get('i')!;
 		expect(money(t.tax)).toBe('3.63');
 		expect(t.stateTax).toBeNull();
@@ -657,7 +676,9 @@ describe('tax is rounded by its rule', () => {
 		siteId: null
 	});
 	const taxOf = (lines: ReturnType<typeof line>[], rounding: TaxRounding) =>
-		money(invoiceTax(lines, [], new Map([['i', null]]), '2026-09-30', rounding).get('i')!.tax);
+		money(
+			invoiceTax(lines, [], new Map([['i', null]]), '2026-09-30', rounding, CENTS).get('i')!.tax
+		);
 
 	// 0.005 at one rate and 0.015 at another: 0.02 rounded once, but 0.01 and
 	// 0.02 rounded for each rate, as California and Japan round.
@@ -695,8 +716,81 @@ describe('the rest', () => {
 			{ serviceId: 'travel', entityId: ALDER, miles: '28.00' },
 			'2026-09-01',
 			new Map([['travel', travel]]),
-			[price('travel', '0.66')]
+			[price('travel', '0.66')],
+			CENTS
 		);
 		expect(money(w.billed)).toBe('18.48');
+	});
+});
+
+/**
+ * Every amount is rounded half up to its currency's places (#lib/currency): a
+ * yen has none, a Kuwaiti dinar has three. The same arithmetic as the dollar
+ * cases above, to other places.
+ */
+describe("every amount is rounded to its currency's places", () => {
+	const YEN = 0;
+	const DINARS = 3;
+
+	it('a rate with heads', () => {
+		expect(money(jobRate(price('field', '9500', '4500'), 2, YEN))).toBe('14000');
+		expect(money(jobRate(price('field', '12.345', '4.5'), 2, DINARS))).toBe('16.845');
+	});
+
+	it('23 minutes billed: ¥3,641.67 is ¥3,642, and 4.73225 dinars is 4.732', () => {
+		const q = Ratio.of(1360).div(3600);
+		expect(money(billedAmount(hourly('field'), Decimal.from('9500'), q, YEN))).toBe('3642');
+		expect(money(billedAmount(hourly('field'), Decimal.from('12.345'), q, DINARS))).toBe('4.732');
+	});
+
+	it('pay by the hour and a share of a retainer', () => {
+		const perHour = (amount: string) => rule({ serviceId: 'field', method: 'per_hour', amount });
+		expect(money(timePay(perHour('2600'), 1360, null, YEN))).toBe('982');
+		expect(money(timePay(perHour('4.5'), 1360, null, DINARS))).toBe('1.700');
+		const pct = rule({
+			serviceId: 'helpdesk',
+			paysFor: 'covered_time',
+			method: 'percent',
+			amount: '15'
+		});
+		expect(money(coveredPay(pct, Ratio.of('65.125'), DINARS))).toBe('9.769');
+		expect(money(coveredPay(rule({ ...pct, method: 'nothing' }), null, YEN))).toBe('0');
+	});
+
+	it("tax, as its rule rounds it, to the currency's places", () => {
+		const tax = (amount: string, places: number) =>
+			money(
+				invoiceTax(
+					[{ invoiceId: 'i', amount, taxable: true, taxRatePct: '8.0000', siteId: null }],
+					[],
+					new Map([['i', null]]),
+					'2026-09-30',
+					TAX_ROUNDING.us_ca,
+					places
+				).get('i')!.tax
+			);
+		expect(tax('1234', YEN)).toBe('99');
+		expect(tax('12.345', DINARS)).toBe('0.988');
+	});
+
+	it('a leg of mileage', () => {
+		const travel: ServiceTerms = {
+			id: 'travel',
+			unit: 'mile',
+			billToNearestSeconds: null,
+			minimumCharge: null
+		};
+		const leg = (rate: string, places: number) =>
+			money(
+				legWorth(
+					{ serviceId: 'travel', entityId: ALDER, miles: '28.00' },
+					'2026-09-01',
+					new Map([['travel', travel]]),
+					[price('travel', rate)],
+					places
+				).billed
+			);
+		expect(leg('105', YEN)).toBe('2940');
+		expect(leg('0.125', DINARS)).toBe('3.500');
 	});
 });

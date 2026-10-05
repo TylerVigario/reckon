@@ -23,6 +23,7 @@ import {
 	anId,
 	decimal,
 	isoDate,
+	money,
 	oneOf,
 	optional,
 	parseAll,
@@ -44,7 +45,7 @@ const dayOfMonth = (raw: string): Parsed => {
 };
 
 export const AGREEMENT_FIELDS = {
-	price: required('What it charges.', decimal(12, 2)),
+	price: required('What it charges.', money),
 	billing_interval: oneOf(INTERVALS),
 	billing_anchor_day: required('Which day of the month it bills on.', dayOfMonth),
 	starts_on: required('The day it starts.', isoDate),
@@ -64,7 +65,7 @@ export const NEW_AGREEMENT_FIELDS = {
 	entity_id: required('Which client.', anId),
 	// Empty is the client as a whole; a site is that site alone.
 	site_id: optional(anId),
-	price: required('What it charges.', decimal(12, 2)),
+	price: required('What it charges.', money),
 	billing_interval: oneOf(INTERVALS),
 	starts_on: required('The day it starts.', isoDate)
 };

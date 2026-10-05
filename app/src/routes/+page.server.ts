@@ -6,7 +6,7 @@ import { sum } from '#lib/decimal.ts';
 import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
 import { rateIsStale } from '#lib/server/stale.ts';
 import { balances } from '#lib/server/balances.ts';
-import { taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { count, dated } from '#lib/format.ts';
 import { ageOf, type Age } from '#lib/ageing.ts';
 import type { PageServerLoad } from './$types';
@@ -24,7 +24,8 @@ import type { PageServerLoad } from './$types';
  * in the afternoon.
  */
 export const load: PageServerLoad = async ({ locals }) => {
-	const owing = balances(await taxRounding());
+	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
+	const owing = balances(rounding, places);
 	const today = businessToday();
 	const i = t.invoice;
 	const il = t.invoiceLine;
@@ -41,9 +42,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 		tax_held: string;
 	}>(sql`
 		select
-		  coalesce(sum(b.owed) filter (where b.status = 'sent'), 0)::numeric(12,2)::text  as owed,
+		  round(coalesce(sum(b.owed) filter (where b.status = 'sent'), 0), ${places}::int)::text as owed,
 		  count(*) filter (where b.status = 'sent' and b.owed > 0)::text              as owed_count,
-		  coalesce(sum(b.gross) filter (where b.status = 'draft'), 0)::numeric(12,2)::text as drafts,
+		  round(coalesce(sum(b.gross) filter (where b.status = 'draft'), 0), ${places}::int)::text as drafts,
 		  count(*) filter (where b.status = 'draft')::text                          as draft_count,
 		  -- Collected on somebody else's behalf, so the figure worth seeing is
 		  -- what is STILL HELD: charged on what has gone out, less the Reg 1701
@@ -51,12 +52,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 		  -- CDTFA. Whether a return was paid is a fact about the world, not
 		  -- something the invoices know, which is why it is subtracted from a
 		  -- table rather than inferred.
-		  (coalesce(sum(b.tax) filter (where b.status in ('sent', 'paid')), 0)
+		  round(coalesce(sum(b.tax) filter (where b.status in ('sent', 'paid')), 0)
 		   - (select coalesce(sum(${il.exTaxCost} * ${il.taxRatePct} / 100), 0)
 		        from ${il} join ${i} on ${i.id} = ${il.invoiceId}
 		       where ${il.taxable} and ${i.status} in ('sent', 'paid')
 		         and (select ${t.operator.claimsTaxPaidPurchasesResold} from ${t.operator}))
-		   - (select coalesce(sum(${t.taxRemittance.amount}), 0) from ${t.taxRemittance}))::numeric(12,2)::text as tax_held
+		   - (select coalesce(sum(${t.taxRemittance.amount}), 0) from ${t.taxRemittance}),
+		   ${places}::int)::text as tax_held
 		  from ${owing} b
 		 where b.status in ('sent', 'paid', 'draft')`);
 
@@ -74,7 +76,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		select * from (
 		select 'invoice' as kind, ${e.name} as client, ${i.number} as ref,
 		       ${personalDay(i.sentAt)}::text as dated_on,
-		       b.owed::numeric(12,2)::text as amount,
+		       b.owed::text as amount,
 		       ${businessToday()}::date - ${businessDay(i.sentAt)} as days,
 		       'Invoice ' || ${i.number} || ' · ' || ${e.name} as sort
 		  from ${i}
@@ -127,7 +129,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	}>(sql`
 		select ${i.id} as id, ${i.number} as number, ${e.name} as who,
 		       (select count(*) from ${il} where ${il.invoiceId} = ${i.id})::text as lines,
-		       b.gross::numeric(12,2)::text as gross
+		       b.gross::text as gross
 		  from ${i}
 		  join ${e} on ${e.id} = ${i.entityId}
 		  join ${owing} b on b.invoice_id = ${i.id}
@@ -172,7 +174,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const ageing = [...buckets.entries()].map(([bucket, b]) => ({
 		bucket,
 		n: String(b.n),
-		worth: sum(b.worth).toFixed(2),
+		worth: sum(b.worth).toFixed(places),
 		oldest: String(b.oldest)
 	}));
 

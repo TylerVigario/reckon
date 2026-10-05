@@ -3,6 +3,7 @@
 	import Top from '#lib/Top.svelte';
 	import { readNewAgreement } from '#lib/agreement-fields.ts';
 	import { readJson, readProblem } from '#lib/json.ts';
+	import { forInput } from '#lib/currency.ts';
 	import { goto } from '$app/navigation';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -108,7 +109,7 @@
 					id="a-price"
 					class="inp"
 					inputmode="decimal"
-					placeholder="150.00"
+					placeholder={forInput('150')}
 					bind:value={price}
 				/>
 				{#if errors.price}<small class="why">{errors.price}</small>{/if}

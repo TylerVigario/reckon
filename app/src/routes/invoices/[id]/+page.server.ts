@@ -5,7 +5,7 @@ import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { balances } from '#lib/server/balances.ts';
-import { taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { lineTaxSql } from '#lib/server/tax-rules.ts';
 import { day, monthName } from '#lib/format.ts';
 import type { PageServerLoad } from './$types';
@@ -18,8 +18,8 @@ import type { PageServerLoad } from './$types';
  * still says what June said, whatever the rate table says today.
  */
 export const load: PageServerLoad = async ({ params }) => {
-	const rounding = await taxRounding();
-	const owing = balances(rounding);
+	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
+	const owing = balances(rounding, places);
 	if (!UUID.test(params.id)) error(404, 'no such invoice');
 
 	const i = t.invoice;
@@ -125,7 +125,7 @@ export const load: PageServerLoad = async ({ params }) => {
 				                         then coalesce(${il.exTaxCost}, 0) else 0 end)
 				    * ${il.taxRatePct} / 100`,
 				rounding,
-				2,
+				places,
 				sql`from ${il} where ${il.invoiceId} = ${params.id} and ${il.taxable}`
 			)}::text as due_on_return,
 		  max(${si.taxJurisdiction}) as district,

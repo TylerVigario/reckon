@@ -61,7 +61,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			entity: e.entity,
 			site: e.site,
 			service: e.service,
-			value: e.billable ? (w.billed?.toFixed(2) ?? null) : null,
+			value: e.billable ? (w.billed?.toString() ?? null) : null,
 			// Wholly inside a retainer: it bills nothing by the hour because the
 			// retainer has already charged for it.
 			covered: w.coveredMinutes === e.minutes,

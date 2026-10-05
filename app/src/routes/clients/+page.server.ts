@@ -2,7 +2,7 @@ import { and, count, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
-import { taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { rateIsStale } from '#lib/server/stale.ts';
 import type { PageServerLoad } from './$types';
@@ -15,7 +15,8 @@ import type { PageServerLoad } from './$types';
  * a client is that client's sites, not the address book's.
  */
 export const load: PageServerLoad = async () => {
-	const owing = balances(await taxRounding());
+	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
+	const owing = balances(rounding, places);
 	const e = t.entity;
 	const si = t.site;
 	const ec = t.entityContact;
@@ -40,7 +41,7 @@ export const load: PageServerLoad = async () => {
 		         where ${ec.entityId} = ${e.id} and ${ec.isPrimary} limit 1) as contact,
 		       count(${si.id})::text as sites,
 		       string_agg(${si.display}, ' · ' order by ${si.display}) as site_labels,
-		       coalesce(o.owed, 0)::numeric(12,2)::text as owed
+		       round(coalesce(o.owed, 0), ${places}::int)::text as owed
 		  from ${e}
 		  left join ${si} on ${si.entityId} = ${e.id} and ${si.active}
 		  left join owing o on o.entity_id = ${e.id}

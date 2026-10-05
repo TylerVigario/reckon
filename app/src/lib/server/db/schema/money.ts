@@ -24,7 +24,7 @@ import {
 	unique,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { createdAt, day, decimal, id, nonNegative, oneOf, tstz } from './columns.ts';
+import { createdAt, day, decimal, id, money, nonNegative, oneOf, tstz } from './columns.ts';
 import { entity, site } from './clients.ts';
 import { materialLot } from './catalogue.ts';
 import { agreementPeriod } from './agreements.ts';
@@ -108,7 +108,7 @@ export const invoiceLine = pgTable(
 		taxOverrideReason: text(),
 		exTaxCost: decimal(12, 4),
 		taxPaid: decimal(12, 4),
-		amount: decimal(12, 2).notNull(),
+		amount: money().notNull(),
 		timeEntryId: uuid(),
 		tripLegId: uuid(),
 		agreementPeriodId: uuid(),
@@ -179,7 +179,7 @@ export const creditNote = pgTable(
 		number: text().notNull(),
 		entityId: uuid().notNull(),
 		issuedOn: day().notNull(),
-		amount: decimal(12, 2).notNull(),
+		amount: money().notNull(),
 		kind: text({ enum: CREDIT_KINDS }).notNull(),
 		reason: text().notNull(),
 		createdBy: uuid().notNull(),
@@ -208,7 +208,7 @@ export const creditApplication = pgTable(
 		id: id(),
 		creditNoteId: uuid().notNull(),
 		invoiceId: uuid().notNull(),
-		amount: decimal(12, 2).notNull(),
+		amount: money().notNull(),
 		appliedOn: day().notNull()
 	},
 	(t) => [
@@ -237,9 +237,9 @@ export const payout = pgTable(
 		id: id(),
 		processor: text().notNull(),
 		arrivedOn: day().notNull(),
-		gross: decimal(12, 2).notNull(),
-		fees: decimal(12, 2).default('0').notNull(),
-		net: decimal(12, 2).notNull(),
+		gross: money().notNull(),
+		fees: money().default('0').notNull(),
+		net: money().notNull(),
 		bankReference: text()
 	},
 	(t) => [check('payout_nets_out', sql`${t.net} = (${t.gross} - ${t.fees})`)]
@@ -251,7 +251,7 @@ export const payment = pgTable(
 		id: id(),
 		entityId: uuid().notNull(),
 		receivedOn: day().notNull(),
-		gross: decimal(12, 2).notNull(),
+		gross: money().notNull(),
 		method: text({ enum: PAYMENT_METHODS }).notNull(),
 		/** UNUSED, PLANNED. The card processor's id for the payment. Nothing records it yet. */
 		processorRef: text(),
@@ -282,7 +282,7 @@ export const paymentAllocation = pgTable(
 		id: id(),
 		paymentId: uuid().notNull(),
 		invoiceId: uuid().notNull(),
-		amount: decimal(12, 2).notNull()
+		amount: money().notNull()
 	},
 	(t) => [
 		unique('payment_allocation_payment_id_invoice_id_key').on(t.paymentId, t.invoiceId),
@@ -309,7 +309,7 @@ export const refund = pgTable(
 	{
 		id: id(),
 		paymentId: uuid().notNull(),
-		amount: decimal(12, 2).notNull(),
+		amount: money().notNull(),
 		refundedOn: day().notNull(),
 		reason: text().notNull()
 	},
@@ -340,7 +340,7 @@ export const taxRemittance = pgTable(
 		 */
 		filedOn: day(),
 		paidOn: day(),
-		amount: decimal(12, 2).notNull(),
+		amount: money().notNull(),
 		reference: text(),
 		note: text(),
 		createdBy: uuid().notNull(),

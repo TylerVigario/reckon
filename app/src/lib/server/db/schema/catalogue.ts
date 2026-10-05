@@ -27,7 +27,7 @@ import {
 	unique,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { createdAt, day, decimal, id, nonNegative, oneOf } from './columns.ts';
+import { createdAt, day, decimal, id, money, nonNegative, oneOf } from './columns.ts';
 import { entity } from './clients.ts';
 import { role, user } from './people.ts';
 
@@ -64,7 +64,7 @@ export const service = pgTable(
 		 */
 		billToNearestSeconds: integer(),
 		/** The least one entry of it bills, whatever its quantity. Null for none. */
-		minimumCharge: decimal(12, 2)
+		minimumCharge: money()
 	},
 	(t) => [
 		unique('service_code_key').on(t.code),
@@ -88,13 +88,13 @@ export const servicePrice = pgTable(
 		serviceId: uuid().notNull(),
 		entityId: uuid(),
 		/** The rate for the first person -- per hour, per mile or each, in the service's unit. */
-		rate: decimal(12, 2).notNull(),
+		rate: money().notNull(),
 		effectiveFrom: day().notNull(),
 		/**
 		 * What each person after the first adds to the hourly price: at 120.00 and
 		 * 70.00, a crew of three is 260.00 an hour.
 		 */
-		additionalRate: decimal(12, 2).default('0').notNull()
+		additionalRate: money().default('0').notNull()
 	},
 	(t) => [
 		unique('service_price_scope').on(t.serviceId, t.entityId, t.effectiveFrom).nullsNotDistinct(),

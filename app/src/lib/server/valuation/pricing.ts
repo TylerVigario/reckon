@@ -43,25 +43,26 @@ export function priceOn(
 /**
  * What the job costs an hour (or a mile, or each) with this many people on it:
  * the first person's rate and the additional rate for each one after, to the
- * cent. Null when there is no price.
+ * currency's `places` (#lib/currency). Null when there is no price.
  */
-export function jobRate(price: Price | null, heads: number): Decimal | null {
+export function jobRate(price: Price | null, heads: number, places: number): Decimal | null {
 	if (!price) return null;
 	const extra = BigInt(Math.max(heads - 1, 0));
-	return Decimal.from(price.rate).add(Decimal.from(price.additionalRate).mul(extra)).round(2);
+	return Decimal.from(price.rate).add(Decimal.from(price.additionalRate).mul(extra)).round(places);
 }
 
 /**
  * What a quantity of a service bills at a rate: time rounded to the service's
- * increment, the total to the cent, and never below its minimum charge. The
- * quantity is in the service's own unit -- hours, miles or a count -- and
- * exact, so 25 minutes is 25/60 of an hour with nothing lost. Null when there
- * is no rate.
+ * increment, the total to the currency's `places`, and never below its minimum
+ * charge. The quantity is in the service's own unit -- hours, miles or a count
+ * -- and exact, so 25 minutes is 25/60 of an hour with nothing lost. Null when
+ * there is no rate.
  */
 export function billedAmount(
 	service: ServiceTerms,
 	rate: Decimal | null,
-	quantity: Ratio
+	quantity: Ratio,
+	places: number
 ): Decimal | null {
 	if (rate === null) return null;
 	let q = quantity;
@@ -70,7 +71,7 @@ export function billedAmount(
 		const steps = q.mul(3600n).div(step).toBigInt();
 		q = Ratio.of(steps * step).div(3600n);
 	}
-	const amount = q.mul(rate).round(2);
+	const amount = q.mul(rate).round(places);
 	const floor = Decimal.from(service.minimumCharge ?? '0');
-	return Decimal.max(amount, floor).round(2);
+	return Decimal.max(amount, floor).round(places);
 }

@@ -15,17 +15,21 @@ export function billingDate(month: string, anchorDay: number): string {
 /** Minutes as hours to the hundredth: 75 is "1.25". */
 export const hoursOf = (minutes: number) => Ratio.of(minutes).div(60).round(2).toFixed(2);
 
-/** What one trip leg bills: one person's rate for its service on the day, times its miles. */
+/**
+ * What one trip leg bills: one person's rate for its service on the day, times
+ * its miles, to the currency's `places` (#lib/currency).
+ */
 export function legWorth(
 	leg: { serviceId: string | null; entityId: string | null; miles: string },
 	travelledOn: string,
 	services: ReadonlyMap<string, ServiceTerms>,
-	prices: readonly Price[]
+	prices: readonly Price[],
+	places: number
 ): { rate: Decimal | null; billed: Decimal | null } {
 	const service = leg.serviceId ? services.get(leg.serviceId) : undefined;
 	if (!service || !leg.serviceId) return { rate: null, billed: null };
-	const rate = jobRate(priceOn(prices, leg.serviceId, leg.entityId, travelledOn), 1);
-	return { rate, billed: billedAmount(service, rate, Ratio.of(leg.miles)) };
+	const rate = jobRate(priceOn(prices, leg.serviceId, leg.entityId, travelledOn), 1, places);
+	return { rate, billed: billedAmount(service, rate, Ratio.of(leg.miles), places) };
 }
 
 /** A lot still on the shelf: how much is left, and what each unit cost before and in tax. */
@@ -35,10 +39,16 @@ export type Lot = { qtyRemaining: string; exTaxCostPerUnit: string; taxPaidPerUn
  * What a material sells for and what it cost, weighted across what is still on
  * the shelf: two spools bought at different prices are one price to sell from.
  * The price is the one listed on or before today where there is one, and
- * otherwise the weighted cost before tax plus markup, to the cent. Costs are
- * to the hundredth of a cent, as a lot holds them; null with nothing left.
+ * otherwise the weighted cost before tax plus markup, to the currency's
+ * `places`. Costs are to four places, as a lot holds them; null with nothing
+ * left.
  */
-export function materialWorth(lots: readonly Lot[], markupPct: string, listed: string | null) {
+export function materialWorth(
+	lots: readonly Lot[],
+	markupPct: string,
+	listed: string | null,
+	places: number
+) {
 	const open = lots.filter((l) => Decimal.from(l.qtyRemaining).gt(0));
 	const onHand = open.reduce((n, l) => n.add(l.qtyRemaining), Decimal.ZERO);
 	const weighted = (perUnit: (l: Lot) => string) =>
@@ -56,6 +66,6 @@ export function materialWorth(lots: readonly Lot[], markupPct: string, listed: s
 		price:
 			listed !== null
 				? Decimal.from(listed)
-				: (exTax?.mul(Ratio.of(markupPct).div(100).add(1)).round(2) ?? null)
+				: (exTax?.mul(Ratio.of(markupPct).div(100).add(1)).round(places) ?? null)
 	};
 }

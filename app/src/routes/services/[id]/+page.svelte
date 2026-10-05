@@ -5,6 +5,7 @@
 	import RuleForm from '#lib/service/RuleForm.svelte';
 	import { dated, increment } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
+	import { forInput } from '#lib/currency.ts';
 	import { PAYS_FOR, paysWhat } from '#lib/pay-words.ts';
 	import { parseServiceField } from '#lib/service-fields.ts';
 	import { readProblem } from '#lib/json.ts';
@@ -450,7 +451,7 @@
 				<Setting
 					name="minimum_charge"
 					label="Minimum charge"
-					value={s.minimum_charge ?? ''}
+					value={forInput(s.minimum_charge)}
 					placeholder="None"
 					inputmode="decimal"
 					hint="The least one entry bills, however short."

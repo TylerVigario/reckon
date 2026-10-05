@@ -4,6 +4,7 @@
 	import CoverageForm from '#lib/agreement/CoverageForm.svelte';
 	import { dated, hours, span } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
+	import { forInput } from '#lib/currency.ts';
 	import { paysWhat } from '#lib/pay-words.ts';
 	import { parseAgreementField } from '#lib/agreement-fields.ts';
 	import { readProblem } from '#lib/json.ts';
@@ -313,7 +314,7 @@
 				<Setting
 					name="price"
 					label="Price"
-					value={a.price}
+					value={forInput(a.price)}
 					inputmode="decimal"
 					{endpoint}
 					validate={parseAgreementField}

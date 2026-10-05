@@ -3,7 +3,8 @@
  * bills, what each person on it is paid, and what it earned.
  *
  * Pure functions over rows already loaded -- load.ts does the loading. Every
- * figure is rounded to the cent once, where it is a figure, and not on the way.
+ * figure is rounded to its currency's places (#lib/currency) once, where it is
+ * a figure, and not on the way.
  */
 import { Decimal, Ratio } from '#lib/decimal.ts';
 import { billedAmount, jobRate, priceOn, type Price, type ServiceTerms } from './pricing.ts';
@@ -148,6 +149,8 @@ export type Context = {
 	rules: readonly PayRule[];
 	people: readonly Person[];
 	agreements: readonly Agreement[];
+	/** How many places the business's currency has: 2 for dollars, 0 for yen. */
+	places: number;
 };
 
 export type PersonPay = {
@@ -198,23 +201,26 @@ export function worth(entries: readonly Entry[], ctx: Context): Map<string, Wort
 		);
 	}
 
+	const { places } = ctx;
+	const zero = Decimal.ZERO.round(places);
 	const out = new Map<string, Worth>();
 	for (const e of entries) {
 		const c = covered.get(e.id)!;
 		const heads = headsOf(e);
 		const service = ctx.services.get(e.serviceId);
-		const rate = jobRate(priceOn(ctx.prices, e.serviceId, e.entityId, e.workedOn), heads);
+		const rate = jobRate(priceOn(ctx.prices, e.serviceId, e.entityId, e.workedOn), heads, places);
 		const billedMinutes = c.coveredMinutes === null ? null : e.minutes - c.coveredMinutes;
 
 		let billed: Decimal | null;
 		if (billedMinutes === null || !service) billed = null;
-		else if (billedMinutes === 0) billed = Decimal.from('0.00');
-		else if (c.agreementId !== null && c.overage === 'no_charge') billed = Decimal.from('0.00');
+		else if (billedMinutes === 0) billed = zero;
+		else if (c.agreementId !== null && c.overage === 'no_charge') billed = zero;
 		else
 			billed = billedAmount(
 				service,
 				rate,
-				service.unit === 'each' ? Ratio.of(1) : Ratio.of(billedMinutes).div(60)
+				service.unit === 'each' ? Ratio.of(1) : Ratio.of(billedMinutes).div(60),
+				places
 			);
 
 		const pm = c.periodId !== null ? personMinutes.get(c.periodId) : undefined;
@@ -230,32 +236,34 @@ export function worth(entries: readonly Entry[], ctx: Context): Map<string, Wort
 					? timePay(
 							ruleOn(ctx.rules, e.serviceId, p, e.entityId, 'time', e.workedOn),
 							billedMinutes * 60,
-							billed
+							billed,
+							places
 						)
-					: Decimal.from('0');
+					: zero;
 			const coveredPaid =
 				c.coveredMinutes && c.coveredMinutes > 0
 					? coveredPay(
 							ruleOn(ctx.rules, e.serviceId, p, e.entityId, 'covered_time', e.workedOn),
-							shareEach
+							shareEach,
+							places
 						)
-					: Decimal.from('0');
+					: zero;
 			return {
 				userId: p.id,
 				coveredMinutes: c.coveredMinutes,
-				timePaid: timePaid?.round(2) ?? null,
-				coveredPaid: coveredPaid?.round(2) ?? null,
-				paid: timePaid && coveredPaid ? timePaid.add(coveredPaid).round(2) : null
+				timePaid,
+				coveredPaid,
+				paid: timePaid && coveredPaid ? timePaid.add(coveredPaid) : null
 			};
 		});
 		const known = people.filter((p) => p.paid !== null);
-		const paid = known.length ? known.reduce((n, p) => n.add(p.paid!), Decimal.from('0.00')) : null;
+		const paid = known.length ? known.reduce((n, p) => n.add(p.paid!), zero) : null;
 
-		const coveredShare = shareEach ? shareEach.mul(heads).round(2) : null;
+		const coveredShare = shareEach ? shareEach.mul(heads).round(places) : null;
 		let earned: Decimal | null = null;
 		if (billed !== null) {
-			if (!c.coveredMinutes || c.coveredMinutes <= 0) earned = billed.round(2);
-			else if (shareEach) earned = shareEach.mul(heads).add(billed).round(2);
+			if (!c.coveredMinutes || c.coveredMinutes <= 0) earned = billed;
+			else if (shareEach) earned = shareEach.mul(heads).add(billed).round(places);
 		}
 
 		out.set(e.id, {
