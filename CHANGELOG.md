@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/TylerVigario/reckon/compare/v0.4.0...v0.5.0) (2026-10-05)
+
+### Features
+
+* Units are the operator's own list, and a material is counted in one ([#58](https://github.com/TylerVigario/reckon/pull/58))
+* The Settings menu says what each screen is set to, under its name ([#60](https://github.com/TylerVigario/reckon/pull/60))
+
+### Bug Fixes
+
+* The address field reaches Google, and waits until its API is ready ([#59](https://github.com/TylerVigario/reckon/pull/59))
+
 ## [0.4.0](https://github.com/TylerVigario/reckon/compare/v0.3.1...v0.4.0) (2026-10-05)
 
 ### Features
