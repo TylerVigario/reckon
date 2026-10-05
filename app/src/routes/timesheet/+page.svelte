@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import Top from '#lib/Top.svelte';
 	import { held, flush, enqueue, discard, secondsOf, type Queued } from '#lib/queue.ts';
-	import { running, drop, toEntry, type Running } from '#lib/timers.ts';
+	import { running, drop, moveStart, toEntry, type Running } from '#lib/timers.ts';
+	import { clockOf, lastAt } from '#lib/work-times.ts';
 	import { refreshAll } from '$app/navigation';
 	import { unitPrice } from '#lib/money.svelte.ts';
 	import {
@@ -89,6 +90,35 @@
 				await readQueue();
 				return refreshAll();
 			});
+	}
+
+	// A timer set going late -- somebody arrived, dealt with the first thing,
+	// and only then remembered it -- has its start moved back to when the work
+	// began: the last time the clock read what is chosen, today or else
+	// yesterday. On the phone, like the timer, so it works with no signal.
+	let moving = $state<string | null>(null);
+	let movingTo = $state('');
+	let moveWhy = $state('');
+	function beginMove(t: Running) {
+		moving = t.id;
+		movingTo = clockOf(
+			Temporal.Instant.fromEpochMilliseconds(t.started_at).toZonedDateTimeISO(personalZone())
+		);
+		moveWhy = '';
+	}
+	function setStart(t: Running) {
+		if (!movingTo) {
+			moveWhy = 'When it started.';
+			return;
+		}
+		const to = lastAt(movingTo, personalZone(), Temporal.Now.instant());
+		const moved = moveStart(t.id, to.epochMilliseconds);
+		if (!moved) {
+			moveWhy = 'It has to have started before now.';
+			return;
+		}
+		timers = moved;
+		moving = null;
 	}
 
 	// Letting go of a refused entry is hours gone for good, so it takes a
@@ -275,8 +305,25 @@
 						</div>
 						<div class="rec-s">
 							{t.crew === 'team' ? 'The team' : (nameOf(data.people, t.worked_by) ?? 'Unassigned')}
-							· running since {startedAt(t)}
+							· running since
+							<button
+								type="button"
+								class="since"
+								aria-label="Change when it started"
+								onclick={() => beginMove(t)}>{startedAt(t)}</button
+							>
 						</div>
+						{#if moving === t.id}
+							<div class="move">
+								<label class="lt" for={`move-${t.id}`}>It started at</label>
+								<input id={`move-${t.id}`} class="inp" type="time" bind:value={movingTo} />
+								<div class="acts">
+									<button class="btn sm pri" onclick={() => setStart(t)}>Set</button>
+									<button class="btn sm gho" onclick={() => (moving = null)}>Cancel</button>
+								</div>
+								{#if moveWhy}<div class="rec-s refusal">{moveWhy}</div>{/if}
+							</div>
+						{/if}
 					</div>
 					<div class="rec-n">
 						<span class="rec-v">{c.hm}</span><span class="rec-x">running</span>
@@ -334,6 +381,23 @@
 	.acts {
 		display: flex;
 		gap: 8px;
+		margin-top: 10px;
+	}
+	/* When a running timer started, which a tap corrects. */
+	.since {
+		font: inherit;
+		color: var(--accent);
+		background: none;
+		border: 0;
+		padding: 0;
+		text-decoration: underline dotted;
+		text-underline-offset: 3px;
+		cursor: pointer;
+	}
+	.move {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
 		margin-top: 10px;
 	}
 </style>
