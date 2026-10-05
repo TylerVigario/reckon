@@ -19,7 +19,6 @@ import {
 	secondsAsHours,
 	increment,
 	miles,
-	minutesAsHours,
 	monthName,
 	monthOf,
 	pct,
@@ -159,15 +158,10 @@ describe('hours', () => {
 		expect(hours('3.25', 'glance')).toBe('3.3 hr');
 	});
 
-	it('from minutes, worked out exactly before it is rounded', () => {
-		expect(minutesAsHours(25)).toBe('0.4167 hr');
-		expect(minutesAsHours(90, 'glance')).toBe('1.5 hr');
-		expect(minutesAsHours(150, 'whole')).toBe('3 hr');
-	});
-
 	it('from seconds, worked out exactly before it is rounded', () => {
 		expect(secondsAsHours(1500)).toBe('0.4167 hr');
 		expect(secondsAsHours(5407, 'glance')).toBe('1.5 hr');
+		expect(secondsAsHours(9000, 'whole')).toBe('3 hr');
 	});
 
 	it('closed up for a count beside a menu item', () => {
