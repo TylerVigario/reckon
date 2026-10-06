@@ -92,6 +92,8 @@ export const load: PageServerLoad = async () => {
 				drafts.map((r) => r.gross),
 				places
 			)
-		}
+		},
+		// When this copy was made: shown when it is opened with no signal.
+		as_of: new Date().toISOString()
 	};
 };

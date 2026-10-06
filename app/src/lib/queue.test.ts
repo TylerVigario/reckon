@@ -1,6 +1,6 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Entry } from './queue.ts';
+import type { Entry, LineEntry } from './queue.ts';
 
 const entry = (client_uuid: string, extra: Partial<Entry> = {}): Entry => ({
 	client_uuid,
@@ -204,5 +204,104 @@ describe('moving from localStorage', () => {
 		});
 		await expect(q.held()).rejects.toThrow('no room');
 		expect(store.has('reckon.queue')).toBe(true);
+	});
+});
+
+const line = (client_uuid: string, extra: Partial<LineEntry> = {}): LineEntry => ({
+	client_uuid,
+	invoice_id: 'd',
+	fields: { kind: 'paid_for', description: 'Low-voltage permit', ex_tax_cost: '35.00' },
+	shown: {
+		kind: 'paid_for',
+		description: 'Low-voltage permit',
+		detail: 'Paid for them · City of Woodland · the business paid · at cost',
+		qty: '1',
+		unit: 'each',
+		unit_price: '35.0000',
+		amount: '35.00',
+		taxable: false,
+		tax_rate_pct: '0'
+	},
+	...extra
+});
+
+describe('lines', () => {
+	it('wait in a store of their own, which the Time screen does not count', async () => {
+		await q.enqueueLine(line('permit'));
+		expect((await q.linesHeld()).map((l) => l.line.client_uuid)).toEqual(['permit']);
+		expect((await q.held()).waiting).toBe(0);
+	});
+
+	it('are a draft’s own', async () => {
+		await q.enqueueLine(line('permit'));
+		await q.enqueueLine(line('other', { invoice_id: 'e' }));
+		expect((await q.linesHeld('d')).map((l) => l.line.client_uuid)).toEqual(['permit']);
+	});
+
+	it('go after the time entries, as form data with their receipt', async () => {
+		await q.enqueueLine(line('permit', { receipt: new Blob(['jpeg'], { type: 'image/jpeg' }) }));
+		await q.enqueue(entry('hour'));
+		const sent: string[] = [];
+		let form: FormData | null = null;
+		vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
+			sent.push(url);
+			if (url === '/api/lines') form = init.body as FormData;
+			return answer(200, {});
+		});
+		expect(await q.flush()).toEqual({ sent: 2, refused: 0 });
+		expect(sent).toEqual(['/api/time', '/api/lines']);
+		const f = form as unknown as FormData;
+		expect([f.get('client_uuid'), f.get('invoice_id'), f.get('description')]).toEqual([
+			'permit',
+			'd',
+			'Low-voltage permit'
+		]);
+		expect((f.get('receipt') as File).type).toBe('image/jpeg');
+		expect(await q.linesHeld()).toEqual([]);
+	});
+
+	it('are kept when the server refuses one, with its reason', async () => {
+		await q.enqueueLine(line('permit'));
+		vi.stubGlobal('fetch', () =>
+			answer(409, { status: 409, detail: 'INV-0213 has gone out, so it takes no more lines.' })
+		);
+		expect(await q.flush()).toEqual({ sent: 0, refused: 1 });
+		const [kept] = await q.linesHeld();
+		expect(kept.refused?.detail).toBe('INV-0213 has gone out, so it takes no more lines.');
+		await q.discardLine('permit');
+		expect(await q.linesHeld()).toEqual([]);
+	});
+
+	it('are all kept when there is no connection', async () => {
+		await q.enqueueLine(line('permit'));
+		vi.stubGlobal('fetch', () => Promise.reject(new TypeError('offline')));
+		expect(await q.flush()).toEqual({ sent: 0, refused: 0 });
+		expect(await q.linesHeld()).toHaveLength(1);
+	});
+});
+
+describe('a phone that queued before lines', () => {
+	it('keeps its entries, and gains a store for lines', async () => {
+		// The first version's database: one store, an entry in it.
+		const factory = new IDBFactory();
+		await new Promise<void>((resolve) => {
+			const req = factory.open('reckon', 1);
+			req.onupgradeneeded = () =>
+				req.result.createObjectStore('queue', { keyPath: 'entry.client_uuid' });
+			req.onsuccess = () => {
+				const t = req.result.transaction('queue', 'readwrite');
+				t.objectStore('queue').put({ entry: entry('older'), queued_at: 1 });
+				t.oncomplete = () => {
+					req.result.close();
+					resolve();
+				};
+			};
+		});
+		vi.stubGlobal('indexedDB', factory);
+		vi.resetModules();
+		q = await import('./queue.ts');
+		expect((await q.held()).waiting).toBe(1);
+		await q.enqueueLine(line('permit'));
+		expect(await q.linesHeld()).toHaveLength(1);
 	});
 });

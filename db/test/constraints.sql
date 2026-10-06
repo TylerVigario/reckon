@@ -1779,4 +1779,21 @@ SELECT must_fail($$
   UPDATE operator SET stock_costing = 'newest_first'
 $$, 'a way of costing stock nobody named');
 
+\echo ''
+\echo '=== 39. a line sent twice from a phone is one line ==='
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (client_uuid, invoice_id, seq, kind, description, qty, unit, unit_price,
+                            amount, bought_from)
+  VALUES ('39393939-0000-4000-8000-000000000001', '7777eeee-7777-7777-7777-777777777737', 60,
+          'paid_for', 'Low-voltage permit', 1, 'each', 35.00, 35.00, 'City of Woodland')
+$$, 'a permit added on a phone');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (client_uuid, invoice_id, seq, kind, description, qty, unit, unit_price,
+                            amount, bought_from)
+  VALUES ('39393939-0000-4000-8000-000000000001', '7777eeee-7777-7777-7777-777777777737', 61,
+          'paid_for', 'Low-voltage permit', 1, 'each', 35.00, 35.00, 'City of Woodland')
+$$, 'the same permit, sent again after a timeout');
+
 \echo 'All guards hold.'

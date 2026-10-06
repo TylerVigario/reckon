@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Top from '#lib/Top.svelte';
+	import OfflineBanner from '#lib/OfflineBanner.svelte';
+	import { held, linesHeld } from '#lib/queue.ts';
 	import { count, day } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
@@ -11,6 +14,22 @@
 
 	const who = $derived(data.operator?.short_name || 'you');
 	const sub = $derived(`${money(data.totals.owed)} out · ${money(data.totals.drafted)} in draft`);
+
+	// What is on this phone, waiting to send: lines by the draft they are for,
+	// and everything for the banner. The server cannot know them yet.
+	let onPhone = $state<Record<string, number>>({});
+	let waiting = $state(0);
+	onMount(() => {
+		void Promise.all([linesHeld(), held()]).then(
+			([lines, time]) => {
+				const by: Record<string, number> = {};
+				for (const q of lines) by[q.line.invoice_id] = (by[q.line.invoice_id] ?? 0) + 1;
+				onPhone = by;
+				waiting = lines.filter((q) => !q.refused).length + time.waiting;
+			},
+			() => {}
+		);
+	});
 </script>
 
 <Top title="Invoices" {sub}>
@@ -18,6 +37,8 @@
 		<a class="btn sm" href={resolve('/invoices/new')}>New draft</a>
 	{/snippet}
 </Top>
+
+<OfflineBanner asOf={data.as_of} {waiting} />
 
 <div class="pad">
 	<div class="tiles">
@@ -52,6 +73,11 @@
 							<div class="rec-s">{i.kinds ?? 'no lines yet'}</div>
 							<div class="rec-c">
 								<span class="chip warn"><span class="dot"></span>Not sent</span>
+								{#if onPhone[i.id]}
+									<span class="chip acc"
+										><span class="dot"></span>{onPhone[i.id]} on this phone</span
+									>
+								{/if}
 							</div>
 						</div>
 						<div class="rec-n"><span class="rec-v">{money(i.gross)}</span></div>

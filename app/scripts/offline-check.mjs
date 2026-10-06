@@ -15,17 +15,24 @@
  * console-check uses -- so the worker, its caches and the capture queue carry
  * from one run to the next, as they do on a phone.
  *
- *   online   signs in, waits for the worker to keep the offline screens, and
- *            asks Chrome whether the app is installable.
+ *   online   signs in, waits for the worker to keep the offline screens -- the
+ *            invoices list and each draft among them -- and asks Chrome
+ *            whether the app is installable.
  *   offline  opens each offline screen from a cold load; confirms a screen that
  *            needs the network says so instead; starts a timer and stops it,
  *            which leaves an entry in the queue. Beside it goes a copy naming a
  *            service that does not exist -- what an entry recorded offline
- *            looks like once someone deletes its service meanwhile.
+ *            looks like once someone deletes its service meanwhile. Then opens
+ *            the invoices list and the demo's draft, each saying how old it is,
+ *            and adds a permit paid for the client, with its receipt: it waits
+ *            on the phone, shown on the draft and in its total. Beside it goes
+ *            a line drawing more raceway than the shelf has.
  *   back     opens a page, which posts the queue. The good entry goes; the other
  *            is refused, and must be kept, shown with the server's reason,
- *            open to be fixed, and gone only when discarded by hand. Then signs
- *            out, which must empty the cache the worker kept.
+ *            open to be fixed, and gone only when discarded by hand. The permit
+ *            reaches the draft with its receipt; the raceway is refused and
+ *            kept the same way, on the draft. Then signs out, which must empty
+ *            the cache the worker kept.
  */
 const [, , base = 'http://127.0.0.1:5181', email, password, phase] = process.argv;
 if (!['online', 'offline', 'back'].includes(phase ?? '')) {
@@ -121,9 +128,14 @@ const stored = (/** @type {string} */ key) =>
  */
 const inQueue = (/** @type {string} */ body) =>
 	evaluate(`new Promise((resolve) => {
-		const req = indexedDB.open('reckon', 1);
-		req.onupgradeneeded = () =>
-			req.result.createObjectStore('queue', { keyPath: 'entry.client_uuid' });
+		const req = indexedDB.open('reckon', 2);
+		req.onupgradeneeded = () => {
+			const db = req.result;
+			if (!db.objectStoreNames.contains('queue'))
+				db.createObjectStore('queue', { keyPath: 'entry.client_uuid' });
+			if (!db.objectStoreNames.contains('lines'))
+				db.createObjectStore('lines', { keyPath: 'line.client_uuid' });
+		};
 		req.onerror = () => resolve(null);
 		req.onsuccess = () => {
 			const db = req.result;
@@ -137,6 +149,16 @@ const queued = () =>
 		all.onsuccess = () =>
 			done(all.result.map((q) => ({ id: q.entry.client_uuid, refused: q.refused?.detail ?? null })));
 		all.onerror = () => done(null);`);
+/** @returns {Promise<{ id: string, refused: string | null, description: string }[] | null>} */
+const linesQueued = () =>
+	inQueue(`const all = db.transaction('lines').objectStore('lines').getAll();
+		all.onsuccess = () =>
+			done(all.result.map((q) => ({
+				id: q.line.client_uuid,
+				refused: q.refused?.detail ?? null,
+				description: q.line.shown.description
+			})));
+		all.onerror = () => done(null);`);
 const click = (/** @type {string} */ text) =>
 	evaluate(`(() => {
 		const b = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === ${JSON.stringify(text)});
@@ -146,6 +168,15 @@ const click = (/** @type {string} */ text) =>
 	})()`);
 
 const OFFLINE = ['/', '/timesheet', '/timesheet/start', '/timesheet/manual'];
+/** The demo's draft, INV-0212 for a homeowner, and an invoice that has gone out. */
+const DRAFT = '/invoices/6f444d02-b482-4506-98fe-ee23f45d26c5';
+const SENT = '/invoices/2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a';
+/** The demo's raceway, of which 60 ft is on the shelf. */
+const RACEWAY = 'b144a78b-750a-4bd2-a84e-7d1551328565';
+const LISTED = ['/invoices', DRAFT, `${DRAFT}/add`];
+const banner = () =>
+	evaluate(`document.querySelector('.offline')?.textContent?.replace(/\\s+/g, ' ').trim() ?? ''`);
+const text = () => evaluate(`document.body.textContent.replace(/\\s+/g, ' ')`);
 
 if (phase === 'online') {
 	await go('/login');
@@ -161,18 +192,20 @@ if (phase === 'online') {
 	// when the page asks it to; a fresh load makes sure it is the one asked.
 	/** @type {string[]} */
 	let have = [];
-	for (let i = 0; i < 20 && have.length < OFFLINE.length * 2; i++) {
+	const everyScreen = (/** @type {string[]} */ h) =>
+		[...OFFLINE, ...LISTED].every(
+			(p) => h.includes(p) && h.includes(`${p === '/' ? '' : p}/__data.json`)
+		);
+	for (let i = 0; i < 20 && !everyScreen(have); i++) {
 		if (i === 4) await go('/');
 		await settle(1000);
 		have = (await kept()) ?? [];
 	}
 	check(
-		OFFLINE.every((p) => have.includes(p)) &&
-			OFFLINE.every((p) =>
-				have.some((h) => h.endsWith('__data.json') && h.startsWith(p === '/' ? '/' : p))
-			),
-		`the worker keeps the offline screens and their data (${have.length} kept)`
+		everyScreen(have),
+		`the worker keeps the offline screens and their data, the drafts among them (${have.length} kept)`
 	);
+	check(!have.includes(SENT), 'it keeps no invoice that has gone out');
 
 	const install = await send('Page.getInstallabilityErrors');
 	const errors = install.result?.installabilityErrors ?? [];
@@ -197,8 +230,13 @@ if (phase === 'offline') {
 		const h = await heading();
 		check(h !== '' && h !== 'No connection', `${path} opens with no server, as "${h}"`);
 	}
-	await go('/invoices');
-	check((await heading()) === 'No connection', '/invoices says it needs a connection');
+	await go(SENT);
+	check(
+		(await heading()) === 'No connection',
+		'an invoice that has gone out says it needs a connection'
+	);
+	await go('/reports');
+	check((await heading()) === 'No connection', '/reports says it needs a connection');
 
 	// A timer, started and stopped with no server: the whole of capturing time.
 	await go('/timesheet/start');
@@ -278,6 +316,106 @@ if (phase === 'offline') {
 		planted === true && (await queued())?.length === 2,
 		'one naming a deleted service waits beside it'
 	);
+
+	// The invoices and the draft, from the copies the worker kept, saying so.
+	await go('/invoices');
+	const listSays = await banner();
+	check(
+		(await heading()).startsWith('Invoices') &&
+			/^● Offline · as of .+ · 2 changes waiting to send$/.test(listSays),
+		`/invoices opens with no server, saying how old it is (${listSays})`
+	);
+	await go(DRAFT);
+	const before = await evaluate(
+		`[...document.querySelectorAll('.rec.tot')].map((r) => r.textContent.replace(/\\s+/g, ' ').trim())[0] ?? ''`
+	);
+	check(
+		(await heading()).startsWith('Draft INV-0212') && /Offline · as of/.test(await banner()),
+		`the draft opens with no server, saying how old it is (${before})`
+	);
+
+	// A permit paid for the client, with its receipt: added with no signal.
+	await evaluate(
+		`[...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'Add a line')?.click()`
+	);
+	await settle(2000);
+	check((await heading()).startsWith('Add a line'), 'Add a line opens with no server');
+	await click('Paid for them');
+	await settle(200);
+	await evaluate(`(() => {
+		const set = (id, v) => {
+			const f = document.querySelector(id);
+			f.value = v;
+			f.dispatchEvent(new Event('input', { bubbles: true }));
+		};
+		set('#l-desc', 'Low-voltage permit');
+		set('#l-from', 'City of Woodland');
+		set('#l-cost', '35.00');
+	})()`);
+	await evaluate(`(async () => {
+		const c = document.createElement('canvas');
+		c.width = 800;
+		c.height = 1000;
+		c.getContext('2d').fillRect(100, 100, 300, 200);
+		const blob = await new Promise((done) => c.toBlob(done, 'image/png'));
+		const input = document.querySelector('#l-receipt');
+		const t = new DataTransfer();
+		t.items.add(new File([blob], 'permit.png', { type: 'image/png' }));
+		input.files = t.files;
+		input.dispatchEvent(new Event('change', { bubbles: true }));
+	})()`);
+	await settle(300);
+	check(await click('Add the line'), 'the line is added');
+	await settle(3000);
+	const page = /** @type {string} */ (await text());
+	const lines = (await linesQueued()) ?? [];
+	check(
+		lines.length === 1 && (await evaluate('location.pathname')) === DRAFT,
+		'it waits on the phone, and the draft opens'
+	);
+	check(
+		/Low-voltage permit.*Receipt.*On this phone.*\$35\.00/.test(page),
+		'the draft shows it, with its receipt, as on this phone'
+	);
+	check(
+		page.includes('Due $189.38') && /3 changes waiting to send/.test(await banner()),
+		`its total takes it in: $154.38 and $35.00 (${page.match(/Due \$[\d,.]+/g)?.join(', ') ?? ''})`
+	);
+
+	// Raceway the shelf will not have when it arrives: 1,000 ft, of 60 or less.
+	const short =
+		await inQueue(`const store = db.transaction('lines', 'readwrite').objectStore('lines');
+		store.put({
+			line: {
+				client_uuid: crypto.randomUUID(),
+				invoice_id: ${JSON.stringify(DRAFT.split('/').pop())},
+				fields: {
+					kind: 'material',
+					material_id: ${JSON.stringify(RACEWAY)},
+					qty: '1000',
+					description: 'Raceway · Surface · 3/4 in',
+					site_id: ''
+				},
+				receipt: null,
+				shown: {
+					kind: 'material',
+					description: 'Raceway · Surface · 3/4 in',
+					detail: 'From stock',
+					qty: '1000',
+					unit: 'foot',
+					unit_price: '1.0625',
+					amount: '1062.50',
+					taxable: false,
+					tax_rate_pct: '0'
+				}
+			},
+			queued_at: Date.now()
+		});
+		store.transaction.oncomplete = () => done(true);`);
+	check(
+		short === true && (await linesQueued())?.length === 2,
+		'more raceway than is left waits beside it'
+	);
 }
 
 if (phase === 'back') {
@@ -333,6 +471,60 @@ if (phase === 'back') {
 	await click('Tap again to discard');
 	await settle(800);
 	check((await queued())?.length === 0, 'the second tap does');
+
+	// The lines went after the time: the permit is in, and the raceway is kept.
+	const lines = (await linesQueued()) ?? [];
+	check(
+		lines.length === 1 && lines[0].description === 'Raceway · Surface · 3/4 in',
+		'the permit reaches the draft; the raceway is kept on the phone'
+	);
+	check(
+		/^Only \d+ ft of Raceway · Surface · 3\/4 in on the shelf\.$/.test(lines[0]?.refused ?? ''),
+		`with the reason "${lines[0]?.refused ?? ''}"`
+	);
+	await go(DRAFT);
+	await settle(1500);
+	const page = /** @type {string} */ (await text());
+	const receipt = await evaluate(`(async () => {
+		const a = [...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'The receipt');
+		if (!a) return null;
+		const r = await fetch(a.href);
+		return { status: r.status, type: r.headers.get('content-type') };
+	})()`);
+	check(
+		page.includes('Paid for them · City of Woodland · the business paid · at cost') &&
+			!/Low-voltage permit[^$]*On this phone/.test(page) &&
+			receipt?.status === 200 &&
+			receipt.type === 'image/jpeg',
+		'the draft has the permit from the server, with its receipt'
+	);
+	check(
+		/Not added.*Raceway · Surface · 3\/4 in.*Refused: Only \d+ ft/.test(page),
+		'the raceway shows on the draft as not added, with the reason'
+	);
+	await evaluate(
+		`[...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'Fix')?.click()`
+	);
+	await settle(2000);
+	const fix = await evaluate(`({
+		heading: document.querySelector('h1')?.textContent?.trim() ?? '',
+		qty: document.querySelector('#l-qty')?.value ?? '',
+		why: document.querySelector('.why')?.textContent?.trim() ?? ''
+	})`);
+	check(
+		fix.heading.startsWith('Add a line') &&
+			fix.qty === '1000' &&
+			fix.why.startsWith('Refused: Only '),
+		`Fix opens it filled in, with the reason${fix.qty === '1000' ? '' : ` (${JSON.stringify(fix)})`}`
+	);
+	await go(DRAFT);
+	await settle(1000);
+	await click('Discard');
+	await settle(300);
+	check((await linesQueued())?.length === 1, 'one tap does not discard a line');
+	await click('Tap again to discard');
+	await settle(800);
+	check((await linesQueued())?.length === 0, 'the second tap does');
 
 	await evaluate(`document.querySelector('form[action="/logout"]')?.requestSubmit()`);
 	await settle(2500);

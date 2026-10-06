@@ -18,13 +18,18 @@ import type { ProblemBody } from './problem.ts';
  * kept, with the server's reason, to be fixed or discarded. Nothing else holds a
  * copy, so dropping it would lose the hours.
  *
- * IN INDEXEDDB, NOT localStorage. Receipts and photos will travel through here,
- * and localStorage holds a few megabytes of strings; IndexedDB holds files, and
- * writes in transactions, so an entry is in the store whole or not at all.
- * Entries an earlier version queued in localStorage move across on first open.
+ * IN INDEXEDDB, NOT localStorage. Receipts travel through here, and localStorage
+ * holds a few megabytes of strings; IndexedDB holds files, and writes in
+ * transactions, so an entry is in the store whole or not at all. Entries an
+ * earlier version queued in localStorage move across on first open.
+ *
+ * LINES ADDED TO A DRAFT wait here too, receipt and all, in a store of their
+ * own: a time entry and a line are different things, and the Time screen counts
+ * only its own. They go after the time entries, oldest first, to /api/lines.
  */
 const DB = 'reckon';
 const STORE = 'queue';
+const LINES = 'lines';
 /** Where the queue lived before IndexedDB. Read once, emptied once moved. */
 const OLD_KEY = 'reckon.queue';
 
@@ -90,9 +95,16 @@ let opening: Promise<IDBDatabase> | null = null;
 
 function open(): Promise<IDBDatabase> {
 	opening ??= new Promise<IDBDatabase>((resolve, reject) => {
-		const req = indexedDB.open(DB, 1);
-		req.onupgradeneeded = () =>
-			req.result.createObjectStore(STORE, { keyPath: 'entry.client_uuid' });
+		// 2: lines joined time entries. A phone on 1 keeps its entries and gains
+		// the store for lines.
+		const req = indexedDB.open(DB, 2);
+		req.onupgradeneeded = () => {
+			const db = req.result;
+			if (!db.objectStoreNames.contains(STORE))
+				db.createObjectStore(STORE, { keyPath: 'entry.client_uuid' });
+			if (!db.objectStoreNames.contains(LINES))
+				db.createObjectStore(LINES, { keyPath: 'line.client_uuid' });
+		};
 		req.onsuccess = () => {
 			// A later version opening this database in another tab has to be
 			// let in, or it waits on this one for ever.
@@ -115,17 +127,18 @@ function open(): Promise<IDBDatabase> {
  */
 function tx<T>(
 	mode: IDBTransactionMode,
-	work: (store: IDBObjectStore) => IDBRequest<T> | void
+	work: (store: IDBObjectStore) => IDBRequest<T> | void,
+	store: typeof STORE | typeof LINES = STORE
 ): Promise<T | undefined> {
 	return open().then(
 		(db) =>
 			new Promise<T | undefined>((resolve, reject) => {
 				const t =
 					mode === 'readwrite'
-						? db.transaction(STORE, mode, { durability: 'strict' })
-						: db.transaction(STORE, mode);
+						? db.transaction(store, mode, { durability: 'strict' })
+						: db.transaction(store, mode);
 				let result: T | undefined;
-				const req = work(t.objectStore(STORE));
+				const req = work(t.objectStore(store));
 				if (req) req.onsuccess = () => (result = req.result);
 				t.oncomplete = () => resolve(result);
 				t.onerror = () => reject(t.error ?? new Error('the queue refused a write'));
@@ -219,21 +232,32 @@ export async function discard(client_uuid: string): Promise<void> {
 }
 
 /**
- * Settles a posted entry -- removed, or marked refused -- but only if it is still
- * the copy that was posted. One queued again while its post was out is the newer
- * word, and stays as it is.
+ * Settles a posted entry or line -- removed, or marked refused -- but only if it
+ * is still the copy that was posted. One queued again while its post was out is
+ * the newer word, and stays as it is.
  */
-function settle(q: Queued, next: Queued | null): Promise<unknown> {
-	return tx('readwrite', (s) => {
-		const id = q.entry.client_uuid;
-		const got = s.get(id);
-		got.onsuccess = () => {
-			if ((got.result as Queued | undefined)?.queued_at !== q.queued_at) return;
-			if (next) s.put(next);
-			else s.delete(id);
-		};
-	});
+function settleIn<Q extends { queued_at: number }>(
+	store: typeof STORE | typeof LINES,
+	id: string,
+	q: Q,
+	next: Q | null
+): Promise<unknown> {
+	return tx(
+		'readwrite',
+		(s) => {
+			const got = s.get(id);
+			got.onsuccess = () => {
+				if ((got.result as Q | undefined)?.queued_at !== q.queued_at) return;
+				if (next) s.put(next);
+				else s.delete(id);
+			};
+		},
+		store
+	);
 }
+const settle = (q: Queued, next: Queued | null) => settleIn(STORE, q.entry.client_uuid, q, next);
+const settleLine = (q: QueuedLine, next: QueuedLine | null) =>
+	settleIn(LINES, q.line.client_uuid, q, next);
 
 async function reason(r: Response): Promise<Refusal> {
 	let body: Partial<ProblemBody> = {};
@@ -254,33 +278,61 @@ async function reason(r: Response): Promise<Refusal> {
 
 export type Flushed = { sent: number; refused: number };
 
+/** What a post came to: in, kept as refused, worth another go, or no connection. */
+type Posted = 'sent' | 'refused' | 'again' | 'offline';
+
+async function postOne(
+	send: () => Promise<Response>,
+	refuse: (why: Refusal) => Promise<unknown>,
+	done: () => Promise<unknown>
+): Promise<Posted> {
+	let r: Response;
+	try {
+		r = await send();
+	} catch {
+		return 'offline';
+	}
+	if (r.ok) {
+		await done();
+		return 'sent';
+	}
+	// It is fine and something else is not: the session (401, 403), the moment
+	// (408, 429), or the server (5xx). Worth another go.
+	if ([401, 403, 408, 429].includes(r.status) || r.status >= 500) return 'again';
+	// Any other 4xx the server would refuse again. Kept, with its reason.
+	await refuse(await reason(r));
+	return 'refused';
+}
+
 async function post(): Promise<Flushed> {
-	const waiting = (await all()).filter((q) => !q.refused);
 	let sent = 0;
 	let refused = 0;
-	for (const q of waiting) {
-		let r: Response;
-		try {
-			r = await fetch('/api/time', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(q.entry)
-			});
-		} catch {
-			// No connection. The rest would fail the same way; they all wait.
-			break;
-		}
-		if (r.ok) {
-			await settle(q, null);
-			sent++;
-			continue;
-		}
-		// The entry is fine and something else is not: the session (401, 403),
-		// the moment (408, 429), or the server (5xx). Worth another go.
-		if ([401, 403, 408, 429].includes(r.status) || r.status >= 500) continue;
-		// Any other 4xx the server would refuse again. Kept, with its reason.
-		await settle(q, { ...q, refused: await reason(r) });
-		refused++;
+	const count = (p: Posted) => {
+		if (p === 'sent') sent++;
+		if (p === 'refused') refused++;
+		return p;
+	};
+	for (const q of (await all()).filter((q) => !q.refused)) {
+		const p = await postOne(
+			() =>
+				fetch('/api/time', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify(q.entry)
+				}),
+			(why) => settle(q, { ...q, refused: why }),
+			() => settle(q, null)
+		);
+		// No connection. The rest would fail the same way; they all wait.
+		if (count(p) === 'offline') return { sent, refused };
+	}
+	for (const q of (await allLines()).filter((q) => !q.refused)) {
+		const p = await postOne(
+			() => fetch('/api/lines', { method: 'POST', body: formOf(q.line) }),
+			(why) => settleLine(q, { ...q, refused: why }),
+			() => settleLine(q, null)
+		);
+		if (count(p) === 'offline') break;
 	}
 	return { sent, refused };
 }
@@ -288,7 +340,7 @@ async function post(): Promise<Flushed> {
 let chain: Promise<unknown> = Promise.resolve();
 
 /**
- * Posts everything waiting, oldest first. One flush at a time: a second call
+ * Posts everything waiting, oldest first: time, then lines. One flush at a time: a second call
  * runs after the first, so it sees whatever was queued before it was made, and
  * no entry is ever out on two posts at once.
  */
@@ -296,6 +348,91 @@ export function flush(): Promise<Flushed> {
 	const run = chain.then(post, post);
 	chain = run.catch(() => {});
 	return run;
+}
+
+/**
+ * A line added to a draft, waiting to be sent: which draft, its fields as the
+ * Add a line form names them -- which is how the server reads them
+ * (#lib/line-fields) -- and its receipt, as this phone shrank it.
+ */
+export type LineEntry = {
+	client_uuid: string;
+	invoice_id: string;
+	fields: Record<string, string>;
+	receipt?: Blob | null;
+	/** What it is and what it will bill, as this phone worked them out: for showing. */
+	shown: ShownLine;
+};
+
+/**
+ * A line as the draft shows it until the server has it. A line from stock is
+ * costed when it arrives, off the shelf as it is then, so its figures here are
+ * a preview.
+ */
+export type ShownLine = {
+	kind: 'material' | 'bought' | 'paid_for';
+	description: string;
+	/** Where it came from, in the draft's words: "Bought · Valley Hardware · Avery paid". */
+	detail: string;
+	qty: string;
+	unit: string;
+	unit_price: string;
+	amount: string;
+	taxable: boolean;
+	tax_rate_pct: string;
+};
+
+export type QueuedLine = {
+	line: LineEntry;
+	/** Epoch ms, when it was written on this phone. Lines post in this order. */
+	queued_at: number;
+	refused?: Refusal;
+};
+
+/** The form a line is posted as: its draft, its uuid, its fields and its receipt. */
+function formOf(l: LineEntry): FormData {
+	const f = new FormData();
+	f.set('client_uuid', l.client_uuid);
+	f.set('invoice_id', l.invoice_id);
+	for (const [k, v] of Object.entries(l.fields)) f.set(k, v);
+	if (l.receipt) f.set('receipt', l.receipt, 'receipt');
+	return f;
+}
+
+/**
+ * Writes a line. Resolves once it is committed, and rejects if the phone would
+ * not store it -- the page must not say it is added until this resolves. A line
+ * with a client_uuid already queued replaces it: fixing a refused line is
+ * queueing it again, and that clears the refusal.
+ */
+export async function enqueueLine(l: LineEntry): Promise<void> {
+	keep();
+	await tx(
+		'readwrite',
+		(s) => s.put({ line: l, queued_at: Date.now() } satisfies QueuedLine),
+		LINES
+	);
+}
+
+async function allLines(): Promise<QueuedLine[]> {
+	const rows = (await tx<QueuedLine[]>('readonly', (s) => s.getAll(), LINES)) ?? [];
+	return rows.sort((a, b) => a.queued_at - b.queued_at);
+}
+
+/** Every line on this phone, waiting or refused, oldest first; or one draft's. */
+export async function linesHeld(invoiceId?: string): Promise<QueuedLine[]> {
+	const rows = await allLines();
+	return invoiceId ? rows.filter((q) => q.line.invoice_id === invoiceId) : rows;
+}
+
+/** One queued line, to be fixed. */
+export function findLine(client_uuid: string): Promise<QueuedLine | undefined> {
+	return tx<QueuedLine>('readonly', (s) => s.get(client_uuid), LINES);
+}
+
+/** Lets go of a line. Only ever a person's decision, made on purpose. */
+export async function discardLine(client_uuid: string): Promise<void> {
+	await tx('readwrite', (s) => s.delete(client_uuid), LINES);
 }
 
 /** How long a queued entry took, in seconds: from its moments, or its minutes. */

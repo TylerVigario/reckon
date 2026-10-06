@@ -3,6 +3,7 @@
 	import { page, updated } from '$app/state';
 	import { afterNavigate, invalidateAll } from '$app/navigation';
 	import { flush } from '#lib/queue.ts';
+	import { warm } from '#lib/warm.ts';
 	import type { LayoutProps } from './$types';
 	import { resolve } from '$app/paths';
 	import type { RouteId } from '$app/types';
@@ -23,17 +24,17 @@
 	);
 	const tabIcon = $derived(data.operator?.has_logo ? '/operator/logo' : '/icons/reckon.svg');
 
-	// The service worker keeps Today and the Time screens for when there is no
-	// signal (src/service-worker). Signed in and online, it is asked to fetch
-	// them now, so a phone that has never opened Time can still open it offline.
+	// The service worker keeps Today, the Time screens and the drafts for when
+	// there is no signal (src/service-worker). Signed in and online, it is asked
+	// to fetch them now, so a phone that has never opened one can still open it
+	// offline.
 	onMount(() => {
 		if (!data.user || !navigator.onLine) return;
 		// Whatever the capture queue still holds goes now. A page opened with a
 		// signal never hears the browser say it is back online, so without this an
 		// entry recorded offline would wait for the next one to carry it.
 		void flush().catch(() => {});
-		if ('serviceWorker' in navigator)
-			void navigator.serviceWorker.ready.then((r) => r.active?.postMessage({ type: 'warm' }));
+		warm();
 	});
 
 	// A PERSON'S TIME ZONE is theirs, on their user record (#lib/server/calendar).
