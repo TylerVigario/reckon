@@ -200,9 +200,12 @@ T["material"] = [("PK","id","uuid"),("","sku","text"),("","name","text"),
     ("","brand","text"),("FK","unit_id","uuid · counted in"),("","markup_pct","numeric"),
     ("","taxable","bool"),("","reorder_level","numeric"),("","active","bool")]
 T["material_lot"] = [("PK","id","uuid"),("FK","material_id","uuid"),
-    ("","received_on","date"),("","supplier","text"),("","document_ref","text"),
+    ("","received_on","date"),("","supplier","text"),
     ("","qty_received","numeric"),("","qty_remaining","numeric"),
-    ("","ex_tax_cost_per_unit","numeric"),("","tax_paid_per_unit","numeric")]
+    ("","ex_tax_cost","numeric · all of it, as the receipt says"),
+    ("","tax_paid","numeric · all of it"),
+    ("FK","paid_by","uuid · null = the business"),
+    ("","receipt","bytea · photo or PDF"),("","receipt_type","text")]
 T["material_price"] = [("PK","id","uuid"),("FK","material_id","uuid"),
     ("","price","numeric"),("","effective_from","date")]
 
@@ -401,8 +404,8 @@ files.append(write("02-who-and-where.drawio", "Who and where", c, 1560, 1040))
 # 03 -- catalogue
 c = at("service",40,60) + at("service_price",440,60) + at("pay_rule",440,280) \
   + at("role",840,400) \
-  + at("material",840,60) + at("material_lot",1240,60) + at("material_price",1240,320) \
-  + at("unit",1240,520)
+  + at("material",840,60) + at("material_lot",1240,60) + at("material_price",1240,370) \
+  + at("unit",1240,530)
 c += [edge("e30","service","service_price","priced by"),
       edge("e31","service","pay_rule","pays by"),
       edge("e34","role","pay_rule","is paid by",
@@ -431,8 +434,11 @@ c += [note("n3", "A service is configured, not categorised: what it is charged p
                  " questions about an hourly price. Pay is never rounded to them; it is "
                  "counted as worked.\n\n"
                  "material_lot is where stock enters, and where the Reg 1701 "
-                 "ex-tax purchase price is sourced. Weighted-average cost needs lots to "
-                 "average.\n\n"
+                 "ex-tax purchase price is sourced. It keeps what all of it cost before "
+                 "tax and in tax, as the receipt says them, and a unit's share is worked "
+                 "out from those; weighted-average cost needs lots to average. paid_by "
+                 "is whoever paid out of their own pocket and is owed it back, or the "
+                 "business when empty.\n\n"
                  "A material is counted in one of the operator's units -- each, the foot, "
                  "a box of 25 -- each with how it is written and how many places a "
                  "quantity may have. Nothing converts one unit into another, and a line "

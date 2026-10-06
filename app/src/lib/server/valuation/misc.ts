@@ -32,33 +32,38 @@ export function legWorth(
 	return { rate, billed: billedAmount(service, rate, Ratio.of(leg.miles), places) };
 }
 
-/** A lot still on the shelf: how much is left, and what each unit cost before and in tax. */
-export type Lot = { qtyRemaining: string; exTaxCostPerUnit: string; taxPaidPerUnit: string };
+/**
+ * A lot: how much arrived and how much is left, and what all of it cost before
+ * tax and in tax, as the receipt says them. A unit's share is the total over
+ * what arrived, worked out exactly.
+ */
+export type Lot = { qtyReceived: string; qtyRemaining: string; exTaxCost: string; taxPaid: string };
 
 /**
  * What a material sells for and what it cost, weighted across what is still on
  * the shelf: two spools bought at different prices are one price to sell from.
  * The price is the one listed on or before today where there is one, and
- * otherwise the weighted cost before tax plus markup, to the currency's
- * `places`. Costs are to four places, as a lot holds them; null with nothing
- * left.
+ * otherwise the weighted cost before tax plus markup. Both it and a unit's
+ * costs are prices for one of something, so to four places, finer than the
+ * currency where they need to be: $0.31 a foot at 20% sells at $0.372. Null
+ * with nothing left.
  */
-export function materialWorth(
-	lots: readonly Lot[],
-	markupPct: string,
-	listed: string | null,
-	places: number
-) {
+export function materialWorth(lots: readonly Lot[], markupPct: string, listed: string | null) {
 	const open = lots.filter((l) => Decimal.from(l.qtyRemaining).gt(0));
 	const onHand = open.reduce((n, l) => n.add(l.qtyRemaining), Decimal.ZERO);
-	const weighted = (perUnit: (l: Lot) => string) =>
+	// Each lot's remaining share of what it cost: its total, times what is left
+	// of it over what arrived.
+	const weighted = (total: (l: Lot) => string) =>
 		onHand.isZero()
 			? null
 			: open
-					.reduce((n, l) => n.add(Ratio.of(l.qtyRemaining).mul(perUnit(l))), Ratio.of(0))
+					.reduce(
+						(n, l) => n.add(Ratio.of(total(l)).mul(l.qtyRemaining).div(l.qtyReceived)),
+						Ratio.of(0)
+					)
 					.div(onHand);
-	const exTax = weighted((l) => l.exTaxCostPerUnit);
-	const taxPaid = weighted((l) => l.taxPaidPerUnit);
+	const exTax = weighted((l) => l.exTaxCost);
+	const taxPaid = weighted((l) => l.taxPaid);
 	return {
 		onHand,
 		exTax: exTax?.round(4) ?? null,
@@ -66,6 +71,6 @@ export function materialWorth(
 		price:
 			listed !== null
 				? Decimal.from(listed)
-				: (exTax?.mul(Ratio.of(markupPct).div(100).add(1)).round(places) ?? null)
+				: (exTax?.mul(Ratio.of(markupPct).div(100).add(1)).round(4) ?? null)
 	};
 }

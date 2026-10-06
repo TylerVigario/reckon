@@ -88,11 +88,13 @@ INSERT INTO material (id, sku, name, brand, unit_id, markup_pct, taxable) VALUES
   ('b144a78b-750a-4bd2-a84e-7d1551328565','RW-075','Raceway · Surface · 3/4 in','Ridgeline',(SELECT id FROM unit WHERE name = 'foot'),NULL,true),
   ('cf86d35e-06ad-4d9d-b3e9-104390b24ea0','FL-LC-3M','Fibre patch lead · LC-LC · 3 m','Cordwell',(SELECT id FROM unit WHERE name = 'each'),30.0,true);
 
+-- What each lot cost, before tax and in tax, as its receipt says: six access
+-- points for 672.00 and 48.72 tax, and so on.
 INSERT INTO material_lot (id, material_id, received_on, supplier, qty_received, qty_remaining,
-                          ex_tax_cost_per_unit, tax_paid_per_unit) VALUES
-  ('c0ac1e19-b1d7-4e4c-9805-95e66944db65','427ec8a1-9038-4fca-9323-ca62625622a3', current_date - 90,'Delta Wholesale', 6, 4, 112.0000, 8.1200),
-  ('c751f2ae-b0b1-4c59-af97-96438b6bfa47','b144a78b-750a-4bd2-a84e-7d1551328565', current_date - 90,'Delta Wholesale', 100, 60, 0.8500, 0.0616),
-  ('69340fe1-83e7-4892-8736-45a72715d6ef','cf86d35e-06ad-4d9d-b3e9-104390b24ea0', current_date - 12,'Delta Wholesale', 20, 20, 4.2000, 0.3045);
+                          ex_tax_cost, tax_paid) VALUES
+  ('c0ac1e19-b1d7-4e4c-9805-95e66944db65','427ec8a1-9038-4fca-9323-ca62625622a3', current_date - 90,'Delta Wholesale', 6, 4, 672.00, 48.72),
+  ('c751f2ae-b0b1-4c59-af97-96438b6bfa47','b144a78b-750a-4bd2-a84e-7d1551328565', current_date - 90,'Delta Wholesale', 100, 60, 85.00, 6.16),
+  ('69340fe1-83e7-4892-8736-45a72715d6ef','cf86d35e-06ad-4d9d-b3e9-104390b24ea0', current_date - 12,'Delta Wholesale', 20, 20, 84.00, 6.09);
 
 -- ------------------------------------------------------------ who it serves --
 

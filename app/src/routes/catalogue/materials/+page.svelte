@@ -13,7 +13,11 @@
 	sub="Cost and tax stored apart"
 	back={resolve('/catalogue')}
 	backLabel="Catalogue"
-/>
+>
+	{#snippet actions()}
+		<a class="btn sm pri" href={resolve('/catalogue/materials/receive')}>Receive stock</a>
+	{/snippet}
+</Top>
 
 <div class="pad">
 	<div class="sec">
@@ -27,7 +31,11 @@
 		<div class="rows">
 			{#each data.materials as m (m.id)}
 				{@const out = Number(m.on_hand) <= 0}
-				<div class="rec" class:warn={out}>
+				<a
+					class="rec link"
+					class:warn={out}
+					href={resolve('/catalogue/materials/[id]', { id: m.id })}
+				>
 					<div class="rec-m">
 						<div class="rec-t">{m.name}</div>
 						<div class="rec-s">
@@ -49,7 +57,8 @@
 							{m.unit}
 						</span>
 					</div>
-				</div>
+					<span class="arw" aria-hidden="true">›</span>
+				</a>
 			{:else}
 				<div class="rec">
 					<div class="rec-m"><div class="rec-t"><span class="lt">Nothing stocked</span></div></div>

@@ -286,11 +286,13 @@
     [*FK*], [material\_id], [uuid],
     [], [received\_on], [date],
     [], [supplier], [text],
-    [], [document\_ref], [text],
     [], [qty\_received], [numeric],
     [], [qty\_remaining], [numeric],
-    [], [ex\_tax\_cost\_per\_unit], [numeric],
-    [], [tax\_paid\_per\_unit], [numeric],
+    [], [ex\_tax\_cost], [numeric · all of it, as the receipt says],
+    [], [tax\_paid], [numeric · all of it],
+    [*FK*], [paid\_by], [uuid · null = the business],
+    [], [receipt], [bytea · photo or PDF],
+    [], [receipt\_type], [text],
   )
 ]
 #v(7pt)
@@ -326,7 +328,7 @@
 ]
 #v(7pt)
 
-#callout(tone: "note")[A service is configured, not categorised: what it is charged per, how finely, at least what, and whom it pays.  rate is the first person's and additional\_rate each extra person's: at \$120 and +\$70 a crew of three costs \$260 an hour.  Pay is for work done. Each pay\_rule is for a role or for one person, pays for time or a vehicle — hourly to the second, as a share of the line, as a fixed sum, or not at all. Among rules in force, a client's own comes first, then a person's own, then the role's.  A vehicle rule pays whoever owns the vehicle, so a vehicle the business owns pays nobody.  A covered\_time rule pays a percentage of the period's retainer charge, divided by each person's part of the covered time.  unit each charges per entry, whatever its length: a flat rate.  unit is how a service is charged; time\_tracked is whether time is captured against it. Mileage may be timed and still billed per mile.  Allotments live on agreements, service by service, never on the service itself.  bill\_to\_nearest\_seconds and minimum\_charge are the usual next questions about an hourly price. Pay is never rounded to them; it is counted as worked.  material\_lot is where stock enters, and where the Reg 1701 ex-tax purchase price is sourced. Weighted-average cost needs lots to average.  A material is counted in one of the operator's units -- each, the foot, a box of 25 -- each with how it is written and how many places a quantity may have. Nothing converts one unit into another, and a line keeps its unit's name as it was billed.]
+#callout(tone: "note")[A service is configured, not categorised: what it is charged per, how finely, at least what, and whom it pays.  rate is the first person's and additional\_rate each extra person's: at \$120 and +\$70 a crew of three costs \$260 an hour.  Pay is for work done. Each pay\_rule is for a role or for one person, pays for time or a vehicle — hourly to the second, as a share of the line, as a fixed sum, or not at all. Among rules in force, a client's own comes first, then a person's own, then the role's.  A vehicle rule pays whoever owns the vehicle, so a vehicle the business owns pays nobody.  A covered\_time rule pays a percentage of the period's retainer charge, divided by each person's part of the covered time.  unit each charges per entry, whatever its length: a flat rate.  unit is how a service is charged; time\_tracked is whether time is captured against it. Mileage may be timed and still billed per mile.  Allotments live on agreements, service by service, never on the service itself.  bill\_to\_nearest\_seconds and minimum\_charge are the usual next questions about an hourly price. Pay is never rounded to them; it is counted as worked.  material\_lot is where stock enters, and where the Reg 1701 ex-tax purchase price is sourced. It keeps what all of it cost before tax and in tax, as the receipt says them, and a unit's share is worked out from those; weighted-average cost needs lots to average. paid\_by is whoever paid out of their own pocket and is owed it back, or the business when empty.  A material is counted in one of the operator's units -- each, the foot, a box of 25 -- each with how it is written and how many places a quantity may have. Nothing converts one unit into another, and a line keeps its unit's name as it was billed.]
 #v(4pt)
 
 #v(6pt)
