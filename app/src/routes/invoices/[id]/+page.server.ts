@@ -37,6 +37,9 @@ export const load: PageServerLoad = async ({ params }) => {
 	const [invoice] = await db
 		.select({
 			id: i.id,
+			// The uuid it was started with on a phone, which lines added there
+			// still name it by until they arrive.
+			client_uuid: i.clientUuid,
 			number: i.number,
 			status: i.status,
 			who: e.name,
@@ -56,10 +59,15 @@ export const load: PageServerLoad = async ({ params }) => {
 		.where(eq(i.id, params.id));
 	if (!invoice) error(404, 'no such invoice');
 
-	const [lines, [totals]] = await Promise.all([
+	const src = alias(t.invoice, 'src');
+	const dst = alias(t.invoice, 'dst');
+	const [lines, [totals], movedIn, movedOut] = await Promise.all([
 		db
 			.select({
 				id: il.id,
+				// The draft it was added for on a phone, where that one had gone
+				// out by the time it arrived.
+				moved_from: src.number,
 				seq: il.seq,
 				kind: il.kind,
 				description: il.description,
@@ -101,6 +109,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			.leftJoin(ap, eq(ap.id, il.agreementPeriodId))
 			.leftJoin(si, eq(si.id, il.siteId))
 			.leftJoin(payer, eq(payer.id, il.paidBy))
+			.leftJoin(src, eq(src.id, il.movedFromInvoiceId))
 			.where(eq(il.invoiceId, params.id))
 			.orderBy(asc(il.seq)),
 		db
@@ -156,7 +165,27 @@ export const load: PageServerLoad = async ({ params }) => {
 		  left join ${si} on ${si.id} = ${il.siteId}
 		 where ${il.invoiceId} = ${params.id}`
 			)
-			.then((r) => r.rows)
+			.then((r) => r.rows),
+		// Lines that came here because the draft they were added for on a phone
+		// had gone out: which draft, when it went, and how many.
+		db
+			.select({
+				number: src.number,
+				sent_at: src.sentAt,
+				lines: sql<number>`count(*)::int`
+			})
+			.from(il)
+			.innerJoin(src, eq(src.id, il.movedFromInvoiceId))
+			.where(eq(il.invoiceId, params.id))
+			.groupBy(src.id, src.number, src.sentAt),
+		// And the other way: lines added to this one on a phone after it went
+		// out, and the draft they started instead.
+		db
+			.select({ id: dst.id, number: dst.number, lines: sql<number>`count(*)::int` })
+			.from(il)
+			.innerJoin(dst, eq(dst.id, il.invoiceId))
+			.where(eq(il.movedFromInvoiceId, params.id))
+			.groupBy(dst.id, dst.number)
 	]);
 
 	return {
@@ -190,6 +219,8 @@ export const load: PageServerLoad = async ({ params }) => {
 			})
 		),
 		totals,
+		movedIn,
+		movedOut,
 		// For a draft opened on a phone, whose lines on the phone join the total
 		// by the same rounding the server's own lines had.
 		rounding,

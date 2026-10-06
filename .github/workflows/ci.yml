@@ -273,6 +273,10 @@ jobs:
           kill "$(cat /tmp/reckon.pid)"
           sleep 1
           check offline
+          # While the phone is out of reach, the draft it added a line to goes
+          # out, so the line has to start a new one. Nothing in the app sends an
+          # invoice yet, so it goes out here.
+          psql -q -v ON_ERROR_STOP=1 -d reckon_ci -c "UPDATE invoice SET status = 'sent', issued_on = current_date, due_on = current_date + 30, sent_at = now() WHERE number = 'INV-0212'"
           node app/build/index.js &
           echo $! > /tmp/reckon.pid
           for _ in $(seq 1 30); do

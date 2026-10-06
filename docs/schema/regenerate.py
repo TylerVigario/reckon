@@ -240,7 +240,8 @@ T["agreement_period"] = [("PK","id","uuid"),("FK","agreement_id","uuid"),
     ("","period_start","date"),("","period_end","date"),
     ("","amount","numeric · as charged"),("","given","bool · charged nothing, on purpose")]
 
-T["invoice"] = [("PK","id","uuid"),("UK","number","text"),("FK","entity_id","uuid"),
+T["invoice"] = [("PK","id","uuid"),("UK","client_uuid","uuid · started on a phone"),
+    ("UK","number","text"),("FK","entity_id","uuid"),
     ("","status","draft|sent|paid|void"),("","issued_on","date"),("","due_on","date"),
     ("","period_start","date"),("","period_end","date"),("UK","public_token","text"),
     ("","token_expires_on","date"),("","sent_at","timestamptz"),
@@ -256,6 +257,7 @@ T["invoice_line"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the ph
     ("","tax_paid","numeric · snapshot"),("","amount","numeric"),
     ("FK","time_entry_id","uuid"),("FK","trip_leg_id","uuid"),
     ("FK","agreement_period_id","uuid"),("FK","material_id","uuid · drawn from stock"),
+    ("FK","moved_from_invoice_id","uuid · meant for, gone out"),
     ("","bought_from","text · from whom"),("FK","paid_by","uuid · null = the business"),
     ("","receipt","bytea · photo or PDF"),("","receipt_type","text")]
 T["stock_draw"] = [("PK","invoice_line_id","uuid · with material_id"),
@@ -519,7 +521,7 @@ files.append(write("05-agreements.drawio", "Agreements", c, 1620, 1060))
 
 # 06 -- money out
 c = at("invoice",40,60) + at("invoice_line",440,60) + at("credit_note",880,60) \
-  + at("credit_application",880,300) + at("entity",40,430) + at("site",440,660) \
+  + at("credit_application",880,300) + at("entity",40,430) + at("site",440,700) \
   + at("stock_draw",880,860) + at("material_lot",1240,860)
 c += [edge("e60","invoice","invoice_line","is made of"),
       edge("e65","invoice_line","stock_draw","drew"),
@@ -554,7 +556,9 @@ c += [note("n6", "A tax override is stored per line, so one invoice can carry li
                  "the business -- and its receipt.\n\n"
                  "A line added by hand is saved on the phone first and sent when there "
                  "is a signal; client_uuid, made on the phone, keeps a retry from adding "
-                 "it twice.", 880, 480, 640, 330)]
+                 "it twice. A draft started there takes its number when it arrives. A "
+                 "line meant for a draft that went out first starts a new draft for the "
+                 "client, and moved_from_invoice_id keeps which it was meant for.", 880, 480, 640, 330)]
 files.append(write("06-money-out.drawio", "Money out", c, 1600, 1200))
 
 # 07 -- money in

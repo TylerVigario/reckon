@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { asUser, db, type Tx } from './db/index.ts';
 import * as t from './db/schema/index.ts';
 import { RECEIPT_TYPES } from './db/schema/catalogue.ts';
@@ -11,6 +11,7 @@ import { readFromStock, readPassedOn } from '../line-fields.ts';
 import { drawFrom } from '../stock-draw.ts';
 import { quantity } from '../format.ts';
 import { UUID } from '../field-rules.ts';
+import { startIn } from './drafts.ts';
 
 /**
  * A LINE ADDED TO A DRAFT BY HAND: goods drawn from stock (#lib/stock-draw),
@@ -20,7 +21,13 @@ import { UUID } from '../field-rules.ts';
  * A line is written on the phone first and sent when there is a signal, as a
  * time entry is (#lib/queue), so this is reached from /api/lines, and may be
  * reached twice for one line: the uuid the phone made for it answers the second
- * time with the line the first one added.
+ * time with the line the first one added. The draft it is for is named by the
+ * server's id, or -- one started on the phone -- by the uuid the phone made for
+ * it.
+ *
+ * A DRAFT THAT WENT OUT before the line arrived cannot take it. The line starts
+ * a new draft for that client instead, numbered now, and says which it was
+ * meant for; the next line meant for the same one joins it there.
  *
  * What a line from stock cost is worked out here, off the shelf as it stands
  * when the line arrives. What the phone showed was a preview.
@@ -32,6 +39,17 @@ const MAX_RECEIPT = 2 * 1024 * 1024;
 export type Added =
 	| { ok: true; id: string }
 	| { ok: false; status: 400 | 404 | 409; detail: string; errors?: Errors };
+
+/**
+ * A refusal made inside a line's transaction, thrown so the transaction rolls
+ * back: a draft started for a line that is then refused must not be left
+ * behind empty.
+ */
+class Refused extends Error {
+	constructor(readonly added: Added) {
+		super('refused');
+	}
+}
 
 /** Refused, with a sentence for the person and, where there is one, the box it is about. */
 const no = (errors: Errors): Added => {
@@ -74,6 +92,43 @@ export function materials(ids?: string[]) {
 		.orderBy(asc(t.material.name));
 }
 
+/**
+ * What Add a line needs besides the draft and its sites, to say what a line
+ * will bill as it is typed with no signal: who might have paid, the business's
+ * terms, and what is on the shelf.
+ */
+export async function formTerms() {
+	const [people, [op], places, all] = await Promise.all([
+		db
+			.select({ id: t.user.id, name: t.user.name })
+			.from(t.user)
+			.where(eq(t.user.active, true))
+			.orderBy(asc(t.user.name)),
+		db
+			.select({
+				markup: t.operator.purchaseMarkupPct,
+				rules: t.operator.taxRuleSet,
+				costing: t.operator.stockCosting
+			})
+			.from(t.operator),
+		moneyPlaces(),
+		materials()
+	]);
+	const onShelf = await shelves(all.map((m) => m.id));
+	return {
+		people,
+		markup: op?.markup ?? '0',
+		rules: op?.rules ?? 'none',
+		costing: op?.costing ?? 'average',
+		places,
+		stock: all
+			.map((m) => ({ ...m, shelf: onShelf.get(m.id)! }))
+			.filter((m) => m.shelf.lots.length > 0),
+		// When this copy was made: shown when it is opened with no signal.
+		as_of: new Date().toISOString()
+	};
+}
+
 /** Each foreign key a line can break, and what it means to the person fixing it. */
 const GONE: Record<string, [field: string, why: string]> = {
 	invoice_line_site_id_fkey: ['site_id', 'That site no longer exists.'],
@@ -92,6 +147,7 @@ async function sentBefore(clientUuid: string) {
 
 /** A save that failed in the database, said to the person who tried it. */
 async function refused(e: unknown, clientUuid: string, number: string): Promise<Added> {
+	if (e instanceof Refused) return e.added;
 	const pg = pgError(e);
 	// The same line, sent twice at once: the other copy is in.
 	if (pg.code === '23505' && pg.constraint === 'invoice_line_client_uuid_key') {
@@ -101,17 +157,12 @@ async function refused(e: unknown, clientUuid: string, number: string): Promise<
 	const gone = pg.code === '23503' ? GONE[pg.constraint ?? ''] : undefined;
 	if (gone) return no({ [gone[0]]: gone[1] });
 	// The triggers that freeze a sent invoice's lines and what they drew
-	// (integrity_constraint_violation): it went out while the line was on its
-	// way.
-	if (pg.code === '23000') return goneOut(number);
+	// (integrity_constraint_violation). The invoice is locked while a line is
+	// added, so this is a writer that did not lock it.
+	if (pg.code === '23000')
+		return { ok: false, status: 409, detail: `${number} has gone out, so it takes no more lines.` };
 	throw e;
 }
-
-const goneOut = (number: string): Added => ({
-	ok: false,
-	status: 409,
-	detail: `${number} has gone out, so it takes no more lines.`
-});
 
 /** The client's site a line names, for its rate, or why it cannot be named. */
 async function siteOf(draft: { entity_id: string; who: string }, siteId: string | null) {
@@ -124,6 +175,33 @@ async function siteOf(draft: { entity_id: string; who: string }, siteId: string 
 }
 
 type Draft = { id: string; number: string; entity_id: string; who: string };
+
+/**
+ * Where a line goes: the draft it was meant for, or -- that one having gone out
+ * -- the draft its lines started for the client, or a new one. The invoice is
+ * locked while the line is added, so it cannot go out in between, and two lines
+ * meant for one that has cannot start two drafts.
+ */
+async function target(
+	tx: Tx,
+	meant: Draft,
+	userId: string
+): Promise<{ id: string; number: string; movedFrom: string | null }> {
+	const [now] = await tx
+		.select({ status: t.invoice.status })
+		.from(t.invoice)
+		.where(eq(t.invoice.id, meant.id))
+		.for('no key update');
+	if (now?.status === 'draft') return { id: meant.id, number: meant.number, movedFrom: null };
+	const [started] = await tx
+		.select({ id: t.invoice.id, number: t.invoice.number })
+		.from(t.invoiceLine)
+		.innerJoin(t.invoice, eq(t.invoice.id, t.invoiceLine.invoiceId))
+		.where(and(eq(t.invoiceLine.movedFromInvoiceId, meant.id), eq(t.invoice.status, 'draft')))
+		.limit(1);
+	const to = started ?? (await startIn(tx, { entityId: meant.entity_id, userId }));
+	return { ...to, movedFrom: meant.id };
+}
 
 /**
  * Adds a line to a draft: the fields as the form names them (#lib/line-fields),
@@ -143,15 +221,13 @@ export async function addLine(input: {
 		.select({
 			id: t.invoice.id,
 			number: t.invoice.number,
-			status: t.invoice.status,
 			entity_id: t.invoice.entityId,
 			who: t.entity.name
 		})
 		.from(t.invoice)
 		.innerJoin(t.entity, eq(t.entity.id, t.invoice.entityId))
-		.where(eq(t.invoice.id, input.invoiceId));
+		.where(or(eq(t.invoice.id, input.invoiceId), eq(t.invoice.clientUuid, input.invoiceId)));
 	if (!draft) return { ok: false, status: 404, detail: 'That draft no longer exists.' };
-	if (draft.status !== 'draft') return goneOut(draft.number);
 
 	return input.fields.kind === 'material'
 		? fromTheShelf(draft, input)
@@ -197,6 +273,7 @@ async function fromTheShelf(
 	const qty = String(values.qty);
 	try {
 		return await asUser(input.userId, async (tx): Promise<Added> => {
+			const to = await target(tx, draft, input.userId);
 			await tx
 				.select({ id: t.material.id })
 				.from(t.material)
@@ -205,11 +282,13 @@ async function fromTheShelf(
 			const shelf = (await shelves([m.id], tx)).get(m.id)!;
 			const draw = drawFrom(shelf, qty, op?.costing ?? 'average');
 			if ('short' in draw)
-				return no({
-					qty: draw.short.isZero()
-						? `None of ${m.name} left on the shelf.`
-						: `Only ${quantity(draw.short.toString())} ${m.short} of ${m.name} on the shelf.`
-				});
+				throw new Refused(
+					no({
+						qty: draw.short.isZero()
+							? `None of ${m.name} left on the shelf.`
+							: `Only ${quantity(draw.short.toString())} ${m.short} of ${m.name} on the shelf.`
+					})
+				);
 			const line = fromStock(
 				{
 					qty,
@@ -222,14 +301,16 @@ async function fromTheShelf(
 				},
 				{ ruleSet: op?.rules ?? 'none', siteRatePct: site?.rate ?? null, places }
 			);
-			if (line.needsASite) return no({ site_id: 'Where it went, so its tax rate is known.' });
+			if (line.needsASite)
+				throw new Refused(no({ site_id: 'Where it went, so its tax rate is known.' }));
 
 			const [added] = await tx
 				.insert(t.invoiceLine)
 				.values({
 					clientUuid: input.clientUuid,
-					invoiceId: draft.id,
-					seq: await nextSeq(tx, draft.id),
+					invoiceId: to.id,
+					movedFromInvoiceId: to.movedFrom,
+					seq: await nextSeq(tx, to.id),
 					kind: 'material',
 					description: String(values.description),
 					qty: line.qty,
@@ -306,12 +387,14 @@ async function boughtOrPaidFor(
 
 	try {
 		return await asUser(input.userId, async (tx): Promise<Added> => {
+			const to = await target(tx, draft, input.userId);
 			const [added] = await tx
 				.insert(t.invoiceLine)
 				.values({
 					clientUuid: input.clientUuid,
-					invoiceId: draft.id,
-					seq: await nextSeq(tx, draft.id),
+					invoiceId: to.id,
+					movedFromInvoiceId: to.movedFrom,
+					seq: await nextSeq(tx, to.id),
 					kind: values.kind as 'bought' | 'paid_for',
 					description: String(values.description),
 					qty: line.qty,

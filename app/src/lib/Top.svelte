@@ -34,10 +34,11 @@
 	}: {
 		title: string;
 		sub?: string;
-		back?: ResolvedPathname | null;
+		/** A screen, resolved, and its query where it has one: a draft started on a phone. */
+		back?: ResolvedPathname | `${ResolvedPathname}?${string}` | null;
 		backLabel?: string;
 		/** Every ancestor, outermost first. The current screen is the title. */
-		trail?: { href: ResolvedPathname; label: string }[] | null;
+		trail?: { href: ResolvedPathname | `${ResolvedPathname}?${string}`; label: string }[] | null;
 		actions?: import('svelte').Snippet;
 	} = $props();
 

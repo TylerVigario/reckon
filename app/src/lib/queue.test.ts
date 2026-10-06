@@ -305,3 +305,44 @@ describe('a phone that queued before lines', () => {
 		expect(await q.linesHeld()).toHaveLength(1);
 	});
 });
+
+describe('a draft started on the phone', () => {
+	const draft = { client_uuid: 'phone-draft', entity_id: 'e', who: 'Marisol Vega' };
+
+	it('goes before the lines added to it', async () => {
+		await q.enqueueLine(line('permit', { invoice_id: 'phone-draft' }));
+		await q.enqueueDraft(draft);
+		const sent: string[] = [];
+		vi.stubGlobal('fetch', (url: string) => {
+			sent.push(url);
+			return answer(200, {});
+		});
+		expect(await q.flush()).toEqual({ sent: 2, refused: 0 });
+		expect(sent).toEqual(['/api/drafts', '/api/lines']);
+		expect(await q.draftsHeld()).toEqual([]);
+	});
+
+	it('keeps its lines waiting until it has arrived', async () => {
+		await q.enqueueDraft(draft);
+		await q.enqueueLine(line('permit', { invoice_id: 'phone-draft' }));
+		await q.enqueueLine(line('other'));
+		const sent: string[] = [];
+		vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
+			sent.push(
+				url === '/api/lines' ? ((init.body as FormData).get('client_uuid') as string) : url
+			);
+			// The server is having a moment with the draft: worth another go.
+			return url === '/api/drafts' ? answer(503) : answer(200, {});
+		});
+		await q.flush();
+		expect(sent).toEqual(['/api/drafts', 'other']);
+		expect((await q.linesHeld('phone-draft')).map((l) => l.line.client_uuid)).toEqual(['permit']);
+	});
+
+	it('takes its lines with it when it is discarded', async () => {
+		await q.enqueueDraft(draft);
+		await q.enqueueLine(line('permit', { invoice_id: 'phone-draft' }));
+		await q.discardDraft('phone-draft');
+		expect([await q.draftsHeld(), await q.linesHeld()]).toEqual([[], []]);
+	});
+});

@@ -1796,4 +1796,33 @@ SELECT must_fail($$
           'paid_for', 'Low-voltage permit', 1, 'each', 35.00, 35.00, 'City of Woodland')
 $$, 'the same permit, sent again after a timeout');
 
+\echo ''
+\echo '=== 40. a draft started on a phone, and a line moved off one that went out ==='
+
+SELECT must_pass($$
+  INSERT INTO invoice (id, client_uuid, number, entity_id, created_by)
+  VALUES ('7777eeee-7777-7777-7777-777777777740', '40404040-0000-4000-8000-000000000001', 'KFS-0440',
+          '44444444-4444-4444-4444-444444444444', 'a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'a draft started on a phone');
+
+SELECT must_fail($$
+  INSERT INTO invoice (client_uuid, number, entity_id, created_by)
+  VALUES ('40404040-0000-4000-8000-000000000001', 'KFS-0441',
+          '44444444-4444-4444-4444-444444444444', 'a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'the same draft, sent again after a timeout');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_price, amount,
+                            bought_from, moved_from_invoice_id)
+  VALUES ('7777eeee-7777-7777-7777-777777777740', 1, 'paid_for', 'Low-voltage permit', 1, 'each',
+          35.00, 35.00, 'City of Woodland', '7777eeee-7777-7777-7777-777777777738')
+$$, 'a permit meant for an invoice that went out, on a new draft');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_price, amount,
+                            moved_from_invoice_id)
+  VALUES ('7777eeee-7777-7777-7777-777777777740', 2, 'paid_for', 'Low-voltage permit', 1, 'each',
+          35.00, 35.00, '7777eeee-7777-7777-7777-0000000000ff')
+$$, 'one saying it was meant for an invoice that never was');
+
 \echo 'All guards hold.'

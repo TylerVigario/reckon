@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
-	import { Decimal, Ratio, sum } from '#lib/decimal.ts';
+	import { Decimal } from '#lib/decimal.ts';
 	import { currencyPlaces } from '#lib/currency.ts';
 	import Top from '#lib/Top.svelte';
 	import OfflineBanner from '#lib/OfflineBanner.svelte';
-	import { discardLine, flush, held, linesHeld, type QueuedLine } from '#lib/queue.ts';
-	import { roundTax } from '#lib/tax-rounding.ts';
+	import { discardLine, flush, linesHeld, waitingCount, type QueuedLine } from '#lib/queue.ts';
+	import { draftTotals } from '#lib/draft-totals.ts';
 	import { warm } from '#lib/warm.ts';
-	import { clock, day, monthOf, pct, quantity, rateParts } from '#lib/format.ts';
+	import { clock, datedAt, day, monthOf, pct, quantity, rateParts } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
@@ -26,9 +26,10 @@
 	let waiting = $state(0);
 	async function read() {
 		try {
-			const [mine, all, time] = await Promise.all([linesHeld(i.id), linesHeld(), held()]);
-			onPhone = mine;
-			waiting = all.filter((q) => !q.refused).length + time.waiting;
+			const [all, count] = await Promise.all([linesHeld(), waitingCount()]);
+			// Its own, by its id or by the uuid it was started with on a phone.
+			onPhone = all.filter((q) => [i.id, i.client_uuid].includes(q.line.invoice_id));
+			waiting = count;
 		} catch {
 			/* a phone that will not open its queue shows the server's lines alone */
 		}
@@ -66,46 +67,33 @@
 		await read();
 	}
 
-	// THE TOTALS, with what is on this phone in them: the server's lines and the
-	// phone's, taxed by the rounding the server's own lines were. A line from
-	// stock is costed when it arrives, so with one on the phone this is what the
-	// draft will come to as near as the phone can say. Nothing waiting, and they
-	// are the server's own figures.
-	const t = $derived.by(() => {
-		const server = data.totals;
-		if (pending.length === 0) return server;
-		const all = [
-			...data.lines.map((l) => ({
-				kind: l.kind,
-				amount: l.amount,
-				taxable: l.taxable,
-				rate: l.tax_rate_pct
-			})),
-			...pending.map((q) => ({
-				kind: q.line.shown.kind,
-				amount: q.line.shown.amount,
-				taxable: q.line.shown.taxable,
-				rate: q.line.shown.tax_rate_pct
-			}))
-		];
-		const taxed = all.filter((l) => l.taxable);
-		const untaxed = sum(all.filter((l) => !l.taxable).map((l) => l.amount));
-		const measure = sum(taxed.map((l) => l.amount));
-		const tax =
-			roundTax(
-				taxed.map((l) => ({ rate: l.rate, tax: Ratio.of(l.amount).mul(l.rate).div(100) })),
-				data.rounding,
-				data.places
-			) ?? Decimal.ZERO;
-		return {
-			...server,
-			untaxed: untaxed.toFixed(data.places),
-			tax: tax.toFixed(data.places),
-			due: untaxed.add(measure).add(tax).toFixed(data.places),
-			untaxed_kinds: [...new Set(all.filter((l) => !l.taxable).map((l) => l.kind))],
-			taxed_kinds: [...new Set(taxed.map((l) => l.kind))]
-		};
-	});
+	// THE TOTALS, with what is on this phone in them (#lib/draft-totals).
+	// Nothing waiting, and they are the server's own figures.
+	const t = $derived(
+		pending.length === 0
+			? data.totals
+			: {
+					...data.totals,
+					...draftTotals(
+						[
+							...data.lines.map((l) => ({
+								kind: l.kind,
+								amount: l.amount,
+								taxable: l.taxable,
+								rate: l.tax_rate_pct
+							})),
+							...pending.map((q) => ({
+								kind: q.line.shown.kind,
+								amount: q.line.shown.amount,
+								taxable: q.line.shown.taxable,
+								rate: q.line.shown.tax_rate_pct
+							}))
+						],
+						data.rounding,
+						data.places
+					)
+				}
+	);
 
 	// Reg 1701: the measure is what was sold taxable, less what was already
 	// taxed when it was bought. What is left is the markup. The server's
@@ -159,6 +147,24 @@
 <OfflineBanner asOf={data.as_of} {waiting} />
 
 <div class="pad">
+	{#each data.movedIn as m (m.number)}
+		<p class="why">
+			{m.number} went out{m.sent_at
+				? ` at ${clock(m.sent_at, personalZone())} on ${datedAt(m.sent_at, personalZone())}`
+				: ''}
+			while {m.lines === 1 ? 'a line' : `${m.lines} lines`} added to it on a phone {m.lines === 1
+				? 'was'
+				: 'were'} on the way. {m.lines === 1 ? 'It' : 'They'} could not join it, so this draft was started
+			for {i.who}, and took the next number when it reached the server.
+		</p>
+	{/each}
+	{#each data.movedOut as m (m.id)}
+		<p class="why">
+			{m.lines === 1 ? 'A line' : `${m.lines} lines`} added to this on a phone after it went out
+			{m.lines === 1 ? 'is' : 'are'} on
+			<a href={resolve('/invoices/[id]', { id: m.id })}>{m.number}</a>.
+		</p>
+	{/each}
 	{#if kept.length}
 		<div class="sec">
 			<div class="sec-h"><h2>Not added</h2></div>
@@ -236,6 +242,9 @@
 										>The receipt</a
 									>
 								</div>
+							{/if}
+							{#if l.moved_from}
+								<div class="rec-c"><span class="chip">Moved from {l.moved_from}</span></div>
 							{/if}
 						</div>
 						<div class="rec-n">
