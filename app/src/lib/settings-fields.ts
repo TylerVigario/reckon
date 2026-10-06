@@ -49,6 +49,7 @@ import {
 	whole
 } from './field-rules.ts';
 import { isCurrency } from './currency.ts';
+import { COSTINGS } from './stock-draw.ts';
 import { pickLocale } from './locales.ts';
 
 export type { Parsed };
@@ -110,6 +111,8 @@ export const FIELDS: Record<string, Parse> = {
 	default_markup_pct: orDefault('25', decimal(7, 4)),
 	// Goods bought for a job and passed on; empty passes them on as they cost.
 	purchase_markup_pct: orDefault('0', decimal(7, 4)),
+	// What a line drawn from stock costs (#lib/stock-draw).
+	stock_costing: oneOf(COSTINGS),
 
 	// --- Invoicing ----------------------------------------------------------
 	// A zero is the padding mask -- INV-0000 is four digits behind a prefix,

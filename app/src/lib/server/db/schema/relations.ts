@@ -14,7 +14,14 @@ import {
 } from './catalogue.ts';
 import { timeEntry, trip, tripLeg, tripStop } from './work.ts';
 import { agreement, agreementPeriod, agreementService } from './agreements.ts';
-import { invoice, invoiceLine, payment, paymentAllocation, taxRemittance } from './money.ts';
+import {
+	invoice,
+	invoiceLine,
+	payment,
+	paymentAllocation,
+	stockDraw,
+	taxRemittance
+} from './money.ts';
 import { recordHistory } from './operator.ts';
 
 export const roleRelations = relations(role, ({ many }) => ({ users: many(user) }));
@@ -144,15 +151,18 @@ export const invoiceRelations = relations(invoice, ({ one, many }) => ({
 	allocations: many(paymentAllocation)
 }));
 
-export const invoiceLineRelations = relations(invoiceLine, ({ one }) => ({
+export const invoiceLineRelations = relations(invoiceLine, ({ one, many }) => ({
 	invoice: one(invoice, { fields: [invoiceLine.invoiceId], references: [invoice.id] }),
 	site: one(site, { fields: [invoiceLine.siteId], references: [site.id] }),
 	timeEntry: one(timeEntry, { fields: [invoiceLine.timeEntryId], references: [timeEntry.id] }),
 	tripLeg: one(tripLeg, { fields: [invoiceLine.tripLegId], references: [tripLeg.id] }),
-	materialLot: one(materialLot, {
-		fields: [invoiceLine.materialLotId],
-		references: [materialLot.id]
-	})
+	material: one(material, { fields: [invoiceLine.materialId], references: [material.id] }),
+	draws: many(stockDraw)
+}));
+
+export const stockDrawRelations = relations(stockDraw, ({ one }) => ({
+	line: one(invoiceLine, { fields: [stockDraw.invoiceLineId], references: [invoiceLine.id] }),
+	lot: one(materialLot, { fields: [stockDraw.materialLotId], references: [materialLot.id] })
 }));
 
 export const paymentRelations = relations(payment, ({ one, many }) => ({

@@ -266,7 +266,7 @@ Allotments live on agreements, service by service, never on the service itself.
 
 bill_to_nearest_seconds and minimum_charge are the usual next questions about an hourly price. Pay is never rounded to them; it is counted as worked.
 
-material_lot is where stock enters, and where the Reg 1701 ex-tax purchase price is sourced. It keeps what all of it cost before tax and in tax, as the receipt says them, and a unit&apos;s share is worked out from those; weighted-average cost needs lots to average. paid_by is whoever paid out of their own pocket and is owed it back, or the business when empty.
+material_lot is where stock enters, and where the Reg 1701 ex-tax purchase price is sourced. It keeps what all of it cost before tax and in tax, as the receipt says them, and a unit&apos;s share is worked out from those. A line drawn from stock takes the oldest lots first, and qty_remaining follows what it took (stock_draw). paid_by is whoever paid out of their own pocket and is owed it back, or the business when empty.
 
 A material is counted in one of the operator&apos;s units -- each, the foot, a box of 25 -- each with how it is written and how many places a quantity may have. Nothing converts one unit into another, and a line keeps its unit&apos;s name as it was billed." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;fontSize=11;fontColor=#7b8698;whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="40" y="740" width="1540" height="360" as="geometry"></mxGeometry></mxCell>
       </root>

@@ -201,6 +201,16 @@
 				inputmode="decimal"
 				hint="On goods bought for a job and passed on. 0 passes them on as they cost."
 			/>
+			<Setting
+				name="stock_costing"
+				label="Stock is costed at"
+				value={o?.stock_costing ?? 'average'}
+				options={[
+					{ value: 'average', label: 'The average of what is on the shelf' },
+					{ value: 'oldest_first', label: 'The oldest first' }
+				]}
+				hint="What a line drawn from stock cost. A change applies to what is drawn after it."
+			/>
 		</div>
 	</div>
 </div>

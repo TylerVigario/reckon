@@ -30,7 +30,6 @@ export const load: PageServerLoad = async ({ params }) => {
 	const u = t.user;
 	const tl = t.tripLeg;
 	const tr = t.trip;
-	const ml = t.materialLot;
 	const ap = t.agreementPeriod;
 	const si = t.site;
 	const payer = alias(t.user, 'payer');
@@ -70,7 +69,17 @@ export const load: PageServerLoad = async ({ params }) => {
 				worked_on: te.workedOn,
 				note: te.note,
 				travelled_on: tr.travelledOn,
-				supplier: ml.supplier,
+				// Who what it drew from stock came from, oldest first.
+				from_stock: sql<boolean>`${il.materialId} is not null`,
+				supplier: sql<string | null>`(
+					select string_agg(s.supplier, ', ' order by s.first)
+					  from (select ${t.materialLot.supplier} as supplier,
+					               min(${t.materialLot.receivedOn}) as first
+					          from ${t.stockDraw}
+					          join ${t.materialLot} on ${t.materialLot.id} = ${t.stockDraw.materialLotId}
+					         where ${t.stockDraw.invoiceLineId} = ${il.id}
+					           and ${t.materialLot.supplier} is not null
+					         group by 1) s)`,
 				period_start: ap.periodStart,
 				qty: il.qty,
 				unit: il.unit,
@@ -89,7 +98,6 @@ export const load: PageServerLoad = async ({ params }) => {
 			.leftJoin(u, eq(u.id, te.workedBy))
 			.leftJoin(tl, eq(tl.id, il.tripLegId))
 			.leftJoin(tr, eq(tr.id, tl.tripId))
-			.leftJoin(ml, eq(ml.id, il.materialLotId))
 			.leftJoin(ap, eq(ap.id, il.agreementPeriodId))
 			.leftJoin(si, eq(si.id, il.siteId))
 			.leftJoin(payer, eq(payer.id, il.paidBy))
@@ -153,31 +161,34 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	return {
 		invoice,
-		lines: lines.map(({ worker, worked_on, note, travelled_on, supplier, period_start, ...l }) => ({
-			...l,
-			// The first source the line has, said with #lib/format. A team's entry
-			// names no worker, and says nothing here. What was bought or paid for
-			// says from whom, and who paid.
-			detail:
-				l.kind === 'bought' || l.kind === 'paid_for'
-					? [
-							l.kind === 'bought' ? 'Bought' : 'Paid for them',
-							l.bought_from,
-							l.paid_by ? `${l.paid_by} paid` : 'the business paid',
-							l.kind === 'paid_for' ? 'at cost' : null
-						]
-							.filter(Boolean)
-							.join(' · ')
-					: worker !== null && worked_on !== null
-						? `${worker} · ${day(worked_on)}${note !== null ? ` · ${note}` : ''}`
-						: travelled_on !== null
-							? `${day(travelled_on)} · leg of a trip`
-							: supplier !== null
-								? `${supplier} · from stock, weighted average`
-								: period_start !== null
-									? `Recurring · ${monthName(period_start)}`
-									: null
-		})),
+		lines: lines.map(
+			({ worker, worked_on, note, travelled_on, from_stock, supplier, period_start, ...l }) => ({
+				...l,
+				// The first source the line has, said with #lib/format. A team's entry
+				// names no worker, and says nothing here. What was bought or paid for
+				// says from whom, and who paid; what was drawn from stock, whom it came
+				// from.
+				detail:
+					l.kind === 'bought' || l.kind === 'paid_for'
+						? [
+								l.kind === 'bought' ? 'Bought' : 'Paid for them',
+								l.bought_from,
+								l.paid_by ? `${l.paid_by} paid` : 'the business paid',
+								l.kind === 'paid_for' ? 'at cost' : null
+							]
+								.filter(Boolean)
+								.join(' · ')
+						: worker !== null && worked_on !== null
+							? `${worker} · ${day(worked_on)}${note !== null ? ` · ${note}` : ''}`
+							: travelled_on !== null
+								? `${day(travelled_on)} · leg of a trip`
+								: from_stock
+									? ['From stock', supplier].filter(Boolean).join(' · ')
+									: period_start !== null
+										? `Recurring · ${monthName(period_start)}`
+										: null
+			})
+		),
 		totals
 	};
 };

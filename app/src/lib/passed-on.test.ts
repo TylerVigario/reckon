@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { passedOn, type Terms } from './passed-on.ts';
+import { fromStock, passedOn, type FromStock, type Terms } from './passed-on.ts';
 
 const CA: Terms = { purchaseMarkupPct: '0', ruleSet: 'us_ca', siteRatePct: '8.0000', places: 2 };
 
@@ -59,6 +59,48 @@ describe('a cost paid on the client’s behalf', () => {
 			'none',
 			false
 		]);
+	});
+});
+
+describe('goods drawn from stock', () => {
+	const cable: FromStock = {
+		qty: '147',
+		unit: 'foot',
+		cost: '45.57',
+		taxPaid: '3.6456',
+		listed: null,
+		markupPct: '20',
+		taxable: true
+	};
+
+	it('at what a unit cost, marked up, and taxed at the site', () => {
+		// 45.57 / 147 = 0.31 a foot; at 20%, 0.372; 147 × 0.372 = 54.684.
+		const l = fromStock(cable, CA);
+		expect(l).toMatchObject({
+			qty: '147',
+			unit: 'foot',
+			unitPrice: '0.3720',
+			amount: '54.68',
+			taxable: true,
+			taxRatePct: '8.0000',
+			exTaxCost: '45.57',
+			taxPaid: '3.6456',
+			needsASite: false
+		});
+	});
+
+	it('at the price listed for it, where there is one', () => {
+		const l = fromStock({ ...cable, listed: '0.45' }, CA);
+		expect([l.unitPrice, l.amount]).toEqual(['0.4500', '66.15']);
+	});
+
+	it('untaxed when it is not goods the business taxes, and needing no site', () => {
+		const l = fromStock({ ...cable, taxable: false }, { ...CA, siteRatePct: null });
+		expect([l.taxable, l.needsASite]).toEqual([false, false]);
+	});
+
+	it('needs a site, for its rate, where it is taxed', () => {
+		expect(fromStock(cable, { ...CA, siteRatePct: null }).needsASite).toBe(true);
 	});
 });
 

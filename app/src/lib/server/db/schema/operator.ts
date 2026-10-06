@@ -29,6 +29,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { bytea, day, decimal, id, nonNegative, oneOf, tstz } from './columns.ts';
 import { user } from './people.ts';
+import { COSTINGS } from '../../../stock-draw.ts';
 
 export const TAX_RULE_SETS = ['us_ca', 'flat_per_site', 'none'] as const;
 export const FILING_BASES = ['annual', 'quarterly', 'monthly'] as const;
@@ -73,6 +74,12 @@ export const operator = pgTable(
 		 * None by default: passed on as they cost.
 		 */
 		purchaseMarkupPct: decimal(7, 4).default('0').notNull(),
+		/**
+		 * What a line drawn from stock costs (#lib/stock-draw): the average of
+		 * what is on the shelf, or the oldest first. A change applies to what is
+		 * drawn after it; a line keeps the cost it was drawn at.
+		 */
+		stockCosting: text({ enum: COSTINGS }).default('average').notNull(),
 		/**
 		 * Google's identifier for the place operator.address is. The id is the one
 		 * piece of Places data that may be stored indefinitely.
@@ -154,7 +161,8 @@ export const operator = pgTable(
 		oneOf('operator_mileage_assignment_check', t.mileageAssignment, MILEAGE_ASSIGNMENTS),
 		check('operator_next_invoice_number_check', sql`${t.nextInvoiceNumber} > 0`),
 		check('operator_singleton_check', sql`${t.singleton}`),
-		oneOf('operator_tax_rule_set_check', t.taxRuleSet, TAX_RULE_SETS)
+		oneOf('operator_tax_rule_set_check', t.taxRuleSet, TAX_RULE_SETS),
+		oneOf('operator_stock_costing_check', t.stockCosting, COSTINGS)
 	]
 );
 

@@ -1,8 +1,9 @@
 import { businessToday } from '#lib/server/calendar.ts';
-import { asc, desc, eq, gt, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { materialWorth } from '#lib/server/valuation/misc.ts';
+import { shelves } from '#lib/server/stock.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -11,10 +12,12 @@ import type { PageServerLoad } from './$types';
  * A lot records what was paid excluding tax, and the tax paid on it, as two
  * figures. Reg 1701 lets the tax already paid on goods that were resold come
  * off the measure -- which is only possible if the two were never added
- * together. Price is the ex-tax cost plus markup, weighted across open lots.
+ * together. Price is the ex-tax cost of one more plus markup, at the average
+ * of what is on the shelf or the oldest lot's, as the business costs its stock
+ * (#lib/stock-draw).
  */
 export const load: PageServerLoad = async () => {
-	const [materials, lots, listed, [op]] = await Promise.all([
+	const [materials, listed, [op]] = await Promise.all([
 		db
 			.select({
 				id: t.material.id,
@@ -29,17 +32,6 @@ export const load: PageServerLoad = async () => {
 			.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
 			.where(eq(t.material.active, true))
 			.orderBy(asc(t.material.name)),
-		db
-			.select({
-				materialId: t.materialLot.materialId,
-				supplier: t.materialLot.supplier,
-				qtyReceived: t.materialLot.qtyReceived,
-				qtyRemaining: t.materialLot.qtyRemaining,
-				exTaxCost: t.materialLot.exTaxCost,
-				taxPaid: t.materialLot.taxPaid
-			})
-			.from(t.materialLot)
-			.where(gt(t.materialLot.qtyRemaining, '0')),
 		// The newest price listed for each, on or before today.
 		db
 			.selectDistinctOn([t.materialPrice.materialId], {
@@ -49,16 +41,27 @@ export const load: PageServerLoad = async () => {
 			.from(t.materialPrice)
 			.where(lte(t.materialPrice.effectiveFrom, sql`${businessToday()}::date`))
 			.orderBy(t.materialPrice.materialId, desc(t.materialPrice.effectiveFrom)),
-		db.select({ markup: t.operator.defaultMarkupPct }).from(t.operator)
+		db
+			.select({ markup: t.operator.defaultMarkupPct, costing: t.operator.stockCosting })
+			.from(t.operator)
 	]);
 	const priceOf = new Map(listed.map((l) => [l.materialId, l.price]));
+	const costing = op?.costing ?? 'average';
+	const [onShelf, suppliersOf] = await Promise.all([
+		shelves(materials.map((m) => m.id)),
+		// Who the stock on the shelf came from.
+		db
+			.selectDistinct({ materialId: t.materialLot.materialId, supplier: t.materialLot.supplier })
+			.from(t.materialLot)
+			.where(and(gt(t.materialLot.qtyRemaining, '0'), isNotNull(t.materialLot.supplier)))
+			.orderBy(asc(t.materialLot.supplier))
+	]);
 
 	return {
 		materials: materials.map((m) => {
-			const mine = lots.filter((l) => l.materialId === m.id);
 			const markup = m.markupPct ?? op?.markup ?? '0';
-			const w = materialWorth(mine, markup, priceOf.get(m.id) ?? null);
-			const suppliers = [...new Set(mine.map((l) => l.supplier).filter((x) => x !== null))];
+			const w = materialWorth(onShelf.get(m.id)!, costing, markup, priceOf.get(m.id) ?? null);
+			const suppliers = suppliersOf.filter((x) => x.materialId === m.id).map((x) => x.supplier);
 			return {
 				id: m.id,
 				name: m.name,
@@ -73,6 +76,7 @@ export const load: PageServerLoad = async () => {
 				suppliers: suppliers.length ? suppliers.join(', ') : null
 			};
 		}),
-		markup: op?.markup ?? null
+		markup: op?.markup ?? null,
+		costing
 	};
 };

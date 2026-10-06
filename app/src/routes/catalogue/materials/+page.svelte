@@ -6,6 +6,8 @@
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
+	// The cost a markup is on: the shelf's average, or the oldest lot's (#lib/stock-draw).
+	const basis = $derived(data.costing === 'average' ? 'average' : 'oldest');
 </script>
 
 <Top
@@ -25,7 +27,7 @@
 			<h2>Stock on hand</h2>
 			<span class="sp"></span>
 			{#if data.markup}
-				<span class="chip">{percent(data.markup)} markup on the ex-tax cost</span>
+				<span class="chip">{percent(data.markup)} markup on the {basis} ex-tax cost</span>
 			{/if}
 		</div>
 		<div class="rows">

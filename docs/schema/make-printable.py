@@ -154,6 +154,9 @@ TAIL = r'''
   [Deleting a sent invoice], [it is voided instead],
   [Voiding without a reason], [],
   [More stock left than ever arrived], [`qty_remaining <= qty_received`],
+  [Drawing more than is on the shelf], [a draw comes off its lot, which cannot go below nothing],
+  [A line drawing another material's stock], [a draw names the material of its line and its lot],
+  [Changing what a sent invoice drew from stock], [it is settled with its lines],
   [A payout whose net ignores the fee], [`net = gross - fees`],
   [Two prices for one service, client and day], [one price per day],
 )
@@ -166,7 +169,7 @@ TAIL = r'''
 
 WORDS = {2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six", 7: "Seven", 8: "Eight",
          9: "Nine", 10: "Ten", 32: "Thirty-two", 34: "Thirty-four", 35: "Thirty-five",
-         36: "Thirty-six", 37: "Thirty-seven", 38: "Thirty-eight"}
+         36: "Thirty-six", 37: "Thirty-seven", 38: "Thirty-eight", 39: "Thirty-nine", 40: "Forty"}
 word = lambda n: WORDS.get(n, str(n))
 head = (HEAD.replace("@@N_TABLES@@", word(len(seen)))
             .replace("@@N_CLUSTERS@@", word(len(CLUSTERS)).lower())

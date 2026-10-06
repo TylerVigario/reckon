@@ -5,8 +5,8 @@
 // the only way to change what a client owes. Each line stores what was billed
 // -- quantity, price, tax rate, the cost of resold goods -- rather than looking
 // it up, so a price changed later rewrites nothing already sent. A line points
-// at what produced it: one time entry, trip leg, agreement period or lot, or
-// none.
+// at what produced it: one time entry, trip leg, agreement period or material,
+// or none. What a line drawn from stock took off each lot is stock_draw.
 //
 // A payment is what arrived; payment_allocation says which invoices it paid,
 // so a partial payment and one deposit covering several invoices are both
@@ -20,13 +20,14 @@ import {
 	index,
 	integer,
 	pgTable,
+	primaryKey,
 	text,
 	unique,
 	uuid
 } from 'drizzle-orm/pg-core';
 import { bytea, createdAt, day, decimal, id, money, nonNegative, oneOf, tstz } from './columns.ts';
 import { entity, site } from './clients.ts';
-import { materialLot, RECEIPT_TYPES } from './catalogue.ts';
+import { material, materialLot, RECEIPT_TYPES } from './catalogue.ts';
 import { agreementPeriod } from './agreements.ts';
 import { timeEntry, tripLeg } from './work.ts';
 import { user } from './people.ts';
@@ -124,7 +125,11 @@ export const invoiceLine = pgTable(
 		timeEntryId: uuid(),
 		tripLegId: uuid(),
 		agreementPeriodId: uuid(),
-		materialLotId: uuid(),
+		/**
+		 * What a line drawn from stock is of. What it took from each lot is in
+		 * stock_draw.
+		 */
+		materialId: uuid(),
 		/**
 		 * What qty counts, frozen at issue. Null when the quantity counts nothing,
 		 * as on a flat charge or an adjustment.
@@ -144,7 +149,8 @@ export const invoiceLine = pgTable(
 		unique('invoice_line_time_entry_id_key').on(t.timeEntryId),
 		unique('invoice_line_trip_leg_id_key').on(t.tripLegId),
 		unique('invoice_line_agreement_period_id_key').on(t.agreementPeriodId),
-		index('invoice_line_material').on(t.materialLotId),
+		// What a draw names, so the lots it comes off are of the line's material.
+		unique('invoice_line_id_material_id_key').on(t.id, t.materialId),
 		foreignKey({
 			name: 'invoice_line_invoice_id_fkey',
 			columns: [t.invoiceId],
@@ -166,9 +172,9 @@ export const invoiceLine = pgTable(
 			foreignColumns: [agreementPeriod.id]
 		}).onDelete('restrict'),
 		foreignKey({
-			name: 'invoice_line_material_lot_id_fkey',
-			columns: [t.materialLotId],
-			foreignColumns: [materialLot.id]
+			name: 'invoice_line_material_id_fkey',
+			columns: [t.materialId],
+			foreignColumns: [material.id]
 		}).onDelete('restrict'),
 		foreignKey({
 			name: 'invoice_line_site_id_fkey',
@@ -186,6 +192,10 @@ export const invoiceLine = pgTable(
 		),
 		oneOf('invoice_line_receipt_type_check', t.receiptType, RECEIPT_TYPES),
 		check('invoice_line_receipt_size_check', sql`octet_length(${t.receipt}) <= 2097152`),
+		check(
+			'material_is_for_what_is_drawn',
+			sql`(${t.materialId} IS NULL) OR (${t.kind} = 'material')`
+		),
 		// Who paid is said of what was bought or paid for, and of nothing else.
 		check(
 			'paid_by_is_for_what_was_bought',
@@ -199,13 +209,48 @@ export const invoiceLine = pgTable(
 		check('invoice_line_unit_is_something', sql`(${t.unit} IS NULL) OR (btrim(${t.unit}) <> '')`),
 		check(
 			'one_source_at_most',
-			sql`((${t.timeEntryId} IS NOT NULL)::integer + (${t.tripLegId} IS NOT NULL)::integer + (${t.agreementPeriodId} IS NOT NULL)::integer + (${t.materialLotId} IS NOT NULL)::integer) <= 1`
+			sql`((${t.timeEntryId} IS NOT NULL)::integer + (${t.tripLegId} IS NOT NULL)::integer + (${t.agreementPeriodId} IS NOT NULL)::integer + (${t.materialId} IS NOT NULL)::integer) <= 1`
 		),
 		check(
 			'override_needs_a_reason',
 			sql`(${t.taxSource} <> 'override') OR (${t.taxOverrideReason} IS NOT NULL)`
 		),
 		check('untaxed_lines_carry_no_rate', sql`${t.taxable} OR (${t.taxRatePct} = 0)`)
+	]
+);
+
+/**
+ * What a line drawn from stock took off each lot: 147 ft, 100 off the oldest
+ * spool and 47 off the next. A lot's qty_remaining follows these -- a trigger
+ * takes a draw off its lot and puts it back when the draw goes, as it does with
+ * its line or a deleted draft -- so stock is never counted twice, and a draw
+ * larger than what is left is refused by the lot's own check.
+ *
+ * The material is named twice over so the database holds a line's draws to its
+ * own material: (line, material) and (lot, material) must each exist.
+ */
+export const stockDraw = pgTable(
+	'stock_draw',
+	{
+		invoiceLineId: uuid().notNull(),
+		materialLotId: uuid().notNull(),
+		materialId: uuid().notNull(),
+		qty: decimal(12, 4).notNull()
+	},
+	(t) => [
+		primaryKey({ name: 'stock_draw_pkey', columns: [t.invoiceLineId, t.materialLotId] }),
+		index('stock_draw_lot').on(t.materialLotId),
+		foreignKey({
+			name: 'stock_draw_line_fkey',
+			columns: [t.invoiceLineId, t.materialId],
+			foreignColumns: [invoiceLine.id, invoiceLine.materialId]
+		}).onDelete('cascade'),
+		foreignKey({
+			name: 'stock_draw_lot_fkey',
+			columns: [t.materialLotId, t.materialId],
+			foreignColumns: [materialLot.id, materialLot.materialId]
+		}).onDelete('restrict'),
+		check('stock_draw_qty_check', sql`${t.qty} > 0`)
 	]
 );
 
