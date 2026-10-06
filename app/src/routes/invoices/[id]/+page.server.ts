@@ -1,5 +1,6 @@
 import { personalDay } from '#lib/server/calendar.ts';
 import { error } from '@sveltejs/kit';
+import { alias } from 'drizzle-orm/pg-core';
 import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
@@ -32,6 +33,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	const ml = t.materialLot;
 	const ap = t.agreementPeriod;
 	const si = t.site;
+	const payer = alias(t.user, 'payer');
 
 	const [invoice] = await db
 		.select({
@@ -77,7 +79,10 @@ export const load: PageServerLoad = async ({ params }) => {
 				taxable: il.taxable,
 				tax_rate_pct: il.taxRatePct,
 				trip_leg_id: il.tripLegId,
-				where_from: sql<string>`coalesce(${si.display}, '')`
+				where_from: sql<string>`coalesce(${si.display}, '')`,
+				bought_from: il.boughtFrom,
+				paid_by: payer.name,
+				receipt: sql<boolean>`${il.receipt} is not null`
 			})
 			.from(il)
 			.leftJoin(te, eq(te.id, il.timeEntryId))
@@ -87,6 +92,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			.leftJoin(ml, eq(ml.id, il.materialLotId))
 			.leftJoin(ap, eq(ap.id, il.agreementPeriodId))
 			.leftJoin(si, eq(si.id, il.siteId))
+			.leftJoin(payer, eq(payer.id, il.paidBy))
 			.where(eq(il.invoiceId, params.id))
 			.orderBy(asc(il.seq)),
 		db
@@ -150,17 +156,27 @@ export const load: PageServerLoad = async ({ params }) => {
 		lines: lines.map(({ worker, worked_on, note, travelled_on, supplier, period_start, ...l }) => ({
 			...l,
 			// The first source the line has, said with #lib/format. A team's entry
-			// names no worker, and says nothing here.
+			// names no worker, and says nothing here. What was bought or paid for
+			// says from whom, and who paid.
 			detail:
-				worker !== null && worked_on !== null
-					? `${worker} · ${day(worked_on)}${note !== null ? ` · ${note}` : ''}`
-					: travelled_on !== null
-						? `${day(travelled_on)} · leg of a trip`
-						: supplier !== null
-							? `${supplier} · from stock, weighted average`
-							: period_start !== null
-								? `Recurring · ${monthName(period_start)}`
-								: null
+				l.kind === 'bought' || l.kind === 'paid_for'
+					? [
+							l.kind === 'bought' ? 'Bought' : 'Paid for them',
+							l.bought_from,
+							l.paid_by ? `${l.paid_by} paid` : 'the business paid',
+							l.kind === 'paid_for' ? 'at cost' : null
+						]
+							.filter(Boolean)
+							.join(' · ')
+					: worker !== null && worked_on !== null
+						? `${worker} · ${day(worked_on)}${note !== null ? ` · ${note}` : ''}`
+						: travelled_on !== null
+							? `${day(travelled_on)} · leg of a trip`
+							: supplier !== null
+								? `${supplier} · from stock, weighted average`
+								: period_start !== null
+									? `Recurring · ${monthName(period_start)}`
+									: null
 		})),
 		totals
 	};

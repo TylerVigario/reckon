@@ -35,10 +35,12 @@
 		service: 'services',
 		material: 'goods',
 		recurring: 'the retainer',
-		adjustment: 'adjustments'
+		adjustment: 'adjustments',
+		bought: 'goods',
+		paid_for: 'expenses'
 	};
 	const listed = (kinds: string[]) => {
-		const words = kinds.map((k) => KIND[k] ?? k);
+		const words = [...new Set(kinds.map((k) => KIND[k] ?? k))];
 		if (words.length === 0) return '';
 		if (words.length === 1) return words[0];
 		return words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1];
@@ -51,7 +53,10 @@
 
 <Top {title} {sub} back={resolve('/invoices')} backLabel="Invoices">
 	{#snippet actions()}
-		{#if i.status === 'draft'}<span class="btn pri sm">Send</span>{/if}
+		{#if i.status === 'draft'}
+			<a class="btn sm" href={resolve('/invoices/[id]/add', { id: i.id })}>Add a line</a>
+			<span class="btn pri sm">Send</span>
+		{/if}
 	{/snippet}
 </Top>
 
@@ -97,6 +102,13 @@
 						<div class="rec-m">
 							<div class="rec-t">{l.description}</div>
 							{#if l.detail}<div class="rec-s">{l.detail}{l.taxable ? ' · taxable' : ''}</div>{/if}
+							{#if l.receipt}
+								<div class="rec-s">
+									<a href={resolve('/invoices/[id]/lines/[line]/receipt', { id: i.id, line: l.id })}
+										>The receipt</a
+									>
+								</div>
+							{/if}
 						</div>
 						<div class="rec-n">
 							<span class="rec-v">{money(l.amount)}</span>

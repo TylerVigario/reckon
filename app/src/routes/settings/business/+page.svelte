@@ -194,6 +194,13 @@
 				inputmode="decimal"
 				hint="Applies to every sellable item without its own."
 			/>
+			<Setting
+				name="purchase_markup_pct"
+				label="Markup on job purchases %"
+				value={tidy(o?.purchase_markup_pct) || '0'}
+				inputmode="decimal"
+				hint="On goods bought for a job and passed on. 0 passes them on as they cost."
+			/>
 		</div>
 	</div>
 </div>

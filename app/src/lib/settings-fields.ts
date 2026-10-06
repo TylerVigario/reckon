@@ -108,6 +108,8 @@ export const FIELDS: Record<string, Parse> = {
 	),
 	tax_rule_set: oneOf(['none', 'us_ca', 'flat_per_site']),
 	default_markup_pct: orDefault('25', decimal(7, 4)),
+	// Goods bought for a job and passed on; empty passes them on as they cost.
+	purchase_markup_pct: orDefault('0', decimal(7, 4)),
 
 	// --- Invoicing ----------------------------------------------------------
 	// A zero is the padding mask -- INV-0000 is four digits behind a prefix,

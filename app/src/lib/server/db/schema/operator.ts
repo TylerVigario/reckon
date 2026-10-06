@@ -69,6 +69,11 @@ export const operator = pgTable(
 		singleton: boolean().default(true).notNull(),
 		defaultMarkupPct: decimal(7, 4).default('25').notNull(),
 		/**
+		 * What goods bought for a job are marked up by when they are passed on.
+		 * None by default: passed on as they cost.
+		 */
+		purchaseMarkupPct: decimal(7, 4).default('0').notNull(),
+		/**
 		 * Google's identifier for the place operator.address is. The id is the one
 		 * piece of Places data that may be stored indefinitely.
 		 */
@@ -139,6 +144,7 @@ export const operator = pgTable(
 		unique('operator_singleton_key').on(t.singleton),
 		check('operator_ageing_alert_days_check', sql`${t.ageingAlertDays} > 0`),
 		nonNegative('operator_default_markup_pct_check', t.defaultMarkupPct),
+		nonNegative('operator_purchase_markup_pct_check', t.purchaseMarkupPct),
 		nonNegative('operator_default_terms_days_check', t.defaultTermsDays),
 		oneOf('operator_filing_basis_check', t.filingBasis, FILING_BASES),
 		check(

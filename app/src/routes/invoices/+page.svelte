@@ -15,7 +15,7 @@
 
 <Top title="Invoices" {sub}>
 	{#snippet actions()}
-		<span class="btn sm">New</span>
+		<a class="btn sm" href={resolve('/invoices/new')}>New draft</a>
 	{/snippet}
 </Top>
 

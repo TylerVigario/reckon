@@ -24,15 +24,28 @@ import {
 	unique,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { createdAt, day, decimal, id, money, nonNegative, oneOf, tstz } from './columns.ts';
+import { bytea, createdAt, day, decimal, id, money, nonNegative, oneOf, tstz } from './columns.ts';
 import { entity, site } from './clients.ts';
-import { materialLot } from './catalogue.ts';
+import { materialLot, RECEIPT_TYPES } from './catalogue.ts';
 import { agreementPeriod } from './agreements.ts';
 import { timeEntry, tripLeg } from './work.ts';
 import { user } from './people.ts';
 
 export const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'void'] as const;
-export const LINE_KINDS = ['service', 'material', 'recurring', 'adjustment'] as const;
+/**
+ * How a line behaves. service, recurring and adjustment are the work and the
+ * charges; the goods and costs passed on are three: material, drawn from stock;
+ * bought, goods bought for this job and passed on; paid_for, a fee, a hire or a
+ * bill paid on the client's behalf, which is not goods.
+ */
+export const LINE_KINDS = [
+	'service',
+	'material',
+	'recurring',
+	'adjustment',
+	'bought',
+	'paid_for'
+] as const;
 export const TAX_SOURCES = ['none', 'site', 'override', 'exempt'] as const;
 export const CREDIT_KINDS = ['reg1700b', 'correction', 'goodwill'] as const;
 export const PAYMENT_METHODS = ['card', 'transfer', 'cheque', 'cash', 'other'] as const;
@@ -117,7 +130,14 @@ export const invoiceLine = pgTable(
 		 * as on a flat charge or an adjustment.
 		 */
 		unit: text(),
-		siteId: uuid()
+		siteId: uuid(),
+		/** Who it was bought from or paid to: "Valley Hardware", "City of Woodland". */
+		boughtFrom: text(),
+		/** Who paid for it: a person, who is owed it back, or the business when empty. */
+		paidBy: uuid(),
+		/** The receipt, as the phone shrank it, and its type. */
+		receipt: bytea(),
+		receiptType: text()
 	},
 	(t) => [
 		unique('invoice_line_invoice_id_seq_key').on(t.invoiceId, t.seq),
@@ -155,6 +175,22 @@ export const invoiceLine = pgTable(
 			columns: [t.siteId],
 			foreignColumns: [site.id]
 		}).onDelete('restrict'),
+		foreignKey({
+			name: 'invoice_line_paid_by_fkey',
+			columns: [t.paidBy],
+			foreignColumns: [user.id]
+		}).onDelete('restrict'),
+		check(
+			'invoice_line_receipt_comes_with_its_type',
+			sql`(${t.receipt} IS NULL) = (${t.receiptType} IS NULL)`
+		),
+		oneOf('invoice_line_receipt_type_check', t.receiptType, RECEIPT_TYPES),
+		check('invoice_line_receipt_size_check', sql`octet_length(${t.receipt}) <= 2097152`),
+		// Who paid is said of what was bought or paid for, and of nothing else.
+		check(
+			'paid_by_is_for_what_was_bought',
+			sql`(${t.paidBy} IS NULL) OR (${t.kind} IN ('bought', 'paid_for'))`
+		),
 		oneOf('invoice_line_kind_check', t.kind, LINE_KINDS),
 		nonNegative('invoice_line_tax_rate_pct_check', t.taxRatePct),
 		oneOf('invoice_line_tax_source_check', t.taxSource, TAX_SOURCES),

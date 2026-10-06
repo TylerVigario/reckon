@@ -246,7 +246,7 @@ T["invoice"] = [("PK","id","uuid"),("UK","number","text"),("FK","entity_id","uui
     ("","token_expires_on","date"),("","sent_at","timestamptz"),
     ("FK","created_by","uuid"),("","void_reason","text"),("","created_at","timestamptz")]
 T["invoice_line"] = [("PK","id","uuid"),("FK","invoice_id","uuid"),("","seq","int"),
-    ("","kind","service|material|recurring|adjustment"),("","description","text"),
+    ("","kind","service|material|recurring|adjustment|bought|paid_for"),("","description","text"),
     ("","qty","numeric"),("","unit","text · as billed"),
     ("","unit_price","numeric · as billed"),
     ("FK","site_id","uuid"),("","taxable","bool"),
@@ -254,7 +254,9 @@ T["invoice_line"] = [("PK","id","uuid"),("FK","invoice_id","uuid"),("","seq","in
     ("","tax_override_reason","text"),("","ex_tax_cost","numeric · snapshot"),
     ("","tax_paid","numeric · snapshot"),("","amount","numeric"),
     ("FK","time_entry_id","uuid"),("FK","trip_leg_id","uuid"),
-    ("FK","agreement_period_id","uuid"),("FK","material_lot_id","uuid")]
+    ("FK","agreement_period_id","uuid"),("FK","material_lot_id","uuid"),
+    ("","bought_from","text · from whom"),("FK","paid_by","uuid · null = the business"),
+    ("","receipt","bytea · photo or PDF"),("","receipt_type","text")]
 T["credit_note"] = [("PK","id","uuid"),("UK","number","text"),("FK","entity_id","uuid"),
     ("","issued_on","date"),("","amount","numeric"),
     ("","kind","reg1700b|correction|goodwill"),("","reason","text"),
@@ -286,7 +288,7 @@ T["operator"] = [("PK","id","uuid"),("","singleton","bool · one row only"),("",
     ("","tax_rule_set","us_ca|flat_per_site|none"),("","invoice_number_format","text"),
     ("","next_invoice_number","int"),
     ("","default_terms_days","int"),("","ageing_alert_days","int"),
-    ("","default_markup_pct","numeric · 25"),
+    ("","default_markup_pct","numeric · 25"),("","purchase_markup_pct","numeric · 0"),
     ("","invoice_footer","text"),("","auto_send","bool"),
     ("","email_attaches_pdf","bool"),("","email_includes_payment_link","bool"),
     ("","tax_registration","text"),("","tax_agency","text"),
@@ -510,7 +512,7 @@ files.append(write("05-agreements.drawio", "Agreements", c, 1620, 1060))
 
 # 06 -- money out
 c = at("invoice",40,60) + at("invoice_line",440,60) + at("credit_note",880,60) \
-  + at("credit_application",880,300) + at("entity",40,430) + at("site",440,560)
+  + at("credit_application",880,300) + at("entity",40,430) + at("site",440,660)
 c += [edge("e60","invoice","invoice_line","is made of"),
       edge("e61","entity","credit_note","holds"),
       edge("e62","credit_note","credit_application","is spent by",
@@ -531,8 +533,11 @@ c += [note("n6", "A tax override is stored per line, so one invoice can carry li
                  "what produced each line.\n\n"
                  "unit is what qty counts, frozen at issue like tax_rate_pct, so a line "
                  "keeps its unit if the service is later changed. Null when "
-                 "the quantity counts nothing, as on a flat charge or an adjustment.", 880, 480, 640, 270)]
-files.append(write("06-money-out.drawio", "Money out", c, 1600, 1090))
+                 "the quantity counts nothing, as on a flat charge or an adjustment.\n\n"
+                 "What is bought for a job, or paid on the client's behalf, is a line of "
+                 "its own kind: from whom, who paid -- a person, who is owed it back, or "
+                 "the business -- and its receipt.", 880, 480, 640, 330)]
+files.append(write("06-money-out.drawio", "Money out", c, 1600, 1200))
 
 # 07 -- money in
 c = at("payment",40,60) + at("payment_allocation",440,60) + at("refund",440,220) \
