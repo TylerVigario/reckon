@@ -26,10 +26,17 @@ import type { ProblemBody } from './problem.ts';
  * LINES ADDED TO A DRAFT wait here too, receipt and all, in a store of their
  * own: a time entry and a line are different things, and the Time screen counts
  * only its own. They go after the time entries, oldest first, to /api/lines.
+ *
+ * DRAFTS STARTED ON THE PHONE wait in a third, and go before the lines, which
+ * may be for them: a line names its draft by the server's id, or by the uuid
+ * the phone made for a draft started here. A line for a draft still waiting
+ * waits with it.
  */
 const DB = 'reckon';
 const STORE = 'queue';
 const LINES = 'lines';
+const DRAFTS = 'drafts';
+type Store = typeof STORE | typeof LINES | typeof DRAFTS;
 /** Where the queue lived before IndexedDB. Read once, emptied once moved. */
 const OLD_KEY = 'reckon.queue';
 
@@ -95,15 +102,17 @@ let opening: Promise<IDBDatabase> | null = null;
 
 function open(): Promise<IDBDatabase> {
 	opening ??= new Promise<IDBDatabase>((resolve, reject) => {
-		// 2: lines joined time entries. A phone on 1 keeps its entries and gains
-		// the store for lines.
-		const req = indexedDB.open(DB, 2);
+		// 2: lines joined time entries; 3: drafts started here. A phone on an
+		// earlier one keeps what it has and gains the stores it lacks.
+		const req = indexedDB.open(DB, 3);
 		req.onupgradeneeded = () => {
 			const db = req.result;
 			if (!db.objectStoreNames.contains(STORE))
 				db.createObjectStore(STORE, { keyPath: 'entry.client_uuid' });
 			if (!db.objectStoreNames.contains(LINES))
 				db.createObjectStore(LINES, { keyPath: 'line.client_uuid' });
+			if (!db.objectStoreNames.contains(DRAFTS))
+				db.createObjectStore(DRAFTS, { keyPath: 'draft.client_uuid' });
 		};
 		req.onsuccess = () => {
 			// A later version opening this database in another tab has to be
@@ -128,7 +137,7 @@ function open(): Promise<IDBDatabase> {
 function tx<T>(
 	mode: IDBTransactionMode,
 	work: (store: IDBObjectStore) => IDBRequest<T> | void,
-	store: typeof STORE | typeof LINES = STORE
+	store: Store = STORE
 ): Promise<T | undefined> {
 	return open().then(
 		(db) =>
@@ -237,7 +246,7 @@ export async function discard(client_uuid: string): Promise<void> {
  * the newer word, and stays as it is.
  */
 function settleIn<Q extends { queued_at: number }>(
-	store: typeof STORE | typeof LINES,
+	store: Store,
 	id: string,
 	q: Q,
 	next: Q | null
@@ -258,6 +267,8 @@ function settleIn<Q extends { queued_at: number }>(
 const settle = (q: Queued, next: Queued | null) => settleIn(STORE, q.entry.client_uuid, q, next);
 const settleLine = (q: QueuedLine, next: QueuedLine | null) =>
 	settleIn(LINES, q.line.client_uuid, q, next);
+const settleDraft = (q: QueuedDraft, next: QueuedDraft | null) =>
+	settleIn(DRAFTS, q.draft.client_uuid, q, next);
 
 async function reason(r: Response): Promise<Refusal> {
 	let body: Partial<ProblemBody> = {};
@@ -326,7 +337,24 @@ async function post(): Promise<Flushed> {
 		// No connection. The rest would fail the same way; they all wait.
 		if (count(p) === 'offline') return { sent, refused };
 	}
-	for (const q of (await allLines()).filter((q) => !q.refused)) {
+	for (const q of (await allDrafts()).filter((q) => !q.refused)) {
+		const p = await postOne(
+			() =>
+				fetch('/api/drafts', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ client_uuid: q.draft.client_uuid, entity_id: q.draft.entity_id })
+				}),
+			(why) => settleDraft(q, { ...q, refused: why }),
+			() => settleDraft(q, null)
+		);
+		if (count(p) === 'offline') return { sent, refused };
+	}
+	// A line for a draft that has not arrived waits for it.
+	const waitingDrafts = new Set((await allDrafts()).map((q) => q.draft.client_uuid));
+	for (const q of (await allLines()).filter(
+		(q) => !q.refused && !waitingDrafts.has(q.line.invoice_id)
+	)) {
 		const p = await postOne(
 			() => fetch('/api/lines', { method: 'POST', body: formOf(q.line) }),
 			(why) => settleLine(q, { ...q, refused: why }),
@@ -340,7 +368,7 @@ async function post(): Promise<Flushed> {
 let chain: Promise<unknown> = Promise.resolve();
 
 /**
- * Posts everything waiting, oldest first: time, then lines. One flush at a time: a second call
+ * Posts everything waiting, oldest first: time, then drafts, then lines. One flush at a time: a second call
  * runs after the first, so it sees whatever was queued before it was made, and
  * no entry is ever out on two posts at once.
  */
@@ -433,6 +461,61 @@ export function findLine(client_uuid: string): Promise<QueuedLine | undefined> {
 /** Lets go of a line. Only ever a person's decision, made on purpose. */
 export async function discardLine(client_uuid: string): Promise<void> {
 	await tx('readwrite', (s) => s.delete(client_uuid), LINES);
+}
+
+/**
+ * A draft started on this phone: for which client, and when. It takes its
+ * number when it reaches the server, and the lines added to it name it by its
+ * client_uuid until then.
+ */
+export type DraftEntry = {
+	client_uuid: string;
+	entity_id: string;
+	/** The client's name, for showing until the server has it. */
+	who: string;
+};
+
+export type QueuedDraft = {
+	draft: DraftEntry;
+	queued_at: number;
+	refused?: Refusal;
+};
+
+/** Writes a draft. Resolves once it is committed. */
+export async function enqueueDraft(d: DraftEntry): Promise<void> {
+	keep();
+	await tx(
+		'readwrite',
+		(s) => s.put({ draft: d, queued_at: Date.now() } satisfies QueuedDraft),
+		DRAFTS
+	);
+}
+
+async function allDrafts(): Promise<QueuedDraft[]> {
+	const rows = (await tx<QueuedDraft[]>('readonly', (s) => s.getAll(), DRAFTS)) ?? [];
+	return rows.sort((a, b) => a.queued_at - b.queued_at);
+}
+
+/** Every draft started on this phone and not yet arrived, oldest first. */
+export const draftsHeld = allDrafts;
+
+/** One draft started on this phone, while it waits. */
+export function findDraft(client_uuid: string): Promise<QueuedDraft | undefined> {
+	return tx<QueuedDraft>('readonly', (s) => s.get(client_uuid), DRAFTS);
+}
+
+/** Lets go of a draft started here, and of the lines on it. A person's decision. */
+export async function discardDraft(client_uuid: string): Promise<void> {
+	for (const q of await linesHeld(client_uuid)) await discardLine(q.line.client_uuid);
+	await tx('readwrite', (s) => s.delete(client_uuid), DRAFTS);
+}
+
+/** Everything on this phone waiting to send -- time, drafts and lines -- leaving out what was refused. */
+export async function waitingCount(): Promise<number> {
+	const [time, drafts, lines] = await Promise.all([held(), allDrafts(), allLines()]);
+	return (
+		time.waiting + drafts.filter((q) => !q.refused).length + lines.filter((q) => !q.refused).length
+	);
 }
 
 /** How long a queued entry took, in seconds: from its moments, or its minutes. */

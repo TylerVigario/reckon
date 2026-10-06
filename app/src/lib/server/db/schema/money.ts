@@ -55,6 +55,12 @@ export const invoice = pgTable(
 	'invoice',
 	{
 		id: id(),
+		/**
+		 * Made on the phone a draft was started on with no signal, so a retry
+		 * cannot start it twice. It takes its number when it reaches the server.
+		 * Null on one started there.
+		 */
+		clientUuid: uuid(),
 		number: text().notNull(),
 		entityId: uuid().notNull(),
 		status: text({ enum: INVOICE_STATUSES }).default('draft').notNull(),
@@ -84,6 +90,7 @@ export const invoice = pgTable(
 	},
 	(t) => [
 		unique('invoice_number_key').on(t.number),
+		unique('invoice_client_uuid_key').on(t.clientUuid),
 		unique('invoice_public_token_key').on(t.publicToken),
 		index('invoice_entity_status').on(t.entityId, t.status),
 		foreignKey({
@@ -141,6 +148,12 @@ export const invoiceLine = pgTable(
 		 */
 		unit: text(),
 		siteId: uuid(),
+		/**
+		 * The draft a line was added to on a phone, when that draft had gone out
+		 * by the time the line reached the server: the line started a new draft
+		 * for the client instead, and says where it was meant to go.
+		 */
+		movedFromInvoiceId: uuid(),
 		/** Who it was bought from or paid to: "Valley Hardware", "City of Woodland". */
 		boughtFrom: text(),
 		/** Who paid for it: a person, who is owed it back, or the business when empty. */
@@ -181,6 +194,11 @@ export const invoiceLine = pgTable(
 			name: 'invoice_line_material_id_fkey',
 			columns: [t.materialId],
 			foreignColumns: [material.id]
+		}).onDelete('restrict'),
+		foreignKey({
+			name: 'invoice_line_moved_from_invoice_id_fkey',
+			columns: [t.movedFromInvoiceId],
+			foreignColumns: [invoice.id]
 		}).onDelete('restrict'),
 		foreignKey({
 			name: 'invoice_line_site_id_fkey',

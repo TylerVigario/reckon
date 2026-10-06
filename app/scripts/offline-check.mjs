@@ -26,12 +26,17 @@
  *            the invoices list and the demo's draft, each saying how old it is,
  *            and adds a permit paid for the client, with its receipt: it waits
  *            on the phone, shown on the draft and in its total. Beside it goes
- *            a line drawing more raceway than the shelf has.
+ *            a line drawing more raceway than the shelf has. Then starts a new
+ *            draft for another client, which waits on the phone too, and adds
+ *            an equipment hire to it there.
+ *   (between, the job sends INV-0212, as if from another phone)
  *   back     opens a page, which posts the queue. The good entry goes; the other
  *            is refused, and must be kept, shown with the server's reason,
- *            open to be fixed, and gone only when discarded by hand. The permit
- *            reaches the draft with its receipt; the raceway is refused and
- *            kept the same way, on the draft. Then signs out, which must empty
+ *            open to be fixed, and gone only when discarded by hand. INV-0212
+ *            went out meanwhile, so the permit starts a new draft for the
+ *            client, with its receipt, and both say so; the raceway is refused
+ *            and kept the same way, on INV-0212. The draft started on the phone
+ *            arrives numbered, with its hire. Then signs out, which must empty
  *            the cache the worker kept.
  */
 const [, , base = 'http://127.0.0.1:5181', email, password, phase] = process.argv;
@@ -79,6 +84,23 @@ const send = (/** @type {string} */ method, /** @type {Record<string, unknown>} 
 const evaluate = async (/** @type {string} */ expression) =>
 	(await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result
 		?.result?.value;
+/**
+ * Runs `fn` in the page with `args` handed to it as values. The function's
+ * source is this file's own; nothing is written into it, so no value -- what a
+ * page said, read back -- can become code the page runs.
+ */
+const run = async (/** @type {Function} */ fn, /** @type {unknown[]} */ ...args) => {
+	const page = await send('Runtime.evaluate', { expression: 'globalThis' });
+	return (
+		await send('Runtime.callFunctionOn', {
+			objectId: page.result?.result?.objectId,
+			functionDeclaration: fn.toString(),
+			arguments: args.map((value) => ({ value })),
+			awaitPromise: true,
+			returnByValue: true
+		})
+	).result?.result?.value;
+};
 const settle = (ms = 1800) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -128,13 +150,15 @@ const stored = (/** @type {string} */ key) =>
  */
 const inQueue = (/** @type {string} */ body) =>
 	evaluate(`new Promise((resolve) => {
-		const req = indexedDB.open('reckon', 2);
+		const req = indexedDB.open('reckon', 3);
 		req.onupgradeneeded = () => {
 			const db = req.result;
 			if (!db.objectStoreNames.contains('queue'))
 				db.createObjectStore('queue', { keyPath: 'entry.client_uuid' });
 			if (!db.objectStoreNames.contains('lines'))
 				db.createObjectStore('lines', { keyPath: 'line.client_uuid' });
+			if (!db.objectStoreNames.contains('drafts'))
+				db.createObjectStore('drafts', { keyPath: 'draft.client_uuid' });
 		};
 		req.onerror = () => resolve(null);
 		req.onsuccess = () => {
@@ -173,7 +197,17 @@ const DRAFT = '/invoices/6f444d02-b482-4506-98fe-ee23f45d26c5';
 const SENT = '/invoices/2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a';
 /** The demo's raceway, of which 60 ft is on the shelf. */
 const RACEWAY = 'b144a78b-750a-4bd2-a84e-7d1551328565';
-const LISTED = ['/invoices', DRAFT, `${DRAFT}/add`];
+const LISTED = [
+	'/invoices',
+	'/invoices/new',
+	'/invoices/on-phone',
+	'/invoices/on-phone/add',
+	DRAFT,
+	`${DRAFT}/add`
+];
+/** The client a draft is started for on the phone, and where its uuid is kept between runs. */
+const STARTED_FOR = 'Valley Oak Veterinary';
+const STARTED = 'offline-check.draft';
 const banner = () =>
 	evaluate(`document.querySelector('.offline')?.textContent?.replace(/\\s+/g, ' ').trim() ?? ''`);
 const text = () => evaluate(`document.body.textContent.replace(/\\s+/g, ' ')`);
@@ -416,6 +450,62 @@ if (phase === 'offline') {
 		short === true && (await linesQueued())?.length === 2,
 		'more raceway than is left waits beside it'
 	);
+
+	// A draft for another client, started with no signal, and a hire added to it.
+	await go('/invoices/new');
+	check((await heading()).startsWith('New draft'), 'New draft opens with no server');
+	await evaluate(`(() => {
+		const s = document.querySelector('#n-client');
+		s.value = [...s.options].find((o) => o.textContent.trim() === ${JSON.stringify(STARTED_FOR)})?.value ?? '';
+		s.dispatchEvent(new Event('change', { bubbles: true }));
+	})()`);
+	check(await click('Start the draft'), 'the draft is started');
+	await settle(5500);
+	const landed = /** @type {string} */ (await evaluate('location.pathname + location.search'));
+	const uuid = new URL(landed, base).searchParams.get('draft') ?? '';
+	await run(
+		(/** @type {string} */ key, /** @type {string} */ value) => localStorage.setItem(key, value),
+		STARTED,
+		uuid
+	);
+	check(
+		landed.startsWith('/invoices/on-phone?draft=') &&
+			/Started on this phone\. It takes its number when it reaches the server\./.test(await text()),
+		'it waits on the phone, to take its number when it arrives'
+	);
+	await evaluate(
+		`[...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'Add a line')?.click()`
+	);
+	await settle(2000);
+	check(
+		(await heading()).startsWith('Add a line') && (await heading()).includes(STARTED_FOR),
+		'Add a line opens for it with no server'
+	);
+	await click('Paid for them');
+	await settle(200);
+	await evaluate(`(() => {
+		const set = (id, v) => {
+			const f = document.querySelector(id);
+			f.value = v;
+			f.dispatchEvent(new Event('input', { bubbles: true }));
+		};
+		set('#l-desc', 'Equipment hire');
+		set('#l-from', 'Valley Rentals');
+		set('#l-cost', '60.00');
+	})()`);
+	check(await click('Add the line'), 'a hire is added to it');
+	await settle(5500);
+	const onIt = /** @type {string} */ (await text());
+	check(
+		(await evaluate('location.pathname')) === '/invoices/on-phone' &&
+			/Equipment hire.*On this phone.*Due \$60\.00/.test(onIt),
+		'the draft on the phone shows it, and comes to $60.00'
+	);
+	await go('/invoices');
+	check(
+		new RegExp(`New draft · ${STARTED_FOR}.*On this phone.*1 line`).test(await text()),
+		'the invoices list shows the draft on the phone'
+	);
 }
 
 if (phase === 'back') {
@@ -472,19 +562,38 @@ if (phase === 'back') {
 	await settle(800);
 	check((await queued())?.length === 0, 'the second tap does');
 
-	// The lines went after the time: the permit is in, and the raceway is kept.
+	// The lines went after the time: the permit and the hire are in, and the
+	// raceway is kept.
 	const lines = (await linesQueued()) ?? [];
 	check(
 		lines.length === 1 && lines[0].description === 'Raceway · Surface · 3/4 in',
-		'the permit reaches the draft; the raceway is kept on the phone'
+		'the permit and the hire reach the server; the raceway is kept on the phone'
 	);
 	check(
 		/^Only \d+ ft of Raceway · Surface · 3\/4 in on the shelf\.$/.test(lines[0]?.refused ?? ''),
 		`with the reason "${lines[0]?.refused ?? ''}"`
 	);
+	// INV-0212 went out before the permit arrived: it started a new draft.
 	await go(DRAFT);
 	await settle(1500);
 	const page = /** @type {string} */ (await text());
+	const moved = /A line added to this on a phone after it went out is on (INV-\d+)\./.exec(page);
+	check(
+		(await heading()).startsWith('INV-0212') && moved !== null,
+		`INV-0212, sent meanwhile, says where the permit went${moved ? ` (${moved[1]})` : ''}`
+	);
+	check(
+		/Not added.*Raceway · Surface · 3\/4 in.*Refused: Only \d+ ft/.test(page),
+		'the raceway shows on it as not added, with the reason'
+	);
+	await run((/** @type {string} */ number) => {
+		const a = [...document.querySelectorAll('.why a')].find(
+			(x) => x.textContent?.trim() === number
+		);
+		/** @type {HTMLElement | undefined} */ (a)?.click();
+	}, moved?.[1] ?? '');
+	await settle(2000);
+	const fresh = /** @type {string} */ (await text());
 	const receipt = await evaluate(`(async () => {
 		const a = [...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'The receipt');
 		if (!a) return null;
@@ -492,16 +601,22 @@ if (phase === 'back') {
 		return { status: r.status, type: r.headers.get('content-type') };
 	})()`);
 	check(
-		page.includes('Paid for them · City of Woodland · the business paid · at cost') &&
-			!/Low-voltage permit[^$]*On this phone/.test(page) &&
-			receipt?.status === 200 &&
-			receipt.type === 'image/jpeg',
-		'the draft has the permit from the server, with its receipt'
+		(await heading()).startsWith(`Draft ${moved?.[1] ?? '?'}`) &&
+			/INV-0212 went out .* while a line added to it on a phone was on the way\. It could not join it, so this draft was started for Marisol Vega/.test(
+				fresh
+			),
+		'the new draft says why it was started'
 	);
 	check(
-		/Not added.*Raceway · Surface · 3\/4 in.*Refused: Only \d+ ft/.test(page),
-		'the raceway shows on the draft as not added, with the reason'
+		fresh.includes('Paid for them · City of Woodland · the business paid · at cost') &&
+			fresh.includes('Moved from INV-0212') &&
+			receipt?.status === 200 &&
+			receipt.type === 'image/jpeg',
+		'the permit is on it, moved from INV-0212, with its receipt'
 	);
+
+	await go(DRAFT);
+	await settle(1000);
 	await evaluate(
 		`[...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'Fix')?.click()`
 	);
@@ -509,13 +624,15 @@ if (phase === 'back') {
 	const fix = await evaluate(`({
 		heading: document.querySelector('h1')?.textContent?.trim() ?? '',
 		qty: document.querySelector('#l-qty')?.value ?? '',
-		why: document.querySelector('.why')?.textContent?.trim() ?? ''
+		why: [...document.querySelectorAll('.why')].map((w) => w.textContent.replace(/\\s+/g, ' ').trim())
 	})`);
 	check(
 		fix.heading.startsWith('Add a line') &&
 			fix.qty === '1000' &&
-			fix.why.startsWith('Refused: Only '),
-		`Fix opens it filled in, with the reason${fix.qty === '1000' ? '' : ` (${JSON.stringify(fix)})`}`
+			fix.why[0]?.startsWith('Refused: Only ') &&
+			fix.why[1] ===
+				'INV-0212 has gone out, so this line will start a new draft for Marisol Vega when it reaches the server.',
+		`Fix opens it filled in, with the reason and where it will go${fix.qty === '1000' ? '' : ` (${JSON.stringify(fix)})`}`
 	);
 	await go(DRAFT);
 	await settle(1000);
@@ -525,6 +642,26 @@ if (phase === 'back') {
 	await click('Tap again to discard');
 	await settle(800);
 	check((await linesQueued())?.length === 0, 'the second tap does');
+
+	// The draft started on the phone arrived, numbered, with its hire.
+	const drafts = await inQueue(`const all = db.transaction('drafts').objectStore('drafts').getAll();
+		all.onsuccess = () => done(all.result.length);
+		all.onerror = () => done(null);`);
+	const uuid = /** @type {string} */ (
+		await evaluate(`localStorage.getItem(${JSON.stringify(STARTED)}) ?? ''`)
+	);
+	await go(`/invoices/on-phone?draft=${encodeURIComponent(uuid)}`);
+	await settle(2000);
+	const arrived = /** @type {string} */ (await text());
+	check(
+		drafts === 0 &&
+			/^\/invoices\/[0-9a-f-]{36}$/.test(await evaluate('location.pathname')) &&
+			(await heading()).startsWith('Draft INV-') &&
+			(await heading()).includes(STARTED_FOR) &&
+			arrived.includes('Paid for them · Valley Rentals') &&
+			!arrived.includes('On this phone'),
+		'the draft started on the phone arrives numbered with its hire, and its screen gives way to it'
+	);
 
 	await evaluate(`document.querySelector('form[action="/logout"]')?.requestSubmit()`);
 	await settle(2500);

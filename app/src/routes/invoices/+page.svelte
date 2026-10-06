@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import Top from '#lib/Top.svelte';
 	import OfflineBanner from '#lib/OfflineBanner.svelte';
-	import { held, linesHeld } from '#lib/queue.ts';
+	import { draftsHeld, linesHeld, waitingCount, type QueuedDraft } from '#lib/queue.ts';
 	import { count, day } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
@@ -15,21 +15,26 @@
 	const who = $derived(data.operator?.short_name || 'you');
 	const sub = $derived(`${money(data.totals.owed)} out · ${money(data.totals.drafted)} in draft`);
 
-	// What is on this phone, waiting to send: lines by the draft they are for,
-	// and everything for the banner. The server cannot know them yet.
+	// What is on this phone, waiting to send: drafts started here, lines by the
+	// draft they are for -- its id, or the uuid it was started with on a phone
+	// -- and everything for the banner. The server cannot know them yet.
 	let onPhone = $state<Record<string, number>>({});
+	let started = $state<QueuedDraft[]>([]);
 	let waiting = $state(0);
 	onMount(() => {
-		void Promise.all([linesHeld(), held()]).then(
-			([lines, time]) => {
+		void Promise.all([linesHeld(), draftsHeld(), waitingCount()]).then(
+			([lines, drafts, count]) => {
 				const by: Record<string, number> = {};
 				for (const q of lines) by[q.line.invoice_id] = (by[q.line.invoice_id] ?? 0) + 1;
 				onPhone = by;
-				waiting = lines.filter((q) => !q.refused).length + time.waiting;
+				started = drafts;
+				waiting = count;
 			},
 			() => {}
 		);
 	});
+	const lines = (i: { id: string; client_uuid: string | null }) =>
+		(onPhone[i.id] ?? 0) + (i.client_uuid ? (onPhone[i.client_uuid] ?? 0) : 0);
 </script>
 
 <Top title="Invoices" {sub}>
@@ -59,13 +64,38 @@
 		</div>
 	</div>
 
-	{#if data.drafts.length}
+	{#if data.drafts.length || started.length}
 		<div class="sec">
 			<div class="sec-h">
 				<h2>Drafts</h2>
 				<a class="seeall" href={resolve('/invoices/ready')}>All {data.drafts.length}</a>
 			</div>
 			<div class="rows">
+				{#each started as q (q.draft.client_uuid)}
+					<a
+						class="rec link"
+						href={`${resolve('/invoices/on-phone')}?draft=${encodeURIComponent(q.draft.client_uuid)}`}
+					>
+						<div class="rec-m">
+							<div class="rec-t">New draft · {q.draft.who}</div>
+							<div class="rec-s">
+								{q.refused
+									? `Refused: ${q.refused.detail}`
+									: 'Takes its number when it reaches the server'}
+							</div>
+							<div class="rec-c">
+								<span class="chip acc"><span class="dot"></span>On this phone</span>
+								{#if onPhone[q.draft.client_uuid]}
+									<span class="chip"
+										>{onPhone[q.draft.client_uuid]}
+										{onPhone[q.draft.client_uuid] === 1 ? 'line' : 'lines'}</span
+									>
+								{/if}
+							</div>
+						</div>
+						<span class="arw" aria-hidden="true">›</span>
+					</a>
+				{/each}
 				{#each data.drafts as i (i.id)}
 					<a class="rec link" href={resolve('/invoices/[id]', { id: i.id })}>
 						<div class="rec-m">
@@ -73,10 +103,8 @@
 							<div class="rec-s">{i.kinds ?? 'no lines yet'}</div>
 							<div class="rec-c">
 								<span class="chip warn"><span class="dot"></span>Not sent</span>
-								{#if onPhone[i.id]}
-									<span class="chip acc"
-										><span class="dot"></span>{onPhone[i.id]} on this phone</span
-									>
+								{#if lines(i)}
+									<span class="chip acc"><span class="dot"></span>{lines(i)} on this phone</span>
 								{/if}
 							</div>
 						</div>

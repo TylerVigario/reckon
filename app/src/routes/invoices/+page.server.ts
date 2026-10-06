@@ -25,6 +25,7 @@ export const load: PageServerLoad = async () => {
 
 	const { rows } = await db.execute<{
 		id: string;
+		client_uuid: string | null;
 		number: string;
 		status: string;
 		who: string;
@@ -50,7 +51,8 @@ export const load: PageServerLoad = async () => {
 			  from ${pa} join ${p} on ${p.id} = ${pa.paymentId}
 			 group by 1
 		)
-		select ${i.id} as id, ${i.number} as number, ${i.status} as status, ${e.name} as who,
+		select ${i.id} as id, ${i.clientUuid} as client_uuid, ${i.number} as number,
+		       ${i.status} as status, ${e.name} as who,
 		       ${i.issuedOn}::text as issued_on, ${i.dueOn}::text as due_on,
 		       ${personalDay(i.sentAt)}::text as sent_on,
 		       s.paid_on::text as paid_on,
