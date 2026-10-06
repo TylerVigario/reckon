@@ -594,10 +594,11 @@ if (phase === 'back') {
 	}, moved?.[1] ?? '');
 	await settle(2000);
 	const fresh = /** @type {string} */ (await text());
+	// The permit's receipt, from its line's own screen.
 	const receipt = await evaluate(`(async () => {
-		const a = [...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'The receipt');
+		const a = [...document.querySelectorAll('a.rec.link')].find((a) => a.textContent.includes('City of Woodland'));
 		if (!a) return null;
-		const r = await fetch(a.href);
+		const r = await fetch(a.getAttribute('href') + '/receipt');
 		return { status: r.status, type: r.headers.get('content-type') };
 	})()`);
 	check(

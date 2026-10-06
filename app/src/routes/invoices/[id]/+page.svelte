@@ -17,6 +17,8 @@
 	let { data }: PageProps = $props();
 
 	const i = $derived(data.invoice);
+	/** The kinds of line added by hand, which open on a screen of their own. */
+	const BY_HAND: string[] = ['material', 'bought', 'paid_for'];
 
 	// LINES ON THIS PHONE: added here and waiting to send, or sent and refused.
 	// Read from the queue on mount -- the server cannot know them yet -- and
@@ -231,21 +233,36 @@
 						</div>
 						<span class="arw" aria-hidden="true">›</span>
 					</a>
+				{:else if BY_HAND.includes(l.kind)}
+					<!-- Added by hand: its own screen has its receipt, what it billed,
+					     its history, and -- on a draft -- changing it or taking it off. -->
+					<a
+						class="rec link"
+						href={resolve('/invoices/[id]/lines/[line]', { id: i.id, line: l.id })}
+					>
+						<div class="rec-m">
+							<div class="rec-t">{l.description}</div>
+							{#if l.detail}<div class="rec-s">{l.detail}{l.taxable ? ' · taxable' : ''}</div>{/if}
+							{#if l.receipt || l.moved_from}
+								<div class="rec-c">
+									{#if l.receipt}<span class="chip">Receipt</span>{/if}
+									{#if l.moved_from}<span class="chip">Moved from {l.moved_from}</span>{/if}
+								</div>
+							{/if}
+						</div>
+						<div class="rec-n">
+							<span class="rec-v">{money(l.amount)}</span>
+							<span class="rec-x">
+								{quantity(l.qty)}{l.unit ? ` ${l.unit}` : ''} × {quantity(l.unit_price)}
+							</span>
+						</div>
+						<span class="arw" aria-hidden="true">›</span>
+					</a>
 				{:else}
 					<div class="rec">
 						<div class="rec-m">
 							<div class="rec-t">{l.description}</div>
 							{#if l.detail}<div class="rec-s">{l.detail}{l.taxable ? ' · taxable' : ''}</div>{/if}
-							{#if l.receipt}
-								<div class="rec-s">
-									<a href={resolve('/invoices/[id]/lines/[line]/receipt', { id: i.id, line: l.id })}
-										>The receipt</a
-									>
-								</div>
-							{/if}
-							{#if l.moved_from}
-								<div class="rec-c"><span class="chip">Moved from {l.moved_from}</span></div>
-							{/if}
 						</div>
 						<div class="rec-n">
 							<span class="rec-v">{money(l.amount)}</span>
@@ -347,6 +364,31 @@
 					<div class="rec-m"><div class="rec-t">Due on the return</div></div>
 					<div class="rec-n"><span class="rec-v">{money(dueOnReturn)}</span></div>
 				</div>
+			</div>
+		</div>
+	{/if}
+
+	{#if data.takenOff.length}
+		<div class="sec">
+			<div class="sec-h"><h2>Taken off</h2></div>
+			<div class="rows">
+				{#each data.takenOff as g (g.id)}
+					<a
+						class="rec link"
+						href={resolve('/invoices/[id]/lines/[line]/history', { id: i.id, line: g.id })}
+					>
+						<div class="rec-m">
+							<div class="rec-t">{g.description}</div>
+							<div class="rec-s">
+								{g.who ?? 'Someone'} · {datedAt(g.at, personalZone())}, {clock(
+									g.at,
+									personalZone()
+								)}
+							</div>
+						</div>
+						<span class="arw" aria-hidden="true">›</span>
+					</a>
+				{/each}
 			</div>
 		</div>
 	{/if}

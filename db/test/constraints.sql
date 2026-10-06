@@ -1825,4 +1825,61 @@ SELECT must_fail($$
           35.00, 35.00, '7777eeee-7777-7777-7777-0000000000ff')
 $$, 'one saying it was meant for an invoice that never was');
 
+\echo ''
+\echo '=== 41. a line keeps its whole history ==='
+
+SELECT must_pass($$
+  SELECT set_config('reckon.user_id', 'a0a0a0a0-0000-4000-8000-0000000000a1', true);
+  INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
+                            bought_from, receipt, receipt_type)
+  VALUES ('41414141-0000-4000-8000-000000000001', '7777eeee-7777-7777-7777-777777777737', 70,
+          'bought', 'Anchors', 1, 'each', 4.00, 4.00, 'Valley Hardware',
+          '\xffd8ffe0'::bytea, 'image/jpeg');
+  DO $x$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM record_history
+                    WHERE row_id = '41414141-0000-4000-8000-000000000001' AND field = '(added)'
+                      AND changed_by = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+                      AND new_value::jsonb ->> 'description' = 'Anchors'
+                      AND new_value::jsonb ->> 'receipt' = '4 bytes, sha256 '
+                          || encode(sha256('\xffd8ffe0'::bytea), 'hex'))
+    THEN RAISE EXCEPTION 'its adding was not kept, with the receipt described'; END IF;
+  END $x$
+$$, 'adding a line keeps who added it and what it was, its receipt described');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
+                            bought_from)
+  VALUES ('41414141-0000-4000-8000-000000000002', '7777eeee-7777-7777-7777-777777777737', 71,
+          'paid_for', 'Low-voltage permit', 1, 'each', 35.00, 35.00, 'City of Woodland');
+  DO $x$ BEGIN
+    IF (SELECT new_value::jsonb ->> 'description' FROM record_history
+         WHERE row_id = '41414141-0000-4000-8000-000000000002' AND field = '(added)')
+       IS DISTINCT FROM 'Low-voltage permit'
+    THEN RAISE EXCEPTION 'a line with no receipt was not kept'; END IF;
+  END $x$
+$$, 'and one with no receipt, all the same');
+
+SELECT must_pass($$
+  UPDATE invoice_line SET description = 'Anchors, wall', qty = 2, amount = 8.00
+   WHERE id = '41414141-0000-4000-8000-000000000001';
+  DO $x$ BEGIN
+    IF (SELECT string_agg(field || ':' || old_value || '>' || new_value, ' ' ORDER BY field)
+          FROM record_history
+         WHERE row_id = '41414141-0000-4000-8000-000000000001' AND field NOT LIKE '(%')
+       <> 'amount:4.000>8.000 description:Anchors>Anchors, wall qty:1.0000>2.0000'
+    THEN RAISE EXCEPTION 'its change was not kept field by field'; END IF;
+  END $x$
+$$, 'changing it keeps each field, from what to what');
+
+SELECT must_pass($$
+  DELETE FROM invoice_line WHERE id = '41414141-0000-4000-8000-000000000001';
+  DO $x$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM record_history
+                    WHERE row_id = '41414141-0000-4000-8000-000000000001' AND field = '(deleted)'
+                      AND old_value::jsonb ->> 'description' = 'Anchors, wall'
+                      AND old_value NOT LIKE '%\\xffd8%')
+    THEN RAISE EXCEPTION 'its removal was not kept'; END IF;
+  END $x$
+$$, 'taking it off keeps what it was');
+
 \echo 'All guards hold.'

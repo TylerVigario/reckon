@@ -614,7 +614,9 @@ c += [note("n8", "Anyone who can sign in can see and change everything: "
                  "An included-hours figure is a client's, on their agreement, "
                  "and what is paid to whoever answers is a dated pay_rule.\n\n"
                  "record_history is append-only and exists to explain a figure,"
-                 " not to police one.", 40, 1000, 1300, 330)]
+                 " not to police one. An invoice line is followed from its birth: what it "
+                 "was when added, each field changed, and what it was when taken off, a "
+                 "receipt described rather than copied.", 40, 1000, 1300, 330)]
 files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 1370))
 
 for f in files:
