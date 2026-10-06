@@ -61,7 +61,9 @@ export const load: PageServerLoad = async () => {
 			select ${il.invoiceId} as invoice_id, count(*)::text as lines from ${il} group by 1
 		),
 		-- What the invoice is made of, in the order a reader expects to meet it:
-		-- the standing charge, then the work, then the driving, then the parts.
+		-- the standing charge, then the work, then the driving, then the parts,
+		-- whether drawn from stock or bought for the job, then what was paid for
+		-- them.
 		-- Mileage is a service billed by the mile, which is why the unit decides
 		-- it rather than the kind.
 		made_of as (
@@ -71,12 +73,14 @@ export const load: PageServerLoad = async () => {
 			           case when ${il.kind} = 'recurring' then 1
 			                when ${il.kind} = 'service' and ${il.unit} = 'mile' then 3
 			                when ${il.kind} = 'service' then 2
-			                when ${il.kind} = 'material' then 4
-			                else 5 end as ord,
+			                when ${il.kind} in ('material', 'bought') then 4
+			                when ${il.kind} = 'paid_for' then 5
+			                else 6 end as ord,
 			           case when ${il.kind} = 'recurring' then 'retainer'
 			                when ${il.kind} = 'service' and ${il.unit} = 'mile' then 'mileage'
 			                when ${il.kind} = 'service' then 'labour'
-			                when ${il.kind} = 'material' then 'materials'
+			                when ${il.kind} in ('material', 'bought') then 'materials'
+			                when ${il.kind} = 'paid_for' then 'expenses'
 			                else 'an adjustment' end as part
 			      from ${il}
 			  ) p

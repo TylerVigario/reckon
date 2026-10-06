@@ -120,6 +120,20 @@
       "when": 1791253797250,
       "tag": "0016_bought_and_paid_for",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791263999749,
+      "tag": "0017_stock_is_drawn",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791264073826,
+      "tag": "0018_a_line_names_its_material",
+      "breakpoints": true
     }
   ]
 }

@@ -289,6 +289,8 @@ export const materialLot = pgTable(
 		receiptType: text()
 	},
 	(t) => [
+		// What a draw names, so the lot it comes off is of the line's material.
+		unique('material_lot_id_material_id_key').on(t.id, t.materialId),
 		index('material_lot_open')
 			.on(t.materialId, t.receivedOn)
 			.where(sql`${t.qtyRemaining} > 0`),

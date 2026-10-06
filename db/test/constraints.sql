@@ -1666,4 +1666,117 @@ SELECT must_fail($$
   UPDATE operator SET purchase_markup_pct = -5
 $$, 'a markup on job purchases below nothing');
 
+\echo ''
+\echo '=== 38. a line drawn from stock takes it off the shelf, and gives it back ==='
+
+-- A spool of coax and a box of jacks, each received whole.
+INSERT INTO material (id, name, unit_id) VALUES
+  ('38383838-0000-4000-8000-0000000000aa','Keystone jack',(SELECT id FROM unit WHERE name = 'each'));
+INSERT INTO material_lot (id, material_id, received_on, supplier, qty_received, qty_remaining,
+                          ex_tax_cost) VALUES
+  ('38383838-0000-4000-8000-000000000001','66666666-6666-6666-6666-666666666666','2026-10-01',
+   'Delta Wholesale',100,100,31.00),
+  ('38383838-0000-4000-8000-000000000002','38383838-0000-4000-8000-0000000000aa','2026-10-01',
+   'Delta Wholesale',40,40,80.00),
+  ('38383838-0000-4000-8000-000000000003','66666666-6666-6666-6666-666666666666','2026-10-02',
+   'Delta Wholesale',100,100,35.00);
+INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
+                          material_id, ex_tax_cost, tax_paid) VALUES
+  ('38383838-0000-4000-8000-0000000000b1','7777eeee-7777-7777-7777-777777777737',50,'material',
+   'Coax',60,'foot',0.3720,22.32,'66666666-6666-6666-6666-666666666666',18.60,0),
+  ('38383838-0000-4000-8000-0000000000b2','7777eeee-7777-7777-7777-777777777737',51,'material',
+   'Coax',50,'foot',0.3720,18.60,'66666666-6666-6666-6666-666666666666',15.50,0);
+
+SELECT must_pass($$
+  INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty)
+  VALUES ('38383838-0000-4000-8000-0000000000b1','38383838-0000-4000-8000-000000000001',
+          '66666666-6666-6666-6666-666666666666',60);
+  DO $x$ BEGIN
+    IF (SELECT qty_remaining FROM material_lot WHERE id = '38383838-0000-4000-8000-000000000001') <> 40
+    THEN RAISE EXCEPTION 'the spool was not drawn down'; END IF;
+  END $x$
+$$, '60 ft drawn off a spool of 100, which leaves 40');
+
+SELECT must_fail($$
+  INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty)
+  VALUES ('38383838-0000-4000-8000-0000000000b2','38383838-0000-4000-8000-000000000001',
+          '66666666-6666-6666-6666-666666666666',50)
+$$, '50 ft drawn off the 40 left');
+
+SELECT must_fail($$
+  INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty)
+  VALUES ('38383838-0000-4000-8000-0000000000b2','38383838-0000-4000-8000-000000000002',
+          '66666666-6666-6666-6666-666666666666',5)
+$$, 'a line of coax drawing jacks');
+
+SELECT must_fail($$
+  INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty)
+  VALUES ('38383838-0000-4000-8000-0000000000b2','38383838-0000-4000-8000-000000000003',
+          '66666666-6666-6666-6666-666666666666',0)
+$$, 'a draw of nothing');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, material_id)
+  VALUES ('7777eeee-7777-7777-7777-777777777737', 52, 'service', 'Field service', 1, 95.00, 95.00,
+          '66666666-6666-6666-6666-666666666666')
+$$, 'a material named on an hour worked');
+
+SELECT must_pass($$
+  DELETE FROM invoice_line WHERE id = '38383838-0000-4000-8000-0000000000b1';
+  DO $x$ BEGIN
+    IF (SELECT qty_remaining FROM material_lot WHERE id = '38383838-0000-4000-8000-000000000001') <> 100
+    THEN RAISE EXCEPTION 'the spool did not get its 60 ft back'; END IF;
+  END $x$
+$$, 'taking the line off the draft puts its 60 ft back');
+
+-- A draft of its own, sent with a draw on it.
+INSERT INTO invoice (id, number, entity_id, created_by) VALUES
+  ('7777eeee-7777-7777-7777-777777777738','KFS-0438',
+   '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1');
+INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
+                          material_id, ex_tax_cost, tax_paid) VALUES
+  ('38383838-0000-4000-8000-0000000000b3','7777eeee-7777-7777-7777-777777777738',1,'material',
+   'Coax',10,'foot',0.3720,3.72,'66666666-6666-6666-6666-666666666666',3.10,0);
+INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty) VALUES
+  ('38383838-0000-4000-8000-0000000000b3','38383838-0000-4000-8000-000000000001',
+   '66666666-6666-6666-6666-666666666666',10);
+UPDATE invoice SET status = 'sent', issued_on = '2026-10-03', due_on = '2026-11-02', sent_at = now()
+ WHERE id = '7777eeee-7777-7777-7777-777777777738';
+
+SELECT must_fail($$
+  INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty)
+  VALUES ('38383838-0000-4000-8000-0000000000b3','38383838-0000-4000-8000-000000000003',
+          '66666666-6666-6666-6666-666666666666',5)
+$$, 'more drawn for a line on a sent invoice');
+
+SELECT must_fail($$
+  DELETE FROM stock_draw WHERE invoice_line_id = '38383838-0000-4000-8000-0000000000b3'
+$$, 'what a sent invoice drew, put back on the shelf');
+
+SELECT must_pass($$
+  INSERT INTO invoice (id, number, entity_id, created_by) VALUES
+    ('7777eeee-7777-7777-7777-777777777739','KFS-0439',
+     '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1');
+  INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
+                            material_id, ex_tax_cost, tax_paid) VALUES
+    ('38383838-0000-4000-8000-0000000000b4','7777eeee-7777-7777-7777-777777777739',1,'material',
+     'Coax',25,'foot',0.3720,9.30,'66666666-6666-6666-6666-666666666666',7.75,0);
+  INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty) VALUES
+    ('38383838-0000-4000-8000-0000000000b4','38383838-0000-4000-8000-000000000001',
+     '66666666-6666-6666-6666-666666666666',25);
+  DELETE FROM invoice WHERE id = '7777eeee-7777-7777-7777-777777777739';
+  DO $x$ BEGIN
+    IF (SELECT qty_remaining FROM material_lot WHERE id = '38383838-0000-4000-8000-000000000001') <> 90
+    THEN RAISE EXCEPTION 'the deleted draft kept its 25 ft'; END IF;
+  END $x$
+$$, 'a deleted draft gives back what it drew');
+
+SELECT must_pass($$
+  UPDATE operator SET stock_costing = 'oldest_first'
+$$, 'stock costed oldest first');
+
+SELECT must_fail($$
+  UPDATE operator SET stock_costing = 'newest_first'
+$$, 'a way of costing stock nobody named');
+
 \echo 'All guards hold.'

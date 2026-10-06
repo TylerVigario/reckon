@@ -254,9 +254,13 @@ T["invoice_line"] = [("PK","id","uuid"),("FK","invoice_id","uuid"),("","seq","in
     ("","tax_override_reason","text"),("","ex_tax_cost","numeric · snapshot"),
     ("","tax_paid","numeric · snapshot"),("","amount","numeric"),
     ("FK","time_entry_id","uuid"),("FK","trip_leg_id","uuid"),
-    ("FK","agreement_period_id","uuid"),("FK","material_lot_id","uuid"),
+    ("FK","agreement_period_id","uuid"),("FK","material_id","uuid · drawn from stock"),
     ("","bought_from","text · from whom"),("FK","paid_by","uuid · null = the business"),
     ("","receipt","bytea · photo or PDF"),("","receipt_type","text")]
+T["stock_draw"] = [("PK","invoice_line_id","uuid · with material_id"),
+    ("PK","material_lot_id","uuid · with material_id"),
+    ("FK","material_id","uuid · the line's, and the lot's"),
+    ("","qty","numeric · off this lot")]
 T["credit_note"] = [("PK","id","uuid"),("UK","number","text"),("FK","entity_id","uuid"),
     ("","issued_on","date"),("","amount","numeric"),
     ("","kind","reg1700b|correction|goodwill"),("","reason","text"),
@@ -289,6 +293,7 @@ T["operator"] = [("PK","id","uuid"),("","singleton","bool · one row only"),("",
     ("","next_invoice_number","int"),
     ("","default_terms_days","int"),("","ageing_alert_days","int"),
     ("","default_markup_pct","numeric · 25"),("","purchase_markup_pct","numeric · 0"),
+    ("","stock_costing","average|oldest_first"),
     ("","invoice_footer","text"),("","auto_send","bool"),
     ("","email_attaches_pdf","bool"),("","email_includes_payment_link","bool"),
     ("","tax_registration","text"),("","tax_agency","text"),
@@ -438,7 +443,8 @@ c += [note("n3", "A service is configured, not categorised: what it is charged p
                  "material_lot is where stock enters, and where the Reg 1701 "
                  "ex-tax purchase price is sourced. It keeps what all of it cost before "
                  "tax and in tax, as the receipt says them, and a unit's share is worked "
-                 "out from those; weighted-average cost needs lots to average. paid_by "
+                 "out from those. A line drawn from stock takes the oldest lots first, and "
+                 "qty_remaining follows what it took (stock_draw). paid_by "
                  "is whoever paid out of their own pocket and is owed it back, or the "
                  "business when empty.\n\n"
                  "A material is counted in one of the operator's units -- each, the foot, "
@@ -512,8 +518,11 @@ files.append(write("05-agreements.drawio", "Agreements", c, 1620, 1060))
 
 # 06 -- money out
 c = at("invoice",40,60) + at("invoice_line",440,60) + at("credit_note",880,60) \
-  + at("credit_application",880,300) + at("entity",40,430) + at("site",440,660)
+  + at("credit_application",880,300) + at("entity",40,430) + at("site",440,660) \
+  + at("stock_draw",880,860) + at("material_lot",1240,860)
 c += [edge("e60","invoice","invoice_line","is made of"),
+      edge("e65","invoice_line","stock_draw","drew"),
+      edge("e66","stock_draw","material_lot","comes off"),
       edge("e61","entity","credit_note","holds"),
       edge("e62","credit_note","credit_application","is spent by",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=1")
@@ -531,6 +540,11 @@ c += [note("n6", "A tax override is stored per line, so one invoice can carry li
                  "an invoice.\n\n"
                  "One provenance FK per line, or none, so the return groups by "
                  "what produced each line.\n\n"
+                 "A line drawn from stock names its material, and stock_draw what it took "
+                 "off each lot, oldest first; a trigger takes that off the lot's "
+                 "qty_remaining and puts it back if the draw goes. It is costed at the "
+                 "average of what is on the shelf, or the oldest first, as "
+                 "operator.stock_costing says, and keeps the cost it was drawn at.\n\n"
                  "unit is what qty counts, frozen at issue like tax_rate_pct, so a line "
                  "keeps its unit if the service is later changed. Null when "
                  "the quantity counts nothing, as on a flat charge or an adjustment.\n\n"

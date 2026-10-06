@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 /**
- * Proves lines are added to a draft: goods bought for the job, and a cost paid
- * on the client's behalf, each saying who paid, with a receipt.
+ * Proves lines are added to a draft: goods drawn from stock, goods bought for
+ * the job, and a cost paid on the client's behalf, each bought or paid for
+ * saying who paid, with a receipt.
  *
  *   node scripts/lines-check.mjs <base-url> <email> <password>
  *
- * A draft is started for a client, which takes the next invoice number. Jacks
- * bought at Valley Hardware for 33.33 with 2.67 tax, passed on as they cost and
- * taxed at the site's 8%, and a 35.00 permit paid for them, untaxed, make the
- * mock's draft: 71.00 due. What a line will bill shows as it is typed, and the
- * receipt is read back from its link.
+ * A draft is started for a client, which takes the next invoice number. 10 ft
+ * of raceway drawn from the 60 ft on the shelf, at the average of $0.85 a foot
+ * and the demo's 25% markup; jacks bought at Valley Hardware for 33.33 with
+ * 2.67 tax, passed on as they cost; both taxed at the site's 8%; and a 35.00
+ * permit paid for them, untaxed. What a line will bill shows as it is typed, a
+ * draw larger than the shelf is refused before it is sent, the receipt is read
+ * back from its link, and the raceway's shelf is 10 ft shorter.
  *
  * Uses the browser on 9222, as console-check does.
  */
@@ -19,9 +22,10 @@ if (!base || !email || !password) {
 	process.exit(2);
 }
 
-/** The client, and the site whose rate the goods are taxed at. */
+/** The client, the site whose rate the goods are taxed at, and what is drawn. */
 const CLIENT = 'Harbor Light Dental';
 const SITE = 'Woodland office';
+const RACEWAY = 'Raceway · Surface · 3/4 in';
 
 const targets = /** @type {{ type: string; webSocketDebuggerUrl: string }[]} */ (
 	await (await fetch('http://127.0.0.1:9222/json')).json()
@@ -163,9 +167,53 @@ check(
 	`a draft is started, and takes a number${/\d/.test(heading) ? ` (${heading.trim()})` : ''}`
 );
 
+// Raceway off the shelf: stock comes first where there is any.
+await press('Add a line');
+await settle(2500);
+check(
+	(await evaluate(`document.querySelector('.seg button.on')?.textContent.trim()`)) === 'From stock',
+	'a line is from stock unless it is said otherwise'
+);
+await choose('#l-site', SITE);
+await set('#l-find', 'raceway');
+await settle(200);
+const picked = await run((/** @type {string} */ name) => {
+	const b = [...document.querySelectorAll('.pick button.rec')].find(
+		(x) => x.querySelector('.rec-t')?.textContent?.trim() === name
+	);
+	/** @type {HTMLElement | undefined} */ (b)?.click();
+	return !!b;
+}, RACEWAY);
+await set('#l-qty', '1000');
+await settle(300);
+const short = /** @type {string} */ (await formText());
+check(
+	picked && short.includes('Only 60 ft on the shelf.'),
+	`more than is on the shelf is refused as it is typed${picked ? '' : ', but the raceway is not offered'}`
+);
+await set('#l-qty', '10');
+await settle(300);
+const drew = /** @type {string} */ (await formText());
+const named = await evaluate(`document.querySelector('#l-desc')?.value`);
+const costed =
+	drew.includes('$10.63, $1.0625 per ft') &&
+	drew.includes('$0.85 at 8.000%') &&
+	drew.includes('$8.50 and') &&
+	drew.includes('at the average') &&
+	drew.includes('Left after 50 ft');
+check(
+	costed && named === RACEWAY,
+	`10 ft is costed at the average, marked up, taxed, and named after the item${costed ? '' : ` (${drew})`}`
+);
+await press('Add the line');
+await settle(3000);
+check((await evaluate('location.pathname')) === draft, 'the line is drawn, and the draft opens');
+
 // Goods bought for the job, paid for by the first person on the list.
 await press('Add a line');
 await settle(2500);
+await press('Bought');
+await settle(200);
 await choose('#l-site', SITE);
 await set('#l-desc', 'Keystone jacks ×12, faceplates ×3');
 await set('#l-from', 'Valley Hardware');
@@ -231,10 +279,11 @@ const said =
 	/Bought · Valley Hardware · [^·]+ paid · taxable/.test(page) &&
 	page.includes('Paid for them · City of Woodland · the business paid · at cost');
 check(
-	said,
+	said && page.includes('From stock · Delta Wholesale · taxable'),
 	`each line says what it is, from whom, and who paid${said ? '' : ` (${page.slice(0, 600)})`}`
 );
-check(page.includes('$71.00'), 'the draft comes to $71.00: $33.33, $35.00 and $2.67 tax');
+// 33.33 and 10.63 taxed at 8% is 3.5168: $3.52.
+check(page.includes('$82.48'), 'the draft comes to $82.48: $10.63, $33.33, $35.00 and $3.52 tax');
 const receipt = await evaluate(`(async () => {
 	const a = [...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'The receipt');
 	if (!a) return null;
@@ -244,6 +293,18 @@ const receipt = await evaluate(`(async () => {
 check(
 	receipt?.status === 200 && receipt.type === 'image/jpeg',
 	`the receipt is kept on its line${receipt ? '' : ', but there is no link to it'}`
+);
+
+await go('/catalogue/materials');
+const shelf = await run((/** @type {string} */ name) => {
+	const row = [...document.querySelectorAll('.rec')].find(
+		(r) => r.querySelector('.rec-t')?.textContent?.trim() === name
+	);
+	return row?.querySelector('.rec-x')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+}, RACEWAY);
+check(
+	shelf === '50 ft',
+	`the raceway's shelf is 10 ft shorter${shelf === '50 ft' ? '' : ` (${shelf})`}`
 );
 
 check(
@@ -256,4 +317,6 @@ if (failures.length) {
 	for (const f of failures) console.error(`  ✗ ${line(f)}`);
 	process.exit(1);
 }
-console.log('\nLines are added to a draft, with who paid and their receipts.');
+console.log(
+	'\nLines are added to a draft: drawn from stock, and bought or paid for with receipts.'
+);

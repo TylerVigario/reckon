@@ -89,11 +89,12 @@ INSERT INTO material (id, sku, name, brand, unit_id, markup_pct, taxable) VALUES
   ('cf86d35e-06ad-4d9d-b3e9-104390b24ea0','FL-LC-3M','Fibre patch lead · LC-LC · 3 m','Cordwell',(SELECT id FROM unit WHERE name = 'each'),30.0,true);
 
 -- What each lot cost, before tax and in tax, as its receipt says: six access
--- points for 672.00 and 48.72 tax, and so on.
+-- points for 672.00 and 48.72 tax, and so on. Each arrives whole; what the
+-- invoices below draw comes off it.
 INSERT INTO material_lot (id, material_id, received_on, supplier, qty_received, qty_remaining,
                           ex_tax_cost, tax_paid) VALUES
-  ('c0ac1e19-b1d7-4e4c-9805-95e66944db65','427ec8a1-9038-4fca-9323-ca62625622a3', current_date - 90,'Delta Wholesale', 6, 4, 672.00, 48.72),
-  ('c751f2ae-b0b1-4c59-af97-96438b6bfa47','b144a78b-750a-4bd2-a84e-7d1551328565', current_date - 90,'Delta Wholesale', 100, 60, 85.00, 6.16),
+  ('c0ac1e19-b1d7-4e4c-9805-95e66944db65','427ec8a1-9038-4fca-9323-ca62625622a3', current_date - 90,'Delta Wholesale', 6, 6, 672.00, 48.72),
+  ('c751f2ae-b0b1-4c59-af97-96438b6bfa47','b144a78b-750a-4bd2-a84e-7d1551328565', current_date - 90,'Delta Wholesale', 100, 100, 85.00, 6.16),
   ('69340fe1-83e7-4892-8736-45a72715d6ef','cf86d35e-06ad-4d9d-b3e9-104390b24ea0', current_date - 12,'Delta Wholesale', 20, 20, 84.00, 6.09);
 
 -- ------------------------------------------------------------ who it serves --
@@ -325,15 +326,20 @@ INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_pr
   ('6f444d02-b482-4506-98fe-ee23f45d26c5',1,'service','Field service',1.5,'hour',95.00,142.50,false,0,NULL,NULL),
   ('6f444d02-b482-4506-98fe-ee23f45d26c5',2,'service','Travel',18.0,'mile',0.66,11.88,false,0,NULL,NULL);
 
--- Goods lines name the site whose rate taxes them and the lot each came from,
--- with that lot's cost before tax and the tax already paid on it.
-INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_price, amount,
-                          taxable, tax_rate_pct, tax_source, site_id, material_lot_id,
+-- Goods lines name the site whose rate taxes them and the material each is,
+-- with what it cost before tax and the tax already paid on it. What each took
+-- off its lot is a draw, which takes it off the shelf.
+INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
+                          taxable, tax_rate_pct, tax_source, site_id, material_id,
                           ex_tax_cost, tax_paid) VALUES
-  ('2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a',1,'material','Access point · Wi-Fi 6 · Ceiling',
-   2,'each',132.16,264.32,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','c0ac1e19-b1d7-4e4c-9805-95e66944db65', 224.00, 16.24),
-  ('2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a',2,'material','Raceway · Surface · 3/4 in',
-   40,'foot',1.06,42.40,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','c751f2ae-b0b1-4c59-af97-96438b6bfa47', 34.00, 2.46);
+  ('a0ca5d14-192f-43eb-9652-48e6fe145e67','2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a',1,'material','Access point · Wi-Fi 6 · Ceiling',
+   2,'each',132.16,264.32,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','427ec8a1-9038-4fca-9323-ca62625622a3', 224.00, 16.24),
+  ('46c02ef2-14c7-4043-9321-34a0ecd99100','2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a',2,'material','Raceway · Surface · 3/4 in',
+   40,'foot',1.06,42.40,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','b144a78b-750a-4bd2-a84e-7d1551328565', 34.00, 2.464);
+
+INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty) VALUES
+  ('a0ca5d14-192f-43eb-9652-48e6fe145e67','c0ac1e19-b1d7-4e4c-9805-95e66944db65','427ec8a1-9038-4fca-9323-ca62625622a3', 2),
+  ('46c02ef2-14c7-4043-9321-34a0ecd99100','c751f2ae-b0b1-4c59-af97-96438b6bfa47','b144a78b-750a-4bd2-a84e-7d1551328565', 40);
 
 UPDATE invoice i SET status = 'sent', issued_on = d.issued, due_on = d.issued + 30,
                      sent_at = d.issued::timestamptz

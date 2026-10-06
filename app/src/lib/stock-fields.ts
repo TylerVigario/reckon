@@ -57,13 +57,23 @@ export function readLot(fields: Record<string, unknown>, places: number | null) 
 	const errors: Record<string, string> = { ...lot.errors, ...(fresh?.errors ?? {}) };
 	const qty = lot.values.qty_received;
 	if (typeof qty === 'string' && !errors.qty_received) {
-		const [, after = ''] = qty.split('.');
-		if (!/[1-9]/.test(qty)) errors.qty_received = 'Something has to have arrived.';
-		else if (places !== null && after.replace(/0+$/, '').length > places)
-			errors.qty_received =
-				places === 0
-					? 'Whole numbers in this unit.'
-					: `At most ${places} decimal place${places === 1 ? '' : 's'} in this unit.`;
+		const why = countError(qty, places, 'Something has to have arrived.');
+		if (why) errors.qty_received = why;
 	}
 	return { values: lot.values, material: fresh?.values ?? null, errors };
+}
+
+/**
+ * What is wrong with a quantity of something, or null: it is nothing, or it
+ * has more places than its unit counts in. `places` is the unit's, or null
+ * when no unit is known yet.
+ */
+export function countError(qty: string, places: number | null, nothing: string): string | null {
+	const [, after = ''] = qty.split('.');
+	if (!/[1-9]/.test(qty)) return nothing;
+	if (places !== null && after.replace(/0+$/, '').length > places)
+		return places === 0
+			? 'Whole numbers in this unit.'
+			: `At most ${places} decimal place${places === 1 ? '' : 's'} in this unit.`;
+	return null;
 }
