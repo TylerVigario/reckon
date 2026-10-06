@@ -1,6 +1,6 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Entry, LineEntry } from './queue.ts';
+import type { ChangeEntry, Entry, LineEntry } from './queue.ts';
 
 const entry = (client_uuid: string, extra: Partial<Entry> = {}): Entry => ({
 	client_uuid,
@@ -344,5 +344,82 @@ describe('a draft started on the phone', () => {
 		await q.enqueueLine(line('permit', { invoice_id: 'phone-draft' }));
 		await q.discardDraft('phone-draft');
 		expect([await q.draftsHeld(), await q.linesHeld()]).toEqual([[], []]);
+	});
+});
+
+describe('a change to a line the server has', () => {
+	const change = (extra: Partial<ChangeEntry> = {}): ChangeEntry => ({
+		line_id: 'cable',
+		invoice_id: 'd',
+		act: 'change',
+		version: 2,
+		base: { qty: '147' },
+		fields: { qty: '152' },
+		made_at: '2026-10-06T21:30:00.000Z',
+		shown: line('x').shown,
+		...extra
+	});
+
+	it('goes last, saying the save it began from and the line then', async () => {
+		await q.enqueueChange(change());
+		await q.enqueueLine(line('permit'));
+		const sent: string[] = [];
+		let form: FormData | null = null;
+		vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
+			sent.push(`${init.method} ${url}`);
+			if (url === '/api/lines/cable') form = init.body as FormData;
+			return answer(200, {});
+		});
+		await q.flush();
+		expect(sent).toEqual(['POST /api/lines', 'PATCH /api/lines/cable']);
+		const f = form as unknown as FormData;
+		expect([f.get('qty'), f.get('version'), f.get('base'), f.get('made_at')]).toEqual([
+			'152',
+			'2',
+			'{"qty":"147"}',
+			'2026-10-06T21:30:00.000Z'
+		]);
+	});
+
+	it('changed again before it goes, still begins where the first did', async () => {
+		await q.enqueueChange(change());
+		await q.enqueueChange(change({ version: 3, base: { qty: '152' }, fields: { qty: '160' } }));
+		const kept = await q.findChange('cable');
+		expect([kept?.change.version, kept?.change.base, kept?.change.fields]).toEqual([
+			2,
+			{ qty: '147' },
+			{ qty: '160' }
+		]);
+	});
+
+	it('is kept with what it ran into, and not sent again until a person decides', async () => {
+		await q.enqueueChange(change());
+		vi.stubGlobal('fetch', () =>
+			answer(409, {
+				status: 409,
+				detail: 'A field needs a choice.',
+				conflict: { what: 'collided' }
+			})
+		);
+		expect(await q.flush()).toEqual({ sent: 0, refused: 1 });
+		expect((await q.findChange('cable'))?.refused?.conflict).toEqual({ what: 'collided' });
+		let asked = false;
+		vi.stubGlobal('fetch', () => {
+			asked = true;
+			return answer(200, {});
+		});
+		await q.flush();
+		expect(asked).toBe(false);
+	});
+
+	it('taken off, goes as a removal at the save it was taken off at', async () => {
+		await q.enqueueChange(change({ act: 'remove' }));
+		let asked = '';
+		vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
+			asked = `${init.method} ${url}`;
+			return answer(200, {});
+		});
+		await q.flush();
+		expect(asked).toBe('DELETE /api/lines/cable?version=2&made_at=2026-10-06T21%3A30%3A00.000Z');
 	});
 });

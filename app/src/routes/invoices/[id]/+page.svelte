@@ -5,7 +5,17 @@
 	import { currencyPlaces } from '#lib/currency.ts';
 	import Top from '#lib/Top.svelte';
 	import OfflineBanner from '#lib/OfflineBanner.svelte';
-	import { discardLine, flush, linesHeld, waitingCount, type QueuedLine } from '#lib/queue.ts';
+	import {
+		changesHeld,
+		discardChange,
+		discardLine,
+		enqueueChange,
+		flush,
+		linesHeld,
+		waitingCount,
+		type QueuedChange,
+		type QueuedLine
+	} from '#lib/queue.ts';
 	import { draftTotals } from '#lib/draft-totals.ts';
 	import { warm } from '#lib/warm.ts';
 	import { clock, datedAt, day, monthOf, pct, quantity, rateParts } from '#lib/format.ts';
@@ -25,12 +35,40 @@
 	// again whenever the queue sends, when what it took comes back as the
 	// server's own lines.
 	let onPhone = $state<QueuedLine[]>([]);
+	// Changes made on this phone to lines the server has, by line.
+	let changes = $state<QueuedChange[]>([]);
+	const changeOf = $derived(new Map(changes.map((q) => [q.change.line_id, q])));
+	// A change to a line someone took off while this phone was offline: put it
+	// back with the change, or let the change go.
+	const putBack = $derived(changes.filter((q) => q.refused?.conflict?.what === 'removed'));
+	let stored = $state('');
+	async function restore(q: QueuedChange) {
+		// A plain copy: what is kept in state is a proxy, which the phone's
+		// database cannot store.
+		try {
+			await enqueueChange({ ...$state.snapshot(q.change), act: 'restore' }, true);
+		} catch {
+			stored = 'This phone would not save that, so the line is not put back yet.';
+			return;
+		}
+		await send();
+		await invalidateAll();
+	}
+	async function letChangeGo(q: QueuedChange) {
+		await discardChange(q.change.line_id).catch(() => {});
+		await read();
+	}
 	let waiting = $state(0);
 	async function read() {
 		try {
-			const [all, count] = await Promise.all([linesHeld(), waitingCount()]);
+			const [all, count, mine] = await Promise.all([
+				linesHeld(),
+				waitingCount(),
+				changesHeld(i.id)
+			]);
 			// Its own, by its id or by the uuid it was started with on a phone.
 			onPhone = all.filter((q) => [i.id, i.client_uuid].includes(q.line.invoice_id));
+			changes = mine;
 			waiting = count;
 		} catch {
 			/* a phone that will not open its queue shows the server's lines alone */
@@ -71,19 +109,29 @@
 
 	// THE TOTALS, with what is on this phone in them (#lib/draft-totals).
 	// Nothing waiting, and they are the server's own figures.
+	// A change waiting on this phone counts as made; a line taken off here, as
+	// gone.
+	const waitingChanges = $derived(changes.filter((q) => !q.refused));
 	const t = $derived(
-		pending.length === 0
+		pending.length === 0 && waitingChanges.length === 0
 			? data.totals
 			: {
 					...data.totals,
 					...draftTotals(
 						[
-							...data.lines.map((l) => ({
-								kind: l.kind,
-								amount: l.amount,
-								taxable: l.taxable,
-								rate: l.tax_rate_pct
-							})),
+							...data.lines.flatMap((l) => {
+								const c = changeOf.get(l.id);
+								if (c && !c.refused && c.change.act === 'remove') return [];
+								const shown = c && !c.refused && c.change.act === 'change' ? c.change.shown : null;
+								return [
+									{
+										kind: l.kind,
+										amount: shown?.amount ?? l.amount,
+										taxable: shown?.taxable ?? l.taxable,
+										rate: shown?.tax_rate_pct ?? l.tax_rate_pct
+									}
+								];
+							}),
 							...pending.map((q) => ({
 								kind: q.line.shown.kind,
 								amount: q.line.shown.amount,
@@ -167,6 +215,35 @@
 			<a href={resolve('/invoices/[id]', { id: m.id })}>{m.number}</a>.
 		</p>
 	{/each}
+	{#if stored}<p class="why">{stored}</p>{/if}
+	{#if putBack.length}
+		<div class="sec">
+			<div class="sec-h"><h2>Taken off while this phone was offline</h2></div>
+			<div class="rows">
+				{#each putBack as q (q.change.line_id)}
+					{@const gone = q.refused?.conflict}
+					<div class="rec crit">
+						<div class="rec-m">
+							<div class="rec-t">{q.change.shown.description}</div>
+							<div class="rec-s refusal">
+								{gone?.what === 'removed' ? (gone.by ?? 'Someone') : 'Someone'} took it off{gone?.what ===
+								'removed'
+									? ` at ${clock(gone.at, personalZone())}`
+									: ''}. Your change to it waits on this phone.
+							</div>
+							<div class="acts">
+								<button class="btn sm pri" onclick={() => restore(q)}
+									>Put it back, with your change</button
+								>
+								<button class="btn sm gho" onclick={() => letChangeGo(q)}>Let your change go</button
+								>
+							</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/if}
 	{#if kept.length}
 		<div class="sec">
 			<div class="sec-h"><h2>Not added</h2></div>
@@ -234,6 +311,7 @@
 						<span class="arw" aria-hidden="true">›</span>
 					</a>
 				{:else if BY_HAND.includes(l.kind)}
+					{@const c = changeOf.get(l.id)}
 					<!-- Added by hand: its own screen has its receipt, what it billed,
 					     its history, and -- on a draft -- changing it or taking it off. -->
 					<a
@@ -243,10 +321,23 @@
 						<div class="rec-m">
 							<div class="rec-t">{l.description}</div>
 							{#if l.detail}<div class="rec-s">{l.detail}{l.taxable ? ' · taxable' : ''}</div>{/if}
-							{#if l.receipt || l.moved_from}
+							{#if l.receipt || l.moved_from || c}
 								<div class="rec-c">
 									{#if l.receipt}<span class="chip">Receipt</span>{/if}
 									{#if l.moved_from}<span class="chip">Moved from {l.moved_from}</span>{/if}
+									{#if c?.refused?.conflict?.what === 'collided'}
+										<span class="chip warn"><span class="dot"></span>Changed in two places</span>
+									{:else if c?.refused?.conflict?.what === 'changed'}
+										<span class="chip warn"
+											><span class="dot"></span>Taken off here, changed since</span
+										>
+									{:else if c?.refused}
+										<span class="chip crit"><span class="dot"></span>Change refused</span>
+									{:else if c?.change.act === 'remove'}
+										<span class="chip acc"><span class="dot"></span>Taken off on this phone</span>
+									{:else if c}
+										<span class="chip acc"><span class="dot"></span>Changed on this phone</span>
+									{/if}
 								</div>
 							{/if}
 						</div>

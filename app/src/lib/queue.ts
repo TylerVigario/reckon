@@ -1,4 +1,5 @@
 import type { ProblemBody } from './problem.ts';
+import type { Conflict } from './line-conflict.ts';
 
 /**
  * The capture queue.
@@ -31,12 +32,20 @@ import type { ProblemBody } from './problem.ts';
  * may be for them: a line names its draft by the server's id, or by the uuid
  * the phone made for a draft started here. A line for a draft still waiting
  * waits with it.
+ *
+ * CHANGES to lines the server has -- a line changed, taken off, or put back --
+ * wait in a fourth, one to a line, and go last. Each says the save of the line
+ * it began from and the line's fields then, so the server can merge it with a
+ * change made meanwhile (#lib/line-merge). What a change runs into -- a field
+ * both changed, a line taken off -- is kept with it, as a refusal is, until a
+ * person decides (#lib/line-conflict).
  */
 const DB = 'reckon';
 const STORE = 'queue';
 const LINES = 'lines';
 const DRAFTS = 'drafts';
-type Store = typeof STORE | typeof LINES | typeof DRAFTS;
+const CHANGES = 'changes';
+type Store = typeof STORE | typeof LINES | typeof DRAFTS | typeof CHANGES;
 /** Where the queue lived before IndexedDB. Read once, emptied once moved. */
 const OLD_KEY = 'reckon.queue';
 
@@ -71,6 +80,8 @@ export type Refusal = {
 	detail: string;
 	/** Which field it was about, where the server said. */
 	errors?: Record<string, string>;
+	/** What a change to a line ran into, for a person to decide (#lib/line-conflict). */
+	conflict?: Conflict;
 };
 
 export type Queued = {
@@ -102,9 +113,10 @@ let opening: Promise<IDBDatabase> | null = null;
 
 function open(): Promise<IDBDatabase> {
 	opening ??= new Promise<IDBDatabase>((resolve, reject) => {
-		// 2: lines joined time entries; 3: drafts started here. A phone on an
-		// earlier one keeps what it has and gains the stores it lacks.
-		const req = indexedDB.open(DB, 3);
+		// 2: lines joined time entries; 3: drafts started here; 4: changes to
+		// lines. A phone on an earlier one keeps what it has and gains the stores
+		// it lacks.
+		const req = indexedDB.open(DB, 4);
 		req.onupgradeneeded = () => {
 			const db = req.result;
 			if (!db.objectStoreNames.contains(STORE))
@@ -113,6 +125,8 @@ function open(): Promise<IDBDatabase> {
 				db.createObjectStore(LINES, { keyPath: 'line.client_uuid' });
 			if (!db.objectStoreNames.contains(DRAFTS))
 				db.createObjectStore(DRAFTS, { keyPath: 'draft.client_uuid' });
+			if (!db.objectStoreNames.contains(CHANGES))
+				db.createObjectStore(CHANGES, { keyPath: 'change.line_id' });
 		};
 		req.onsuccess = () => {
 			// A later version opening this database in another tab has to be
@@ -269,6 +283,8 @@ const settleLine = (q: QueuedLine, next: QueuedLine | null) =>
 	settleIn(LINES, q.line.client_uuid, q, next);
 const settleDraft = (q: QueuedDraft, next: QueuedDraft | null) =>
 	settleIn(DRAFTS, q.draft.client_uuid, q, next);
+const settleChange = (q: QueuedChange, next: QueuedChange | null) =>
+	settleIn(CHANGES, q.change.line_id, q, next);
 
 async function reason(r: Response): Promise<Refusal> {
 	let body: Partial<ProblemBody> = {};
@@ -277,13 +293,15 @@ async function reason(r: Response): Promise<Refusal> {
 	} catch {
 		/* not a problem document; the status says enough */
 	}
+	const conflict = (body as { conflict?: unknown }).conflict;
 	return {
 		status: r.status,
 		detail:
 			typeof body.detail === 'string' && body.detail
 				? body.detail
 				: `The server refused it (${r.status}).`,
-		...(body.errors && typeof body.errors === 'object' ? { errors: body.errors } : {})
+		...(body.errors && typeof body.errors === 'object' ? { errors: body.errors } : {}),
+		...(conflict && typeof conflict === 'object' ? { conflict: conflict as Conflict } : {})
 	};
 }
 
@@ -360,6 +378,14 @@ async function post(): Promise<Flushed> {
 			(why) => settleLine(q, { ...q, refused: why }),
 			() => settleLine(q, null)
 		);
+		if (count(p) === 'offline') return { sent, refused };
+	}
+	for (const q of (await allChanges()).filter((q) => !q.refused)) {
+		const p = await postOne(
+			() => sendChange(q.change),
+			(why) => settleChange(q, { ...q, refused: why }),
+			() => settleChange(q, null)
+		);
 		if (count(p) === 'offline') break;
 	}
 	return { sent, refused };
@@ -368,7 +394,7 @@ async function post(): Promise<Flushed> {
 let chain: Promise<unknown> = Promise.resolve();
 
 /**
- * Posts everything waiting, oldest first: time, then drafts, then lines. One flush at a time: a second call
+ * Posts everything waiting, oldest first: time, then drafts, then lines, then changes. One flush at a time: a second call
  * runs after the first, so it sees whatever was queued before it was made, and
  * no entry is ever out on two posts at once.
  */
@@ -388,6 +414,8 @@ export type LineEntry = {
 	invoice_id: string;
 	fields: Record<string, string>;
 	receipt?: Blob | null;
+	/** When it was added, on this phone. */
+	made_at?: string;
 	/** What it is and what it will bill, as this phone worked them out: for showing. */
 	shown: ShownLine;
 };
@@ -423,6 +451,7 @@ function formOf(l: LineEntry): FormData {
 	f.set('client_uuid', l.client_uuid);
 	f.set('invoice_id', l.invoice_id);
 	for (const [k, v] of Object.entries(l.fields)) f.set(k, v);
+	if (l.made_at) f.set('made_at', l.made_at);
 	if (l.receipt) f.set('receipt', l.receipt, 'receipt');
 	return f;
 }
@@ -510,11 +539,103 @@ export async function discardDraft(client_uuid: string): Promise<void> {
 	await tx('readwrite', (s) => s.delete(client_uuid), DRAFTS);
 }
 
-/** Everything on this phone waiting to send -- time, drafts and lines -- leaving out what was refused. */
+/**
+ * A change to a line the server has: what it does, the save of the line it
+ * began from and the line's fields then, and the fields it leaves the line
+ * with. Put back, a line is added again with them.
+ */
+export type ChangeEntry = {
+	line_id: string;
+	invoice_id: string;
+	act: 'change' | 'remove' | 'restore';
+	version: number;
+	base: Record<string, string>;
+	fields: Record<string, string>;
+	receipt?: Blob | null;
+	/** Taken off even though someone changed it since. */
+	force?: boolean;
+	/** When it was made, on this phone. */
+	made_at: string;
+	/** The line as the draft shows it once changed: for showing, and its total. */
+	shown: ShownLine;
+};
+
+export type QueuedChange = {
+	change: ChangeEntry;
+	queued_at: number;
+	refused?: Refusal;
+};
+
+/** The request a change is sent as. */
+function sendChange(c: ChangeEntry): Promise<Response> {
+	if (c.act === 'remove') {
+		const q = new URLSearchParams({ version: String(c.version), made_at: c.made_at });
+		if (c.force) q.set('force', '1');
+		return fetch(`/api/lines/${c.line_id}?${q.toString()}`, { method: 'DELETE' });
+	}
+	const f = new FormData();
+	for (const [k, v] of Object.entries(c.fields)) f.set(k, v);
+	f.set('version', String(c.version));
+	f.set('base', JSON.stringify(c.base));
+	f.set('made_at', c.made_at);
+	if (c.receipt) f.set('receipt', c.receipt, 'receipt');
+	return c.act === 'restore'
+		? fetch(`/api/lines/${c.line_id}/restore`, { method: 'POST', body: f })
+		: fetch(`/api/lines/${c.line_id}`, { method: 'PATCH', body: f });
+}
+
+/**
+ * Writes a change to a line. Resolves once it is committed. A second change to
+ * a line whose first is still waiting replaces it, but keeps the save and the
+ * fields the first began from: the server merges against where this phone
+ * started, not against itself. `fresh` writes it as given -- a pick made
+ * against the line as the server now has it.
+ */
+export async function enqueueChange(c: ChangeEntry, fresh = false): Promise<void> {
+	keep();
+	const had = fresh ? undefined : await findChange(c.line_id);
+	const began = had && !had.refused ? { version: had.change.version, base: had.change.base } : {};
+	await tx(
+		'readwrite',
+		(s) => s.put({ change: { ...c, ...began }, queued_at: Date.now() } satisfies QueuedChange),
+		CHANGES
+	);
+}
+
+async function allChanges(): Promise<QueuedChange[]> {
+	const rows = (await tx<QueuedChange[]>('readonly', (s) => s.getAll(), CHANGES)) ?? [];
+	return rows.sort((a, b) => a.queued_at - b.queued_at);
+}
+
+/** Every change on this phone, waiting or run into something, oldest first; or one draft's. */
+export async function changesHeld(invoiceId?: string): Promise<QueuedChange[]> {
+	const rows = await allChanges();
+	return invoiceId ? rows.filter((q) => q.change.invoice_id === invoiceId) : rows;
+}
+
+/** The change waiting for one line. */
+export function findChange(line_id: string): Promise<QueuedChange | undefined> {
+	return tx<QueuedChange>('readonly', (s) => s.get(line_id), CHANGES);
+}
+
+/** Lets go of a change. A person's decision. */
+export async function discardChange(line_id: string): Promise<void> {
+	await tx('readwrite', (s) => s.delete(line_id), CHANGES);
+}
+
+/** Everything on this phone waiting to send -- time, drafts, lines and changes -- leaving out what was refused. */
 export async function waitingCount(): Promise<number> {
-	const [time, drafts, lines] = await Promise.all([held(), allDrafts(), allLines()]);
+	const [time, drafts, lines, changes] = await Promise.all([
+		held(),
+		allDrafts(),
+		allLines(),
+		allChanges()
+	]);
 	return (
-		time.waiting + drafts.filter((q) => !q.refused).length + lines.filter((q) => !q.refused).length
+		time.waiting +
+		drafts.filter((q) => !q.refused).length +
+		lines.filter((q) => !q.refused).length +
+		changes.filter((q) => !q.refused).length
 	);
 }
 

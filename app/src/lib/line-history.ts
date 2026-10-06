@@ -15,6 +15,8 @@ export type HistoryRow = {
 	new_value: string | null;
 	changed_by: string | null;
 	changed_at: string;
+	/** When it was made, where that was on a phone with no signal (0022). */
+	made_at?: string | null;
 };
 
 /**
@@ -39,10 +41,13 @@ export type Field = keyof typeof FIELDS;
 
 export type Change = { field: Field; from: string | null; to: string | null };
 
+/** Who did it, when it arrived, and when it was made where that was on a phone. */
+type When = { who: string | null; at: string; made_at: string | null };
+
 export type HistoryEvent =
-	| { what: 'added'; who: string | null; at: string; was: Record<string, unknown> }
-	| { what: 'changed'; who: string | null; at: string; changes: Change[] }
-	| { what: 'removed'; who: string | null; at: string; was: Record<string, unknown> };
+	| (When & { what: 'added'; was: Record<string, unknown>; again: boolean })
+	| (When & { what: 'changed'; changes: Change[] })
+	| (When & { what: 'removed'; was: Record<string, unknown> });
 
 const json = (v: string | null): Record<string, unknown> => {
 	try {
@@ -57,12 +62,15 @@ const json = (v: string | null): Record<string, unknown> => {
 export function eventsOf(rows: readonly HistoryRow[]): HistoryEvent[] {
 	const events: HistoryEvent[] = [];
 	for (const r of rows) {
+		const when = { who: r.changed_by, at: r.changed_at, made_at: r.made_at ?? null };
 		if (r.field === '(added)') {
-			events.push({ what: 'added', who: r.changed_by, at: r.changed_at, was: json(r.new_value) });
+			// Added after it was taken off is put back.
+			const again = events.some((e) => e.what === 'removed');
+			events.push({ what: 'added', ...when, was: json(r.new_value), again });
 			continue;
 		}
 		if (r.field === '(deleted)') {
-			events.push({ what: 'removed', who: r.changed_by, at: r.changed_at, was: json(r.old_value) });
+			events.push({ what: 'removed', ...when, was: json(r.old_value) });
 			continue;
 		}
 		if (!(r.field in FIELDS)) continue;
@@ -70,7 +78,7 @@ export function eventsOf(rows: readonly HistoryRow[]): HistoryEvent[] {
 		const change = { field: r.field as Field, from: r.old_value, to: r.new_value };
 		if (last?.what === 'changed' && last.at === r.changed_at && last.who === r.changed_by)
 			last.changes.push(change);
-		else events.push({ what: 'changed', who: r.changed_by, at: r.changed_at, changes: [change] });
+		else events.push({ what: 'changed', ...when, changes: [change] });
 	}
 	// In the order a form has them, within each change.
 	const order = Object.keys(FIELDS);

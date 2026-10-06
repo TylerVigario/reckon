@@ -20,7 +20,8 @@ export const load: PageServerLoad = async ({ params }) => {
 				old_value: h.oldValue,
 				new_value: h.newValue,
 				changed_by: h.changedBy,
-				changed_at: h.changedAt
+				changed_at: h.changedAt,
+				made_at: h.madeAt
 			})
 			.from(h)
 			.where(and(eq(h.tableName, 'invoice_line'), eq(h.rowId, params.line)))
@@ -81,7 +82,11 @@ export const load: PageServerLoad = async ({ params }) => {
 	return {
 		draft,
 		line: line ?? null,
-		rows: rows.map((r) => ({ ...r, changed_at: r.changed_at.toISOString() })),
+		rows: rows.map((r) => ({
+			...r,
+			changed_at: r.changed_at.toISOString(),
+			made_at: r.made_at?.toISOString() ?? null
+		})),
 		people: Object.fromEntries(named.map((p) => [p.id, p.name])),
 		sites: Object.fromEntries(sites.map((s) => [s.id, s.name ?? '']))
 	};

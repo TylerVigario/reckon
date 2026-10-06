@@ -28,16 +28,22 @@
  *            on the phone, shown on the draft and in its total. Beside it goes
  *            a line drawing more raceway than the shelf has. Then starts a new
  *            draft for another client, which waits on the phone too, and adds
- *            an equipment hire to it there.
- *   (between, the job sends INV-0212, as if from another phone)
+ *            an equipment hire to it there. Then, on lines-check's draft for
+ *            Harbor Light Dental, changes the jacks' description and cost, and
+ *            the permit's description: both wait on the phone.
+ *   (between, scripts/offline-meanwhile.sql: INV-0212 goes out, and Sam
+ *            changes the jacks' cost and supplier and takes the permit off)
  *   back     opens a page, which posts the queue. The good entry goes; the other
  *            is refused, and must be kept, shown with the server's reason,
  *            open to be fixed, and gone only when discarded by hand. INV-0212
  *            went out meanwhile, so the permit starts a new draft for the
  *            client, with its receipt, and both say so; the raceway is refused
  *            and kept the same way, on INV-0212. The draft started on the phone
- *            arrives numbered, with its hire. Then signs out, which must empty
- *            the cache the worker kept.
+ *            arrives numbered, with its hire. The jacks' description and
+ *            supplier merge, and their cost -- changed in two places -- is
+ *            picked from every value it has held; the permit, taken off
+ *            meanwhile, is put back with its change. Then signs out, which
+ *            must empty the cache the worker kept.
  */
 const [, , base = 'http://127.0.0.1:5181', email, password, phase] = process.argv;
 if (!['online', 'offline', 'back'].includes(phase ?? '')) {
@@ -150,7 +156,7 @@ const stored = (/** @type {string} */ key) =>
  */
 const inQueue = (/** @type {string} */ body) =>
 	evaluate(`new Promise((resolve) => {
-		const req = indexedDB.open('reckon', 3);
+		const req = indexedDB.open('reckon', 4);
 		req.onupgradeneeded = () => {
 			const db = req.result;
 			if (!db.objectStoreNames.contains('queue'))
@@ -159,6 +165,8 @@ const inQueue = (/** @type {string} */ body) =>
 				db.createObjectStore('lines', { keyPath: 'line.client_uuid' });
 			if (!db.objectStoreNames.contains('drafts'))
 				db.createObjectStore('drafts', { keyPath: 'draft.client_uuid' });
+			if (!db.objectStoreNames.contains('changes'))
+				db.createObjectStore('changes', { keyPath: 'change.line_id' });
 		};
 		req.onerror = () => resolve(null);
 		req.onsuccess = () => {
@@ -208,6 +216,16 @@ const LISTED = [
 /** The client a draft is started for on the phone, and where its uuid is kept between runs. */
 const STARTED_FOR = 'Valley Oak Veterinary';
 const STARTED = 'offline-check.draft';
+/** Where the lines changed with no signal are, kept between runs. */
+const CHANGED = 'offline-check.changed';
+/** The draft's line that says `name`: its own screen. */
+const lineHref = (/** @type {string} */ name) =>
+	run((/** @type {string} */ text) => {
+		const a = [...document.querySelectorAll('a.rec.link')].find(
+			(x) => x.querySelector('.rec-t')?.textContent?.trim() === text
+		);
+		return a ? a.getAttribute('href') : null;
+	}, name);
 const banner = () =>
 	evaluate(`document.querySelector('.offline')?.textContent?.replace(/\\s+/g, ' ').trim() ?? ''`);
 const text = () => evaluate(`document.body.textContent.replace(/\\s+/g, ' ')`);
@@ -226,18 +244,29 @@ if (phase === 'online') {
 	// when the page asks it to; a fresh load makes sure it is the one asked.
 	/** @type {string[]} */
 	let have = [];
-	const everyScreen = (/** @type {string[]} */ h) =>
-		[...OFFLINE, ...LISTED].every(
+	// Every screen the server listed, as well as the ones named here: the worker
+	// keeps a draft's line screens last, and the server goes before they are in.
+	const listed = () =>
+		evaluate(`(async () => {
+			const name = (await caches.keys()).find((k) => k.startsWith('pages-'));
+			const list = name ? await (await caches.open(name)).match('/api/offline') : undefined;
+			return list ? (await list.json()).screens : [];
+		})()`);
+	const everyScreen = (/** @type {string[]} */ h, /** @type {string[]} */ more) =>
+		[...OFFLINE, ...LISTED, ...more].every(
 			(p) => h.includes(p) && h.includes(`${p === '/' ? '' : p}/__data.json`)
 		);
-	for (let i = 0; i < 20 && !everyScreen(have); i++) {
+	/** @type {string[]} */
+	let screens = [];
+	for (let i = 0; i < 30 && !everyScreen(have, screens); i++) {
 		if (i === 4) await go('/');
 		await settle(1000);
 		have = (await kept()) ?? [];
+		screens = (await listed()) ?? [];
 	}
 	check(
-		everyScreen(have),
-		`the worker keeps the offline screens and their data, the drafts among them (${have.length} kept)`
+		everyScreen(have, screens) && screens.some((p) => p.includes('/lines/')),
+		`the worker keeps the offline screens and their data, the drafts and their lines among them (${have.length} kept)`
 	);
 	check(!have.includes(SENT), 'it keeps no invoice that has gone out');
 
@@ -506,6 +535,60 @@ if (phase === 'offline') {
 		new RegExp(`New draft · ${STARTED_FOR}.*On this phone.*1 line`).test(await text()),
 		'the invoices list shows the draft on the phone'
 	);
+
+	// Lines the server has, changed with no signal: on lines-check's draft, the
+	// only one for Harbor Light Dental.
+	const d13 = /** @type {string | null} */ (
+		await run(
+			() =>
+				[...document.querySelectorAll('a.rec.link')]
+					.find((a) => a.textContent?.includes('Harbor Light Dental'))
+					?.getAttribute('href') ?? null
+		)
+	);
+	await go(d13 ?? '/invoices');
+	const jacks = /** @type {string | null} */ (await lineHref('Keystone jacks ×12'));
+	const permit = /** @type {string | null} */ (await lineHref('Low-voltage permit'));
+	await run(
+		(/** @type {string} */ key, /** @type {string} */ value) => localStorage.setItem(key, value),
+		CHANGED,
+		JSON.stringify({ d13, jacks, permit })
+	);
+	await go(`${jacks}/change`);
+	check(
+		(await heading()).startsWith('Change the line'),
+		'a line on the server opens to be changed with no server'
+	);
+	await evaluate(`(() => {
+		const set = (id, v) => {
+			const f = document.querySelector(id);
+			f.value = v;
+			f.dispatchEvent(new Event('input', { bubbles: true }));
+		};
+		set('#l-desc', 'Keystone jacks ×12, tested');
+		set('#l-cost', '31.00');
+	})()`);
+	check(await click('Save the change'), 'the jacks are changed');
+	await settle(5500);
+	check(
+		(await evaluate('location.pathname')) === jacks &&
+			(await text()).includes('A change made on this phone waits to send.'),
+		'the change waits on the phone, and the line says so'
+	);
+	await go(`${permit}/change`);
+	await evaluate(`(() => {
+		const f = document.querySelector('#l-desc');
+		f.value = 'Low-voltage permit, LV-26-0418';
+		f.dispatchEvent(new Event('input', { bubbles: true }));
+	})()`);
+	await click('Save the change');
+	await settle(5500);
+	await go(d13 ?? '/invoices');
+	const marked = /** @type {string} */ (await text());
+	check(
+		(marked.match(/Changed on this phone/g) ?? []).length === 2,
+		'the draft marks both lines as changed on this phone'
+	);
 }
 
 if (phase === 'back') {
@@ -643,6 +726,66 @@ if (phase === 'back') {
 	await click('Tap again to discard');
 	await settle(800);
 	check((await linesQueued())?.length === 0, 'the second tap does');
+
+	// lines-check's lines, changed here while Sam changed them there.
+	const changed = /** @type {{ d13: string, jacks: string, permit: string }} */ (
+		JSON.parse(
+			/** @type {string} */ (
+				await evaluate(`localStorage.getItem(${JSON.stringify(CHANGED)}) ?? '{}'`)
+			)
+		)
+	);
+	await go(changed.d13);
+	await settle(1500);
+	const d13 = /** @type {string} */ (await text());
+	check(
+		d13.includes('Changed in two places') &&
+			/Taken off while this phone was offline.*Low-voltage permit, LV-26-0418.*Sam Ortega took it off/.test(
+				d13
+			),
+		'the draft says which change collided, and which line was taken off meanwhile'
+	);
+	await go(changed.jacks);
+	await settle(1000);
+	const collided = /** @type {string} */ (await text());
+	check(
+		/Description Merged.*Keystone jacks ×12, tested.*Only you changed it/.test(collided) &&
+			/From Merged.*Valley Hardware, Woodland.*Only Sam Ortega changed it/.test(collided) &&
+			/Cost before tax — pick one.*\$33\.33.*\$30\.00.*\$29\.00.*\$31\.00.*You · on this phone/.test(
+				collided
+			),
+		`the jacks' description and supplier merge, and their cost is picked from every value it has held${collided.includes('pick one') ? '' : ` (${collided.slice(0, 500)})`}`
+	);
+	check(await click('Keep these'), "the phone's cost is kept");
+	await settle(5500);
+	const settled = /** @type {string} */ (await text());
+	check(
+		(await heading()).startsWith('Keystone jacks ×12, tested') &&
+			settled.includes('From Valley Hardware, Woodland') &&
+			settled.includes('Charged $31.00') &&
+			!settled.includes('pick one'),
+		'the jacks have both changes, and the cost picked'
+	);
+	await go(changed.d13);
+	await settle(1000);
+	check(await click('Put it back, with your change'), 'the permit is put back');
+	await settle(5500);
+	await go(changed.d13);
+	await settle(1000);
+	const back = /** @type {string} */ (await text());
+	const permitBack = /** @type {string | null} */ (
+		await lineHref('Low-voltage permit, LV-26-0418')
+	);
+	check(
+		permitBack === changed.permit && !back.includes('Taken off while this phone was offline'),
+		'the permit is on the draft again, as the same line, with its change'
+	);
+	await go(`${changed.permit}/history`);
+	const story = /** @type {string} */ (await text());
+	check(
+		/Taken off the draft.*Sam Ortega.*Put back on the draft/.test(story),
+		'its history has Sam taking it off, and it being put back'
+	);
 
 	// The draft started on the phone arrived, numbered, with its hire.
 	const drafts = await inQueue(`const all = db.transaction('drafts').objectStore('drafts').getAll();

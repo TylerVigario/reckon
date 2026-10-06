@@ -28,6 +28,9 @@
 			? clock(ms, zone)
 			: `${datedAt(ms, zone)}, ${clock(ms, zone)}`;
 	};
+	/** Made on a phone well before it arrived: a minute is the trip, and a clock a little off. */
+	const madeHere = (made: string | null, at: string) =>
+		made !== null && Date.parse(at) - Date.parse(made) > 60_000;
 	/** A value as the line's own screen writes it. */
 	function said(field: Change['field'], v: string | null): string {
 		const is = FIELDS[field].is;
@@ -85,7 +88,7 @@
 				<div class="rec" class:gone={e.what === 'removed'}>
 					<div class="rec-m">
 						{#if e.what === 'added'}
-							<div class="rec-t">Added</div>
+							<div class="rec-t">{e.again ? 'Put back on the draft' : 'Added'}</div>
 							<div class="rec-s">{summary(e.was)}</div>
 						{:else if e.what === 'removed'}
 							<div class="rec-t">Taken off the draft</div>
@@ -98,7 +101,11 @@
 								</div>
 							{/each}
 						{/if}
-						<div class="rec-s who">{who(e.who)} · {when(e.at)}</div>
+						<div class="rec-s who">
+							{who(e.who)} · {madeHere(e.made_at, e.at)
+								? `made ${when(e.made_at!)} on a phone · arrived ${when(e.at)}`
+								: when(e.at)}
+						</div>
 					</div>
 				</div>
 			{/each}

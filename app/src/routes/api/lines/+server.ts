@@ -1,6 +1,6 @@
 import { UUID } from '#lib/field-rules.ts';
 import { refuse } from '#lib/server/field-errors.ts';
-import { addLine } from '#lib/server/lines.ts';
+import { addLine, answer, madeAt } from '#lib/server/lines.ts';
 import { problem } from '#lib/server/problem.ts';
 import type { RequestHandler } from './$types';
 
@@ -34,7 +34,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	const fields: Record<string, string> = {};
 	for (const [k, v] of form.entries())
-		if (typeof v === 'string' && k !== 'client_uuid' && k !== 'invoice_id') fields[k] = v;
+		if (typeof v === 'string' && !['client_uuid', 'invoice_id', 'made_at'].includes(k))
+			fields[k] = v;
 	const file = form.get('receipt');
 
 	const added = await addLine({
@@ -43,10 +44,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		fields,
 		receipt: file instanceof File ? file : null,
 		// Never from the body: who added it is whoever is signed in.
-		userId: locals.user!.id
+		userId: locals.user!.id,
+		madeAt: madeAt(text('made_at'))
 	});
-	if (added.ok) return Response.json({ id: added.id }, { status: 200 });
-	if (added.status === 404) return problem('notFound', 404, added.detail);
-	if (added.status === 409) return problem('conflict', 409, added.detail);
-	return problem('invalidField', 400, added.detail, { errors: added.errors });
+	return answer(added);
 };

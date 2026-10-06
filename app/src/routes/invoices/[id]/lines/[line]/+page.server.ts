@@ -4,6 +4,8 @@ import { alias } from 'drizzle-orm/pg-core';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
+import { formFieldsOf } from '#lib/server/lines.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -20,7 +22,11 @@ export const load: PageServerLoad = async ({ params }) => {
 	const [line] = await db
 		.select({
 			id: il.id,
+			version: il.version,
 			kind: il.kind,
+			material_id: il.materialId,
+			site_id: il.siteId,
+			paid_by_id: il.paidBy,
 			description: il.description,
 			qty: il.qty,
 			unit: il.unit,
@@ -52,7 +58,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	if (!line) error(404, 'no such line');
 
 	const h = t.recordHistory;
-	const [added, saves, [op]] = await Promise.all([
+	const [added, saves, [op], sites, people, places] = await Promise.all([
 		db
 			.select({ who: t.user.name, at: h.changedAt })
 			.from(h)
@@ -67,12 +73,26 @@ export const load: PageServerLoad = async ({ params }) => {
 			.where(
 				and(eq(h.tableName, 'invoice_line'), eq(h.rowId, line.id), sql`${h.field} not like '(%'`)
 			),
-		db.select({ claims: t.operator.claimsTaxPaidPurchasesResold }).from(t.operator)
+		db.select({ claims: t.operator.claimsTaxPaidPurchasesResold }).from(t.operator),
+		// The places and people a change's values name, by their names.
+		db
+			.select({ id: t.site.id, name: t.site.display })
+			.from(t.site)
+			.innerJoin(t.invoice, eq(t.invoice.entityId, t.site.entityId))
+			.where(eq(t.invoice.id, line.invoice_id)),
+		db.select({ id: t.user.id, name: t.user.name }).from(t.user),
+		moneyPlaces()
 	]);
 	return {
 		line,
+		// As the form puts them: what a change made here begins from.
+		fields: formFieldsOf({ ...line, paid_by: line.paid_by_id }, places),
 		added: added[0] ?? null,
 		changes: saves[0]?.n ?? 0,
-		claims: op?.claims ?? false
+		claims: op?.claims ?? false,
+		sites: Object.fromEntries(sites.map((x) => [x.id, x.name ?? ''])),
+		people: Object.fromEntries(people.map((x) => [x.id, x.name])),
+		// When this copy was made: shown when it is opened with no signal.
+		as_of: new Date().toISOString()
 	};
 };

@@ -247,6 +247,7 @@ T["invoice"] = [("PK","id","uuid"),("UK","client_uuid","uuid · started on a pho
     ("","token_expires_on","date"),("","sent_at","timestamptz"),
     ("FK","created_by","uuid"),("","void_reason","text"),("","created_at","timestamptz")]
 T["invoice_line"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the phone"),
+    ("","version","int · its saves, 1 when added"),
     ("FK","invoice_id","uuid"),("","seq","int"),
     ("","kind","service|material|recurring|adjustment|bought|paid_for"),("","description","text"),
     ("","qty","numeric"),("","unit","text · as billed"),
@@ -326,7 +327,8 @@ T["verification"] = [("PK","id","uuid"),("","identifier","text"),("","value","te
     ("","updated_at","timestamptz")]
 T["record_history"] = [("PK","id","bigint"),("","table_name","text"),("","row_id","uuid"),
     ("","field","text"),("","old_value","text"),("","new_value","text"),
-    ("FK","changed_by","uuid"),("","changed_at","timestamptz")]
+    ("FK","changed_by","uuid"),("","changed_at","timestamptz · when it arrived"),
+    ("","made_at","timestamptz · when, on a phone")]
 T["account_map"] = [("PK","role","text · what it is for"),("","account","text · as the ledger names it")]
 T["ledger_export"] = [("PK","id","uuid"),("","event","text"),("","source_table","text"),
     ("","source_id","uuid"),("","dated_on","date"),("","exported_at","timestamptz"),
@@ -558,7 +560,9 @@ c += [note("n6", "A tax override is stored per line, so one invoice can carry li
                  "is a signal; client_uuid, made on the phone, keeps a retry from adding "
                  "it twice. A draft started there takes its number when it arrives. A "
                  "line meant for a draft that went out first starts a new draft for the "
-                 "client, and moved_from_invoice_id keeps which it was meant for.", 880, 480, 640, 330)]
+                 "client, and moved_from_invoice_id keeps which it was meant for. A change "
+                 "made on a phone says which version it began from, and one made "
+                 "meanwhile is merged with it field by field.", 880, 480, 640, 330)]
 files.append(write("06-money-out.drawio", "Money out", c, 1600, 1200))
 
 # 07 -- money in
@@ -615,8 +619,11 @@ c += [note("n8", "Anyone who can sign in can see and change everything: "
                  "and what is paid to whoever answers is a dated pay_rule.\n\n"
                  "record_history is append-only and exists to explain a figure,"
                  " not to police one. An invoice line is followed from its birth: what it "
-                 "was when added, each field changed, and what it was when taken off, a "
-                 "receipt described rather than copied.", 40, 1000, 1300, 330)]
+                 "was when added, each field changed, and what it was when taken off. A "
+                 "receipt is described rather than copied while its row holds it, and kept "
+                 "whole once the history is the only place it is: replaced, or taken off "
+                 "with its line. made_at is when a change was made on a phone, beside "
+                 "changed_at, when it arrived.", 40, 1000, 1300, 330)]
 files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 1370))
 
 for f in files:

@@ -176,7 +176,12 @@ export const recordHistory = pgTable(
 		oldValue: text(),
 		newValue: text(),
 		changedBy: uuid(),
-		changedAt: tstz().defaultNow().notNull()
+		changedAt: tstz().defaultNow().notNull(),
+		/**
+		 * When the change was made on a phone, where it was made with no signal:
+		 * changed_at is when it reached the server. Null for one made there.
+		 */
+		madeAt: tstz()
 	},
 	(t) => [
 		index('record_history_row').on(t.tableName, t.rowId, t.changedAt.desc()),

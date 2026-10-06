@@ -2,10 +2,9 @@ import { error, redirect } from '@sveltejs/kit';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
-import { formTerms, materials } from '#lib/server/lines.ts';
+import { formFieldsOf, formTerms, materials } from '#lib/server/lines.ts';
 import { shelves } from '#lib/server/stock.ts';
 import { UUID } from '#lib/field-rules.ts';
-import { Decimal } from '#lib/decimal.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -19,6 +18,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	const [line] = await db
 		.select({
 			id: il.id,
+			version: il.version,
 			kind: il.kind,
 			material_id: il.materialId,
 			description: il.description,
@@ -62,10 +62,6 @@ export const load: PageServerLoad = async ({ params }) => {
 		if (m) stock = [...stock, { ...m, shelf }];
 	}
 	const text = (v: string | null) => v ?? '';
-	// The figures as a person types them: money to the currency's places, and a
-	// quantity without the zeros the column pads it with.
-	const typed = (v: string | null) => (v === null ? '' : Decimal.from(v).toFixed(terms.places));
-	const counted = (v: string) => (v.includes('.') ? v.replace(/\.?0+$/, '') : v);
 	return {
 		...terms,
 		stock,
@@ -79,23 +75,17 @@ export const load: PageServerLoad = async ({ params }) => {
 		},
 		editing: {
 			id: line.id,
+			// The save it began from: a phone's change says so, to be merged with
+			// one made meanwhile.
+			version: line.version,
 			kind,
 			receipt: line.receipt,
 			drawn:
 				kind === 'material'
 					? { qty: line.qty, exTaxCost: text(line.ex_tax_cost), taxPaid: text(line.tax_paid) }
 					: null,
-			fields: {
-				kind,
-				material_id: text(line.material_id),
-				description: line.description,
-				qty: counted(line.qty),
-				site_id: text(line.site_id),
-				bought_from: text(line.bought_from),
-				ex_tax_cost: typed(line.ex_tax_cost),
-				tax_paid: typed(line.tax_paid),
-				paid_by: text(line.paid_by)
-			}
+			// As the form puts them: what a change is merged against.
+			fields: formFieldsOf(line, terms.places)
 		}
 	};
 };
