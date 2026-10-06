@@ -1621,4 +1621,49 @@ SELECT must_fail($$
           '00000000-0000-4000-8000-000000000000')
 $$, 'paid by somebody who does not exist');
 
+\echo ''
+\echo '=== 37. what was bought or paid for says who paid, and keeps its receipt ==='
+
+-- A draft of its own: section 16's went out, and a sent invoice takes no lines.
+INSERT INTO invoice (id, number, entity_id, created_by) VALUES
+  ('7777eeee-7777-7777-7777-777777777737','KFS-0437',
+   '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_price, amount,
+                            taxable, tax_rate_pct, tax_source, ex_tax_cost, tax_paid,
+                            bought_from, paid_by, receipt, receipt_type)
+  VALUES ('7777eeee-7777-7777-7777-777777777737', 37, 'bought', 'Keystone jacks x12', 1, 'each',
+          33.33, 33.33, true, 8.0000, 'site', 33.33, 2.67, 'Valley Hardware',
+          'a0a0a0a0-0000-4000-8000-0000000000a1', '\xffd8ffe0'::bytea, 'image/jpeg')
+$$, 'jacks bought at Valley Hardware, paid by Avery, with the receipt');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_price, amount,
+                            bought_from)
+  VALUES ('7777eeee-7777-7777-7777-777777777737', 38, 'paid_for', 'Low-voltage permit', 1, 'each',
+          35.00, 35.00, 'City of Woodland')
+$$, 'a permit paid for them, by the business');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, paid_by)
+  VALUES ('7777eeee-7777-7777-7777-777777777737', 39, 'service', 'Field service', 1, 95.00, 95.00,
+          'a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'who paid, said of an hour worked');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, receipt)
+  VALUES ('7777eeee-7777-7777-7777-777777777737', 40, 'bought', 'Anchors', 1, 4.00, 4.00,
+          '\x25504446'::bytea)
+$$, 'a receipt with no type');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount)
+  VALUES ('7777eeee-7777-7777-7777-777777777737', 41, 'gift', 'Something', 1, 1.00, 1.00)
+$$, 'a kind of line nobody named');
+
+SELECT must_fail($$
+  UPDATE operator SET purchase_markup_pct = -5
+$$, 'a markup on job purchases below nothing');
+
 \echo 'All guards hold.'

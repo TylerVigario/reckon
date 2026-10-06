@@ -549,7 +549,7 @@
     [*PK*], [id], [uuid],
     [*FK*], [invoice\_id], [uuid],
     [], [seq], [int],
-    [], [kind], [service|material|recurring|adjustment],
+    [], [kind], [service|material|recurring|adjustment|bought|paid\_for],
     [], [description], [text],
     [], [qty], [numeric],
     [], [unit], [text · as billed],
@@ -566,6 +566,10 @@
     [*FK*], [trip\_leg\_id], [uuid],
     [*FK*], [agreement\_period\_id], [uuid],
     [*FK*], [material\_lot\_id], [uuid],
+    [], [bought\_from], [text · from whom],
+    [*FK*], [paid\_by], [uuid · null = the business],
+    [], [receipt], [bytea · photo or PDF],
+    [], [receipt\_type], [text],
   )
 ]
 #v(7pt)
@@ -606,7 +610,7 @@
 ]
 #v(7pt)
 
-#callout(tone: "note")[A tax override is stored per line, so one invoice can carry lines at two sites; setting it across an invoice writes the column many times.  Emailing an invoice, printing it as a PDF and taking card payment through Stripe are planned; none is built yet.  A sent invoice is immutable and a credit note is the only way to change what a client owes. Credits belong to the entity, never to an invoice.  One provenance FK per line, or none, so the return groups by what produced each line.  unit is what qty counts, frozen at issue like tax\_rate\_pct, so a line keeps its unit if the service is later changed. Null when the quantity counts nothing, as on a flat charge or an adjustment.]
+#callout(tone: "note")[A tax override is stored per line, so one invoice can carry lines at two sites; setting it across an invoice writes the column many times.  Emailing an invoice, printing it as a PDF and taking card payment through Stripe are planned; none is built yet.  A sent invoice is immutable and a credit note is the only way to change what a client owes. Credits belong to the entity, never to an invoice.  One provenance FK per line, or none, so the return groups by what produced each line.  unit is what qty counts, frozen at issue like tax\_rate\_pct, so a line keeps its unit if the service is later changed. Null when the quantity counts nothing, as on a flat charge or an adjustment.  What is bought for a job, or paid on the client's behalf, is a line of its own kind: from whom, who paid -- a person, who is owed it back, or the business -- and its receipt.]
 #v(4pt)
 
 #v(6pt)
@@ -722,6 +726,7 @@
     [], [default\_terms\_days], [int],
     [], [ageing\_alert\_days], [int],
     [], [default\_markup\_pct], [numeric · 25],
+    [], [purchase\_markup\_pct], [numeric · 0],
     [], [invoice\_footer], [text],
     [], [auto\_send], [bool],
     [], [email\_attaches\_pdf], [bool],
