@@ -11,8 +11,9 @@ import { assets, immutable } from '$app/manifest';
  * open from their last copy, so a timer can be started or stopped and time
  * entered by hand, offline, from a cold start; the queue posts it later.
  *
- * The invoices list, and each draft with its Add a line, are kept the same way,
- * so a line can be added to a draft on site; the queue sends it too. So are New
+ * The invoices list, and each draft with its Add a line and its lines' own
+ * screens, are kept the same way, so a line can be added, changed or taken off
+ * on site; the queue sends that too. So are New
  * draft and the screens for a draft started on the phone, which takes its
  * number when it arrives. Which drafts there are is the server's to say
  * (/api/offline), and a draft that has gone out stops being kept. Each says how old its copy is when it is opened
@@ -50,9 +51,11 @@ const dataOf = (screen: string) => `${screen === '/' ? '' : screen}/__data.json`
 const OFFLINE_DATA = OFFLINE_SCREENS.map(dataOf);
 /**
  * The data of the screens the list may name: the invoices list, New draft, a
- * draft started on the phone and its Add a line, and a draft and its Add a line.
+ * draft started on the phone and its Add a line, and a draft, its Add a line,
+ * and each line added by hand with its Change.
  */
-const LISTED_DATA = /^\/invoices(\/new|\/on-phone(\/add)?|\/[0-9a-f-]{36}(\/add)?)?\/__data\.json$/;
+const LISTED_DATA =
+	/^\/invoices(\/new|\/on-phone(\/add)?|\/[0-9a-f-]{36}(\/add|\/lines\/[0-9a-f-]{36}(\/change)?)?)?\/__data\.json$/;
 
 /** The screens kept now: the ones always kept, and the ones the server last listed. */
 let listed: string[] | null = null;

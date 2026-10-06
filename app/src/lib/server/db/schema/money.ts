@@ -121,6 +121,12 @@ export const invoiceLine = pgTable(
 		 * timeout cannot add it twice. Null on a line the server built.
 		 */
 		clientUuid: uuid(),
+		/**
+		 * Which save of the line this is: 1 when added, one more each time a save
+		 * changes it (0022). A change made on a phone says which it started
+		 * from, so the server can tell whether anyone changed it meanwhile.
+		 */
+		version: integer().default(1).notNull(),
 		invoiceId: uuid().notNull(),
 		seq: integer().notNull(),
 		kind: text({ enum: LINE_KINDS }).notNull(),

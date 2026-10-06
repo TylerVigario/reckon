@@ -9,9 +9,16 @@ export function problem(
 	kind: ProblemKind,
 	status: number,
 	detail?: string,
-	extra?: { errors?: Record<string, string>; instance?: string; headers?: HeadersInit }
+	extra?: {
+		errors?: Record<string, string>;
+		instance?: string;
+		headers?: HeadersInit;
+		/** Extension members beyond errors, as RFC 9457 allows: a collision, say. */
+		members?: Record<string, unknown>;
+	}
 ) {
-	const body: ProblemBody = {
+	const body: ProblemBody & Record<string, unknown> = {
+		...(extra?.members ?? {}),
 		...PROBLEM[kind],
 		status,
 		...(detail ? { detail } : {}),

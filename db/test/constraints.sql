@@ -1865,7 +1865,8 @@ SELECT must_pass($$
   DO $x$ BEGIN
     IF (SELECT string_agg(field || ':' || old_value || '>' || new_value, ' ' ORDER BY field)
           FROM record_history
-         WHERE row_id = '41414141-0000-4000-8000-000000000001' AND field NOT LIKE '(%')
+         WHERE row_id = '41414141-0000-4000-8000-000000000001' AND field NOT LIKE '(%'
+           AND field <> 'version')
        <> 'amount:4.000>8.000 description:Anchors>Anchors, wall qty:1.0000>2.0000'
     THEN RAISE EXCEPTION 'its change was not kept field by field'; END IF;
   END $x$
@@ -1877,9 +1878,40 @@ SELECT must_pass($$
     IF NOT EXISTS (SELECT 1 FROM record_history
                     WHERE row_id = '41414141-0000-4000-8000-000000000001' AND field = '(deleted)'
                       AND old_value::jsonb ->> 'description' = 'Anchors, wall'
-                      AND old_value NOT LIKE '%\\xffd8%')
-    THEN RAISE EXCEPTION 'its removal was not kept'; END IF;
+                      AND old_value::jsonb ->> 'receipt' = '\xffd8ffe0')
+    THEN RAISE EXCEPTION 'its removal was not kept, receipt and all'; END IF;
   END $x$
-$$, 'taking it off keeps what it was');
+$$, 'taking it off keeps what it was, its receipt whole: nothing else holds it now');
+
+\echo ''
+\echo '=== 42. a line counts its saves, and a change made on a phone says when ==='
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
+                            bought_from, receipt, receipt_type)
+  VALUES ('42424242-0000-4000-8000-000000000001', '7777eeee-7777-7777-7777-777777777737', 80,
+          'bought', 'Faceplates', 1, 'each', 6.00, 6.00, 'Valley Hardware',
+          '\xffd8ffe0'::bytea, 'image/jpeg');
+  UPDATE invoice_line SET description = 'Faceplates x3' WHERE id = '42424242-0000-4000-8000-000000000001';
+  UPDATE invoice_line SET description = 'Faceplates x3' WHERE id = '42424242-0000-4000-8000-000000000001';
+  DO $x$ BEGIN
+    IF (SELECT version FROM invoice_line WHERE id = '42424242-0000-4000-8000-000000000001') <> 2
+    THEN RAISE EXCEPTION 'a save that changed nothing was counted'; END IF;
+  END $x$
+$$, 'a save that changes it counts, and one that changes nothing does not');
+
+SELECT must_pass($$
+  SELECT set_config('reckon.made_at', '2026-10-06T14:30:00Z', true);
+  UPDATE invoice_line SET receipt = '\x89504e47'::bytea, receipt_type = 'image/png'
+   WHERE id = '42424242-0000-4000-8000-000000000001';
+  DO $x$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM record_history
+                    WHERE row_id = '42424242-0000-4000-8000-000000000001' AND field = 'receipt'
+                      AND made_at = '2026-10-06T14:30:00Z'
+                      AND old_value = '\xffd8ffe0'
+                      AND new_value LIKE '4 bytes, sha256 %')
+    THEN RAISE EXCEPTION 'the replaced receipt was not kept, or not when it was made'; END IF;
+  END $x$
+$$, 'a receipt replaced on a phone is kept whole, with when the change was made');
 
 \echo 'All guards hold.'

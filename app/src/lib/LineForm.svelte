@@ -5,7 +5,14 @@
 	import Top from '#lib/Top.svelte';
 	import ReceiptPicker from '#lib/ReceiptPicker.svelte';
 	import OfflineBanner from '#lib/OfflineBanner.svelte';
-	import { enqueueLine, findLine, flush, waitingCount, type QueuedLine } from '#lib/queue.ts';
+	import {
+		enqueueChange,
+		enqueueLine,
+		findLine,
+		flush,
+		waitingCount,
+		type QueuedLine
+	} from '#lib/queue.ts';
 	import { pct, percent, quantity } from '#lib/format.ts';
 	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { readFromStock, readPassedOn } from '#lib/line-fields.ts';
@@ -70,6 +77,8 @@
 		 */
 		editing?: {
 			id: string;
+			/** The save of the line the change begins from. */
+			version: number;
 			kind: 'material' | 'bought' | 'paid_for';
 			fields: Record<string, string>;
 			receipt: boolean;
@@ -255,6 +264,7 @@
 				client_uuid: fixing?.line.client_uuid ?? crypto.randomUUID(),
 				invoice_id: data.draft.id,
 				fields,
+				made_at: new Date().toISOString(),
 				receipt: stock ? null : receipt,
 				shown: {
 					kind,
@@ -280,30 +290,43 @@
 	}
 
 	/**
-	 * Changes a line already on the draft, with a signal. The server reads it
-	 * again as it reads a line added, and keeps every field that moves in the
-	 * line's history; what it refuses is said in its box.
+	 * Saves a change to a line already on the draft on this phone, as a line
+	 * added is saved, with the save of the line it began from and its fields
+	 * then: whatever someone else changed meanwhile is merged with it when it
+	 * arrives (#lib/line-merge), and the line's screen says what it ran into.
 	 */
 	async function change(fields: Record<string, string>, file: File | null) {
-		const body = new FormData();
-		for (const [k, v] of Object.entries(fields)) body.set(k, v);
-		if (file) body.set('receipt', await shrink(file), 'receipt');
-		const r = await fetch(`/api/lines/${editing!.id}`, { method: 'PATCH', body }).catch(() => null);
-		saving = false;
-		if (!r) {
-			why = 'Changing a line needs a connection.';
+		const line = stock ? drawn : bills;
+		if (!line || line.short !== null) return;
+		try {
+			await enqueueChange({
+				line_id: editing!.id,
+				invoice_id: data.draft.id,
+				act: 'change',
+				version: editing!.version,
+				base: editing!.fields,
+				fields,
+				receipt: file ? await shrink(file) : null,
+				made_at: new Date().toISOString(),
+				shown: {
+					kind,
+					description: fields.description,
+					detail: detail(fields),
+					qty: line.qty,
+					unit: line.unit,
+					unit_price: line.unitPrice,
+					amount: line.amount,
+					taxable: line.taxable,
+					tax_rate_pct: line.taxRatePct
+				}
+			});
+		} catch {
+			why = 'This phone would not save the change, so it is not made.';
+			saving = false;
 			return;
 		}
-		if (r.ok) {
-			await goto(back, { invalidateAll: true });
-			return;
-		}
-		const problem = (await r.json().catch(() => ({}))) as {
-			detail?: string;
-			errors?: Record<string, string>;
-		};
-		errors = problem.errors ?? {};
-		if (!problem.errors) why = problem.detail ?? 'It could not be changed.';
+		await Promise.race([flush().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
+		await goto(back, { invalidateAll: true });
 	}
 
 	/** What the line will bill and the tax on it, by the rule the server saves it by. */

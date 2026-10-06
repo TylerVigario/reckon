@@ -54,9 +54,19 @@ export type Reader = Db | Tx;
  * Runs `fn` in a transaction whose changes record_history puts against this
  * person, and rolls back everything if it throws.
  */
-export async function asUser<T>(userId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+export async function asUser<T>(
+	userId: string,
+	fn: (tx: Tx) => Promise<T>,
+	/**
+	 * When the change was made, where that was on a phone with no signal: the
+	 * history keeps it beside when it arrived (0022). Only ever a moment the
+	 * phone said; the server's own clock says when it arrived.
+	 */
+	madeAt?: string | null
+): Promise<T> {
 	return db.transaction(async (tx) => {
 		await tx.execute(sql`select set_config('reckon.user_id', ${userId}, true)`);
+		if (madeAt) await tx.execute(sql`select set_config('reckon.made_at', ${madeAt}, true)`);
 		return fn(tx);
 	});
 }
