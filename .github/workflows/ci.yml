@@ -212,13 +212,24 @@ jobs:
         # on the client, so a component that throws leaves the URL changed, the
         # previous screen's header on show and nothing else. The server sees a
         # 200 either way.
+        #
+        # Every browser check after this one uses the Chrome started here. It is
+        # given a minute, and if it is not answering by then the step says so,
+        # with Chrome's own words, rather than letting console-check fail to
+        # connect to it.
         run: |
           google-chrome --headless --disable-gpu --no-sandbox \
-            --remote-debugging-port=9222 --user-data-dir=/tmp/chrome about:blank &
-          for _ in $(seq 1 20); do
+            --remote-debugging-port=9222 --user-data-dir=/tmp/chrome about:blank \
+            > /tmp/chrome.log 2>&1 &
+          for _ in $(seq 1 60); do
             curl -sf -o /dev/null http://127.0.0.1:9222/json && break
             sleep 1
           done
+          if ! curl -sf -o /dev/null http://127.0.0.1:9222/json; then
+            echo "::error::Chrome did not start within a minute"
+            cat /tmp/chrome.log
+            exit 1
+          fi
           node app/scripts/console-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: A browser without Temporal gets the polyfill, and keeps it for offline
