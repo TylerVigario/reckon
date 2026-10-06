@@ -10,8 +10,8 @@
 	// The month is in the header, so a job's day does not repeat it. A rate's
 	// start date can be any year, so it says which.
 
-	const who = (j: { crew: string; who: string | null }) =>
-		j.crew === 'team' ? 'The team' : (j.who ?? 'nobody recorded');
+	// A team job names its crew, as the server lists them.
+	const who = (j: { who: string | null }) => j.who ?? 'nobody recorded';
 
 	// Built here rather than in the markup: a template that interleaves text
 	// with {#if} blocks loses the space between them.

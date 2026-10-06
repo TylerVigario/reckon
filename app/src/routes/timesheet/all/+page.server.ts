@@ -5,6 +5,7 @@ import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
+import { crewNames } from '#lib/server/choices.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -32,6 +33,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 				zone: t.timeEntry.zone,
 				note: t.timeEntry.note,
 				workedByName: u.name,
+				teamNames: crewNames(sql`${t.timeEntry.id}`),
 				entity: t.entity.name,
 				site: t.site.display,
 				service: t.service.name,
@@ -66,6 +68,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			crew: e.crew,
 			note: e.note,
 			worked_by: e.workedByName,
+			crew_names: e.teamNames,
 			entity: e.entity,
 			site: e.site,
 			service: e.service,

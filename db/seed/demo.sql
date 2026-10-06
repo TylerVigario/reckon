@@ -276,6 +276,12 @@ INSERT INTO time_entry (client_uuid, worked_on, seconds, crew, worked_by, create
    'c41b2fab-5b71-4954-bb86-1bc803daf7ee','c41b2fab-5b71-4954-bb86-1bc803daf7ee', NULL, NULL,'423bddde-4f8e-4e98-aabc-529a817a57a0', false,
    'Writing the new-client onboarding checklist');
 
+-- The rack move took the whole team: everyone holding a role.
+INSERT INTO time_entry_crew (time_entry_id, user_id)
+SELECT e.id, u.id
+  FROM time_entry e CROSS JOIN "user" u
+ WHERE e.crew = 'team' AND u.active AND u.role_id IS NOT NULL;
+
 -- An assessment, charged by the visit however long it took, and on INV-0209.
 INSERT INTO time_entry (id, client_uuid, worked_on, seconds, crew, worked_by, created_by,
                         entity_id, site_id, service_id, billable, note)

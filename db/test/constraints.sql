@@ -1914,4 +1914,37 @@ SELECT must_pass($$
   END $x$
 $$, 'a receipt replaced on a phone is kept whole, with when the change was made');
 
+\echo ''
+\echo '=== 43. a team entry names its crew ==='
+
+SELECT must_pass($$
+  INSERT INTO time_entry_crew (time_entry_id, user_id)
+  SELECT id, u FROM time_entry,
+         unnest(ARRAY['a0a0a0a0-0000-4000-8000-0000000000a1',
+                      'a0a0a0a0-0000-4000-8000-0000000000a2']::uuid[]) u
+   WHERE client_uuid = 'dddddddd-0000-4000-8000-000000000001'
+$$, 'a team entry names Avery and Sam');
+
+SELECT must_fail($$
+  INSERT INTO time_entry_crew (time_entry_id, user_id)
+  SELECT id, 'a0a0a0a0-0000-4000-8000-0000000000a1' FROM time_entry
+   WHERE client_uuid = 'dddddddd-0000-4000-8000-000000000001'
+$$, 'the same person twice');
+
+SELECT must_fail($$
+  INSERT INTO time_entry_crew (time_entry_id, user_id)
+  SELECT id, 'a0a0a0a0-0000-4000-8000-0000000000ff' FROM time_entry
+   WHERE client_uuid = 'dddddddd-0000-4000-8000-000000000001'
+$$, 'somebody who does not exist');
+
+SELECT must_fail($$
+  INSERT INTO time_entry_crew (time_entry_id, user_id)
+  SELECT id, 'a0a0a0a0-0000-4000-8000-0000000000a1' FROM time_entry WHERE crew = 'one' LIMIT 1
+$$, 'a crew on one person''s entry');
+
+SELECT must_fail($$
+  UPDATE time_entry SET crew = 'one', worked_by = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+   WHERE client_uuid = 'dddddddd-0000-4000-8000-000000000001'
+$$, 'a team entry with a crew made one person''s');
+
 \echo 'All guards hold.'

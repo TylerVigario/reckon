@@ -4,7 +4,7 @@ import { Ratio, sum, sumMoney } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
-import { theTeam } from '#lib/server/choices.ts';
+import { crewNames } from '#lib/server/choices.ts';
 import { entryColumns, valueEntries, valueLegs } from '#lib/server/valuation/load.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
 import type { PageServerLoad } from './$types';
@@ -47,13 +47,15 @@ export const load: PageServerLoad = async () => {
 		.subtract({ months: 1 })
 		.toString();
 
-	const [entries, legs, given, [operator], team] = await Promise.all([
+	const [entries, legs, given, [operator]] = await Promise.all([
 		db
 			.select({
 				...entryColumns,
 				who: t.entity.name,
 				service: t.service.name,
 				workedByName: u.name,
+				// A team entry names its crew (0023), and the row says who was there.
+				teamNames: crewNames(sql`${t.timeEntry.id}`),
 				site: t.site.display
 			})
 			.from(t.timeEntry)
@@ -101,12 +103,7 @@ export const load: PageServerLoad = async () => {
 			.leftJoin(t.site, eq(t.site.id, t.timeEntry.siteId))
 			.where(and(eq(t.timeEntry.billable, false), gte(t.timeEntry.workedOn, lastMonth)))
 			.orderBy(desc(t.timeEntry.workedOn)),
-		db.select({ days: t.operator.ageingAlertDays }).from(t.operator),
-		// A team entry records no one person -- the constraint forbids it,
-		// because the entry is the whole team's. So the names come from the
-		// team itself rather than from the entry, and the row can still say who
-		// was there.
-		theTeam()
+		db.select({ days: t.operator.ageingAlertDays }).from(t.operator)
 	]);
 	const [worth, legWorth, places] = await Promise.all([
 		valueEntries(db, entries),
@@ -129,6 +126,7 @@ export const load: PageServerLoad = async () => {
 				service: e.service,
 				worked_by: e.workedByName,
 				crew: e.crew,
+				crew_names: e.teamNames,
 				worked_on: e.workedOn,
 				site: e.site,
 				hours: hours(e.seconds - (w.coveredSeconds ?? 0)),
@@ -184,7 +182,6 @@ export const load: PageServerLoad = async () => {
 		given: given.map(({ seconds, ...g }) => ({ ...g, hours: hours(seconds) })),
 		alertDays,
 		total,
-		overdue,
-		team: team.map((p) => p.name)
+		overdue
 	};
 };

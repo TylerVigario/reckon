@@ -218,6 +218,8 @@ T["time_entry"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the phon
     ("FK","entity_id","uuid · null = internal"),
     ("FK","site_id","uuid"),("FK","service_id","uuid"),("","billable","bool"),
     ("","note","text"),("","created_at","timestamptz")]
+T["time_entry_crew"] = [("PK","time_entry_id","uuid · a team entry"),
+    ("PK","user_id","uuid · one of its crew")]
 T["trip"] = [("PK","id","uuid"),("","travelled_on","date"),("FK","driven_by","uuid"),
     ("FK","created_by","uuid"),("","created_at","timestamptz")]
 T["trip_stop"] = [("PK","id","uuid"),("FK","trip_id","uuid"),("","seq","int"),
@@ -460,7 +462,8 @@ files.append(write("03-catalogue.drawio", "What you sell", c, 1620, 1140))
 
 # 04 -- work captured
 c = at("time_entry",40,60) + at("trip",480,60) + at("trip_stop",480,220) \
-  + at("trip_leg",880,60) + at("user",40,480) + at("entity",880,300)
+  + at("trip_leg",880,60) + at("user",40,480) + at("entity",880,300) \
+  + at("time_entry_crew",480,480)
 c += [edge("e40","user","time_entry","worked / created",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=0")
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1")),
@@ -468,6 +471,11 @@ c += [edge("e40","user","time_entry","worked / created",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=1")
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=0")),
       edge("e42","trip","trip_leg","is made of"),
+      edge("e44","time_entry","time_entry_crew","names its crew",
+           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.9;exitY=1")
+                 .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=0")),
+      edge("e45","user","time_entry_crew","is on",
+           S_EDGE.replace("exitY=0.5","exitY=0.1122")),
       edge("e43","entity","trip_leg","caused",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=0")
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1"))]
@@ -483,10 +491,11 @@ c += [note("n4", "started_at and ended_at are when the work was done and zone is
                  "Work done by the whole crew is one row with crew = team, so its "
                  "billable quantity is recorded, not worked out. Anyone who carries on "
                  "alone afterwards gets a row of their own at crew = one.\n\n"
-                 "A team row has no worked_by. created_by is whoever ran the timer, "
-                 "and user.role_id is what decides pay.\n\n"
-                 "The team is every active person with a role; that number is the "
-                 "head count a team row is priced and paid at.\n\n"
+                 "A team row has no worked_by. It names its crew in time_entry_crew, "
+                 "ticked when the timer starts, and is priced at that head count and pays "
+                 "each of them; created_by is whoever ran the timer, and user.role_id is "
+                 "what decides pay. A team row recorded before crews were named was given "
+                 "everyone who held a role when they began to be.\n\n"
                  "trip_leg.service_id is what a billed leg bills as, so nothing "
                  "has to assume that only one service is charged per mile.",
            40, 830, 1180, 350)]

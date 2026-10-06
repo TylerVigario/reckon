@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { Decimal } from '#lib/decimal.ts';
 import { db } from './db/index.ts';
 import * as t from './db/schema/index.ts';
@@ -8,6 +8,15 @@ import * as t from './db/schema/index.ts';
  * and what was done. Shared by every screen that writes one down, so a person
  * or a client offered on one is offered on all.
  */
+
+/**
+ * Who a team entry names as its crew (0023), by name, A to Z: what a screen
+ * says in place of "the team". Empty for one person's entry.
+ */
+export const crewNames = (entryId: SQL) =>
+	sql<string[]>`(select coalesce(array_agg(u.name order by u.name), '{}')::text[]
+		from ${t.timeEntryCrew} c join ${t.user} u on u.id = c.user_id
+		where c.time_entry_id = ${entryId})`;
 
 /** The team: everyone active who holds a role. */
 export const theTeam = () =>

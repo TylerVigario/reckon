@@ -21,6 +21,7 @@ import {
 	miles,
 	monthName,
 	monthOf,
+	names,
 	pct,
 	percent,
 	quantity,
@@ -383,5 +384,12 @@ describe('workedTimes', () => {
 				'America/Chicago'
 			)
 		).toBe('9:00 PM – 2:00 AM the next day');
+	});
+});
+
+describe('names', () => {
+	it('lists a crew as the locale does', () => {
+		expect(names(['Avery Lind', 'Sam Ortega'])).toBe('Avery Lind and Sam Ortega');
+		expect(names(['Avery', 'Sam', 'Jordan'])).toBe('Avery, Sam, and Jordan');
 	});
 });

@@ -23,7 +23,7 @@
 #v(6pt)
 
 #text(size: sz.small)[
-  Forty tables across seven clusters. The eight `.drawio` files in
+  41 tables across seven clusters. The eight `.drawio` files in
   `docs/schema/` carry the relationships; the schema's comments carry the reasoning.
   A table drawn in more than one cluster is listed once, under the first.
 ]
@@ -441,7 +441,20 @@
 ]
 #v(7pt)
 
-#callout(tone: "note")[started\_at and ended\_at are when the work was done and zone is where, so it is shown as it was worked; seconds is worked out from them by the server, and worked\_on is the day it started there. An entry recorded before it kept its times has its length alone.  worked\_by is who worked the hour, and crew says whether it bills at one person's rate or the team's; created\_by is who entered it, which is how the row is explained later.  client\_uuid is made on the phone: the offline queue retries, and without it a retry that timed out enters the hour twice.  Work done by the whole crew is one row with crew = team, so its billable quantity is recorded, not worked out. Anyone who carries on alone afterwards gets a row of their own at crew = one.  A team row has no worked\_by. created\_by is whoever ran the timer, and user.role\_id is what decides pay.  The team is every active person with a role; that number is the head count a team row is priced and paid at.  trip\_leg.service\_id is what a billed leg bills as, so nothing has to assume that only one service is charged per mile.]
+#block(breakable: false)[
+  #text(font: face-mono, size: sz.fine, weight: "bold")[time\_entry\_crew]
+  #v(3pt)
+  #sheet(
+    (auto, auto, 1fr),
+    ([], [Column], [Type]),
+    size: sz.micro,
+    [*PK*], [time\_entry\_id], [uuid · a team entry],
+    [*PK*], [user\_id], [uuid · one of its crew],
+  )
+]
+#v(7pt)
+
+#callout(tone: "note")[started\_at and ended\_at are when the work was done and zone is where, so it is shown as it was worked; seconds is worked out from them by the server, and worked\_on is the day it started there. An entry recorded before it kept its times has its length alone.  worked\_by is who worked the hour, and crew says whether it bills at one person's rate or the team's; created\_by is who entered it, which is how the row is explained later.  client\_uuid is made on the phone: the offline queue retries, and without it a retry that timed out enters the hour twice.  Work done by the whole crew is one row with crew = team, so its billable quantity is recorded, not worked out. Anyone who carries on alone afterwards gets a row of their own at crew = one.  A team row has no worked\_by. It names its crew in time\_entry\_crew, ticked when the timer starts, and is priced at that head count and pays each of them; created\_by is whoever ran the timer, and user.role\_id is what decides pay. A team row recorded before crews were named was given everyone who held a role when they began to be.  trip\_leg.service\_id is what a billed leg bills as, so nothing has to assume that only one service is charged per mile.]
 #v(4pt)
 
 #v(6pt)

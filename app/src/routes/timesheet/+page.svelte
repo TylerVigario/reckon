@@ -12,7 +12,8 @@
 		elapsed,
 		increment,
 		secondsAsHours,
-		workedTimes
+		workedTimes,
+		names
 	} from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import { rateFor } from '#lib/rates.ts';
@@ -146,10 +147,17 @@
 	};
 
 	const svc = $derived(live ? data.services.find((s) => s.id === live.service_id) : undefined);
+	// A team timer names its crew; one set going before timers did is everyone
+	// holding a role, as a team was then.
+	const crewOf = (t: { crew_ids?: string[] }) =>
+		t.crew_ids ? data.people.filter((p) => t.crew_ids!.includes(p.id)) : data.people;
+	const headsOf = (t: { crew: string; crew_ids?: string[] }) =>
+		t.crew === 'team' ? crewOf(t).length : 1;
+	const crewNamed = (t: { crew_ids?: string[] }) => names(crewOf(t).map((p) => p.name));
 	// This client's price for this crew, not the every-client one-person figure:
 	// the same choice the start form made when the timer was set going.
 	const liveRate = $derived(
-		live ? rateFor(data.prices, live.service_id, live.entity_id, live.crew) : null
+		live ? rateFor(data.prices, live.service_id, live.entity_id, headsOf(live)) : null
 	);
 
 	const clock = (t: Running) => {
@@ -205,7 +213,7 @@
 							</div>
 							<div class="rec-s">
 								{e.crew === 'team'
-									? 'The team'
+									? crewNamed(e)
 									: (nameOf(data.people, e.worked_by) ?? 'Unassigned')}
 								· {day(e.worked_on)} · {hhmm(secondsOf(e))}
 							</div>
@@ -245,7 +253,7 @@
 				<span class="chip">{live.billable ? 'Billable' : 'Non-billable'}</span>
 				<span class="chip">
 					{live.crew === 'team'
-						? 'The team'
+						? crewNamed(live)
 						: (nameOf(data.people, live.worked_by) ?? 'Unassigned')}
 				</span>
 			</div>
@@ -266,7 +274,7 @@
 					<span class="k">Rate</span>
 					<span class="v">
 						{#if liveRate}{unitPrice(liveRate)}/h · {live.crew === 'team'
-								? 'the team'
+								? `a crew of ${headsOf(live)}`
 								: 'one person'}
 						{:else}not priced{/if}
 					</span>
@@ -304,7 +312,9 @@
 							<span class="lt">· {t.crew === 'team' ? 'team' : 'running'}</span>
 						</div>
 						<div class="rec-s">
-							{t.crew === 'team' ? 'The team' : (nameOf(data.people, t.worked_by) ?? 'Unassigned')}
+							{t.crew === 'team'
+								? crewNamed(t)
+								: (nameOf(data.people, t.worked_by) ?? 'Unassigned')}
 							· running since
 							<button
 								type="button"
@@ -340,7 +350,7 @@
 							{#if !e.billable}<span class="lt">· non-billable</span>{/if}
 						</div>
 						<div class="rec-s">
-							{e.crew === 'team' ? 'The team' : (e.worked_by ?? 'Unassigned')} ·
+							{e.crew === 'team' ? names(e.crew_names) : (e.worked_by ?? 'Unassigned')} ·
 							{e.started_at && e.ended_at && e.zone
 								? workedTimes(e.started_at, e.ended_at, e.zone, personalZone())
 								: clockAt(e.at, personalZone())} · {e.service}

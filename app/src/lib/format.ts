@@ -409,3 +409,15 @@ export function workedTimes(
 			: `${clock(from, zone)} – ${clock(to, zone)} ${days === 1 ? 'the next day' : `on ${datedAt(to, zone)}`}`;
 	return zone === reader ? times : `${times}, ${zoneName(zone)}`;
 }
+
+/**
+ * "Avery Lind and Sam Ortega", "Avery, Sam and Jordan" -- people, as the
+ * reader's locale lists them. A team names its crew this way.
+ */
+export function names(list: readonly string[]): string {
+	const locale = localeOf();
+	return once(
+		`l ${locale}`,
+		() => new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' })
+	).format(list);
+}

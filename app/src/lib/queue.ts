@@ -65,6 +65,11 @@ export type Entry = {
 	crew: 'one' | 'team';
 	/** Null on a team entry: the team worked it, so no one name is right. */
 	worked_by: string | null;
+	/**
+	 * Who was on a team entry. Absent on one queued before entries named their
+	 * crew: the server takes that as everybody holding a role, as it was then.
+	 */
+	crew_ids?: string[];
 	created_by: string;
 	entity_id?: string | null;
 	site_id?: string | null;

@@ -8,7 +8,8 @@ import { UUID } from '#lib/field-rules.ts';
 import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { lineTaxSql } from '#lib/server/tax-rules.ts';
-import { day, monthName } from '#lib/format.ts';
+import { day, monthName, names } from '#lib/format.ts';
+import { crewNames } from '#lib/server/choices.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -74,6 +75,8 @@ export const load: PageServerLoad = async ({ params }) => {
 				// Where the line came from, in the terms of its source: put into
 				// words below.
 				worker: u.name,
+				// A team's hours name its crew (0023).
+				team: crewNames(sql`${te.id}`),
 				worked_on: te.workedOn,
 				note: te.note,
 				travelled_on: tr.travelledOn,
@@ -210,10 +213,20 @@ export const load: PageServerLoad = async ({ params }) => {
 	return {
 		invoice,
 		lines: lines.map(
-			({ worker, worked_on, note, travelled_on, from_stock, supplier, period_start, ...l }) => ({
+			({
+				worker,
+				team,
+				worked_on,
+				note,
+				travelled_on,
+				from_stock,
+				supplier,
+				period_start,
+				...l
+			}) => ({
 				...l,
-				// The first source the line has, said with #lib/format. A team's entry
-				// names no worker, and says nothing here. What was bought or paid for
+				// The first source the line has, said with #lib/format: who worked it --
+				// one person, or a team's crew -- and when. What was bought or paid for
 				// says from whom, and who paid; what was drawn from stock, whom it came
 				// from.
 				detail:
@@ -226,8 +239,8 @@ export const load: PageServerLoad = async ({ params }) => {
 							]
 								.filter(Boolean)
 								.join(' · ')
-						: worker !== null && worked_on !== null
-							? `${worker} · ${day(worked_on)}${note !== null ? ` · ${note}` : ''}`
+						: (worker !== null || team.length > 0) && worked_on !== null
+							? `${worker ?? names(team)} · ${day(worked_on)}${note !== null ? ` · ${note}` : ''}`
 							: travelled_on !== null
 								? `${day(travelled_on)} · leg of a trip`
 								: from_stock

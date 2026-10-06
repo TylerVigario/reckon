@@ -8,10 +8,10 @@ import { loadCatalogue } from './valuation/load.ts';
 import { team } from './valuation/entries.ts';
 
 /**
- * Every client each service has a price for today, with the rate for one person
- * and for the team -- worked out by the valuation, the one place a price is
- * resolved, so a page chooses between the two figures and never computes one.
- * A team is everybody active who holds a role.
+ * Every client each service has a price for today, with the rate for a crew of
+ * each size a team can be -- one person up to everybody active who holds a
+ * role -- worked out by the valuation, the one place a price is resolved, so a
+ * page chooses a figure and never computes one.
  */
 export async function pricesToday(): Promise<Price[]> {
 	const day = businessToday();
@@ -28,8 +28,9 @@ export async function pricesToday(): Promise<Price[]> {
 		return {
 			service_id: serviceId,
 			entity_id: entityId,
-			one: jobRate(p, 1)?.toString() ?? null,
-			team: jobRate(p, heads)?.toString() ?? null
+			byHeads: Array.from({ length: heads + 1 }, (_, n) =>
+				n === 0 ? null : (jobRate(p, n)?.toString() ?? null)
+			)
 		};
 	});
 }

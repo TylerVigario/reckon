@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
-import { timeEntry } from '#lib/server/db/schema/index.ts';
+import { timeEntry, timeEntryCrew } from '#lib/server/db/schema/index.ts';
 import {
 	pgError,
 	refuse as refuseFields,
@@ -10,6 +10,8 @@ import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
 import { knownZone } from '#lib/server/zones.ts';
 import { readBody } from '#lib/json.ts';
+import { UUID } from '#lib/field-rules.ts';
+import { theTeam } from '#lib/server/choices.ts';
 
 /** What the body carries, for a database complaint to be laid against. */
 const FIELDS = [
@@ -21,6 +23,7 @@ const FIELDS = [
 	'minutes',
 	'crew',
 	'worked_by',
+	'crew_ids',
 	'entity_id',
 	'site_id',
 	'service_id',
@@ -34,7 +37,8 @@ const GONE: Record<string, [field: string, why: string]> = {
 	time_entry_entity_id_fkey: ['entity_id', 'That client no longer exists.'],
 	time_entry_site_id_fkey: ['site_id', 'That site no longer exists.'],
 	time_entry_site_is_the_clients: ['site_id', "That site is no longer this client's."],
-	time_entry_worked_by_fkey: ['worked_by', 'That person no longer exists.']
+	time_entry_worked_by_fkey: ['worked_by', 'That person no longer exists.'],
+	time_entry_crew_user_id_fkey: ['crew_ids', 'Somebody on the crew no longer exists.']
 };
 
 /**
@@ -136,6 +140,24 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	if (crew === 'one' && !worked_by) return refuse('worked_by', 'Who worked it.');
 	if (crew === 'team' && worked_by)
 		return refuse('worked_by', 'Leave this empty for a team entry.');
+	// A team entry names its crew (0023). One a phone queued before entries did
+	// names nobody, and is taken as a team was then: everybody holding a role.
+	let crew_ids: string[] = [];
+	if (crew === 'team') {
+		if (body.crew_ids === undefined || body.crew_ids === null)
+			crew_ids = (await theTeam()).map((p) => p.id);
+		else if (
+			!Array.isArray(body.crew_ids) ||
+			!body.crew_ids.every((x): x is string => typeof x === 'string' && UUID.test(x))
+		)
+			return refuse('crew_ids', 'Who was on it, by their ids.');
+		else {
+			crew_ids = [...new Set(body.crew_ids)];
+			if (crew_ids.length < 2)
+				return refuse('crew_ids', 'A team is two or more. One person is an entry of their own.');
+		}
+	} else if (body.crew_ids !== undefined && body.crew_ids !== null)
+		return refuse('crew_ids', "Leave this empty for one person's entry.");
 
 	// A boolean, not a truthy value: a queue that sends "billable": "false" is
 	// told so, rather than having a non-empty string read as yes.
@@ -154,8 +176,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	let row;
 	try {
-		[row] = await asUser(created_by, (tx) =>
-			tx
+		[row] = await asUser(created_by, async (tx) => {
+			const added = await tx
 				.insert(timeEntry)
 				.values({
 					clientUuid: client_uuid!,
@@ -185,8 +207,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					seconds: timeEntry.seconds,
 					crew: timeEntry.crew,
 					billable: timeEntry.billable
-				})
-		);
+				});
+			// The crew, once: a repeat finds it there already.
+			if (added[0]?.crew === 'team' && crew_ids.length)
+				await tx
+					.insert(timeEntryCrew)
+					.values(crew_ids.map((userId) => ({ timeEntryId: added[0].id, userId })))
+					.onConflictDoNothing();
+			return added;
+		});
 	} catch (err) {
 		// 42703 is an undefined column -- the shape of this statement being
 		// wrong, not the body: a column dropped while this insert still names
