@@ -18,7 +18,7 @@ import {
 } from './entries.ts';
 import { invoiceTax } from './tax.ts';
 import { TAX_ROUNDING, type TaxRounding } from '../tax-rules.ts';
-import { billingDate, hoursOf, legWorth } from './misc.ts';
+import { billingDate, hoursOf, legWorth, materialWorth } from './misc.ts';
 
 const AVERY = { id: 'u-avery', roleId: 'r-partner', active: true };
 const SAM = { id: 'u-sam', roleId: 'r-partner', active: true };
@@ -845,5 +845,45 @@ describe("every amount is rounded to its currency's places", () => {
 			);
 		expect(leg('105', YEN)).toBe('2940');
 		expect(leg('0.125', DINARS)).toBe('3.500');
+	});
+});
+
+/**
+ * A lot keeps what its receipt says -- what all of it cost before tax and in
+ * tax -- and a unit's share is worked out from those, weighted across what is
+ * left of every lot on the shelf.
+ */
+describe('a material is worth what its lots cost, weighted by what is left', () => {
+	const spool = (
+		qtyReceived: string,
+		qtyRemaining: string,
+		exTaxCost: string,
+		taxPaid: string
+	) => ({
+		qtyReceived,
+		qtyRemaining,
+		exTaxCost,
+		taxPaid
+	});
+
+	it('1,000 ft for $310.00 and $24.80 is $0.31 and $0.0248 a foot, and sells at $0.372 at 20%', () => {
+		const w = materialWorth([spool('1000', '1000', '310.00', '24.80')], '20', null);
+		expect([w.exTax, w.taxPaid, w.price].map(money)).toEqual(['0.3100', '0.0248', '0.3720']);
+	});
+
+	it('$33.33 for 7 is not rounded a unit at a time', () => {
+		// 33.33 / 7 is 4.76142857…; what is left of it is its share of the total.
+		const w = materialWorth([spool('7', '7', '33.33', '0')], '0', null);
+		expect(money(w.exTax)).toBe('4.7614');
+	});
+
+	it('two spools at different prices are one price to sell from', () => {
+		// 400 ft left of 1,000 at $0.31, and 600 ft of 600 at $0.35: $0.334 a foot.
+		const w = materialWorth(
+			[spool('1000', '400', '310.00', '0'), spool('600', '600', '210.00', '0')],
+			'0',
+			null
+		);
+		expect(money(w.exTax)).toBe('0.3340');
 	});
 });

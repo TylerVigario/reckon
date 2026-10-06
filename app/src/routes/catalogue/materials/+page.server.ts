@@ -3,7 +3,6 @@ import { asc, desc, eq, gt, lte, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { materialWorth } from '#lib/server/valuation/misc.ts';
-import { moneyPlaces } from '#lib/server/business.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -15,7 +14,7 @@ import type { PageServerLoad } from './$types';
  * together. Price is the ex-tax cost plus markup, weighted across open lots.
  */
 export const load: PageServerLoad = async () => {
-	const [materials, lots, listed, [op], places] = await Promise.all([
+	const [materials, lots, listed, [op]] = await Promise.all([
 		db
 			.select({
 				id: t.material.id,
@@ -34,9 +33,10 @@ export const load: PageServerLoad = async () => {
 			.select({
 				materialId: t.materialLot.materialId,
 				supplier: t.materialLot.supplier,
+				qtyReceived: t.materialLot.qtyReceived,
 				qtyRemaining: t.materialLot.qtyRemaining,
-				exTaxCostPerUnit: t.materialLot.exTaxCostPerUnit,
-				taxPaidPerUnit: t.materialLot.taxPaidPerUnit
+				exTaxCost: t.materialLot.exTaxCost,
+				taxPaid: t.materialLot.taxPaid
 			})
 			.from(t.materialLot)
 			.where(gt(t.materialLot.qtyRemaining, '0')),
@@ -49,8 +49,7 @@ export const load: PageServerLoad = async () => {
 			.from(t.materialPrice)
 			.where(lte(t.materialPrice.effectiveFrom, sql`${businessToday()}::date`))
 			.orderBy(t.materialPrice.materialId, desc(t.materialPrice.effectiveFrom)),
-		db.select({ markup: t.operator.defaultMarkupPct }).from(t.operator),
-		moneyPlaces()
+		db.select({ markup: t.operator.defaultMarkupPct }).from(t.operator)
 	]);
 	const priceOf = new Map(listed.map((l) => [l.materialId, l.price]));
 
@@ -58,7 +57,7 @@ export const load: PageServerLoad = async () => {
 		materials: materials.map((m) => {
 			const mine = lots.filter((l) => l.materialId === m.id);
 			const markup = m.markupPct ?? op?.markup ?? '0';
-			const w = materialWorth(mine, markup, priceOf.get(m.id) ?? null, places);
+			const w = materialWorth(mine, markup, priceOf.get(m.id) ?? null);
 			const suppliers = [...new Set(mine.map((l) => l.supplier).filter((x) => x !== null))];
 			return {
 				id: m.id,

@@ -27,13 +27,15 @@ import {
 	unique,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { createdAt, day, decimal, id, money, nonNegative, oneOf } from './columns.ts';
+import { bytea, createdAt, day, decimal, id, money, nonNegative, oneOf } from './columns.ts';
 import { entity } from './clients.ts';
 import { role, user } from './people.ts';
 
 export const UNITS = ['hour', 'mile', 'each'] as const;
 export const PAYS_FOR = ['time', 'covered_time', 'vehicle'] as const;
 export const PAY_METHODS = ['per_hour', 'percent', 'fixed', 'nothing'] as const;
+/** What a receipt may be: a photo, as the phone shrinks it, or a supplier's PDF. */
+export const RECEIPT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] as const;
 
 export const service = pgTable(
 	'service',
@@ -271,15 +273,20 @@ export const materialLot = pgTable(
 		materialId: uuid().notNull(),
 		receivedOn: day().notNull(),
 		supplier: text(),
-		/**
-		 * UNUSED, PLANNED. The supplier's invoice or receipt the lot arrived on.
-		 * Nothing records or reads it yet.
-		 */
-		documentRef: text(),
 		qtyReceived: decimal(12, 4).notNull(),
 		qtyRemaining: decimal(12, 4).notNull(),
-		exTaxCostPerUnit: decimal(12, 4).notNull(),
-		taxPaidPerUnit: decimal(12, 4).default('0').notNull()
+		/**
+		 * What all of it cost before tax, and the tax paid on it, as the receipt
+		 * says them: 1,000 ft for 310.00 and 24.80. A unit's share is worked out
+		 * from these, so nothing is lost to rounding a cost per foot.
+		 */
+		exTaxCost: money().notNull(),
+		taxPaid: money().default('0').notNull(),
+		/** Who paid for it: a person, who is owed it back, or the business when empty. */
+		paidBy: uuid(),
+		/** The receipt or invoice it came on, as the phone shrank it, and its type. */
+		receipt: bytea(),
+		receiptType: text()
 	},
 	(t) => [
 		index('material_lot_open')
@@ -290,10 +297,23 @@ export const materialLot = pgTable(
 			columns: [t.materialId],
 			foreignColumns: [material.id]
 		}).onDelete('restrict'),
+		foreignKey({
+			name: 'material_lot_paid_by_fkey',
+			columns: [t.paidBy],
+			foreignColumns: [user.id]
+		}).onDelete('restrict'),
 		check('cannot_use_more_than_received', sql`${t.qtyRemaining} <= ${t.qtyReceived}`),
-		nonNegative('material_lot_ex_tax_cost_per_unit_check', t.exTaxCostPerUnit),
+		nonNegative('material_lot_ex_tax_cost_check', t.exTaxCost),
 		check('material_lot_qty_received_check', sql`${t.qtyReceived} > 0`),
 		nonNegative('material_lot_qty_remaining_check', t.qtyRemaining),
-		nonNegative('material_lot_tax_paid_per_unit_check', t.taxPaidPerUnit)
+		nonNegative('material_lot_tax_paid_check', t.taxPaid),
+		check(
+			'material_lot_receipt_comes_with_its_type',
+			sql`(${t.receipt} IS NULL) = (${t.receiptType} IS NULL)`
+		),
+		oneOf('material_lot_receipt_type_check', t.receiptType, RECEIPT_TYPES),
+		// What the phone sends is shrunk to well under this; a file this size is
+		// not a receipt.
+		check('material_lot_receipt_size_check', sql`octet_length(${t.receipt}) <= 2097152`)
 	]
 );

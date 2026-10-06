@@ -238,6 +238,9 @@ jobs:
       - name: Past work takes a start and one other, and fills in the third
         run: node app/scripts/past-work-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
+      - name: Stock is received, with its costs, who paid and its receipt
+        run: node app/scripts/receive-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+
       - name: A sign-in replaces a password hash made at older parameters
         # Every hash the steps above meet was made at today's parameters, so
         # the replacement could stop and they would all stay green.

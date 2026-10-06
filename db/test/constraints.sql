@@ -284,14 +284,14 @@ $$, 'deleting a draft, lines and all');
 
 SELECT must_pass($$
   INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining,
-                            ex_tax_cost_per_unit, tax_paid_per_unit)
-  VALUES ('66666666-6666-6666-6666-666666666666','2026-07-14',600,420,0.1500,0.0116)
+                            ex_tax_cost, tax_paid)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-07-14',600,420,90.00,6.96)
 $$, 'a lot with 180 ft drawn from it');
 
 SELECT must_fail($$
   INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining,
-                            ex_tax_cost_per_unit, tax_paid_per_unit)
-  VALUES ('66666666-6666-6666-6666-666666666666','2026-07-14',600,700,0.1500,0.0116)
+                            ex_tax_cost, tax_paid)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-07-14',600,700,90.00,6.96)
 $$, 'a lot with more left than ever arrived');
 
 \echo ''
@@ -1578,5 +1578,47 @@ $$, 'taking away a unit stock is counted in');
 SELECT must_pass($$
   DELETE FROM unit WHERE name = 'gallon'
 $$, 'and letting go of one nothing is counted in');
+
+\echo ''
+\echo '=== 36. a lot keeps what its receipt says, and who paid ==='
+
+SELECT must_pass($$
+  INSERT INTO material_lot (material_id, received_on, supplier, qty_received, qty_remaining,
+                            ex_tax_cost, tax_paid, paid_by, receipt, receipt_type)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-09-30','Delta Wholesale',1000,1000,
+          310.00,24.80,'a0a0a0a0-0000-4000-8000-0000000000a1','\xffd8ffe0'::bytea,'image/jpeg')
+$$, '1,000 ft for 310.00 and 24.80, paid by Avery, with its receipt');
+
+SELECT must_fail($$
+  INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining, ex_tax_cost)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-09-30',10,10,-1.00)
+$$, 'a cost below nothing');
+
+SELECT must_fail($$
+  INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining, ex_tax_cost,
+                            receipt)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-09-30',10,10,5.00,'\x25504446'::bytea)
+$$, 'a receipt with no type');
+
+SELECT must_fail($$
+  INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining, ex_tax_cost,
+                            receipt, receipt_type)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-09-30',10,10,5.00,'\x3c737667'::bytea,
+          'image/svg+xml')
+$$, 'a receipt that is a drawing, which can carry a script');
+
+SELECT must_fail($$
+  INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining, ex_tax_cost,
+                            receipt, receipt_type)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-09-30',10,10,5.00,
+          convert_to(repeat('x', 2097153), 'UTF8'),'application/pdf')
+$$, 'a receipt larger than any the phone sends');
+
+SELECT must_fail($$
+  INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining, ex_tax_cost,
+                            paid_by)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-09-30',10,10,5.00,
+          '00000000-0000-4000-8000-000000000000')
+$$, 'paid by somebody who does not exist');
 
 \echo 'All guards hold.'
