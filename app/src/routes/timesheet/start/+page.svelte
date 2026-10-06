@@ -70,7 +70,7 @@
 			return;
 		}
 		if (crew === 'one' && !workedBy) {
-			why = 'Pick who is working, or say the whole team is.';
+			why = 'Who is working?';
 			return;
 		}
 		if (crew === 'team' && crewIds.length < 2) {

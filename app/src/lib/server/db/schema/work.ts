@@ -64,8 +64,8 @@ export const timeEntry = pgTable(
 		note: text(),
 		createdAt: createdAt(),
 		/**
-		 * one: worked_by did it and is paid for it. team: the team did it and every
-		 * active team member is paid, so worked_by is null.
+		 * one: worked_by did it and is paid for it. team: the crew it names in
+		 * time_entry_crew did it and each of them is paid, so worked_by is null.
 		 */
 		crew: text({ enum: CREWS }).notNull(),
 		siteId: uuid()
