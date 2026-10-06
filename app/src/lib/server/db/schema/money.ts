@@ -109,6 +109,11 @@ export const invoiceLine = pgTable(
 	'invoice_line',
 	{
 		id: id(),
+		/**
+		 * Made on the phone that added the line by hand, so a retry after a
+		 * timeout cannot add it twice. Null on a line the server built.
+		 */
+		clientUuid: uuid(),
 		invoiceId: uuid().notNull(),
 		seq: integer().notNull(),
 		kind: text({ enum: LINE_KINDS }).notNull(),
@@ -146,6 +151,7 @@ export const invoiceLine = pgTable(
 	},
 	(t) => [
 		unique('invoice_line_invoice_id_seq_key').on(t.invoiceId, t.seq),
+		unique('invoice_line_client_uuid_key').on(t.clientUuid),
 		unique('invoice_line_time_entry_id_key').on(t.timeEntryId),
 		unique('invoice_line_trip_leg_id_key').on(t.tripLegId),
 		unique('invoice_line_agreement_period_id_key').on(t.agreementPeriodId),

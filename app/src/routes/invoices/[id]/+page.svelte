@@ -1,7 +1,13 @@
 <script lang="ts">
-	import { Decimal } from '#lib/decimal.ts';
+	import { onMount } from 'svelte';
+	import { invalidateAll } from '$app/navigation';
+	import { Decimal, Ratio, sum } from '#lib/decimal.ts';
 	import { currencyPlaces } from '#lib/currency.ts';
 	import Top from '#lib/Top.svelte';
+	import OfflineBanner from '#lib/OfflineBanner.svelte';
+	import { discardLine, flush, held, linesHeld, type QueuedLine } from '#lib/queue.ts';
+	import { roundTax } from '#lib/tax-rounding.ts';
+	import { warm } from '#lib/warm.ts';
 	import { clock, day, monthOf, pct, quantity, rateParts } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import { money } from '#lib/money.svelte.ts';
@@ -11,14 +17,104 @@
 	let { data }: PageProps = $props();
 
 	const i = $derived(data.invoice);
-	const t = $derived(data.totals);
+
+	// LINES ON THIS PHONE: added here and waiting to send, or sent and refused.
+	// Read from the queue on mount -- the server cannot know them yet -- and
+	// again whenever the queue sends, when what it took comes back as the
+	// server's own lines.
+	let onPhone = $state<QueuedLine[]>([]);
+	let waiting = $state(0);
+	async function read() {
+		try {
+			const [mine, all, time] = await Promise.all([linesHeld(i.id), linesHeld(), held()]);
+			onPhone = mine;
+			waiting = all.filter((q) => !q.refused).length + time.waiting;
+		} catch {
+			/* a phone that will not open its queue shows the server's lines alone */
+		}
+	}
+	async function send() {
+		const sent = await flush().catch(() => null);
+		await read();
+		if (sent && sent.sent + sent.refused > 0) {
+			await invalidateAll();
+			warm();
+		}
+	}
+	onMount(() => {
+		void read().then(send);
+		const back = () => void send();
+		addEventListener('online', back);
+		return () => removeEventListener('online', back);
+	});
+	const pending = $derived(onPhone.filter((q) => !q.refused));
+	const kept = $derived(onPhone.filter((q) => q.refused));
+
+	// Letting go of a refused line is it gone for good, so it takes a second
+	// tap, and the first one says so.
+	let confirming = $state<string | null>(null);
+	async function letGo(id: string) {
+		if (confirming !== id) {
+			confirming = id;
+			setTimeout(() => {
+				if (confirming === id) confirming = null;
+			}, 4000);
+			return;
+		}
+		confirming = null;
+		await discardLine(id).catch(() => {});
+		await read();
+	}
+
+	// THE TOTALS, with what is on this phone in them: the server's lines and the
+	// phone's, taxed by the rounding the server's own lines were. A line from
+	// stock is costed when it arrives, so with one on the phone this is what the
+	// draft will come to as near as the phone can say. Nothing waiting, and they
+	// are the server's own figures.
+	const t = $derived.by(() => {
+		const server = data.totals;
+		if (pending.length === 0) return server;
+		const all = [
+			...data.lines.map((l) => ({
+				kind: l.kind,
+				amount: l.amount,
+				taxable: l.taxable,
+				rate: l.tax_rate_pct
+			})),
+			...pending.map((q) => ({
+				kind: q.line.shown.kind,
+				amount: q.line.shown.amount,
+				taxable: q.line.shown.taxable,
+				rate: q.line.shown.tax_rate_pct
+			}))
+		];
+		const taxed = all.filter((l) => l.taxable);
+		const untaxed = sum(all.filter((l) => !l.taxable).map((l) => l.amount));
+		const measure = sum(taxed.map((l) => l.amount));
+		const tax =
+			roundTax(
+				taxed.map((l) => ({ rate: l.rate, tax: Ratio.of(l.amount).mul(l.rate).div(100) })),
+				data.rounding,
+				data.places
+			) ?? Decimal.ZERO;
+		return {
+			...server,
+			untaxed: untaxed.toFixed(data.places),
+			tax: tax.toFixed(data.places),
+			due: untaxed.add(measure).add(tax).toFixed(data.places),
+			untaxed_kinds: [...new Set(all.filter((l) => !l.taxable).map((l) => l.kind))],
+			taxed_kinds: [...new Set(taxed.map((l) => l.kind))]
+		};
+	});
 
 	// Reg 1701: the measure is what was sold taxable, less what was already
-	// taxed when it was bought. What is left is the markup.
+	// taxed when it was bought. What is left is the markup. The server's
+	// figures, which take in a line once it arrives.
+	const r = $derived(data.totals);
 	const netTaxable = $derived(
-		Decimal.from(t.taxable_measure).sub(t.resold).toFixed(currencyPlaces())
+		Decimal.from(r.taxable_measure).sub(r.resold).toFixed(currencyPlaces())
 	);
-	const dueOnReturn = $derived(t.due_on_return);
+	const dueOnReturn = $derived(r.due_on_return);
 
 	// The rate and the two obligations inside it: a return allocates the
 	// state's share and the district tax separately, so the invoice that
@@ -60,7 +156,39 @@
 	{/snippet}
 </Top>
 
+<OfflineBanner asOf={data.as_of} {waiting} />
+
 <div class="pad">
+	{#if kept.length}
+		<div class="sec">
+			<div class="sec-h"><h2>Not added</h2></div>
+			<div class="rows">
+				{#each kept as q (q.line.client_uuid)}
+					{@const l = q.line.shown}
+					<div class="rec crit">
+						<div class="rec-m">
+							<div class="rec-t">{l.description}</div>
+							<div class="rec-s">{l.detail} · {money(l.amount)}</div>
+							<div class="rec-s refusal">
+								Refused: {q.refused?.detail} It is kept on this phone until it is fixed or let go.
+							</div>
+							<div class="acts">
+								<a
+									class="btn sm pri"
+									href={`${resolve('/invoices/[id]/add', { id: i.id })}?fix=${encodeURIComponent(q.line.client_uuid)}`}
+									>Fix</a
+								>
+								<button class="btn sm gho" onclick={() => letGo(q.line.client_uuid)}>
+									{confirming === q.line.client_uuid ? 'Tap again to discard' : 'Discard'}
+								</button>
+							</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/if}
+
 	<div class="tiles">
 		<div class="tile">
 			<span class="k">Due</span>
@@ -120,6 +248,24 @@
 				{/if}
 			{/each}
 
+			{#each pending as q (q.line.client_uuid)}
+				{@const l = q.line.shown}
+				<div class="rec">
+					<div class="rec-m">
+						<div class="rec-t">{l.description}</div>
+						<div class="rec-s">{l.detail}{l.taxable ? ' · taxable' : ''}</div>
+						<div class="rec-c">
+							{#if q.line.receipt}<span class="chip">Receipt</span>{/if}
+							<span class="chip acc"><span class="dot"></span>On this phone</span>
+						</div>
+					</div>
+					<div class="rec-n">
+						<span class="rec-v">{money(l.amount)}</span>
+						<span class="rec-x">{quantity(l.qty)} {l.unit} × {quantity(l.unit_price)}</span>
+					</div>
+				</div>
+			{/each}
+
 			{#if Number(t.untaxed) > 0}
 				<div class="rec">
 					<div class="rec-m">
@@ -157,21 +303,31 @@
 		</div>
 	</div>
 
-	{#if Number(t.taxable_measure) > 0}
+	{#if Number(r.taxable_measure) > 0}
 		<div class="sec">
 			<div class="sec-h"><h2>What this does to the return</h2></div>
 			<div class="rows">
+				{#if pending.length}
+					<div class="rec">
+						<div class="rec-m">
+							<div class="rec-s">
+								Without the {pending.length === 1 ? 'line' : `${pending.length} lines`} on this phone:
+								worked out again when {pending.length === 1 ? 'it reaches' : 'they reach'} the server.
+							</div>
+						</div>
+					</div>
+				{/if}
 				<div class="rec">
 					<div class="rec-m"><div class="rec-t">Taxable measure</div></div>
-					<div class="rec-n"><span class="rec-v">{money(t.taxable_measure)}</span></div>
+					<div class="rec-n"><span class="rec-v">{money(r.taxable_measure)}</span></div>
 				</div>
-				{#if Number(t.resold) > 0}
+				{#if Number(r.resold) > 0}
 					<div class="rec">
 						<div class="rec-m">
 							<div class="rec-t">Less tax-paid purchases resold</div>
 							<div class="rec-s">The ex-tax cost, stored on the line</div>
 						</div>
-						<div class="rec-n"><span class="rec-v">−{money(t.resold)}</span></div>
+						<div class="rec-n"><span class="rec-v">−{money(r.resold)}</span></div>
 					</div>
 				{/if}
 				<div class="rec">
@@ -186,3 +342,16 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	/* Why the server would not take a line, in its words. */
+	.refusal {
+		margin-top: 6px;
+		color: var(--crit);
+	}
+	.acts {
+		display: flex;
+		gap: 8px;
+		margin-top: 10px;
+	}
+</style>

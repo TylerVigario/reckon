@@ -1,8 +1,11 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { enhance } from '$app/forms';
+	import { onMount, untrack } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import Top from '#lib/Top.svelte';
 	import ReceiptPicker from '#lib/ReceiptPicker.svelte';
+	import OfflineBanner from '#lib/OfflineBanner.svelte';
+	import { enqueueLine, findLine, flush, linesHeld, type QueuedLine } from '#lib/queue.ts';
 	import { pct, percent, quantity } from '#lib/format.ts';
 	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { readFromStock, readPassedOn } from '#lib/line-fields.ts';
@@ -13,7 +16,7 @@
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
-	let { data, form }: PageProps = $props();
+	let { data }: PageProps = $props();
 
 	// Stock first, where there is any, as the mock has it.
 	let kind = $state<'material' | 'bought' | 'paid_for'>(
@@ -27,10 +30,42 @@
 	let cost = $state('');
 	let taxPaid = $state('');
 	let paidBy = $state(''); // empty is the business
+	let boughtFrom = $state('');
 	let saving = $state(false);
+	let why = $state('');
 	let errors = $state<Record<string, string>>({});
-	$effect(() => {
-		if (form?.errors) errors = form.errors;
+	let waiting = $state(0);
+
+	// A line the server refused, opened from the draft to be fixed: its fields
+	// as they were, its receipt kept unless another is chosen, and the server's
+	// reason. Saving it queues it again under its own uuid, which clears the
+	// refusal.
+	let fixing = $state<QueuedLine | null>(null);
+	onMount(() => {
+		void linesHeld().then(
+			(all) => (waiting = all.filter((q) => !q.refused).length),
+			() => {}
+		);
+		const id = page.url.searchParams.get('fix');
+		if (!id) return;
+		void findLine(id).then(
+			(q) => {
+				if (!q || q.line.invoice_id !== data.draft.id) return;
+				const f = q.line.fields;
+				fixing = q;
+				kind = q.line.shown.kind;
+				siteId = f.site_id ?? '';
+				materialId = f.material_id ?? '';
+				qty = f.qty ?? '';
+				description = f.description ?? '';
+				boughtFrom = f.bought_from ?? '';
+				cost = f.ex_tax_cost ?? '';
+				taxPaid = f.tax_paid ?? '';
+				paidBy = f.paid_by ?? '';
+				errors = q.refused?.errors ?? {};
+			},
+			() => {}
+		);
 	});
 
 	const site = $derived(data.sites.find((s) => s.id === siteId));
@@ -90,6 +125,75 @@
 		};
 	});
 
+	/** How the draft words a line, as the server's own page does. */
+	const detail = (fields: Record<string, string>) =>
+		stock
+			? 'From stock'
+			: [
+					bought ? 'Bought' : 'Paid for them',
+					fields.bought_from,
+					fields.paid_by
+						? `${data.people.find((p) => p.id === fields.paid_by)?.name ?? 'Someone'} paid`
+						: 'the business paid',
+					bought ? null : 'at cost'
+				]
+					.filter(Boolean)
+					.join(' · ');
+
+	/**
+	 * Saves the line on this phone, receipt and all, then sends what is waiting.
+	 * The draft opens either way: with the line from the server where there is a
+	 * signal, and with it marked as on this phone where there is not.
+	 */
+	async function save(e: SubmitEvent) {
+		e.preventDefault();
+		const formData = new FormData(e.currentTarget as HTMLFormElement);
+		const fields = Object.fromEntries(
+			[...formData.entries()].filter((x): x is [string, string] => typeof x[1] === 'string')
+		);
+		errors = stock
+			? readFromStock(fields, item?.places ?? null).errors
+			: readPassedOn(fields).errors;
+		if (stock && drawn?.short)
+			errors.qty = `Only ${quantity(drawn.short)} ${item?.short} on the shelf.`;
+		if (stock ? drawn?.needsASite : bills?.needsASite)
+			errors.site_id = 'Where it went, so its tax rate is known.';
+		const line = stock ? drawn : bills;
+		if (Object.keys(errors).length > 0 || !line || line.short !== null) return;
+		saving = true;
+		why = '';
+		const file = formData.get('receipt');
+		const receipt =
+			file instanceof File && file.size > 0 ? await shrink(file) : (fixing?.line.receipt ?? null);
+		try {
+			await enqueueLine({
+				client_uuid: fixing?.line.client_uuid ?? crypto.randomUUID(),
+				invoice_id: data.draft.id,
+				fields,
+				receipt: stock ? null : receipt,
+				shown: {
+					kind,
+					description: fields.description,
+					detail: detail(fields),
+					qty: line.qty,
+					unit: line.unit,
+					unit_price: line.unitPrice,
+					amount: line.amount,
+					taxable: line.taxable,
+					tax_rate_pct: line.taxRatePct
+				}
+			});
+		} catch {
+			why = 'This phone would not save the line, so it is not added.';
+			saving = false;
+			return;
+		}
+		// A few seconds for the server to take it; no longer, so a phone with a
+		// weak signal is not left waiting on a page that has done its part.
+		await Promise.race([flush().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
+		await goto(resolve('/invoices/[id]', { id: data.draft.id }), { invalidateAll: true });
+	}
+
 	/** What the line will bill and the tax on it, by the rule the server saves it by. */
 	const bills = $derived.by(() => {
 		if (!/^\d+(\.\d+)?$/.test(cost) || stock) return null;
@@ -104,6 +208,7 @@
 		);
 		return {
 			...line,
+			short: null,
 			tax: line.taxable
 				? Ratio.of(line.amount).mul(line.taxRatePct).div(100).round(data.places).toString()
 				: null
@@ -118,32 +223,16 @@
 	backLabel={data.draft.number}
 />
 
+<OfflineBanner asOf={data.as_of} {waiting} />
+
 <div class="pad">
-	<form
-		class="rows form"
-		method="POST"
-		enctype="multipart/form-data"
-		use:enhance={async ({ formData, cancel }) => {
-			const fields = Object.fromEntries(
-				[...formData.entries()].filter((e): e is [string, string] => typeof e[1] === 'string')
-			);
-			errors = stock
-				? readFromStock(fields, item?.places ?? null).errors
-				: readPassedOn(fields).errors;
-			if (stock && drawn?.short)
-				errors.qty = `Only ${quantity(drawn.short)} ${item?.short} on the shelf.`;
-			if (stock ? drawn?.needsASite : bills?.needsASite)
-				errors.site_id = 'Where it went, so its tax rate is known.';
-			if (Object.keys(errors).length > 0) return cancel();
-			saving = true;
-			const file = formData.get('receipt');
-			if (file instanceof File && file.size > 0) formData.set('receipt', await shrink(file));
-			return async ({ update }) => {
-				await update({ reset: false });
-				saving = false;
-			};
-		}}
-	>
+	{#if fixing?.refused}
+		<p class="why">
+			Refused: {fixing.refused.detail} Fix it and add it again, or discard it from the draft.
+		</p>
+	{/if}
+	{#if why}<p class="why">{why}</p>{/if}
+	<form class="rows form" onsubmit={save}>
 		<div class="fld">
 			<span class="lbl">Kind</span>
 			<input type="hidden" name="kind" value={kind} />
@@ -300,6 +389,7 @@
 					name="bought_from"
 					class="inp"
 					placeholder={bought ? 'Valley Hardware' : 'City of Woodland'}
+					bind:value={boughtFrom}
 				/>
 				{#if errors.bought_from}<small class="why">{errors.bought_from}</small>{/if}
 			</div>
@@ -377,7 +467,11 @@
 			<div class="fld">
 				<span class="lbl">Receipt</span>
 				<ReceiptPicker id="l-receipt" />
-				<small class="lt">A photo, shrunk on this phone before it is sent, or a PDF.</small>
+				<small class="lt"
+					>{fixing?.line.receipt
+						? 'The receipt taken before is kept unless another is chosen.'
+						: 'A photo, shrunk on this phone before it is sent, or a PDF.'}</small
+				>
 				{#if errors.receipt}<small class="why">{errors.receipt}</small>{/if}
 			</div>
 		{/if}

@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import Top from '#lib/Top.svelte';
+	import { warm } from '#lib/warm.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -23,9 +24,11 @@
 		method="POST"
 		use:enhance={() => {
 			saving = true;
-			return async ({ update }) => {
+			return async ({ result, update }) => {
 				await update({ reset: false });
 				saving = false;
+				// Started: the worker keeps it for no signal from now on.
+				if (result.type === 'redirect') warm();
 			};
 		}}
 	>

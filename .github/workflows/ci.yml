@@ -252,7 +252,7 @@ jobs:
       - name: Stock is received, with its costs, who paid and its receipt
         run: node app/scripts/receive-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
-      - name: Lines are added to a draft, with who paid and their receipts
+      - name: Lines are added to a draft, drawn from stock or bought and paid for with receipts
         run: node app/scripts/lines-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: A sign-in replaces a password hash made at older parameters
@@ -260,7 +260,7 @@ jobs:
         # the replacement could stop and they would all stay green.
         run: node app/scripts/rehash-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
-      - name: It installs, and works with the server out of reach
+      - name: It installs, and time and lines on a draft work with the server out of reach
         # Out of reach for real: the server is stopped between the runs, because
         # the service worker fetches on its own and a flag set on the page would
         # not reach it. The browser the console check started stays up

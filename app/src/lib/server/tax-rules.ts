@@ -1,7 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm';
-import { Decimal, type Ratio } from '#lib/decimal.ts';
 import { invoiceLine } from './db/schema/index.ts';
 import type { TAX_RULE_SETS } from './db/schema/operator.ts';
+import type { TaxRounding } from '../tax-rounding.ts';
 
 export type TaxRuleSet = (typeof TAX_RULE_SETS)[number];
 
@@ -23,10 +23,8 @@ export type TaxRuleSet = (typeof TAX_RULE_SETS)[number];
  * A rule whose law lets the business choose -- Japan's method, the UK's line or
  * total -- offers that choice as a setting of that rule when it is added.
  */
-export type TaxRounding = {
-	scope: 'invoice' | 'line';
-	method: 'half_up' | 'down' | 'up';
-};
+export type { TaxRounding } from '../tax-rounding.ts';
+export { roundTax } from '../tax-rounding.ts';
 
 export const TAX_ROUNDING: Record<TaxRuleSet, TaxRounding> = {
 	// California, Regulation 1700(a)(3): "rounded off to the nearest cent by
@@ -88,30 +86,4 @@ export function lineTaxSql(exact: SQL, rounding: TaxRounding, places: number, fr
 		: sql`(select coalesce(sum(t), 0)
 		         from (select ${roundSql(sql`sum(${exact})`, rounding.method, places)} as t
 		                 ${from} group by ${invoiceLine.taxRatePct}) by_rate)`;
-}
-
-/**
- * The tax on a set of one invoice's lines, rounded by `rounding` to `places`:
- * each line's exact tax, with its rate. The TypeScript twin of taxSql.
- */
-export function roundTax(
-	lines: readonly { rate: string; tax: Ratio }[],
-	rounding: TaxRounding,
-	places: number
-): Decimal | null {
-	if (lines.length === 0) return null;
-	if (rounding.scope === 'line')
-		return lines
-			.map((l) => l.tax.round(places, rounding.method))
-			.reduce((a, b) => a.add(b).round(places));
-	// By the rate itself, as the column holds it, so "7.25" and "7.2500" are one.
-	const byRate = new Map<string, Ratio>();
-	for (const l of lines) {
-		const rate = Decimal.from(l.rate).round(4).toString();
-		const had = byRate.get(rate);
-		byRate.set(rate, had ? had.add(l.tax) : l.tax);
-	}
-	return [...byRate.values()]
-		.map((t) => t.round(places, rounding.method))
-		.reduce((a, b) => a.add(b).round(places));
 }

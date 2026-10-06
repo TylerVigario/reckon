@@ -189,6 +189,12 @@ export const load: PageServerLoad = async ({ params }) => {
 										: null
 			})
 		),
-		totals
+		totals,
+		// For a draft opened on a phone, whose lines on the phone join the total
+		// by the same rounding the server's own lines had.
+		rounding,
+		places,
+		// When this copy was made: shown when it is opened with no signal.
+		as_of: new Date().toISOString()
 	};
 };

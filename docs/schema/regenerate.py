@@ -245,7 +245,8 @@ T["invoice"] = [("PK","id","uuid"),("UK","number","text"),("FK","entity_id","uui
     ("","period_start","date"),("","period_end","date"),("UK","public_token","text"),
     ("","token_expires_on","date"),("","sent_at","timestamptz"),
     ("FK","created_by","uuid"),("","void_reason","text"),("","created_at","timestamptz")]
-T["invoice_line"] = [("PK","id","uuid"),("FK","invoice_id","uuid"),("","seq","int"),
+T["invoice_line"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the phone"),
+    ("FK","invoice_id","uuid"),("","seq","int"),
     ("","kind","service|material|recurring|adjustment|bought|paid_for"),("","description","text"),
     ("","qty","numeric"),("","unit","text · as billed"),
     ("","unit_price","numeric · as billed"),
@@ -550,7 +551,10 @@ c += [note("n6", "A tax override is stored per line, so one invoice can carry li
                  "the quantity counts nothing, as on a flat charge or an adjustment.\n\n"
                  "What is bought for a job, or paid on the client's behalf, is a line of "
                  "its own kind: from whom, who paid -- a person, who is owed it back, or "
-                 "the business -- and its receipt.", 880, 480, 640, 330)]
+                 "the business -- and its receipt.\n\n"
+                 "A line added by hand is saved on the phone first and sent when there "
+                 "is a signal; client_uuid, made on the phone, keeps a retry from adding "
+                 "it twice.", 880, 480, 640, 330)]
 files.append(write("06-money-out.drawio", "Money out", c, 1600, 1200))
 
 # 07 -- money in

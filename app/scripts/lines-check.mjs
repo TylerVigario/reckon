@@ -282,6 +282,11 @@ check(
 	said && page.includes('From stock · Delta Wholesale · taxable'),
 	`each line says what it is, from whom, and who paid${said ? '' : ` (${page.slice(0, 600)})`}`
 );
+// Each was saved on the phone first, and sent at once: none is left there.
+check(
+	!page.includes('On this phone'),
+	'every line reached the server, and none waits on the phone'
+);
 // 33.33 and 10.63 taxed at 8% is 3.5168: $3.52.
 check(page.includes('$82.48'), 'the draft comes to $82.48: $10.63, $33.33, $35.00 and $3.52 tax');
 const receipt = await evaluate(`(async () => {
