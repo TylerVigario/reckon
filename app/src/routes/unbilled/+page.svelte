@@ -1,16 +1,15 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { count, day, hours, miles } from '#lib/format.ts';
+	import { count, day, hours, miles, names } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
 
-	// Who was there. A one-person entry names them; a team entry names the team,
-	// because the entry itself deliberately does not.
-	const worked = (crew: string, by: string | null) =>
-		crew === 'team' ? data.team.join(' and ') : (by ?? 'nobody recorded');
+	// Who was there: the person a one-person entry names, or a team entry's crew.
+	const worked = (crew: string, by: string | null, crewNames: string[] = []) =>
+		crew === 'team' ? names(crewNames) : (by ?? 'nobody recorded');
 
 	type Row = {
 		key: string;
@@ -32,7 +31,11 @@
 				href: null,
 				title: w.who,
 				aside: w.service,
-				detail: [worked(w.crew, w.worked_by), day(w.worked_on), w.site ?? 'no address on file']
+				detail: [
+					worked(w.crew, w.worked_by, w.crew_names),
+					day(w.worked_on),
+					w.site ?? 'no address on file'
+				]
 					.filter(Boolean)
 					.join(' · '),
 				worth: w.worth,

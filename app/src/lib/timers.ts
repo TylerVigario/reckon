@@ -24,6 +24,8 @@ export type Running = {
 	started_at: number;
 	crew: 'one' | 'team';
 	worked_by: string | null;
+	/** Who is on a team timer. Absent on one started before timers named their crew. */
+	crew_ids?: string[];
 	entity_id: string | null;
 	site_id: string | null;
 	service_id: string;
@@ -106,6 +108,8 @@ export function toEntry(t: Running, createdBy: string, zone: string, now = Date.
 		zone,
 		crew: t.crew,
 		worked_by: t.crew === 'team' ? null : t.worked_by,
+		// A copy: a timer on screen is a $state proxy, which IndexedDB will not store.
+		...(t.crew === 'team' && t.crew_ids ? { crew_ids: [...t.crew_ids] } : {}),
 		created_by: createdBy,
 		entity_id: t.entity_id,
 		site_id: t.site_id,

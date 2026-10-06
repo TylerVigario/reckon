@@ -16,7 +16,8 @@ import {
 import { billedAmount, jobRate, priceOn } from './valuation/pricing.ts';
 import { ruleOn, timePay } from './valuation/pay.ts';
 import { rateIsStale } from './stale.ts';
-import { dated, daysAgo } from '#lib/format.ts';
+import { dated, daysAgo, names } from '#lib/format.ts';
+import { crewNames } from './choices.ts';
 import { Ratio } from '#lib/decimal.ts';
 
 /**
@@ -310,7 +311,8 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 		.select({
 			...entryColumns,
 			place: sql<string>`coalesce(${t.site.display}, ${t.entity.name})`,
-			who: t.user.name
+			who: t.user.name,
+			teamNames: crewNames(sql`${t.timeEntry.id}`)
 		})
 		.from(t.timeEntry)
 		.innerJoin(t.entity, eq(t.entity.id, t.timeEntry.entityId))
@@ -320,13 +322,21 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 	const worth = await valueEntries(db, entries);
 
 	// One row per job per day. What makes it one job is everything that prices
-	// it: the client, the place, the service, the crew and who worked it. Two
-	// of those differing is two jobs, however near each other they happened.
+	// it: the client, the place, the service, and who worked it -- one person, or
+	// the crew a team entry names. Two of those differing is two jobs, however
+	// near each other they happened.
 	const groups = new Map<string, typeof entries>();
 	for (const e of entries) {
-		const key = [e.place, e.workedOn, e.crew, e.who, e.serviceId, e.entityId, e.workedBy].join(
-			'\u0000'
-		);
+		const key = [
+			e.place,
+			e.workedOn,
+			e.crew,
+			e.teamNames.join(','),
+			e.who,
+			e.serviceId,
+			e.entityId,
+			e.workedBy
+		].join('\u0000');
 		groups.set(key, [...(groups.get(key) ?? []), e]);
 	}
 	const jobs: PayJob[] = [...groups.values()].map((es) => {
@@ -337,7 +347,7 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 			job: es[0].place,
 			worked_on: es[0].workedOn,
 			crew: es[0].crew,
-			who: es[0].who,
+			who: es[0].crew === 'team' ? names(es[0].teamNames) : es[0].who,
 			heads: Math.max(...w.map((x) => x.heads)),
 			hours: Ratio.of(es.reduce((n, e) => n + e.seconds, 0))
 				.div(3600)
@@ -397,7 +407,7 @@ export type HourNow = {
 export async function anHourNow(): Promise<HourNow[]> {
 	const day = businessToday();
 	const [catalogue, places] = await Promise.all([loadCatalogue(db), moneyPlaces()]);
-	const names = new Map(
+	const names_ = new Map(
 		(await db.select({ id: t.user.id, name: t.user.name }).from(t.user)).map((u) => [u.id, u.name])
 	);
 	const people = team(catalogue.people);
@@ -430,7 +440,7 @@ export async function anHourNow(): Promise<HourNow[]> {
 			const paid = timePay(rule, 3600, billed, places);
 			const key = paid?.toString() ?? 'unpaid';
 			const row = alike.get(key) ?? { who: [], paid, since: null };
-			row.who.push(names.get(person.id) ?? '');
+			row.who.push(names_.get(person.id) ?? '');
 			row.since = later(row.since, later(price.effectiveFrom, rule?.effectiveFrom ?? null));
 			alike.set(key, row);
 		}
@@ -439,7 +449,7 @@ export async function anHourNow(): Promise<HourNow[]> {
 				service_id: s.id,
 				service: s.name,
 				crew: 'one',
-				who: row.who.sort().join(' and '),
+				who: names(row.who.sort()),
 				billed: billed.toString(),
 				paid: row.paid?.toString() ?? null,
 				kept: billed.sub(row.paid ?? Decimal.ZERO).toFixed(places),
@@ -462,7 +472,8 @@ export async function anHourNow(): Promise<HourNow[]> {
 				service_id: s.id,
 				service: s.name,
 				crew: 'team',
-				who: 'the team',
+				// An hour with everybody holding a role on it.
+				who: names(people.map((p) => names_.get(p.id) ?? '').sort()),
 				billed: teamBilled.toString(),
 				paid: paid?.toFixed(places) ?? null,
 				kept: teamBilled.sub(paid ?? Decimal.ZERO).toFixed(places),

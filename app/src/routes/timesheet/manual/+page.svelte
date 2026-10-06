@@ -37,6 +37,11 @@
 	);
 	let crew = $state<'one' | 'team'>('one');
 	let workedBy = $state<string | null>(untrack(() => data.me));
+	// Who is on a team: everyone holding a role, unless some are unticked.
+	let crewIds = $state<string[]>(untrack(() => data.people.map((p) => p.id)));
+	const heads = $derived(crew === 'team' ? crewIds.length : 1);
+	const toggle = (id: string) =>
+		(crewIds = crewIds.includes(id) ? crewIds.filter((x) => x !== id) : [...crewIds, id]);
 	// WHEN: a day, and a start, a length and an end, any two of which give the
 	// third (#lib/work-times), worked out here as they are typed, offline. Not
 	// every entry is today's -- an evening spent writing up Tuesday is the
@@ -72,6 +77,9 @@
 		serviceId = known(data.services, e.service_id);
 		crew = e.crew;
 		workedBy = e.crew === 'team' ? workedBy : known(data.people, e.worked_by);
+		// Who it named, of those who can still be on a team.
+		if (e.crew === 'team' && e.crew_ids)
+			crewIds = data.people.filter((p) => e.crew_ids!.includes(p.id)).map((p) => p.id);
 		day = e.worked_on;
 		length = lengthText(secondsOf(e));
 		// A timed entry is shown on the clock it was worked on. One recorded as a
@@ -90,7 +98,7 @@
 	const site = $derived(sites.find((s) => s.id === siteId));
 	const service = $derived(data.services.find((s) => s.id === serviceId));
 
-	const rate = $derived(rateFor(data.prices, serviceId, entityId, crew));
+	const rate = $derived(rateFor(data.prices, serviceId, entityId, heads));
 
 	const seconds = $derived(parseLength(length));
 	const took = $derived(seconds !== null && seconds > 0 ? seconds : null);
@@ -150,6 +158,10 @@
 			why = 'Who worked it?';
 			return;
 		}
+		if (crew === 'team' && crewIds.length < 2) {
+			why = 'A team is two or more. Tick who else was on it, or pick one person.';
+			return;
+		}
 
 		// The two moments, worked out where the work was done. A fixed entry whose
 		// times nobody touched keeps them to the second, as they were recorded.
@@ -172,6 +184,7 @@
 			...when,
 			crew,
 			worked_by: crew === 'team' ? null : workedBy,
+			...(crew === 'team' ? { crew_ids: [...crewIds] } : {}),
 			created_by: data.me,
 			entity_id: entityId,
 			site_id: siteId,
@@ -261,6 +274,23 @@
 				>
 			</div>
 		</div>
+
+		{#if crew === 'team'}
+			<div class="fld">
+				<span class="lbl">Who was on it</span>
+				<div class="seg">
+					{#each data.people as p (p.id)}
+						<button
+							type="button"
+							class:on={crewIds.includes(p.id)}
+							aria-pressed={crewIds.includes(p.id)}
+							onclick={() => toggle(p.id)}>{p.name.split(' ')[0]}</button
+						>
+					{/each}
+				</div>
+				<small class="lt">Billed for {heads}, and each of them paid.</small>
+			</div>
+		{/if}
 
 		<div class="fld">
 			<label for="m-day">Day it was worked</label>

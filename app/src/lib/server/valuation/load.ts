@@ -30,6 +30,11 @@ export const entryColumns = {
 	billable: t.timeEntry.billable,
 	crew: t.timeEntry.crew,
 	workedBy: t.timeEntry.workedBy,
+	// Who a team entry names (0023).
+	crewIds: sql<
+		string[]
+	>`(select coalesce(array_agg(c.user_id::text order by c.user_id), '{}')::text[]
+		from ${t.timeEntryCrew} c where c.time_entry_id = ${t.timeEntry.id})`,
 	createdAt: t.timeEntry.createdAt
 };
 

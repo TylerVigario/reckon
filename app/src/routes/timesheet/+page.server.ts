@@ -3,7 +3,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { db } from '#lib/server/db/index.ts';
 import { personalToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
-import { clientsAndSites, theTeam, timedServices } from '#lib/server/choices.ts';
+import { clientsAndSites, crewNames, theTeam, timedServices } from '#lib/server/choices.ts';
 import { pricesToday } from '#lib/server/prices.ts';
 import type { PageServerLoad } from './$types';
 
@@ -40,6 +40,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 				note: t.timeEntry.note,
 				crew: t.timeEntry.crew,
 				worked_by: u.name,
+				crew_names: crewNames(sql`${t.timeEntry.id}`),
 				entity: t.entity.name,
 				site: t.site.display,
 				service: t.service.name,

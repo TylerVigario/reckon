@@ -124,9 +124,10 @@ const manual = await (await fetch(`${base}/timesheet/manual`, { headers: { cooki
 const serviceId = optionsOf(manual, 'm-service')[0]?.id;
 
 if (serviceId) {
-	// A TEAM entry, because it names nobody by definition -- the people are
-	// rendered as buttons and carry no id in the markup, and inventing a user
-	// id here would test the foreign key rather than the insert.
+	// A TEAM entry naming no crew, as a phone queued before entries named
+	// theirs: it is taken as everybody holding a role. The people are rendered
+	// as buttons and carry no id in the markup, and inventing a user id here
+	// would test the foreign key rather than the insert -- which is below.
 	const one = {
 		...entry,
 		service_id: serviceId,
@@ -148,6 +149,37 @@ if (serviceId) {
 		'POST',
 		'/api/time',
 		{ ...one, client_uuid: crypto.randomUUID(), worked_by: crypto.randomUUID() },
+		400
+	);
+	await check(
+		'a team of one is refused',
+		'POST',
+		'/api/time',
+		{ ...one, client_uuid: crypto.randomUUID(), crew_ids: [crypto.randomUUID()] },
+		400
+	);
+	await check(
+		'a crew naming people who do not exist is refused',
+		'POST',
+		'/api/time',
+		{
+			...one,
+			client_uuid: crypto.randomUUID(),
+			crew_ids: [crypto.randomUUID(), crypto.randomUUID()]
+		},
+		400
+	);
+	await check(
+		"a crew on one person's entry is refused",
+		'POST',
+		'/api/time',
+		{
+			...one,
+			client_uuid: crypto.randomUUID(),
+			crew: 'one',
+			worked_by: crypto.randomUUID(),
+			crew_ids: [crypto.randomUUID(), crypto.randomUUID()]
+		},
 		400
 	);
 	await check(

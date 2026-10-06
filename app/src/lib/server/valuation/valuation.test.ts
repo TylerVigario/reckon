@@ -275,6 +275,7 @@ const entry = (
 	billable: true,
 	crew: 'one',
 	workedBy: AVERY.id,
+	crewIds: [],
 	createdAt: new Date(`2026-01-01T00:00:${String(n % 60).padStart(2, '0')}Z`),
 	...over
 });
@@ -452,6 +453,45 @@ describe('a retainer pays a share of itself, split by the hours each spent', () 
 		expect(money(w.get(c4.id)!.paid)).toBe('19.30');
 		expect(money(w.get(c5.id)!.billed)).toBe('30.00');
 		expect(money(w.get(c5.id)!.paid)).toBe('13.00');
+	});
+
+	it('a team entry is priced and paid at the crew it names, not everyone holding a role', () => {
+		// A third person holds a role; the job was Avery and Sam's. Two heads at
+		// $60.00 and $35.00 for the second, and each of them paid $26.00.
+		const JORDAN = { id: 'u-jordan', roleId: 'r-partner', active: true };
+		const job = entry({
+			entityId: 'e-walk-in',
+			serviceId: 'retained',
+			workedOn: '2026-10-05',
+			seconds: 3600,
+			crew: 'team',
+			workedBy: null,
+			crewIds: [AVERY.id, SAM.id]
+		});
+		const w = worth(
+			[job],
+			ctx({ people: [...PEOPLE, JORDAN], prices: [price('retained', '60.00', '35.00')] })
+		).get(job.id)!;
+		expect([w.heads, money(w.billed)]).toEqual([2, '95.00']);
+		expect(w.people.map((p) => [p.userId, money(p.paid)])).toEqual([
+			[AVERY.id, '26.00'],
+			[SAM.id, '26.00']
+		]);
+	});
+
+	it('a team entry that names nobody is taken as everyone holding a role', () => {
+		// One a phone queued before entries named their crew.
+		const JORDAN = { id: 'u-jordan', roleId: 'r-partner', active: true };
+		const job = entry({
+			entityId: 'e-walk-in',
+			serviceId: 'retained',
+			workedOn: '2026-10-05',
+			seconds: 3600,
+			crew: 'team',
+			workedBy: null
+		});
+		const w = worth([job], ctx({ people: [...PEOPLE, JORDAN] })).get(job.id)!;
+		expect(w.heads).toBe(3);
 	});
 
 	it('bills to the increment and pays to the second', () => {

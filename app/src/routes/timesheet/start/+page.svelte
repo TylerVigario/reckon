@@ -44,6 +44,11 @@
 	);
 	let crew = $state<'one' | 'team'>('one');
 	let workedBy = $state<string | null>(untrack(() => data.me ?? data.people[0]?.id ?? null));
+	// Who is on a team: everyone holding a role, unless some are unticked.
+	let crewIds = $state<string[]>(untrack(() => data.people.map((p) => p.id)));
+	const heads = $derived(crew === 'team' ? crewIds.length : 1);
+	const toggle = (id: string) =>
+		(crewIds = crewIds.includes(id) ? crewIds.filter((x) => x !== id) : [...crewIds, id]);
 	let billable = $state(true);
 	let note = $state('');
 	let why = $state('');
@@ -52,7 +57,7 @@
 	const site = $derived(sites.find((s) => s.id === siteId));
 	const service = $derived(data.services.find((s) => s.id === serviceId));
 
-	const rate = $derived(rateFor(data.prices, serviceId, entityId, crew));
+	const rate = $derived(rateFor(data.prices, serviceId, entityId, heads));
 
 	function go() {
 		why = '';
@@ -68,9 +73,14 @@
 			why = 'Pick who is working, or say the whole team is.';
 			return;
 		}
+		if (crew === 'team' && crewIds.length < 2) {
+			why = 'A team is two or more. Tick who else is on it, or pick one person.';
+			return;
+		}
 		start({
 			crew,
 			worked_by: crew === 'team' ? null : workedBy,
+			...(crew === 'team' ? { crew_ids: [...crewIds] } : {}),
 			entity_id: entityId,
 			site_id: siteId,
 			service_id: serviceId,
@@ -139,6 +149,23 @@
 				</button>
 			</div>
 		</div>
+
+		{#if crew === 'team'}
+			<div class="fld">
+				<span class="lbl">Who is on it</span>
+				<div class="seg">
+					{#each data.people as p (p.id)}
+						<button
+							type="button"
+							class:on={crewIds.includes(p.id)}
+							aria-pressed={crewIds.includes(p.id)}
+							onclick={() => toggle(p.id)}>{p.name.split(' ')[0]}</button
+						>
+					{/each}
+				</div>
+				<small class="lt">Billed for {heads}, and each of them paid.</small>
+			</div>
+		{/if}
 
 		<button type="button" class="tog" class:on={billable} onclick={() => (billable = !billable)}>
 			<span class="sw"></span>

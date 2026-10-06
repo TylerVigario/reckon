@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { day, secondsAsHours, workedTimes } from '#lib/format.ts';
+	import { day, secondsAsHours, workedTimes, names } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
@@ -40,7 +40,7 @@
 							<div class="rec-s">
 								{day(e.worked_on)}{#if e.started_at && e.ended_at && e.zone}
 									· {workedTimes(e.started_at, e.ended_at, e.zone, personalZone())}{/if}
-								· {e.crew === 'team' ? 'the team' : (e.worked_by ?? 'unassigned')}
+								· {e.crew === 'team' ? names(e.crew_names) : (e.worked_by ?? 'unassigned')}
 								· {e.note ?? e.service}
 							</div>
 						</div>

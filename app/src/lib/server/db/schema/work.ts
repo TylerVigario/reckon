@@ -16,6 +16,7 @@ import {
 	index,
 	integer,
 	pgTable,
+	primaryKey,
 	text,
 	unique,
 	uuid
@@ -71,7 +72,7 @@ export const timeEntry = pgTable(
 	},
 	(t) => [
 		unique('time_entry_client_uuid_key').on(t.clientUuid),
-		index('time_entry_crew').on(t.crew, t.workedOn),
+		index('time_entry_by_crew').on(t.crew, t.workedOn),
 		index('time_entry_entity').on(t.entityId, t.workedOn),
 		index('time_entry_site').on(t.siteId),
 		index('time_entry_unbilled')
@@ -122,6 +123,34 @@ export const timeEntry = pgTable(
 			'time_entry_seconds_are_its_times',
 			sql`(${t.startedAt} IS NULL) OR ((${t.endedAt} > ${t.startedAt}) AND (${t.seconds} = extract(epoch FROM ${t.endedAt} - ${t.startedAt})))`
 		)
+	]
+);
+
+/**
+ * Who was on a team entry: each person on its crew (0023). A one-person entry
+ * names its worker in time_entry.worked_by; a team entry names nobody there and
+ * everyone here, and is billed at the crew it names -- the first person's rate
+ * and the extra-person rate for each other -- and pays each of them.
+ */
+export const timeEntryCrew = pgTable(
+	'time_entry_crew',
+	{
+		timeEntryId: uuid().notNull(),
+		userId: uuid().notNull()
+	},
+	(t) => [
+		primaryKey({ name: 'time_entry_crew_pkey', columns: [t.timeEntryId, t.userId] }),
+		index('time_entry_crew_user').on(t.userId),
+		foreignKey({
+			name: 'time_entry_crew_time_entry_id_fkey',
+			columns: [t.timeEntryId],
+			foreignColumns: [timeEntry.id]
+		}).onDelete('cascade'),
+		foreignKey({
+			name: 'time_entry_crew_user_id_fkey',
+			columns: [t.userId],
+			foreignColumns: [user.id]
+		}).onDelete('restrict')
 	]
 );
 

@@ -59,4 +59,10 @@ describe('toEntry', () => {
 		expect(e.worked_by).toBeNull();
 		expect(e.created_by).toBe('me');
 	});
+
+	it('carries who is on a team, and no crew on one person', () => {
+		const team = toEntry(timer({ crew: 'team', crew_ids: ['a', 'b'] }), 'me', 'UTC');
+		expect(team.crew_ids).toEqual(['a', 'b']);
+		expect(toEntry(timer({ crew_ids: ['a', 'b'] }), 'me', 'UTC').crew_ids).toBeUndefined();
+	});
 });

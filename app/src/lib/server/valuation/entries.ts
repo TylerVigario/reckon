@@ -21,6 +21,8 @@ export type Entry = {
 	billable: boolean;
 	crew: 'one' | 'team';
 	workedBy: string | null;
+	/** Who a team entry names as its crew (0023); empty on one person's. */
+	crewIds: readonly string[];
 	createdAt: Date;
 };
 
@@ -181,15 +183,22 @@ export type Worth = {
 	coverage: Coverage;
 };
 
-/** The team: everyone active who holds a role. A team entry is priced and paid at their number. */
+/**
+ * The team: everyone active who holds a role. What a team timer ticks unless it
+ * is changed, and what a team entry is taken as where it names nobody -- one
+ * a phone queued before entries named their crew.
+ */
 export const team = (people: readonly Person[]) =>
 	people.filter((p) => p.active && p.roleId !== null);
 
 /** What each entry is worth. `entries` must include every entry the coverage depends on. */
 export function worth(entries: readonly Entry[], ctx: Context): Map<string, Worth> {
 	const covered = coverage(entries, ctx.agreements);
-	const crew = team(ctx.people);
-	const headsOf = (e: Entry) => (e.crew === 'team' ? crew.length : 1);
+	const everyone = team(ctx.people);
+	// A team entry is priced at the crew it names and pays each of them.
+	const crewOf = (e: Entry) =>
+		e.crewIds.length ? ctx.people.filter((p) => e.crewIds.includes(p.id)) : everyone;
+	const headsOf = (e: Entry) => (e.crew === 'team' ? crewOf(e).length : 1);
 
 	// Each period's covered person-seconds, which its charge is divided by.
 	const personSeconds = new Map<string, bigint>();
@@ -230,7 +239,7 @@ export function worth(entries: readonly Entry[], ctx: Context): Map<string, Wort
 				? Ratio.of(c.periodCharge).mul(c.coveredSeconds).div(pm)
 				: null;
 
-		const payees = e.crew === 'team' ? crew : ctx.people.filter((p) => p.id === e.workedBy);
+		const payees = e.crew === 'team' ? crewOf(e) : ctx.people.filter((p) => p.id === e.workedBy);
 		const people: PersonPay[] = payees.map((p) => {
 			const timePaid =
 				billedSeconds !== null && billedSeconds > 0

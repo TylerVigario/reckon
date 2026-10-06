@@ -66,7 +66,7 @@ export const user = pgTable(
 		 * reprices nothing already worked out.
 		 */
 		roleId: uuid(),
-		/** Whether they count: an inactive person is not on the team a team entry pays. */
+		/** Whether they count: an inactive person is not offered to work, nor ticked on a team. */
 		active: boolean().default(true).notNull(),
 		/**
 		 * The zone this person keeps their days in, as Postgres names it. Their
