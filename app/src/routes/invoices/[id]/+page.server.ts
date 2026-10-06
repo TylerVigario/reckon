@@ -1,7 +1,7 @@
 import { personalDay } from '#lib/server/calendar.ts';
 import { error } from '@sveltejs/kit';
 import { alias } from 'drizzle-orm/pg-core';
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
@@ -61,7 +61,7 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	const src = alias(t.invoice, 'src');
 	const dst = alias(t.invoice, 'dst');
-	const [lines, [totals], movedIn, movedOut] = await Promise.all([
+	const [lines, [totals], movedIn, takenOff, movedOut] = await Promise.all([
 		db
 			.select({
 				id: il.id,
@@ -178,6 +178,25 @@ export const load: PageServerLoad = async ({ params }) => {
 			.innerJoin(src, eq(src.id, il.movedFromInvoiceId))
 			.where(eq(il.invoiceId, params.id))
 			.groupBy(src.id, src.number, src.sentAt),
+		// Lines taken off it: what each was, who took it off and when. Their
+		// history stays in record_history (0021).
+		db
+			.select({
+				id: t.recordHistory.rowId,
+				description: sql<string>`${t.recordHistory.oldValue}::jsonb ->> 'description'`,
+				who: u.name,
+				at: t.recordHistory.changedAt
+			})
+			.from(t.recordHistory)
+			.leftJoin(u, eq(u.id, t.recordHistory.changedBy))
+			.where(
+				and(
+					eq(t.recordHistory.tableName, 'invoice_line'),
+					eq(t.recordHistory.field, '(deleted)'),
+					sql`${t.recordHistory.oldValue}::jsonb ->> 'invoice_id' = ${params.id}`
+				)
+			)
+			.orderBy(asc(t.recordHistory.changedAt)),
 		// And the other way: lines added to this one on a phone after it went
 		// out, and the draft they started instead.
 		db
@@ -221,6 +240,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		totals,
 		movedIn,
 		movedOut,
+		takenOff,
 		// For a draft opened on a phone, whose lines on the phone join the total
 		// by the same rounding the server's own lines had.
 		rounding,

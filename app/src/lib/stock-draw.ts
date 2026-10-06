@@ -137,3 +137,38 @@ export function unitCost(
 		taxPaid: per(shelf.taxWorth, (l) => l.taxPaid)
 	};
 }
+
+/**
+ * What a line drawn from stock comes to when how much is on it changes: more
+ * drawn off the shelf, costed as any draw is (drawFrom); or some put back, at
+ * the line's own cost of one, so the shelf gets back what it gave. Short, when
+ * the shelf has less than the more asked for.
+ */
+export function changeDraw(
+	shelf: Shelf,
+	line: { qty: string; exTaxCost: string; taxPaid: string },
+	qty: string,
+	costing: Costing
+):
+	| { exTaxCost: Decimal; taxPaid: Decimal; takes: Draw['takes']; back: Decimal }
+	| { short: Decimal } {
+	const had = Decimal.from(line.qty);
+	const want = Decimal.from(qty);
+	if (want.gt(had)) {
+		const more = drawFrom(shelf, want.sub(had).toString(), costing);
+		if ('short' in more) return more;
+		return {
+			exTaxCost: more.exTaxCost.add(line.exTaxCost).round(4),
+			taxPaid: more.taxPaid.add(line.taxPaid).round(4),
+			takes: more.takes,
+			back: Decimal.ZERO
+		};
+	}
+	const share = (total: string) => Ratio.of(total).mul(want).div(had).round(4);
+	return {
+		exTaxCost: share(line.exTaxCost),
+		taxPaid: share(line.taxPaid),
+		takes: [],
+		back: had.sub(want)
+	};
+}

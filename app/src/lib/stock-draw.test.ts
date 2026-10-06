@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { Decimal } from './decimal.ts';
-import { drawFrom, unitCost, type Costing, type Shelf, type ShelfLot } from './stock-draw.ts';
+import {
+	changeDraw,
+	drawFrom,
+	unitCost,
+	type Costing,
+	type Shelf,
+	type ShelfLot
+} from './stock-draw.ts';
 
 const lot = (id: string, received: string, left: string, cost: string, tax = '0'): ShelfLot => ({
 	id,
@@ -146,5 +153,33 @@ describe('what one more costs, as the materials page shows it', () => {
 
 	it('nothing, with nothing on the shelf', () => {
 		expect(unitCost(fresh(), 'average')).toBeNull();
+	});
+});
+
+describe('how much is on a line changes', () => {
+	// 147 ft drawn at $0.31 a foot, and 853 ft left of the spool.
+	const line = { qty: '147', exTaxCost: '45.5700', taxPaid: '3.6456' };
+	const shelf: Shelf = {
+		lots: [lot('a', '1000', '853', '310.00', '24.80')],
+		exTaxWorth: '264.4300',
+		taxWorth: '21.1544'
+	};
+
+	it('more is drawn off the shelf, and costs what a draw costs', () => {
+		const c = changeDraw(shelf, line, '150', 'average');
+		if ('short' in c) throw new Error('short');
+		expect([c.exTaxCost.toString(), c.taxPaid.toString()]).toEqual(['46.5000', '3.7200']);
+		expect(c.takes.map((t) => t.qty.toString())).toEqual(['3']);
+	});
+
+	it('some is put back, at what the line paid for one', () => {
+		const c = changeDraw(shelf, line, '100', 'average');
+		if ('short' in c) throw new Error('short');
+		expect([c.exTaxCost.toString(), c.back.toString()]).toEqual(['31.0000', '47']);
+	});
+
+	it('more than the shelf has is short, by what the shelf has', () => {
+		const c = changeDraw(shelf, line, '1001', 'average');
+		expect('short' in c && c.short.toString()).toBe('853');
 	});
 });

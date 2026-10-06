@@ -417,7 +417,7 @@ Everything that identifies the business is the operator&apos;s to supply: logo i
 
 An included-hours figure is a client&apos;s, on their agreement, and what is paid to whoever answers is a dated pay_rule.
 
-record_history is append-only and exists to explain a figure, not to police one." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;fontSize=11;fontColor=#7b8698;whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="40" y="1000" width="1300" height="330" as="geometry"></mxGeometry></mxCell>
+record_history is append-only and exists to explain a figure, not to police one. An invoice line is followed from its birth: what it was when added, each field changed, and what it was when taken off, a receipt described rather than copied." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;fontSize=11;fontColor=#7b8698;whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="40" y="1000" width="1300" height="330" as="geometry"></mxGeometry></mxCell>
       </root>
     </mxGraphModel>
   </diagram>

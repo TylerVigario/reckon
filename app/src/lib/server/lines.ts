@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { asUser, db, type Tx } from './db/index.ts';
 import * as t from './db/schema/index.ts';
 import { RECEIPT_TYPES } from './db/schema/catalogue.ts';
@@ -8,8 +8,9 @@ import { pgError, type Errors } from './field-errors.ts';
 import { shelves } from './stock.ts';
 import { fromStock, passedOn } from '../passed-on.ts';
 import { readFromStock, readPassedOn } from '../line-fields.ts';
-import { drawFrom } from '../stock-draw.ts';
+import { changeDraw, drawFrom } from '../stock-draw.ts';
 import { quantity } from '../format.ts';
+import { Decimal } from '../decimal.ts';
 import { UUID } from '../field-rules.ts';
 import { startIn } from './drafts.ts';
 
@@ -172,6 +173,17 @@ async function siteOf(draft: { entity_id: string; who: string }, siteId: string 
 		.from(t.site)
 		.where(and(eq(t.site.id, siteId), eq(t.site.entityId, draft.entity_id)));
 	return site ? { site, why: null } : { site: null, why: `Not one of ${draft.who}'s sites.` };
+}
+
+/** A receipt sent with a line: a photo or a PDF, and no bigger than the column holds. */
+async function readReceipt(file: File | null, errors: Errors) {
+	if (!file || file.size === 0) return null;
+	if (!(RECEIPT_TYPES as readonly string[]).includes(file.type))
+		errors.receipt = 'A photo, or a PDF.';
+	else if (file.size > MAX_RECEIPT)
+		errors.receipt = `Under 2 MB — that is ${(file.size / 1024 / 1024).toFixed(1)} MB.`;
+	else return { bytes: Buffer.from(await file.arrayBuffer()), type: file.type };
+	return null;
 }
 
 type Draft = { id: string; number: string; entity_id: string; who: string };
@@ -356,15 +368,7 @@ async function boughtOrPaidFor(
 	const { site, why } = await siteOf(draft, siteId);
 	if (why) errors.site_id = why;
 
-	const file = input.receipt;
-	let receipt: { bytes: Buffer; type: string } | null = null;
-	if (file && file.size > 0) {
-		if (!(RECEIPT_TYPES as readonly string[]).includes(file.type))
-			errors.receipt = 'A photo, or a PDF.';
-		else if (file.size > MAX_RECEIPT)
-			errors.receipt = `Under 2 MB — that is ${(file.size / 1024 / 1024).toFixed(1)} MB.`;
-		else receipt = { bytes: Buffer.from(await file.arrayBuffer()), type: file.type };
-	}
+	const receipt = await readReceipt(input.receipt, errors);
 	if (Object.keys(errors).length > 0) return no(errors);
 
 	const [op] = await db
@@ -417,5 +421,279 @@ async function boughtOrPaidFor(
 		});
 	} catch (e) {
 		return refused(e, input.clientUuid, draft.number);
+	}
+}
+
+/**
+ * CHANGING A LINE ADDED BY HAND, on a draft: its fields as Add a line names
+ * them, read as they are read when it is added, and its receipt kept unless
+ * another comes. Its kind, and the item a line from stock is of, stay what they
+ * were: a different thing is a different line. A line from stock that changes
+ * how much it draws takes more off the shelf, or puts some back
+ * (#lib/stock-draw changeDraw). What it bills is worked out again, as it was
+ * when it was added. Every field that changes goes into its history.
+ */
+export async function changeLine(input: {
+	lineId: string;
+	fields: Record<string, string>;
+	receipt: File | null;
+	userId: string;
+}): Promise<Added> {
+	const [line] = await db
+		.select({
+			id: t.invoiceLine.id,
+			kind: t.invoiceLine.kind,
+			material_id: t.invoiceLine.materialId,
+			qty: t.invoiceLine.qty,
+			ex_tax_cost: t.invoiceLine.exTaxCost,
+			tax_paid: t.invoiceLine.taxPaid,
+			invoice_id: t.invoiceLine.invoiceId,
+			number: t.invoice.number,
+			status: t.invoice.status,
+			entity_id: t.invoice.entityId,
+			who: t.entity.name
+		})
+		.from(t.invoiceLine)
+		.innerJoin(t.invoice, eq(t.invoice.id, t.invoiceLine.invoiceId))
+		.innerJoin(t.entity, eq(t.entity.id, t.invoice.entityId))
+		.where(eq(t.invoiceLine.id, input.lineId));
+	if (!line) return { ok: false, status: 404, detail: 'That line is no longer on the draft.' };
+	const draft = {
+		id: line.invoice_id,
+		number: line.number,
+		entity_id: line.entity_id,
+		who: line.who
+	};
+	const goneOut = (): Added => ({
+		ok: false,
+		status: 409,
+		detail: `${line.number} has gone out, so its lines are as they were sent.`
+	});
+	if (line.status !== 'draft') return goneOut();
+	if (line.kind !== 'material' && line.kind !== 'bought' && line.kind !== 'paid_for')
+		return no({ kind: 'Only a line added by hand can be changed here.' });
+
+	/** The draft locked while the line changes, so it cannot go out in between. */
+	const stillADraft = async (tx: Tx) => {
+		const [now] = await tx
+			.select({ status: t.invoice.status })
+			.from(t.invoice)
+			.where(eq(t.invoice.id, line.invoice_id))
+			.for('no key update');
+		if (now?.status !== 'draft') throw new Refused(goneOut());
+	};
+
+	try {
+		if (line.kind === 'material') {
+			const [m] = await materials([line.material_id!]);
+			const { values, errors } = readFromStock(
+				{ ...input.fields, material_id: line.material_id ?? '' },
+				m?.places ?? null
+			);
+			const siteId = typeof values.site_id === 'string' ? values.site_id : null;
+			const { site, why } = await siteOf(draft, siteId);
+			if (why) errors.site_id = why;
+			if (Object.keys(errors).length > 0 || !m) return no(errors);
+			const [[op], places] = await Promise.all([
+				db
+					.select({ rules: t.operator.taxRuleSet, costing: t.operator.stockCosting })
+					.from(t.operator),
+				moneyPlaces()
+			]);
+			const qty = String(values.qty);
+			return await asUser(input.userId, async (tx): Promise<Added> => {
+				await stillADraft(tx);
+				await tx
+					.select({ id: t.material.id })
+					.from(t.material)
+					.where(eq(t.material.id, m.id))
+					.for('no key update');
+				// What it draws now, read under the lock: another change may have
+				// been made since it was read above.
+				const [was] = await tx
+					.select({
+						qty: t.invoiceLine.qty,
+						exTaxCost: t.invoiceLine.exTaxCost,
+						taxPaid: t.invoiceLine.taxPaid
+					})
+					.from(t.invoiceLine)
+					.where(eq(t.invoiceLine.id, line.id));
+				if (!was)
+					throw new Refused({
+						ok: false,
+						status: 404,
+						detail: 'That line is no longer on the draft.'
+					});
+				const shelf = (await shelves([m.id], tx)).get(m.id)!;
+				const change = changeDraw(
+					shelf,
+					{ qty: was.qty, exTaxCost: was.exTaxCost ?? '0', taxPaid: was.taxPaid ?? '0' },
+					qty,
+					op?.costing ?? 'average'
+				);
+				if ('short' in change)
+					throw new Refused(
+						no({
+							qty: `Only ${quantity(change.short.add(was.qty).toString())} ${m.short} of ${m.name} can be on this line: the shelf has ${quantity(change.short.toString())} more.`
+						})
+					);
+				const priced = fromStock(
+					{
+						qty,
+						unit: m.unit,
+						cost: change.exTaxCost.toString(),
+						taxPaid: change.taxPaid.toString(),
+						listed: m.listed,
+						markupPct: m.markup,
+						taxable: m.taxable
+					},
+					{ ruleSet: op?.rules ?? 'none', siteRatePct: site?.rate ?? null, places }
+				);
+				if (priced.needsASite)
+					throw new Refused(no({ site_id: 'Where it went, so its tax rate is known.' }));
+
+				// More off the oldest lots, as any draw; what goes back, off the
+				// newest this line drew from first.
+				for (const take of change.takes)
+					await tx
+						.insert(t.stockDraw)
+						.values({
+							invoiceLineId: line.id,
+							materialLotId: take.lotId,
+							materialId: m.id,
+							qty: take.qty.toString()
+						})
+						.onConflictDoUpdate({
+							target: [t.stockDraw.invoiceLineId, t.stockDraw.materialLotId],
+							set: { qty: sql`${t.stockDraw.qty} + excluded.qty` }
+						});
+				let back = change.back;
+				if (back.gt(0)) {
+					const drawn = await tx
+						.select({ lot: t.stockDraw.materialLotId, qty: t.stockDraw.qty })
+						.from(t.stockDraw)
+						.innerJoin(t.materialLot, eq(t.materialLot.id, t.stockDraw.materialLotId))
+						.where(eq(t.stockDraw.invoiceLineId, line.id))
+						.orderBy(desc(t.materialLot.receivedOn), desc(t.materialLot.id));
+					for (const d of drawn) {
+						if (back.isZero()) break;
+						const put = Decimal.min(back, Decimal.from(d.qty));
+						const where = and(
+							eq(t.stockDraw.invoiceLineId, line.id),
+							eq(t.stockDraw.materialLotId, d.lot)
+						);
+						if (put.eq(d.qty)) await tx.delete(t.stockDraw).where(where);
+						else
+							await tx
+								.update(t.stockDraw)
+								.set({ qty: Decimal.from(d.qty).sub(put).toString() })
+								.where(where);
+						back = back.sub(put);
+					}
+				}
+				await tx
+					.update(t.invoiceLine)
+					.set({
+						description: String(values.description),
+						qty: priced.qty,
+						unitPrice: priced.unitPrice,
+						amount: priced.amount,
+						taxable: priced.taxable,
+						taxRatePct: priced.taxRatePct,
+						taxSource: priced.taxSource,
+						exTaxCost: priced.exTaxCost,
+						taxPaid: priced.taxPaid,
+						siteId
+					})
+					.where(eq(t.invoiceLine.id, line.id));
+				return { ok: true, id: line.id };
+			});
+		}
+
+		const { values, errors } = readPassedOn({ ...input.fields, kind: line.kind });
+		const siteId = typeof values.site_id === 'string' ? values.site_id : null;
+		const { site, why } = await siteOf(draft, siteId);
+		if (why) errors.site_id = why;
+		const receipt = await readReceipt(input.receipt, errors);
+		if (Object.keys(errors).length > 0) return no(errors);
+		const [op] = await db
+			.select({ markup: t.operator.purchaseMarkupPct, rules: t.operator.taxRuleSet })
+			.from(t.operator);
+		const priced = passedOn(
+			{
+				kind: line.kind,
+				cost: String(values.ex_tax_cost),
+				taxPaid: String(values.tax_paid)
+			},
+			{
+				purchaseMarkupPct: op?.markup ?? '0',
+				ruleSet: op?.rules ?? 'none',
+				siteRatePct: site?.rate ?? null,
+				places: await moneyPlaces()
+			}
+		);
+		if (priced.needsASite) return no({ site_id: 'Where it went, so its tax rate is known.' });
+		return await asUser(input.userId, async (tx): Promise<Added> => {
+			await stillADraft(tx);
+			await tx
+				.update(t.invoiceLine)
+				.set({
+					description: String(values.description),
+					unitPrice: priced.unitPrice,
+					amount: priced.amount,
+					taxable: priced.taxable,
+					taxRatePct: priced.taxRatePct,
+					taxSource: priced.taxSource,
+					exTaxCost: priced.exTaxCost,
+					taxPaid: priced.taxPaid,
+					siteId,
+					boughtFrom: values.bought_from === null ? null : String(values.bought_from),
+					paidBy: values.paid_by === null ? null : String(values.paid_by),
+					// Kept unless another comes.
+					...(receipt ? { receipt: receipt.bytes, receiptType: receipt.type } : {})
+				})
+				.where(eq(t.invoiceLine.id, line.id));
+			return { ok: true, id: line.id };
+		});
+	} catch (e) {
+		if (e instanceof Refused) return e.added;
+		const pg = pgError(e);
+		const gone = pg.code === '23503' ? GONE[pg.constraint ?? ''] : undefined;
+		if (gone) return no({ [gone[0]]: gone[1] });
+		if (pg.code === '23000') return goneOut();
+		throw e;
+	}
+}
+
+/**
+ * Takes a line off its draft. What one from stock drew goes back to the shelf
+ * with it (0017), and what it was goes into its history (0021).
+ */
+export async function removeLine(input: { lineId: string; userId: string }): Promise<Added> {
+	const [line] = await db
+		.select({ id: t.invoiceLine.id, invoice_id: t.invoiceLine.invoiceId, number: t.invoice.number })
+		.from(t.invoiceLine)
+		.innerJoin(t.invoice, eq(t.invoice.id, t.invoiceLine.invoiceId))
+		.where(eq(t.invoiceLine.id, input.lineId));
+	if (!line) return { ok: false, status: 404, detail: 'That line is no longer on the draft.' };
+	const goneOut: Added = {
+		ok: false,
+		status: 409,
+		detail: `${line.number} has gone out, so its lines are as they were sent.`
+	};
+	try {
+		return await asUser(input.userId, async (tx): Promise<Added> => {
+			const [now] = await tx
+				.select({ status: t.invoice.status })
+				.from(t.invoice)
+				.where(eq(t.invoice.id, line.invoice_id))
+				.for('no key update');
+			if (now?.status !== 'draft') return goneOut;
+			await tx.delete(t.invoiceLine).where(eq(t.invoiceLine.id, line.id));
+			return { ok: true, id: line.id };
+		});
+	} catch (e) {
+		if (pgError(e).code === '23000') return goneOut;
+		throw e;
 	}
 }

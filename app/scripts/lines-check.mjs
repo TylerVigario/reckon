@@ -12,7 +12,9 @@
  * 2.67 tax, passed on as they cost; both taxed at the site's 8%; and a 35.00
  * permit paid for them, untaxed. What a line will bill shows as it is typed, a
  * draw larger than the shelf is refused before it is sent, the receipt is read
- * back from its link, and the raceway's shelf is 10 ft shorter.
+ * back from its line, and the raceway's shelf is 10 ft shorter. Then the jacks
+ * are changed, and their history says what moved; the raceway is changed to
+ * 15 ft and taken off, and the shelf follows both.
  *
  * Uses the browser on 9222, as console-check does.
  */
@@ -289,27 +291,127 @@ check(
 );
 // 33.33 and 10.63 taxed at 8% is 3.5168: $3.52.
 check(page.includes('$82.48'), 'the draft comes to $82.48: $10.63, $33.33, $35.00 and $3.52 tax');
-const receipt = await evaluate(`(async () => {
-	const a = [...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'The receipt');
-	if (!a) return null;
-	const r = await fetch(a.href);
-	return { status: r.status, type: r.headers.get('content-type') };
-})()`);
+/** The draft's line that says `name`: its own screen, where its receipt is. */
+const lineOf = (/** @type {string} */ name) =>
+	run((/** @type {string} */ text) => {
+		const a = [...document.querySelectorAll('a.rec.link')].find(
+			(x) => x.querySelector('.rec-t')?.textContent?.trim() === text
+		);
+		return a ? /** @type {HTMLAnchorElement} */ (a).getAttribute('href') : null;
+	}, name);
+const JACKS = 'Keystone jacks ×12, faceplates ×3';
+const jacks = /** @type {string | null} */ (await lineOf(JACKS));
+const receipt = jacks
+	? await run(async (/** @type {string} */ href) => {
+			const r = await fetch(`${href}/receipt`);
+			return { status: r.status, type: r.headers.get('content-type') };
+		}, jacks)
+	: null;
 check(
 	receipt?.status === 200 && receipt.type === 'image/jpeg',
-	`the receipt is kept on its line${receipt ? '' : ', but there is no link to it'}`
+	`the receipt is kept on its line${jacks ? '' : ', but the line does not open'}`
+);
+/** How much of the raceway the shelf has, as the materials page says it. */
+const shelfLeft = async () => {
+	await go('/catalogue/materials');
+	return /** @type {string} */ (
+		await run((/** @type {string} */ name) => {
+			const row = [...document.querySelectorAll('.rec')].find(
+				(r) => r.querySelector('.rec-t')?.textContent?.trim() === name
+			);
+			return row?.querySelector('.rec-x')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+		}, RACEWAY)
+	);
+};
+const fifty = await shelfLeft();
+check(
+	fifty === '50 ft',
+	`the raceway's shelf is 10 ft shorter${fifty === '50 ft' ? '' : ` (${fifty})`}`
 );
 
-await go('/catalogue/materials');
-const shelf = await run((/** @type {string} */ name) => {
-	const row = [...document.querySelectorAll('.rec')].find(
-		(r) => r.querySelector('.rec-t')?.textContent?.trim() === name
-	);
-	return row?.querySelector('.rec-x')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
-}, RACEWAY);
+// The jacks, opened: what was bought, who is owed it back, and what it billed.
+await go(jacks ?? draft);
+const seen = /** @type {string} */ (
+	await evaluate(`document.body.textContent.replace(/\\s+/g, ' ')`)
+);
 check(
-	shelf === '50 ft',
-	`the raceway's shelf is 10 ft shorter${shelf === '50 ft' ? '' : ` (${shelf})`}`
+	seen.includes('From Valley Hardware') &&
+		/Paid by [^—]+ — owed back \$36\.00/.test(seen) &&
+		seen.includes('Charged $33.33') &&
+		/Added by [^,]+, /.test(seen),
+	'a line opens on what was bought, who is owed it back, what it billed and who added it'
+);
+
+// Changed: a lower cost and a shorter description.
+await press('Change');
+await settle(2500);
+check(
+	/** @type {string} */ (
+		await evaluate(`document.querySelector('h1')?.textContent ?? ''`)
+	).startsWith('Change the line') &&
+		(await evaluate(`document.querySelector('#l-cost')?.value`)) === '33.33',
+	'Change opens the line filled in'
+);
+await set('#l-desc', 'Keystone jacks ×12');
+await set('#l-cost', '30.00');
+await press('Save the change');
+await settle(3000);
+const changed = /** @type {string} */ (
+	await evaluate(`document.body.textContent.replace(/\\s+/g, ' ')`)
+);
+check(
+	(await evaluate('location.pathname')) === jacks &&
+		changed.includes('Charged $30.00') &&
+		changed.includes('changed once since'),
+	'the change is saved, and the line bills $30.00'
+);
+await go(`${jacks}/history`);
+const history = /** @type {string} */ (
+	await evaluate(`document.body.textContent.replace(/\\s+/g, ' ')`)
+);
+check(
+	history.includes('Added') &&
+		history.includes('Description: “Keystone jacks ×12, faceplates ×3” → “Keystone jacks ×12”') &&
+		history.includes('Cost before tax: $33.33 → $30.00'),
+	`its history has its adding and each field the change moved${history.includes('Cost before tax') ? '' : ` (${history.slice(0, 400)})`}`
+);
+
+// The raceway: 5 ft more, then taken off, which gives the shelf all of it back.
+await go(draft);
+const raceway = /** @type {string | null} */ (await lineOf(RACEWAY));
+await go(`${raceway}/change`);
+await set('#l-qty', '15');
+await settle(300);
+const more = /** @type {string} */ (await formText());
+check(
+	more.includes('Left after 45 ft'),
+	`changing how much says what will be left${more.includes('Left after 45 ft') ? '' : ` (${/Bills.*/.exec(more)?.[0] ?? more})`}`
+);
+await press('Save the change');
+await settle(3000);
+const fortyFive = await shelfLeft();
+check(
+	fortyFive === '45 ft',
+	`5 ft more comes off the shelf${fortyFive === '45 ft' ? '' : ` (${fortyFive})`}`
+);
+await go(raceway ?? draft);
+await press('Take it off the draft');
+await settle(300);
+check(!(await evaluate(`location.pathname`)).endsWith('/invoices'), 'one tap does not take it off');
+await press('Tap again to take it off');
+await settle(3000);
+const after = /** @type {string} */ (
+	await evaluate(`document.body.textContent.replace(/\\s+/g, ' ')`)
+);
+check(
+	(await evaluate('location.pathname')) === draft &&
+		/Taken off Raceway · Surface · 3\/4 in/.test(after),
+	'the second tap takes it off, and the draft lists it as taken off'
+);
+const sixty = await shelfLeft();
+check(
+	sixty === '60 ft',
+	`taking it off gives the shelf all 15 ft back${sixty === '60 ft' ? '' : ` (${sixty})`}`
 );
 
 check(
@@ -322,6 +424,4 @@ if (failures.length) {
 	for (const f of failures) console.error(`  ✗ ${line(f)}`);
 	process.exit(1);
 }
-console.log(
-	'\nLines are added to a draft: drawn from stock, and bought or paid for with receipts.'
-);
+console.log('\nLines are added to a draft, changed and taken off, and keep their history.');

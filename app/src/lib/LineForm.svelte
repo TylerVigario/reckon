@@ -10,7 +10,7 @@
 	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { readFromStock, readPassedOn } from '#lib/line-fields.ts';
 	import { fromStock, passedOn } from '#lib/passed-on.ts';
-	import { drawFrom, unitCost } from '#lib/stock-draw.ts';
+	import { changeDraw, drawFrom, unitCost } from '#lib/stock-draw.ts';
 	import { Decimal, Ratio } from '#lib/decimal.ts';
 	import { shrink } from '#lib/receipt.ts';
 	import type { RuleSet } from '#lib/passed-on.ts';
@@ -62,25 +62,41 @@
 		 * A draft started here is one screen with the draft in its query.
 		 */
 		back: ResolvedPathname | `${ResolvedPathname}?${string}`;
+		/**
+		 * A line already on the draft, to be changed: its fields as Add a line
+		 * names them, whether it has a receipt, and -- one from stock -- what it
+		 * draws now. Its kind, and the item a line from stock is of, stay as they
+		 * are. Changed with a signal: #lib/server/lines changeLine.
+		 */
+		editing?: {
+			id: string;
+			kind: 'material' | 'bought' | 'paid_for';
+			fields: Record<string, string>;
+			receipt: boolean;
+			drawn: { qty: string; exTaxCost: string; taxPaid: string } | null;
+		};
 	};
-	let { data, back }: Props = $props();
+	let { data, back, editing }: Props = $props();
 	const named = $derived(
 		data.draft.number ? `Draft ${data.draft.number}` : `New draft, on this phone`
 	);
 
 	// Stock first, where there is any, as the mock has it.
 	let kind = $state<'material' | 'bought' | 'paid_for'>(
-		untrack(() => (data.stock.length > 0 ? 'material' : 'bought'))
+		untrack(() => editing?.kind ?? (data.stock.length > 0 ? 'material' : 'bought'))
 	);
-	let siteId = $state<string>(untrack(() => data.sites[0]?.id ?? ''));
-	let materialId = $state('');
+	const was = untrack(() => editing?.fields ?? {});
+	let siteId = $state<string>(
+		untrack(() => (editing ? (was.site_id ?? '') : (data.sites[0]?.id ?? '')))
+	);
+	let materialId = $state(was.material_id ?? '');
 	let find = $state('');
-	let qty = $state('');
-	let description = $state('');
-	let cost = $state('');
-	let taxPaid = $state('');
-	let paidBy = $state(''); // empty is the business
-	let boughtFrom = $state('');
+	let qty = $state(was.qty ?? '');
+	let description = $state(was.description ?? '');
+	let cost = $state(was.ex_tax_cost ?? '');
+	let taxPaid = $state(was.tax_paid ?? '');
+	let paidBy = $state(was.paid_by ?? ''); // empty is the business
+	let boughtFrom = $state(was.bought_from ?? '');
 	let saving = $state(false);
 	let why = $state('');
 	let errors = $state<Record<string, string>>({});
@@ -152,8 +168,17 @@
 	/** What a draw takes, what it bills and its tax, by the rule the server saves it by. */
 	const drawn = $derived.by(() => {
 		if (!item || !/^\d+(\.\d+)?$/.test(qty) || !/[1-9]/.test(qty)) return null;
-		const draw = drawFrom(item.shelf, qty, data.costing);
-		if ('short' in draw) return { short: draw.short.toString(), needsASite: false };
+		const before = editing?.drawn ?? null;
+		// A line being changed draws only the difference: more off the shelf, or
+		// some put back at what it paid for one.
+		const draw = before
+			? changeDraw(item.shelf, before, qty, data.costing)
+			: drawFrom(item.shelf, qty, data.costing);
+		if ('short' in draw)
+			return {
+				short: (before ? draw.short.add(before.qty) : draw.short).toString(),
+				needsASite: false
+			};
 		const line = fromStock(
 			{
 				qty,
@@ -169,12 +194,21 @@
 		return {
 			...line,
 			short: null,
-			left: onHand(item).sub(qty).toString(),
+			left: onHand(item)
+				.sub(qty)
+				.add(before?.qty ?? '0')
+				.toString(),
 			tax: line.taxable
 				? Ratio.of(line.amount).mul(line.taxRatePct).div(100).round(data.places).toString()
 				: null
 		};
 	});
+
+	/** What the shelf allows: all of it for a new line, what is drawn and more for one changed. */
+	const shortBy = (most: string) =>
+		editing
+			? `Only ${quantity(most)} ${item?.short ?? ''} can be on this line.`
+			: `Only ${quantity(most)} ${item?.short ?? ''} on the shelf.`;
 
 	/** How the draft words a line, as the server's own page does. */
 	const detail = (fields: Record<string, string>) =>
@@ -205,8 +239,7 @@
 		errors = stock
 			? readFromStock(fields, item?.places ?? null).errors
 			: readPassedOn(fields).errors;
-		if (stock && drawn?.short)
-			errors.qty = `Only ${quantity(drawn.short)} ${item?.short} on the shelf.`;
+		if (stock && drawn?.short) errors.qty = shortBy(drawn.short);
 		if (stock ? drawn?.needsASite : bills?.needsASite)
 			errors.site_id = 'Where it went, so its tax rate is known.';
 		const line = stock ? drawn : bills;
@@ -214,6 +247,7 @@
 		saving = true;
 		why = '';
 		const file = formData.get('receipt');
+		if (editing) return change(fields, file instanceof File && file.size > 0 ? file : null);
 		const receipt =
 			file instanceof File && file.size > 0 ? await shrink(file) : (fixing?.line.receipt ?? null);
 		try {
@@ -245,6 +279,33 @@
 		await goto(back, { invalidateAll: true });
 	}
 
+	/**
+	 * Changes a line already on the draft, with a signal. The server reads it
+	 * again as it reads a line added, and keeps every field that moves in the
+	 * line's history; what it refuses is said in its box.
+	 */
+	async function change(fields: Record<string, string>, file: File | null) {
+		const body = new FormData();
+		for (const [k, v] of Object.entries(fields)) body.set(k, v);
+		if (file) body.set('receipt', await shrink(file), 'receipt');
+		const r = await fetch(`/api/lines/${editing!.id}`, { method: 'PATCH', body }).catch(() => null);
+		saving = false;
+		if (!r) {
+			why = 'Changing a line needs a connection.';
+			return;
+		}
+		if (r.ok) {
+			await goto(back, { invalidateAll: true });
+			return;
+		}
+		const problem = (await r.json().catch(() => ({}))) as {
+			detail?: string;
+			errors?: Record<string, string>;
+		};
+		errors = problem.errors ?? {};
+		if (!problem.errors) why = problem.detail ?? 'It could not be changed.';
+	}
+
 	/** What the line will bill and the tax on it, by the rule the server saves it by. */
 	const bills = $derived.by(() => {
 		if (!/^\d+(\.\d+)?$/.test(cost) || stock) return null;
@@ -268,10 +329,10 @@
 </script>
 
 <Top
-	title="Add a line"
+	title={editing ? 'Change the line' : 'Add a line'}
 	sub={`${named} · ${data.draft.who}`}
 	{back}
-	backLabel={data.draft.number ?? 'The draft'}
+	backLabel={editing ? 'The line' : (data.draft.number ?? 'The draft')}
 />
 
 <OfflineBanner asOf={data.as_of} {waiting} />
@@ -293,15 +354,19 @@
 		<div class="fld">
 			<span class="lbl">Kind</span>
 			<input type="hidden" name="kind" value={kind} />
-			<div class="seg">
-				<button type="button" class:on={stock} onclick={() => (kind = 'material')}
-					>From stock</button
-				>
-				<button type="button" class:on={bought} onclick={() => (kind = 'bought')}>Bought</button>
-				<button type="button" class:on={kind === 'paid_for'} onclick={() => (kind = 'paid_for')}
-					>Paid for them</button
-				>
-			</div>
+			{#if editing}
+				<span>{stock ? 'From stock' : bought ? 'Bought' : 'Paid for them'}</span>
+			{:else}
+				<div class="seg">
+					<button type="button" class:on={stock} onclick={() => (kind = 'material')}
+						>From stock</button
+					>
+					<button type="button" class:on={bought} onclick={() => (kind = 'bought')}>Bought</button>
+					<button type="button" class:on={kind === 'paid_for'} onclick={() => (kind = 'paid_for')}
+						>Paid for them</button
+					>
+				</div>
+			{/if}
 			<small class="lt">
 				{stock
 					? 'Anything held in stock, in whatever unit it is counted.'
@@ -324,7 +389,18 @@
 			{#if errors.site_id}<small class="why">{errors.site_id}</small>{/if}
 		</div>
 
-		{#if stock}
+		{#if stock && editing}
+			<div class="fld">
+				<span class="lbl">Item</span>
+				<input type="hidden" name="material_id" value={materialId} />
+				<span>{item?.name ?? 'An item no longer in the catalogue'}</span>
+				{#if item}
+					<small class="lt"
+						>{quantity(onHand(item).toString())} {item.short} more on the shelf</small
+					>
+				{/if}
+			</div>
+		{:else if stock}
 			<div class="fld">
 				<label for="l-find">Item</label>
 				<input
@@ -369,7 +445,9 @@
 					</div>
 				{/each}
 			</div>
+		{/if}
 
+		{#if stock}
 			<div class="fld">
 				<label for="l-qty">How much</label>
 				<span class="inp-wrap">
@@ -436,7 +514,7 @@
 					</div>
 				</div>
 			{:else if drawn?.short}
-				<small class="why">Only {quantity(drawn.short)} {item?.short} on the shelf.</small>
+				<small class="why">{shortBy(drawn.short)}</small>
 			{/if}
 		{:else}
 			<div class="fld">
@@ -525,7 +603,7 @@
 				<span class="lbl">Receipt</span>
 				<ReceiptPicker id="l-receipt" />
 				<small class="lt"
-					>{fixing?.line.receipt
+					>{fixing?.line.receipt || editing?.receipt
 						? 'The receipt taken before is kept unless another is chosen.'
 						: 'A photo, shrunk on this phone before it is sent, or a PDF.'}</small
 				>
@@ -533,7 +611,15 @@
 			</div>
 		{/if}
 
-		<button class="btn pri blk" disabled={saving}>{saving ? 'Adding…' : 'Add the line'}</button>
+		<button class="btn pri blk" disabled={saving}
+			>{editing
+				? saving
+					? 'Saving…'
+					: 'Save the change'
+				: saving
+					? 'Adding…'
+					: 'Add the line'}</button
+		>
 	</form>
 </div>
 
