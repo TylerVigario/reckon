@@ -741,6 +741,95 @@ if (person)
 		400
 	);
 
+console.log('\n  trips — recorded, sent twice, refused, and taken back');
+
+// Two clients from New agreement. The stop is an address, for the first: a site
+// would need an id no page here writes down, and the guard suite proves a
+// client's stop is at their own site.
+const otherClient = optionsOf(newAgreement, 'a-client')[1]?.id;
+if (agreeWith && otherClient && person) {
+	const stopAt = (/** @type {string} */ entity) => [
+		{ address: 'Write check yard', clients: [{ entity_id: entity, asked_there: false }] }
+	];
+	const outAndBack = {
+		client_uuid: crypto.randomUUID(),
+		travelled_on: new Date().toISOString().slice(0, 10),
+		driven_by: person,
+		vehicle_id: null,
+		stops: stopAt(agreeWith),
+		drives: [{ miles: '12.5' }, { miles: '12.5' }]
+	};
+	const again = () => ({ ...outAndBack, client_uuid: crypto.randomUUID() });
+	const trip = await check('a trip is recorded', 'POST', '/api/trips', outAndBack, 201);
+	await check(
+		'the same trip sent again is not a second one',
+		'POST',
+		'/api/trips',
+		outAndBack,
+		(/** @type {{ status: number, body: any }} */ r) =>
+			r.status === 200 && r.body?.id === trip.body?.id
+	);
+	await check(
+		'a trip missing a drive is refused',
+		'POST',
+		'/api/trips',
+		{ ...again(), drives: [{ miles: '12.5' }] },
+		400
+	);
+	await check(
+		'an odometer that reads backwards is refused',
+		'POST',
+		'/api/trips',
+		{ ...again(), odometer_start: '48270', odometer_end: '48213' },
+		400
+	);
+	await check(
+		'a stop that is nowhere is refused',
+		'POST',
+		'/api/trips',
+		{ ...again(), stops: [{ clients: [] }] },
+		400
+	);
+	await check(
+		'a drive given to somebody the trip was not for is refused',
+		'POST',
+		'/api/trips',
+		{ ...again(), drives: [{ miles: '12.5', to: [otherClient] }, { miles: '12.5' }] },
+		400
+	);
+	await check(
+		'what a trip comes to is worked out before it is saved',
+		'POST',
+		'/api/trips/worth',
+		again(),
+		(/** @type {{ status: number, body: any }} */ r) =>
+			r.status === 200 && typeof r.body?.billed === 'string'
+	);
+	if (trip.body?.id)
+		await check(
+			'a trip whose miles are not billed is taken back',
+			'DELETE',
+			`/api/trips/${trip.body.id}`,
+			undefined,
+			200
+		);
+} else failures.push('could not find two clients and a person for a trip');
+// The demo's visit forty days ago, whose miles are on an invoice.
+const fortyAgo = new Date(Date.now() - 40 * 86400000).toISOString().slice(0, 7);
+const thatMonth = await (
+	await fetch(`${base}/trips?month=${fortyAgo}`, { headers: { cookie } })
+).text();
+const billedTrip = [...thatMonth.matchAll(/\/trips\/([0-9a-f-]{36})"/g)].map((m) => m[1])[0];
+if (billedTrip)
+	await check(
+		'a trip whose miles are on an invoice stays',
+		'DELETE',
+		`/api/trips/${billedTrip}`,
+		undefined,
+		409
+	);
+else failures.push('could not find the billed trip on /trips');
+
 console.log('\n  units — named, written, counted, and let go');
 
 await check(

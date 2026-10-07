@@ -222,16 +222,22 @@ T["time_entry_crew"] = [("PK","time_entry_id","uuid · a team entry"),
     ("PK","user_id","uuid · one of its crew")]
 T["trip"] = [("PK","id","uuid"),("","travelled_on","date"),("FK","driven_by","uuid"),
     ("FK","created_by","uuid"),("","created_at","timestamptz"),
-    ("FK","vehicle_id","uuid · null = not recorded")]
+    ("FK","vehicle_id","uuid · null = not recorded"),
+    ("UK","client_uuid","uuid · made where it was recorded"),("","note","text · what it was for"),
+    ("","odometer_start","numeric · null = not read"),("","odometer_end","numeric"),
+    ("","start_address","text · null = the base"),("","end_address","text · null = the base")]
+T["trip_stop_client"] = [("PK","trip_stop_id","uuid"),("PK","entity_id","uuid · who it was for"),
+    ("FK","site_id","uuid · null = not at their site"),("","asked_there","bool · pays for none of it")]
 T["vehicle"] = [("PK","id","uuid"),("","name","text"),
     ("FK","owner_id","uuid · null = the business's"),("","retired_on","date · null = in use"),
     ("","created_at","timestamptz")]
 T["trip_stop"] = [("PK","id","uuid"),("FK","trip_id","uuid"),("","seq","int"),
     ("FK","site_id","uuid"),("","arrived_at","timestamptz"),
-    ("","departed_at","timestamptz"),("","address","text · somewhere that is nobody's site")]
+    ("","departed_at","timestamptz"),("","address","text · not a site")]
 T["trip_leg"] = [("PK","id","uuid"),("FK","trip_id","uuid"),("","seq","int"),
     ("","miles","numeric"),("FK","entity_id","uuid · who caused it"),
-    ("FK","site_id","uuid"),("FK","service_id","uuid · what it bills as"),("","rule","text")]
+    ("FK","site_id","uuid"),("FK","service_id","uuid · what it bills as"),("","rule","text"),
+    ("FK","to_stop_id","uuid · null = the way back")]
 
 T["agreement"] = [("","billing_interval","weekly|monthly|quarterly|annually"),
     ("","billing_anchor_day","1–31 · from starts_on"),
@@ -466,9 +472,9 @@ c += [note("n3", "A service is configured, not categorised: what it is charged p
 files.append(write("03-catalogue.drawio", "What you sell", c, 1620, 1140))
 
 # 04 -- work captured
-c = at("time_entry",40,60) + at("trip",480,60) + at("trip_stop",480,250) \
-  + at("trip_leg",880,60) + at("user",40,480) + at("entity",880,300) \
-  + at("time_entry_crew",480,480) + at("vehicle",880,640)
+c = at("time_entry",40,60) + at("user",40,480) + at("time_entry_crew",480,480) \
+  + at("vehicle",480,600) + at("trip",880,60) + at("trip_stop",880,400) \
+  + at("trip_stop_client",880,620) + at("trip_leg",1280,60) + at("entity",1280,330)
 c += [edge("e40","user","time_entry","worked / created",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=0")
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1")),
@@ -482,9 +488,16 @@ c += [edge("e40","user","time_entry","worked / created",
       edge("e45","user","time_entry_crew","is on",
            S_EDGE.replace("exitY=0.5","exitY=0.1122")),
       edge("e46","trip","vehicle","driven in",
-           S_EDGE.replace("exitY=0.5","exitY=0.9")),
+           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0;exitY=0.9")
+                 .replace("entryX=0;entryY=0.5","entryX=1;entryY=0.3")),
       edge("e47","user","vehicle","owns",
-           S_EDGE.replace("exitY=0.5","exitY=0.8333").replace("entryY=0.5","entryY=0.7353")),
+           S_EDGE.replace("exitY=0.5","exitY=0.7051").replace("entryY=0.5","entryY=0.7353")),
+      edge("e48","trip_stop","trip_stop_client","was for",
+           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=1")
+                 .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=0")),
+      edge("e49","entity","trip_stop_client","is who",
+           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0;exitY=0.9")
+                 .replace("entryX=0;entryY=0.5","entryX=1;entryY=0.5")),
       edge("e43","entity","trip_leg","caused",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=0")
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1"))]
@@ -510,9 +523,18 @@ c += [note("n4", "started_at and ended_at are when the work was done and zone is
                  "trip.vehicle_id is what it was driven in. The vehicle's owner is who "
                  "its miles pay, by the service's vehicle rule, whoever drove; the "
                  "business's own pays nobody. Whose a vehicle is never changes: one that "
-                 "changes hands is retired and added again.",
-           40, 830, 1180, 350)]
-files.append(write("04-work-captured.drawio", "Work as it is captured", c, 1340, 1220))
+                 "changes hands is retired and added again.\n\n"
+                 "A trip starts and ends at the base -- start_address and end_address "
+                 "say otherwise -- and its stops are places in order, a site or an "
+                 "address. trip_stop_client says who each was for: two clients' sites "
+                 "at one address are one stop, and one who asked once the driver was "
+                 "there pays for none of the drive. The app gives each leg to whoever "
+                 "caused it, by the rule in Settings → Travel; rule = chosen where "
+                 "somebody gave it by hand. to_stop_id is where a leg went, so the same "
+                 "drive later starts from its miles. note and the odometer are the "
+                 "trip's own, as a mileage log asks.",
+           40, 840, 1576, 380)]
+files.append(write("04-work-captured.drawio", "Work as it is captured", c, 1680, 1260))
 
 # 05 -- agreements
 c = at("entity",40,60) + at("agreement",440,60) \

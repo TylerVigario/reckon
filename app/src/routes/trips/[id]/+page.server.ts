@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { Decimal, Ratio, sum } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
@@ -37,6 +37,12 @@ export const load: PageServerLoad = async ({ params }) => {
 			travelled_on: tr.travelledOn,
 			driver: u.name,
 			stops: townsOf(tr.id),
+			start_address: tr.startAddress,
+			end_address: tr.endAddress,
+			note: tr.note,
+			odometer_start: tr.odometerStart,
+			odometer_end: tr.odometerEnd,
+			invoiced: sql<boolean>`exists (select 1 from invoice_line il join trip_leg l on l.id = il.trip_leg_id where l.trip_id = ${tr.id})`,
 			vehicle_id: tr.vehicleId,
 			vehicle: v.name,
 			vehicle_retired_on: v.retiredOn,
@@ -51,15 +57,22 @@ export const load: PageServerLoad = async ({ params }) => {
 	if (!found) error(404, 'no such trip');
 
 	const [stops, rows] = await Promise.all([
+		// Each stop, and who it was for there (0025): two clients at one address
+		// are one stop, named by the address.
 		db
 			.select({
 				seq: ts.seq,
-				place: sql<string>`coalesce(${si.display}, ${ts.address}, 'Unrecorded')`,
-				detail: sql<string | null>`(${db
-					.select({ names: sql`string_agg(distinct ${e.name}, ' and ')` })
-					.from(tl)
-					.innerJoin(e, eq(e.id, tl.entityId))
-					.where(and(eq(tl.tripId, ts.tripId), eq(tl.siteId, ts.siteId)))})`
+				site: si.display,
+				street: sql<string | null>`${si.street} || ', ' || ${si.city}`,
+				address: ts.address,
+				clients: sql<{ name: string; site: string | null; asked_there: boolean }[]>`(
+					select coalesce(json_agg(json_build_object('name', ce.name, 'site', cs.label,
+					                                           'asked_there', c.asked_there)
+					                         order by c.asked_there, ce.name), '[]')
+					  from trip_stop_client c
+					  join entity ce on ce.id = c.entity_id
+					  left join site cs on cs.id = c.site_id
+					 where c.trip_stop_id = ${ts.id})`
 			})
 			.from(ts)
 			.leftJoin(si, eq(si.id, ts.siteId))

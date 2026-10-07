@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { dated, miles } from '#lib/format.ts';
+	import { dated, miles, quantity } from '#lib/format.ts';
+	import { readProblem } from '#lib/json.ts';
+	import { goto } from '$app/navigation';
 	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { Decimal } from '#lib/decimal.ts';
 	import { paysWhat } from '#lib/pay-words.ts';
@@ -11,11 +13,12 @@
 
 	// house_to_a and the rest say what a leg IS; this says it in words.
 	const RULE: Record<string, string> = {
-		house_to_a: 'house → A, caused by A',
+		house_to_a: 'base → A, caused by A',
 		a_to_b: 'A → B, caused by B',
-		b_to_house: 'B → house, caused by B',
+		b_to_house: 'B → base, caused by B',
 		round_trip: 'out and back, one client',
 		split: 'shared, split between them',
+		chosen: 'given by hand',
 		unassigned: 'nobody asked for it'
 	};
 
@@ -30,6 +33,41 @@
 			.filter(Boolean)
 			.join(' · ')
 	);
+	// A stop is its site, or the address two clients share, or somewhere else;
+	// under it, who it was for.
+	type StopRow = (typeof data.stops)[number];
+	const placeOf = (s: StopRow) =>
+		s.clients.length > 1 ? (s.street ?? s.site) : (s.site ?? s.address ?? 'Unrecorded');
+	const forWhom = (s: StopRow) =>
+		s.clients.length === 0
+			? s.address
+				? "The business's own errand"
+				: null
+			: s.clients
+					.map((c) =>
+						[s.clients.length > 1 ? c.site : null, c.asked_there ? 'asked once there' : null]
+							.filter(Boolean)
+							.reduce((line, x) => `${line} · ${x}`, c.name)
+					)
+					.join('\n');
+	const odometer = $derived(
+		data.trip.odometer_start && data.trip.odometer_end
+			? `odometer ${quantity(data.trip.odometer_start)} → ${quantity(data.trip.odometer_end)}`
+			: null
+	);
+	let problem = $state('');
+	async function remove() {
+		problem = '';
+		const r = await fetch(`/api/trips/${data.trip.id}`, { method: 'DELETE' }).catch(() => null);
+		if (!r?.ok) {
+			problem = r
+				? ((await readProblem(r)).detail ?? 'Not removed.')
+				: 'Not removed — no connection.';
+			return;
+		}
+		await goto(resolve('/trips'));
+	}
+
 	// Whose the vehicle is, and how its miles were paid.
 	const whose = $derived(data.trip.owner ? `${data.trip.owner}'s` : "The business's");
 	const how = $derived.by(() => {
@@ -76,7 +114,7 @@
 									>· retired</span
 								>{/if}
 						</div>
-						<div class="rec-s">{whose}</div>
+						<div class="rec-s">{[whose, odometer].filter(Boolean).join(' · ')}</div>
 					</div>
 				</div>
 			{:else}
@@ -96,12 +134,15 @@
 		<div class="sec-h"><h2>Stops, in order</h2></div>
 		<div class="rows stops">
 			<div class="legs">
+				<div class="leg"><div class="stop">{data.trip.start_address ?? 'Base'}</div></div>
 				{#each data.stops as s (s.seq)}
+					{@const who = forWhom(s)}
 					<div class="leg">
-						<div class="stop">{s.place}</div>
-						{#if s.detail}<div class="det">{s.detail}</div>{/if}
+						<div class="stop">{placeOf(s)}</div>
+						{#if who}<div class="det">{who}</div>{/if}
 					</div>
 				{/each}
+				<div class="leg"><div class="stop">{data.trip.end_address ?? 'Base'}</div></div>
 			</div>
 		</div>
 	</div>
@@ -158,10 +199,35 @@
 			</div>
 		</div>
 	{/if}
+	{#if data.trip.note}
+		<div class="sec">
+			<div class="sec-h"><h2>What it was for</h2></div>
+			<div class="rows">
+				<div class="rec">
+					<div class="rec-m"><div class="rec-s">{data.trip.note}</div></div>
+				</div>
+			</div>
+		</div>
+	{/if}
+	{#if !data.trip.invoiced}
+		<div class="btnrow">
+			<button type="button" class="btn gho" onclick={remove}>Remove this trip</button>
+		</div>
+		{#if problem}<p class="why bad">{problem}</p>{/if}
+	{/if}
 </div>
 
 <style>
 	.stops {
 		padding: 14px;
+	}
+	.det {
+		white-space: pre-line;
+	}
+	.why {
+		margin: 0;
+	}
+	.why.bad {
+		color: var(--crit);
 	}
 </style>
