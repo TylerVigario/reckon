@@ -1,7 +1,7 @@
-import { and, asc, count, eq } from 'drizzle-orm';
+import { and, asc, count, eq, isNull } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { integration, service, unit, user } from '#lib/server/db/schema/index.ts';
+import { integration, service, unit, user, vehicle } from '#lib/server/db/schema/index.ts';
 import { operatorRow } from '#lib/server/operator.ts';
 import { loadCatalogue } from '#lib/server/valuation/load.ts';
 import { jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
@@ -14,17 +14,19 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async () => {
 	const day = businessToday();
-	const [row, [people], [connected], units, mileServices, catalogue] = await Promise.all([
-		operatorRow(),
-		db.select({ n: count() }).from(user).where(eq(user.active, true)),
-		db.select({ n: count() }).from(integration).where(eq(integration.connected, true)),
-		db.select({ name: unit.name }).from(unit).orderBy(asc(unit.name)),
-		db
-			.select({ id: service.id })
-			.from(service)
-			.where(and(eq(service.unit, 'mile'), eq(service.active, true))),
-		loadCatalogue(db)
-	]);
+	const [row, [people], [connected], units, mileServices, catalogue, [vehicles]] =
+		await Promise.all([
+			operatorRow(),
+			db.select({ n: count() }).from(user).where(eq(user.active, true)),
+			db.select({ n: count() }).from(integration).where(eq(integration.connected, true)),
+			db.select({ name: unit.name }).from(unit).orderBy(asc(unit.name)),
+			db
+				.select({ id: service.id })
+				.from(service)
+				.where(and(eq(service.unit, 'mile'), eq(service.active, true))),
+			loadCatalogue(db),
+			db.select({ n: count() }).from(vehicle).where(isNull(vehicle.retiredOn))
+		]);
 	// The mileage rate, when there is exactly one service charged by the mile.
 	const mileage =
 		mileServices.length === 1
@@ -36,6 +38,7 @@ export const load: PageServerLoad = async () => {
 		counts: {
 			people: people.n,
 			mileage,
+			vehicles: vehicles.n,
 			units: units.map((u) => u.name),
 			integrations: connected.n
 		}

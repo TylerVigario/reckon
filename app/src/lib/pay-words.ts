@@ -14,7 +14,8 @@ export const PAYS_FOR = {
 } as const;
 
 /**
- * "$22.00 an hour", "12% of the retainer", "nothing" -- as a figure and its unit.
+ * "$22.00 an hour", "12% of the retainer", "$5.00 a leg", "nothing" -- as a
+ * figure and its unit.
  * An hourly rate is a price, written as finely as it is held; a fixed sum is an
  * amount. `money` and `unitPrice` are the caller's, so a component passes the
  * ones that know the operator's currency.
@@ -32,8 +33,34 @@ export function paysWhat(
 				x: r.pays_for === 'covered_time' ? 'of the retainer' : 'of the line'
 			};
 		case 'fixed':
-			return { v: money(r.amount), x: 'an entry' };
+			return { v: money(r.amount), x: r.pays_for === 'vehicle' ? 'a leg' : 'an entry' };
 		default:
 			return { v: 'nothing', x: '' };
 	}
+}
+
+/**
+ * What a vehicle's miles pay, said under it: its owner by the vehicle rule on
+ * each service charged by the mile -- "Its miles pay Avery Lind 90% of the line
+ * on Travel." -- or nobody for the business's own.
+ */
+export function vehicleWords(
+	owner: string | null,
+	terms: readonly {
+		service: string;
+		rule: { pays_for: string; method: string; amount: string | null } | null;
+	}[],
+	words: Record<'money' | 'unitPrice', (v: string | null) => string>
+): string {
+	if (owner === null)
+		return 'Its miles pay nobody, whoever drives it: the business keeps what they bill.';
+	if (!terms.length) return 'Nothing is charged by the mile yet.';
+	const paid = terms.filter((t) => t.rule !== null);
+	if (!paid.length)
+		return `No vehicle rule on ${terms.map((t) => t.service).join(' or ')} reaches ${owner} yet.`;
+	const each = paid.map((t) => {
+		const w = paysWhat(t.rule!, words);
+		return [w.v, w.x, `on ${t.service}`].filter(Boolean).join(' ');
+	});
+	return `Its miles pay ${owner} ${each.join('; ')}.`;
 }

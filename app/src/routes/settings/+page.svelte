@@ -52,9 +52,12 @@
 		{
 			href: '/settings/travel',
 			title: 'Travel',
-			status: data.counts.mileage
-				? `${unitPrice(data.counts.mileage)} a mile`
-				: 'No mileage rate yet'
+			status: [
+				data.counts.mileage ? `${unitPrice(data.counts.mileage)} a mile` : 'No mileage rate yet',
+				data.counts.vehicles ? count(data.counts.vehicles, 'vehicle') : null
+			]
+				.filter(Boolean)
+				.join(' · ')
 		},
 		{
 			href: '/settings/units',

@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { Decimal, Ratio } from '#lib/decimal.ts';
 import { billedAmount, jobRate, priceOn, type Price, type ServiceTerms } from './pricing.ts';
-import { coveredPay, ruleOn, timePay, type PayRule } from './pay.ts';
+import { coveredPay, ruleOn, timePay, vehiclePay, type PayRule } from './pay.ts';
 import {
 	agreementFor,
 	coverage,
@@ -18,7 +18,7 @@ import {
 } from './entries.ts';
 import { invoiceTax } from './tax.ts';
 import { TAX_ROUNDING, type TaxRounding } from '../tax-rules.ts';
-import { billingDate, hoursOf, legWorth, materialWorth } from './misc.ts';
+import { billingDate, hoursOf, legVehiclePay, legWorth, materialWorth } from './misc.ts';
 
 const AVERY = { id: 'u-avery', roleId: 'r-partner', active: true };
 const SAM = { id: 'u-sam', roleId: 'r-partner', active: true };
@@ -812,6 +812,56 @@ describe('the rest', () => {
 			CENTS
 		);
 		expect(money(w.billed)).toBe('18.48');
+	});
+});
+
+describe("a leg pays its vehicle's owner, not its driver", () => {
+	const rules: PayRule[] = [
+		rule({
+			serviceId: 'travel',
+			roleId: 'r-partner',
+			paysFor: 'vehicle',
+			method: 'percent',
+			amount: '90'
+		}),
+		rule({ serviceId: 'travel', userId: SAM.id, paysFor: 'vehicle', method: 'fixed', amount: '5' })
+	];
+	const leg = { serviceId: 'travel', entityId: ALDER };
+	const nobody = { serviceId: null, entityId: null };
+	const billed = Decimal.from('18.48');
+	const pay = (vehicle: Parameters<typeof legVehiclePay>[3], l: typeof leg | typeof nobody = leg) =>
+		legVehiclePay(l, billed, '2026-09-01', vehicle, rules, CENTS);
+
+	it("pays a person's vehicle by their rule", () => {
+		expect(money(pay({ owner: AVERY }))).toBe('16.63');
+		// Sam's own rule beats the role's: a sum for each leg.
+		expect(money(pay({ owner: SAM }))).toBe('5.00');
+	});
+
+	it("pays nothing for the business's own, whoever drove it", () => {
+		expect(money(pay({ owner: null }))).toBe('0.00');
+	});
+
+	it('pays nothing for a leg nobody caused, which bills nothing', () => {
+		expect(money(pay({ owner: AVERY }, nobody))).toBe('0.00');
+	});
+
+	it('does not know what a trip pays when it does not say what it was driven in', () => {
+		expect(pay(null)).toBeNull();
+	});
+
+	it('does not know what an owner no rule reaches is paid', () => {
+		expect(pay({ owner: VISITOR })).toBeNull();
+	});
+
+	it('has no hours to pay a vehicle by', () => {
+		const hourly = rule({
+			serviceId: 'travel',
+			paysFor: 'vehicle',
+			method: 'per_hour',
+			amount: '9'
+		});
+		expect(vehiclePay(hourly, billed, CENTS)).toBeNull();
 	});
 });
 

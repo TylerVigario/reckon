@@ -221,7 +221,11 @@ T["time_entry"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the phon
 T["time_entry_crew"] = [("PK","time_entry_id","uuid · a team entry"),
     ("PK","user_id","uuid · one of its crew")]
 T["trip"] = [("PK","id","uuid"),("","travelled_on","date"),("FK","driven_by","uuid"),
-    ("FK","created_by","uuid"),("","created_at","timestamptz")]
+    ("FK","created_by","uuid"),("","created_at","timestamptz"),
+    ("FK","vehicle_id","uuid · null = not recorded")]
+T["vehicle"] = [("PK","id","uuid"),("","name","text"),
+    ("FK","owner_id","uuid · null = the business's"),("","retired_on","date · null = in use"),
+    ("","created_at","timestamptz")]
 T["trip_stop"] = [("PK","id","uuid"),("FK","trip_id","uuid"),("","seq","int"),
     ("FK","site_id","uuid"),("","arrived_at","timestamptz"),
     ("","departed_at","timestamptz"),("","address","text · somewhere that is nobody's site")]
@@ -435,7 +439,8 @@ c += [note("n3", "A service is configured, not categorised: what it is charged p
                  "for time or a vehicle — hourly to the second, as a share of the "
                  "line, as a fixed sum, or not at all. Among rules in force, a client's "
                  "own comes first, then a person's own, then the role's.\n\n"
-                 "A vehicle rule pays whoever owns the vehicle, so a vehicle the "
+                 "A vehicle rule pays whoever owns the vehicle a trip was driven in, "
+                 "on each leg — a share or a sum, never by the hour — so a vehicle the "
                  "business owns pays nobody.\n\n"
                  "A covered_time rule pays a percentage of the period's retainer "
                  "charge, divided by each person's part of the covered time.\n\n"
@@ -461,9 +466,9 @@ c += [note("n3", "A service is configured, not categorised: what it is charged p
 files.append(write("03-catalogue.drawio", "What you sell", c, 1620, 1140))
 
 # 04 -- work captured
-c = at("time_entry",40,60) + at("trip",480,60) + at("trip_stop",480,220) \
+c = at("time_entry",40,60) + at("trip",480,60) + at("trip_stop",480,250) \
   + at("trip_leg",880,60) + at("user",40,480) + at("entity",880,300) \
-  + at("time_entry_crew",480,480)
+  + at("time_entry_crew",480,480) + at("vehicle",880,640)
 c += [edge("e40","user","time_entry","worked / created",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=0")
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1")),
@@ -476,6 +481,10 @@ c += [edge("e40","user","time_entry","worked / created",
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=0")),
       edge("e45","user","time_entry_crew","is on",
            S_EDGE.replace("exitY=0.5","exitY=0.1122")),
+      edge("e46","trip","vehicle","driven in",
+           S_EDGE.replace("exitY=0.5","exitY=0.9")),
+      edge("e47","user","vehicle","owns",
+           S_EDGE.replace("exitY=0.5","exitY=0.8333").replace("entryY=0.5","entryY=0.7353")),
       edge("e43","entity","trip_leg","caused",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=0")
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1"))]
@@ -497,7 +506,11 @@ c += [note("n4", "started_at and ended_at are when the work was done and zone is
                  "what decides pay. A team row recorded before crews were named was given "
                  "everyone who held a role when they began to be.\n\n"
                  "trip_leg.service_id is what a billed leg bills as, so nothing "
-                 "has to assume that only one service is charged per mile.",
+                 "has to assume that only one service is charged per mile.\n\n"
+                 "trip.vehicle_id is what it was driven in. The vehicle's owner is who "
+                 "its miles pay, by the service's vehicle rule, whoever drove; the "
+                 "business's own pays nobody. Whose a vehicle is never changes: one that "
+                 "changes hands is retired and added again.",
            40, 830, 1180, 350)]
 files.append(write("04-work-captured.drawio", "Work as it is captured", c, 1340, 1220))
 

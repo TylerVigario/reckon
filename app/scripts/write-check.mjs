@@ -804,6 +804,76 @@ if (foot)
 	);
 else failures.push('could not find the foot on /settings/units');
 
+console.log('\n  vehicles — whose, renamed, retired, and let go');
+
+await check(
+	'a vehicle with no name is refused',
+	'POST',
+	'/api/vehicles',
+	{ fields: { name: ' ', owner_id: '' } },
+	400
+);
+await check(
+	'a vehicle owned by nobody known is refused',
+	'POST',
+	'/api/vehicles',
+	{ fields: { name: `Ghost ${stamp}`, owner_id: crypto.randomUUID() } },
+	400
+);
+const van = await check(
+	"the business's vehicle is added",
+	'POST',
+	'/api/vehicles',
+	{ fields: { name: `Van ${stamp}`, owner_id: '' } },
+	201
+);
+if (van.body?.id) {
+	await check(
+		'it is renamed',
+		'PATCH',
+		`/api/vehicles/${van.body.id}`,
+		{ fields: { name: `Box van ${stamp}` } },
+		200
+	);
+	await check(
+		'whose it is is not changed',
+		'PATCH',
+		`/api/vehicles/${van.body.id}`,
+		{ fields: { owner_id: crypto.randomUUID() } },
+		400
+	);
+	await check(
+		'it is retired',
+		'PATCH',
+		`/api/vehicles/${van.body.id}`,
+		{ fields: { retired: 'true' } },
+		200
+	);
+	await check(
+		'a vehicle never driven is removed',
+		'DELETE',
+		`/api/vehicles/${van.body.id}`,
+		undefined,
+		200
+	);
+}
+// The Corolla, which the demo's trip today was driven in.
+const travelPage = await (await fetch(`${base}/settings/travel`, { headers: { cookie } })).text();
+const corolla = [
+	...travelPage.matchAll(
+		/href="[^"]*\/settings\/travel\/vehicles\/([0-9a-f-]{36})"[\s\S]*?class="rec-t"[^>]*>(?:\s|<!--[^>]*-->)*([^<&]+)/g
+	)
+].find((m) => m[2].trim() === 'Corolla')?.[1];
+if (corolla)
+	await check(
+		'a vehicle a trip was driven in is not removed',
+		'DELETE',
+		`/api/vehicles/${corolla}`,
+		undefined,
+		409
+	);
+else failures.push('could not find the Corolla on /settings/travel');
+
 // An SVG logo with a script in it, uploaded through the settings form the way
 // a browser would, and then asked for by someone who is not signed in. It is
 // still served as an image -- the favicon and the installed icon depend on

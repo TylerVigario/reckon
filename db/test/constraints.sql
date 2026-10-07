@@ -1947,4 +1947,57 @@ SELECT must_fail($$
    WHERE client_uuid = 'dddddddd-0000-4000-8000-000000000001'
 $$, 'a team entry with a crew made one person''s');
 
+\echo ''
+\echo '=== 44. a trip names its vehicle, and its owner is who its miles pay ==='
+
+SELECT must_pass($$
+  INSERT INTO vehicle (id, name, owner_id) VALUES
+    ('eeeeeeee-0000-4000-8000-000000000001','Tacoma','a0a0a0a0-0000-4000-8000-0000000000a1'),
+    ('eeeeeeee-0000-4000-8000-000000000002','Van',NULL)
+$$, 'a person''s vehicle, and the business''s');
+
+SELECT must_fail($$
+  INSERT INTO vehicle (name, owner_id) VALUES ('  ', NULL)
+$$, 'a vehicle with no name');
+
+SELECT must_fail($$
+  INSERT INTO vehicle (name, owner_id) VALUES ('Ghost', 'a0a0a0a0-0000-4000-8000-0000000000ff')
+$$, 'a vehicle owned by somebody who does not exist');
+
+SELECT must_pass($$
+  UPDATE vehicle SET name = 'Tacoma, white', retired_on = '2026-09-01'
+   WHERE id = 'eeeeeeee-0000-4000-8000-000000000001'
+$$, 'a vehicle renamed and retired');
+
+SELECT must_fail($$
+  UPDATE vehicle SET owner_id = 'a0a0a0a0-0000-4000-8000-0000000000a2'
+   WHERE id = 'eeeeeeee-0000-4000-8000-000000000001'
+$$, 'a vehicle that changes hands');
+
+SELECT must_fail($$
+  UPDATE vehicle SET owner_id = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+   WHERE id = 'eeeeeeee-0000-4000-8000-000000000002'
+$$, 'the business''s vehicle made a person''s');
+
+SELECT must_pass($$
+  UPDATE trip SET vehicle_id = 'eeeeeeee-0000-4000-8000-000000000001'
+   WHERE id = '88888888-8888-8888-8888-888888888888'
+$$, 'a trip names the vehicle it was driven in');
+
+SELECT must_fail($$
+  DELETE FROM vehicle WHERE id = 'eeeeeeee-0000-4000-8000-000000000001'
+$$, 'a vehicle removed while a trip names it');
+
+SELECT must_pass($$
+  INSERT INTO pay_rule (service_id, role_id, pays_for, method, amount, effective_from)
+  VALUES ('b5000000-0000-4000-8000-000000000057',(SELECT id FROM role WHERE name = 'Partner'),
+          'vehicle','percent', 100, '2026-08-01')
+$$, 'a vehicle paid a share of each leg');
+
+SELECT must_fail($$
+  INSERT INTO pay_rule (service_id, role_id, pays_for, method, amount, effective_from)
+  VALUES ('b5000000-0000-4000-8000-000000000057',(SELECT id FROM role WHERE name = 'Partner'),
+          'vehicle','per_hour', 10, '2026-08-02')
+$$, 'a vehicle paid by the hour');
+
 \echo 'All guards hold.'

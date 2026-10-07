@@ -254,7 +254,7 @@ rate is the first person&apos;s and additional_rate each extra person&apos;s: at
 
 Pay is for work done. Each pay_rule is for a role or for one person, pays for time or a vehicle — hourly to the second, as a share of the line, as a fixed sum, or not at all. Among rules in force, a client&apos;s own comes first, then a person&apos;s own, then the role&apos;s.
 
-A vehicle rule pays whoever owns the vehicle, so a vehicle the business owns pays nobody.
+A vehicle rule pays whoever owns the vehicle a trip was driven in, on each leg — a share or a sum, never by the hour — so a vehicle the business owns pays nobody.
 
 A covered_time rule pays a percentage of the period&apos;s retainer charge, divided by each person&apos;s part of the covered time.
 

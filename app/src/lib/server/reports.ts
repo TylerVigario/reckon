@@ -11,13 +11,16 @@ import {
 	loadAgreements,
 	loadCatalogue,
 	taxOfInvoices,
-	valueEntries
+	valueEntries,
+	valueLegs
 } from './valuation/load.ts';
 import { billedAmount, jobRate, priceOn } from './valuation/pricing.ts';
 import { ruleOn, timePay } from './valuation/pay.ts';
 import { rateIsStale } from './stale.ts';
 import { dated, daysAgo, names } from '#lib/format.ts';
 import { crewNames } from './choices.ts';
+import { townsOf } from './trips.ts';
+import { alias } from 'drizzle-orm/pg-core';
 import { Ratio } from '#lib/decimal.ts';
 
 /**
@@ -279,8 +282,23 @@ export type PayJob = {
 	kept: string | null;
 };
 
+/** A trip's miles, and what they paid the vehicle they were driven in. */
+export type PayTrip = {
+	trip_id: string;
+	job: string;
+	worked_on: string;
+	vehicle: string | null;
+	/** Whose the vehicle is; null for the business's, or for none recorded. */
+	owner: string | null;
+	miles: string;
+	earned: string | null;
+	paid: string | null;
+	kept: string | null;
+};
+
 export type PayOwed = {
 	jobs: PayJob[];
+	trips: PayTrip[];
 	due: string;
 	kept: string;
 	rates: HourNow[];
@@ -359,19 +377,90 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 		};
 	});
 	jobs.sort((a, b) => a.worked_on.localeCompare(b.worked_on) || a.job.localeCompare(b.job));
+	const trips = await tripsPaid(p, places);
 
 	return {
 		jobs,
+		trips,
 		due: sumMoney(
-			jobs.map((j) => j.paid),
+			[...jobs, ...trips].map((j) => j.paid),
 			places
 		),
 		kept: sumMoney(
-			jobs.map((j) => j.kept),
+			[...jobs, ...trips].map((j) => j.kept),
 			places
 		),
 		rates: await anHourNow()
 	};
+}
+
+/**
+ * The month's trips, each with what its legs billed and what they paid the
+ * vehicle's owner (0024): nothing for the business's own, and not known for a
+ * trip that does not say what it was driven in.
+ */
+async function tripsPaid(p: Period, places: number): Promise<PayTrip[]> {
+	const owner = alias(t.user, 'owner');
+	const found = await db
+		.select({
+			id: t.trip.id,
+			travelledOn: t.trip.travelledOn,
+			towns: townsOf(t.trip.id),
+			vehicleId: t.trip.vehicleId,
+			vehicle: t.vehicle.name,
+			ownerId: t.vehicle.ownerId,
+			owner: owner.name
+		})
+		.from(t.trip)
+		.leftJoin(t.vehicle, eq(t.vehicle.id, t.trip.vehicleId))
+		.leftJoin(owner, eq(owner.id, t.vehicle.ownerId))
+		.where(between(t.trip.travelledOn, p.start, p.end))
+		.orderBy(asc(t.trip.travelledOn), asc(t.trip.id));
+	if (!found.length) return [];
+	const legs = await db
+		.select({
+			id: t.tripLeg.id,
+			tripId: t.tripLeg.tripId,
+			serviceId: t.tripLeg.serviceId,
+			entityId: t.tripLeg.entityId,
+			miles: t.tripLeg.miles
+		})
+		.from(t.tripLeg)
+		.where(
+			inArray(
+				t.tripLeg.tripId,
+				found.map((f) => f.id)
+			)
+		);
+	const worth = await valueLegs(
+		db,
+		legs.map((l) => {
+			const f = found.find((x) => x.id === l.tripId)!;
+			return {
+				...l,
+				travelledOn: f.travelledOn,
+				vehicleId: f.vehicleId,
+				vehicleOwnerId: f.ownerId
+			};
+		})
+	);
+	return found.map((f) => {
+		const mine = legs.filter((l) => l.tripId === f.id);
+		const earned = sumKnown(mine.map((l) => worth.get(l.id)?.billed ?? null));
+		const pays = mine.map((l) => worth.get(l.id)?.paid ?? null);
+		const paid = pays.length && pays.every((x) => x !== null) ? sum(pays) : null;
+		return {
+			trip_id: f.id,
+			job: f.towns ?? 'No stops recorded',
+			worked_on: f.travelledOn,
+			vehicle: f.vehicle,
+			owner: f.owner,
+			miles: sum(mine.map((l) => l.miles)).toFixed(2),
+			earned: earned?.toFixed(places) ?? null,
+			paid: paid?.toFixed(places) ?? null,
+			kept: earned && paid ? earned.sub(paid).toFixed(places) : null
+		};
+	});
 }
 
 export type HourNow = {

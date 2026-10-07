@@ -1,6 +1,7 @@
 import { Decimal, Ratio } from '#lib/decimal.ts';
 import { unitCost, type Costing, type Shelf } from '#lib/stock-draw.ts';
 import { billedAmount, jobRate, priceOn, type Price, type ServiceTerms } from './pricing.ts';
+import { ruleOn, vehiclePay, type Payee, type PayRule } from './pay.ts';
 
 /**
  * The day in `month` that an agreement anchored on `anchorDay` bills: the
@@ -31,6 +32,30 @@ export function legWorth(
 	if (!service || !leg.serviceId) return { rate: null, billed: null };
 	const rate = jobRate(priceOn(prices, leg.serviceId, leg.entityId, travelledOn), 1);
 	return { rate, billed: billedAmount(service, rate, Ratio.of(leg.miles), places) };
+}
+
+/**
+ * What one trip leg pays for the vehicle it was driven in (0024): its owner's
+ * vehicle rule for the leg's service and client on the day, of what the leg
+ * billed. The business's own vehicle pays nothing, whoever drove it, and so
+ * does a leg nobody caused, which bills nothing. Null where the trip does not
+ * say what it was driven in, or no rule reaches the owner, or the leg's own
+ * worth is not known.
+ */
+export function legVehiclePay(
+	leg: { serviceId: string | null; entityId: string | null },
+	billed: Decimal | null,
+	travelledOn: string,
+	vehicle: { owner: Payee | null } | null,
+	rules: readonly PayRule[],
+	places: number
+): Decimal | null {
+	if (!vehicle) return null;
+	const nothing = Decimal.ZERO.round(places);
+	if (!vehicle.owner || !leg.entityId) return nothing;
+	if (!leg.serviceId) return null;
+	const rule = ruleOn(rules, leg.serviceId, vehicle.owner, leg.entityId, 'vehicle', travelledOn);
+	return vehiclePay(rule, billed, places);
 }
 
 /**

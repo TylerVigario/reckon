@@ -288,11 +288,20 @@ INSERT INTO time_entry (id, client_uuid, worked_on, seconds, crew, worked_by, cr
 VALUES ('7c9a60be-d9be-4472-b06c-415c6a235f35', gen_random_uuid(), current_date - 9, 90 * 60, 'one', 'c41b2fab-5b71-4954-bb86-1bc803daf7ee','c41b2fab-5b71-4954-bb86-1bc803daf7ee',
         'b652b696-5037-4fe8-822c-9caed8f21c68','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','08cc4be7-1955-4be8-a90c-0b95e4f31a9c', true, 'Wi-Fi coverage survey');
 
--- Sam's drive today -- so every month's trips screen has one: Harbor Light's
--- Woodland office, then the clinic in Elverta, then home -- 57 miles, of which
--- the first leg is Harbor Light's and the other two the clinic's.
-INSERT INTO trip (id, travelled_on, driven_by, created_by)
-VALUES ('d1ecd94f-1c64-409e-89fd-d6f6da437a7c', current_date, 'c54bf38d-b83d-422f-af31-14a2a01aee5e','c54bf38d-b83d-422f-af31-14a2a01aee5e');
+-- What the trips are driven in. Avery sold the Ranger a month ago and drives
+-- the Tacoma now; Sam drives their own Corolla; the van is the business's, and
+-- its miles pay nobody.
+INSERT INTO vehicle (id, name, owner_id, retired_on) VALUES
+  ('019a0001-0000-7000-8000-000000000001','Ranger','c41b2fab-5b71-4954-bb86-1bc803daf7ee', current_date - 30),
+  ('019a0001-0000-7000-8000-000000000002','Tacoma','c41b2fab-5b71-4954-bb86-1bc803daf7ee', NULL),
+  ('019a0001-0000-7000-8000-000000000003','Corolla','c54bf38d-b83d-422f-af31-14a2a01aee5e', NULL),
+  ('019a0001-0000-7000-8000-000000000004','Transit van', NULL, NULL);
+
+-- Sam's drive today, in the Corolla -- so every month's trips screen has one:
+-- Harbor Light's Woodland office, then the clinic in Elverta, then home -- 57
+-- miles, of which the first leg is Harbor Light's and the other two the clinic's.
+INSERT INTO trip (id, travelled_on, driven_by, created_by, vehicle_id)
+VALUES ('d1ecd94f-1c64-409e-89fd-d6f6da437a7c', current_date, 'c54bf38d-b83d-422f-af31-14a2a01aee5e','c54bf38d-b83d-422f-af31-14a2a01aee5e','019a0001-0000-7000-8000-000000000003');
 INSERT INTO trip_stop (trip_id, seq, site_id) VALUES
   ('d1ecd94f-1c64-409e-89fd-d6f6da437a7c', 1, '52e62dcd-9dd8-4ddb-a985-a1ad40c24109'),
   ('d1ecd94f-1c64-409e-89fd-d6f6da437a7c', 2, '75aea465-ad04-43e1-b6b4-d7132872a870');
@@ -301,10 +310,10 @@ INSERT INTO trip_leg (trip_id, seq, miles, entity_id, site_id, rule, service_id)
   ('d1ecd94f-1c64-409e-89fd-d6f6da437a7c', 2, 22.0,'46b1aaa1-0ade-4002-bfb5-9a80b547c2ed','75aea465-ad04-43e1-b6b4-d7132872a870','a_to_b','6d24f906-197c-48c6-9522-b33f242d1c53'),
   ('d1ecd94f-1c64-409e-89fd-d6f6da437a7c', 3, 14.0,'46b1aaa1-0ade-4002-bfb5-9a80b547c2ed','75aea465-ad04-43e1-b6b4-d7132872a870','b_to_house','6d24f906-197c-48c6-9522-b33f242d1c53');
 
--- Avery's visit to the clinic forty days ago, out and back. Its miles are on
--- INV-0204.
-INSERT INTO trip (id, travelled_on, driven_by, created_by)
-VALUES ('57bd5f26-036a-4487-af85-2e9e2ac26c38', current_date - 40, 'c41b2fab-5b71-4954-bb86-1bc803daf7ee','c41b2fab-5b71-4954-bb86-1bc803daf7ee');
+-- Avery's visit to the clinic forty days ago, out and back in the Ranger. Its
+-- miles are on INV-0204.
+INSERT INTO trip (id, travelled_on, driven_by, created_by, vehicle_id)
+VALUES ('57bd5f26-036a-4487-af85-2e9e2ac26c38', current_date - 40, 'c41b2fab-5b71-4954-bb86-1bc803daf7ee','c41b2fab-5b71-4954-bb86-1bc803daf7ee','019a0001-0000-7000-8000-000000000001');
 INSERT INTO trip_stop (trip_id, seq, site_id) VALUES ('57bd5f26-036a-4487-af85-2e9e2ac26c38', 1, '75aea465-ad04-43e1-b6b4-d7132872a870');
 INSERT INTO trip_leg (id, trip_id, seq, miles, entity_id, site_id, rule, service_id)
 VALUES ('5ba955e1-ee5a-438b-9d26-40c097f20716','57bd5f26-036a-4487-af85-2e9e2ac26c38', 1, 28.0,'46b1aaa1-0ade-4002-bfb5-9a80b547c2ed','75aea465-ad04-43e1-b6b4-d7132872a870','round_trip','6d24f906-197c-48c6-9522-b33f242d1c53');

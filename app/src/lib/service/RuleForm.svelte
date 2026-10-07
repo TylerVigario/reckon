@@ -65,8 +65,12 @@
 		{ v: 'nothing', l: 'Nothing' }
 	];
 	// Time a retainer covers is paid as a share of it -- a percentage, or
-	// nothing -- because it was never billed by the hour to take a rate from.
-	const allowed = (m: string) => paysFor !== 'covered_time' || m === 'percent' || m === 'nothing';
+	// nothing -- because it was never billed by the hour to take a rate from. A
+	// vehicle is paid for miles, which have no hours to count.
+	const allowed = (m: string) =>
+		paysFor === 'covered_time'
+			? m === 'percent' || m === 'nothing'
+			: paysFor !== 'vehicle' || m !== 'per_hour';
 	$effect(() => {
 		if (!allowed(method)) method = 'percent';
 	});
@@ -77,7 +81,9 @@
 				? paysFor === 'covered_time'
 					? '% of the retainer'
 					: '% of the charge'
-				: 'an entry'
+				: paysFor === 'vehicle'
+					? 'a leg'
+					: 'an entry'
 	);
 
 	async function save() {

@@ -137,15 +137,17 @@ export const payRule = pgTable(
 		/**
 		 * What was contributed. time pays the person who spent it, on hours that
 		 * are billed. covered_time pays for hours a retainer covers, as a share of
-		 * the retainer. vehicle pays whoever owns the vehicle, so a company vehicle
-		 * pays nobody and the business keeps it.
+		 * the retainer. vehicle pays whoever owns the vehicle a trip was driven
+		 * in, on each leg it bills, so the business's own pays nobody and the
+		 * business keeps it.
 		 */
 		paysFor: text({ enum: PAYS_FOR }).notNull(),
 		/**
 		 * per_hour: amount an hour worked, counted to the second. percent: amount
 		 * percent of the line before tax; for covered_time, amount percent of the
 		 * period's retainer charge, divided by each person's part of the covered
-		 * time. fixed: amount per entry, however long. nothing: no pay.
+		 * time. fixed: amount per entry, however long, or per leg for a vehicle.
+		 * nothing: no pay. A vehicle is never paid per_hour: a mile has no hours.
 		 */
 		method: text({ enum: PAY_METHODS }).notNull(),
 		amount: decimal(12, 4),
@@ -184,6 +186,11 @@ export const payRule = pgTable(
 		check(
 			'pay_rule_covered_time_is_a_share',
 			sql`(${t.paysFor} <> 'covered_time') OR (${t.method} = ANY (ARRAY['percent', 'nothing']))`
+		),
+		// A vehicle is paid for miles, which have no hours to count (0024).
+		check(
+			'pay_rule_vehicle_is_not_by_the_hour',
+			sql`(${t.paysFor} <> 'vehicle') OR (${t.method} <> 'per_hour')`
 		),
 		oneOf('pay_rule_method_check', t.method, PAY_METHODS),
 		check('pay_rule_names_one_payee', sql`num_nonnulls(${t.roleId}, ${t.userId}) = 1`),

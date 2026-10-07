@@ -15,7 +15,8 @@ import {
 	type Worth
 } from './entries.ts';
 import type { ServiceTerms } from './pricing.ts';
-import { legWorth } from './misc.ts';
+import type { Decimal } from '#lib/decimal.ts';
+import { legVehiclePay, legWorth } from './misc.ts';
 import { moneyPlaces, taxRounding } from '../business.ts';
 import { invoiceTax, type InvoiceTax } from './tax.ts';
 
@@ -192,7 +193,11 @@ export async function valueEntries(
 	return valued;
 }
 
-/** What each of these trip legs bills, at its service's price on the day it was driven. */
+/**
+ * What each of these trip legs bills, at its service's price on the day it was
+ * driven, and what it pays for the vehicle: `vehicleId` and `vehicleOwnerId` are
+ * its trip's, and a leg given neither pays nobody known.
+ */
 export async function valueLegs(
 	r: Reader,
 	legs: readonly {
@@ -201,11 +206,25 @@ export async function valueLegs(
 		entityId: string | null;
 		miles: string;
 		travelledOn: string;
+		vehicleId?: string | null;
+		vehicleOwnerId?: string | null;
 	}[]
-): Promise<Map<string, ReturnType<typeof legWorth>>> {
+): Promise<Map<string, ReturnType<typeof legWorth> & { paid: Decimal | null }>> {
 	if (!legs.length) return new Map();
-	const [{ services, prices }, places] = await Promise.all([loadCatalogue(r), moneyPlaces()]);
-	return new Map(legs.map((l) => [l.id, legWorth(l, l.travelledOn, services, prices, places)]));
+	const [{ services, prices, rules, people }, places] = await Promise.all([
+		loadCatalogue(r),
+		moneyPlaces()
+	]);
+	const payee = (id: string | null) =>
+		id === null ? null : { id, roleId: people.find((p) => p.id === id)?.roleId ?? null };
+	return new Map(
+		legs.map((l) => {
+			const w = legWorth(l, l.travelledOn, services, prices, places);
+			const vehicle = l.vehicleId ? { owner: payee(l.vehicleOwnerId ?? null) } : null;
+			const paid = legVehiclePay(l, w.billed, l.travelledOn, vehicle, rules, places);
+			return [l.id, { ...w, paid }];
+		})
+	);
 }
 
 /** The tax on each of these invoices, split by what CDTFA said about each line's site. */
