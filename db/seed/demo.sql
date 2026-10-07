@@ -300,8 +300,10 @@ INSERT INTO vehicle (id, name, owner_id, retired_on) VALUES
 -- Sam's drive today, in the Corolla -- so every month's trips screen has one:
 -- Harbor Light's Woodland office, then the clinic in Elverta, then home -- 57
 -- miles, of which the first leg is Harbor Light's and the other two the clinic's.
-INSERT INTO trip (id, travelled_on, driven_by, created_by, vehicle_id)
-VALUES ('d1ecd94f-1c64-409e-89fd-d6f6da437a7c', current_date, 'c54bf38d-b83d-422f-af31-14a2a01aee5e','c54bf38d-b83d-422f-af31-14a2a01aee5e','019a0001-0000-7000-8000-000000000003');
+INSERT INTO trip (id, travelled_on, driven_by, created_by, vehicle_id, note,
+                  odometer_start, odometer_end)
+VALUES ('d1ecd94f-1c64-409e-89fd-d6f6da437a7c', current_date, 'c54bf38d-b83d-422f-af31-14a2a01aee5e','c54bf38d-b83d-422f-af31-14a2a01aee5e','019a0001-0000-7000-8000-000000000003',
+        'Cable run at the office, then the clinic''s switch', 48213, 48270);
 INSERT INTO trip_stop (trip_id, seq, site_id) VALUES
   ('d1ecd94f-1c64-409e-89fd-d6f6da437a7c', 1, '52e62dcd-9dd8-4ddb-a985-a1ad40c24109'),
   ('d1ecd94f-1c64-409e-89fd-d6f6da437a7c', 2, '75aea465-ad04-43e1-b6b4-d7132872a870');
@@ -310,11 +312,26 @@ INSERT INTO trip_leg (trip_id, seq, miles, entity_id, site_id, rule, service_id)
   ('d1ecd94f-1c64-409e-89fd-d6f6da437a7c', 2, 22.0,'46b1aaa1-0ade-4002-bfb5-9a80b547c2ed','75aea465-ad04-43e1-b6b4-d7132872a870','a_to_b','6d24f906-197c-48c6-9522-b33f242d1c53'),
   ('d1ecd94f-1c64-409e-89fd-d6f6da437a7c', 3, 14.0,'46b1aaa1-0ade-4002-bfb5-9a80b547c2ed','75aea465-ad04-43e1-b6b4-d7132872a870','b_to_house','6d24f906-197c-48c6-9522-b33f242d1c53');
 
+-- Each stop was for its site's client, and each leg of today's drive names the
+-- stop it drove to; the last is the way home.
+INSERT INTO trip_stop_client (trip_stop_id, entity_id, site_id)
+SELECT ts.id, s.entity_id, s.id
+  FROM trip_stop ts JOIN site s ON s.id = ts.site_id
+ WHERE ts.trip_id = 'd1ecd94f-1c64-409e-89fd-d6f6da437a7c';
+UPDATE trip_leg l SET to_stop_id = ts.id
+  FROM trip_stop ts
+ WHERE ts.trip_id = l.trip_id AND ts.seq = l.seq
+   AND l.trip_id = 'd1ecd94f-1c64-409e-89fd-d6f6da437a7c';
+
 -- Avery's visit to the clinic forty days ago, out and back in the Ranger. Its
 -- miles are on INV-0204.
 INSERT INTO trip (id, travelled_on, driven_by, created_by, vehicle_id)
 VALUES ('57bd5f26-036a-4487-af85-2e9e2ac26c38', current_date - 40, 'c41b2fab-5b71-4954-bb86-1bc803daf7ee','c41b2fab-5b71-4954-bb86-1bc803daf7ee','019a0001-0000-7000-8000-000000000001');
 INSERT INTO trip_stop (trip_id, seq, site_id) VALUES ('57bd5f26-036a-4487-af85-2e9e2ac26c38', 1, '75aea465-ad04-43e1-b6b4-d7132872a870');
+INSERT INTO trip_stop_client (trip_stop_id, entity_id, site_id)
+SELECT ts.id, s.entity_id, s.id
+  FROM trip_stop ts JOIN site s ON s.id = ts.site_id
+ WHERE ts.trip_id = '57bd5f26-036a-4487-af85-2e9e2ac26c38';
 INSERT INTO trip_leg (id, trip_id, seq, miles, entity_id, site_id, rule, service_id)
 VALUES ('5ba955e1-ee5a-438b-9d26-40c097f20716','57bd5f26-036a-4487-af85-2e9e2ac26c38', 1, 28.0,'46b1aaa1-0ade-4002-bfb5-9a80b547c2ed','75aea465-ad04-43e1-b6b4-d7132872a870','round_trip','6d24f906-197c-48c6-9522-b33f242d1c53');
 

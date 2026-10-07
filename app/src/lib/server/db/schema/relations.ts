@@ -12,7 +12,7 @@ import {
 	service,
 	servicePrice
 } from './catalogue.ts';
-import { timeEntry, trip, tripLeg, tripStop, vehicle } from './work.ts';
+import { timeEntry, trip, tripLeg, tripStop, tripStopClient, vehicle } from './work.ts';
 import { agreement, agreementPeriod, agreementService } from './agreements.ts';
 import {
 	invoice,
@@ -122,9 +122,16 @@ export const vehicleRelations = relations(vehicle, ({ one, many }) => ({
 	trips: many(trip)
 }));
 
-export const tripStopRelations = relations(tripStop, ({ one }) => ({
+export const tripStopRelations = relations(tripStop, ({ one, many }) => ({
 	trip: one(trip, { fields: [tripStop.tripId], references: [trip.id] }),
-	site: one(site, { fields: [tripStop.siteId], references: [site.id] })
+	site: one(site, { fields: [tripStop.siteId], references: [site.id] }),
+	clients: many(tripStopClient)
+}));
+
+export const tripStopClientRelations = relations(tripStopClient, ({ one }) => ({
+	stop: one(tripStop, { fields: [tripStopClient.tripStopId], references: [tripStop.id] }),
+	entity: one(entity, { fields: [tripStopClient.entityId], references: [entity.id] }),
+	site: one(site, { fields: [tripStopClient.siteId], references: [site.id] })
 }));
 
 export const tripLegRelations = relations(tripLeg, ({ one }) => ({

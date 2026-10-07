@@ -35,7 +35,7 @@
 
 <Top title="Trips" {sub}>
 	{#snippet actions()}
-		<span class="btn sm">New</span>
+		<a class="btn sm" href={resolve('/trips/new')}>New</a>
 	{/snippet}
 </Top>
 

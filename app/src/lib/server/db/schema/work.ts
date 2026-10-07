@@ -33,7 +33,9 @@ export const LEG_RULES = [
 	'b_to_house',
 	'round_trip',
 	'split',
-	'unassigned'
+	'unassigned',
+	// Given to someone by whoever recorded the trip, rather than by the rule (0025).
+	'chosen'
 ] as const;
 
 export const timeEntry = pgTable(
@@ -192,9 +194,37 @@ export const trip = pgTable(
 		 * What it was driven in (0024). Null on a trip recorded before trips named
 		 * their vehicle: nobody knows whose its miles were, so they pay nobody.
 		 */
-		vehicleId: uuid()
+		vehicleId: uuid(),
+		/**
+		 * Made where the trip is recorded (0025), so a save that is sent twice is
+		 * one trip. Null on a trip recorded before trips were.
+		 */
+		clientUuid: uuid(),
+		/** What it was for, kept with the trip: a mileage log asks why. */
+		note: text(),
+		/**
+		 * The odometer when it left and when it got back, if somebody read it.
+		 * Both or neither; the legs are checked against what they say.
+		 */
+		odometerStart: decimal(9, 1),
+		odometerEnd: decimal(9, 1),
+		/**
+		 * Where it started and ended when that was not the base (the operator's
+		 * address): null is the base.
+		 */
+		startAddress: text(),
+		endAddress: text()
 	},
 	(t) => [
+		unique('trip_client_uuid_key').on(t.clientUuid),
+		check(
+			'trip_odometer_reads_forward',
+			sql`((${t.odometerStart} IS NULL) = (${t.odometerEnd} IS NULL)) AND ((${t.odometerStart} IS NULL) OR ((${t.odometerStart} >= 0) AND (${t.odometerEnd} >= ${t.odometerStart})))`
+		),
+		check(
+			'trip_places_are_something',
+			sql`(btrim(coalesce(${t.startAddress}, 'x')) <> '') AND (btrim(coalesce(${t.endAddress}, 'x')) <> '')`
+		),
 		foreignKey({
 			name: 'trip_driven_by_fkey',
 			columns: [t.drivenBy],
@@ -228,6 +258,10 @@ export const tripStop = pgTable(
 	},
 	(t) => [
 		unique('trip_stop_trip_id_seq_key').on(t.tripId, t.seq),
+		// What a leg names as where it went must be a stop on its own trip.
+		unique('trip_stop_trip_id_id_key').on(t.tripId, t.id),
+		// A stop is a site, or an address that is nobody's site -- not both.
+		check('trip_stop_is_one_place', sql`num_nonnulls(${t.siteId}, ${t.address}) <= 1`),
 		foreignKey({
 			name: 'trip_stop_trip_id_fkey',
 			columns: [t.tripId],
@@ -238,6 +272,41 @@ export const tripStop = pgTable(
 			columns: [t.siteId],
 			foreignColumns: [site.id]
 		}).onDelete('set null')
+	]
+);
+
+/**
+ * Who a stop was for (0025): each client worked for there, at their own site
+ * when it is one. Two clients with sites at one address are one stop, one
+ * drive. A client who asked once the driver was there caused none of the drive
+ * and pays nothing for it. A stop for nobody -- the business's own errand --
+ * has none.
+ */
+export const tripStopClient = pgTable(
+	'trip_stop_client',
+	{
+		tripStopId: uuid().notNull(),
+		entityId: uuid().notNull(),
+		siteId: uuid(),
+		askedThere: boolean().default(false).notNull()
+	},
+	(t) => [
+		primaryKey({ name: 'trip_stop_client_pkey', columns: [t.tripStopId, t.entityId] }),
+		foreignKey({
+			name: 'trip_stop_client_trip_stop_id_fkey',
+			columns: [t.tripStopId],
+			foreignColumns: [tripStop.id]
+		}).onDelete('cascade'),
+		foreignKey({
+			name: 'trip_stop_client_entity_id_fkey',
+			columns: [t.entityId],
+			foreignColumns: [entity.id]
+		}).onDelete('restrict'),
+		foreignKey({
+			name: 'trip_stop_client_site_is_the_clients',
+			columns: [t.entityId, t.siteId],
+			foreignColumns: [site.entityId, site.id]
+		})
 	]
 );
 
@@ -252,10 +321,22 @@ export const tripLeg = pgTable(
 		rule: text({ enum: LEG_RULES }),
 		siteId: uuid(),
 		/** What this leg bills as, so nothing has to assume that only one service is charged per mile. */
-		serviceId: uuid()
+		serviceId: uuid(),
+		/**
+		 * The stop it drove to (0025), so a later drive between the same two places
+		 * can start from these miles; null is the way back to where the trip
+		 * ended. A drive shared by two clients is two legs to one stop. Null on a
+		 * leg recorded before.
+		 */
+		toStopId: uuid()
 	},
 	(t) => [
 		unique('trip_leg_trip_id_seq_key').on(t.tripId, t.seq),
+		foreignKey({
+			name: 'trip_leg_to_stop_is_the_trips',
+			columns: [t.tripId, t.toStopId],
+			foreignColumns: [tripStop.tripId, tripStop.id]
+		}).onDelete('cascade'),
 		index('trip_leg_entity').on(t.entityId),
 		foreignKey({
 			name: 'trip_leg_trip_id_fkey',

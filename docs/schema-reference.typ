@@ -23,7 +23,7 @@
 #v(6pt)
 
 #text(size: sz.small)[
-  42 tables across seven clusters. The eight `.drawio` files in
+  43 tables across seven clusters. The eight `.drawio` files in
   `docs/schema/` carry the relationships; the schema's comments carry the reasoning.
   A table drawn in more than one cluster is listed once, under the first.
 ]
@@ -365,60 +365,6 @@
 #v(7pt)
 
 #block(breakable: false)[
-  #text(font: face-mono, size: sz.fine, weight: "bold")[trip]
-  #v(3pt)
-  #sheet(
-    (auto, auto, 1fr),
-    ([], [Column], [Type]),
-    size: sz.micro,
-    [*PK*], [id], [uuid],
-    [], [travelled\_on], [date],
-    [*FK*], [driven\_by], [uuid],
-    [*FK*], [created\_by], [uuid],
-    [], [created\_at], [timestamptz],
-    [*FK*], [vehicle\_id], [uuid · null = not recorded],
-  )
-]
-#v(7pt)
-
-#block(breakable: false)[
-  #text(font: face-mono, size: sz.fine, weight: "bold")[trip\_stop]
-  #v(3pt)
-  #sheet(
-    (auto, auto, 1fr),
-    ([], [Column], [Type]),
-    size: sz.micro,
-    [*PK*], [id], [uuid],
-    [*FK*], [trip\_id], [uuid],
-    [], [seq], [int],
-    [*FK*], [site\_id], [uuid],
-    [], [arrived\_at], [timestamptz],
-    [], [departed\_at], [timestamptz],
-    [], [address], [text · somewhere that is nobody's site],
-  )
-]
-#v(7pt)
-
-#block(breakable: false)[
-  #text(font: face-mono, size: sz.fine, weight: "bold")[trip\_leg]
-  #v(3pt)
-  #sheet(
-    (auto, auto, 1fr),
-    ([], [Column], [Type]),
-    size: sz.micro,
-    [*PK*], [id], [uuid],
-    [*FK*], [trip\_id], [uuid],
-    [], [seq], [int],
-    [], [miles], [numeric],
-    [*FK*], [entity\_id], [uuid · who caused it],
-    [*FK*], [site\_id], [uuid],
-    [*FK*], [service\_id], [uuid · what it bills as],
-    [], [rule], [text],
-  )
-]
-#v(7pt)
-
-#block(breakable: false)[
   #text(font: face-mono, size: sz.fine, weight: "bold")[user]
   #v(3pt)
   #sheet(
@@ -471,7 +417,83 @@
 ]
 #v(7pt)
 
-#callout(tone: "note")[started\_at and ended\_at are when the work was done and zone is where, so it is shown as it was worked; seconds is worked out from them by the server, and worked\_on is the day it started there. An entry recorded before it kept its times has its length alone.  worked\_by is who worked the hour, and crew says whether it bills at one person's rate or the team's; created\_by is who entered it, which is how the row is explained later.  client\_uuid is made on the phone: the offline queue retries, and without it a retry that timed out enters the hour twice.  Work done by the whole crew is one row with crew = team, so its billable quantity is recorded, not worked out. Anyone who carries on alone afterwards gets a row of their own at crew = one.  A team row has no worked\_by. It names its crew in time\_entry\_crew, ticked when the timer starts, and is priced at that head count and pays each of them; created\_by is whoever ran the timer, and user.role\_id is what decides pay. A team row recorded before crews were named was given everyone who held a role when they began to be.  trip\_leg.service\_id is what a billed leg bills as, so nothing has to assume that only one service is charged per mile.  trip.vehicle\_id is what it was driven in. The vehicle's owner is who its miles pay, by the service's vehicle rule, whoever drove; the business's own pays nobody. Whose a vehicle is never changes: one that changes hands is retired and added again.]
+#block(breakable: false)[
+  #text(font: face-mono, size: sz.fine, weight: "bold")[trip]
+  #v(3pt)
+  #sheet(
+    (auto, auto, 1fr),
+    ([], [Column], [Type]),
+    size: sz.micro,
+    [*PK*], [id], [uuid],
+    [], [travelled\_on], [date],
+    [*FK*], [driven\_by], [uuid],
+    [*FK*], [created\_by], [uuid],
+    [], [created\_at], [timestamptz],
+    [*FK*], [vehicle\_id], [uuid · null = not recorded],
+    [*UK*], [client\_uuid], [uuid · made where it was recorded],
+    [], [note], [text · what it was for],
+    [], [odometer\_start], [numeric · null = not read],
+    [], [odometer\_end], [numeric],
+    [], [start\_address], [text · null = the base],
+    [], [end\_address], [text · null = the base],
+  )
+]
+#v(7pt)
+
+#block(breakable: false)[
+  #text(font: face-mono, size: sz.fine, weight: "bold")[trip\_stop]
+  #v(3pt)
+  #sheet(
+    (auto, auto, 1fr),
+    ([], [Column], [Type]),
+    size: sz.micro,
+    [*PK*], [id], [uuid],
+    [*FK*], [trip\_id], [uuid],
+    [], [seq], [int],
+    [*FK*], [site\_id], [uuid],
+    [], [arrived\_at], [timestamptz],
+    [], [departed\_at], [timestamptz],
+    [], [address], [text · not a site],
+  )
+]
+#v(7pt)
+
+#block(breakable: false)[
+  #text(font: face-mono, size: sz.fine, weight: "bold")[trip\_stop\_client]
+  #v(3pt)
+  #sheet(
+    (auto, auto, 1fr),
+    ([], [Column], [Type]),
+    size: sz.micro,
+    [*PK*], [trip\_stop\_id], [uuid],
+    [*PK*], [entity\_id], [uuid · who it was for],
+    [*FK*], [site\_id], [uuid · null = not at their site],
+    [], [asked\_there], [bool · pays for none of it],
+  )
+]
+#v(7pt)
+
+#block(breakable: false)[
+  #text(font: face-mono, size: sz.fine, weight: "bold")[trip\_leg]
+  #v(3pt)
+  #sheet(
+    (auto, auto, 1fr),
+    ([], [Column], [Type]),
+    size: sz.micro,
+    [*PK*], [id], [uuid],
+    [*FK*], [trip\_id], [uuid],
+    [], [seq], [int],
+    [], [miles], [numeric],
+    [*FK*], [entity\_id], [uuid · who caused it],
+    [*FK*], [site\_id], [uuid],
+    [*FK*], [service\_id], [uuid · what it bills as],
+    [], [rule], [text],
+    [*FK*], [to\_stop\_id], [uuid · null = the way back],
+  )
+]
+#v(7pt)
+
+#callout(tone: "note")[started\_at and ended\_at are when the work was done and zone is where, so it is shown as it was worked; seconds is worked out from them by the server, and worked\_on is the day it started there. An entry recorded before it kept its times has its length alone.  worked\_by is who worked the hour, and crew says whether it bills at one person's rate or the team's; created\_by is who entered it, which is how the row is explained later.  client\_uuid is made on the phone: the offline queue retries, and without it a retry that timed out enters the hour twice.  Work done by the whole crew is one row with crew = team, so its billable quantity is recorded, not worked out. Anyone who carries on alone afterwards gets a row of their own at crew = one.  A team row has no worked\_by. It names its crew in time\_entry\_crew, ticked when the timer starts, and is priced at that head count and pays each of them; created\_by is whoever ran the timer, and user.role\_id is what decides pay. A team row recorded before crews were named was given everyone who held a role when they began to be.  trip\_leg.service\_id is what a billed leg bills as, so nothing has to assume that only one service is charged per mile.  trip.vehicle\_id is what it was driven in. The vehicle's owner is who its miles pay, by the service's vehicle rule, whoever drove; the business's own pays nobody. Whose a vehicle is never changes: one that changes hands is retired and added again.  A trip starts and ends at the base -- start\_address and end\_address say otherwise -- and its stops are places in order, a site or an address. trip\_stop\_client says who each was for: two clients' sites at one address are one stop, and one who asked once the driver was there pays for none of the drive. The app gives each leg to whoever caused it, by the rule in Settings → Travel; rule = chosen where somebody gave it by hand. to\_stop\_id is where a leg went, so the same drive later starts from its miles. note and the odometer are the trip's own, as a mileage log asks.]
 #v(4pt)
 
 #v(6pt)

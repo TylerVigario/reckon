@@ -2000,4 +2000,77 @@ SELECT must_fail($$
           'vehicle','per_hour', 10, '2026-08-02')
 $$, 'a vehicle paid by the hour');
 
+\echo ''
+\echo '=== 45. a trip is recorded: why, the odometer, where each stop was for, where each leg went ==='
+
+SELECT must_pass($$
+  INSERT INTO trip (id, travelled_on, driven_by, created_by, client_uuid, note,
+                    odometer_start, odometer_end, end_address)
+  VALUES ('88888888-0000-4000-8000-000000000045','2026-09-02',
+          'a0a0a0a0-0000-4000-8000-0000000000a1','a0a0a0a0-0000-4000-8000-0000000000a1',
+          'ffffffff-0000-4000-8000-000000000045','Survey, then home by the yard',
+          48213, 48270.5, '1 Yard Rd, Auburn')
+$$, 'a trip with what it was for, its odometer, and where it ended');
+
+SELECT must_fail($$
+  INSERT INTO trip (travelled_on, driven_by, created_by, client_uuid)
+  VALUES ('2026-09-02','a0a0a0a0-0000-4000-8000-0000000000a1',
+          'a0a0a0a0-0000-4000-8000-0000000000a1','ffffffff-0000-4000-8000-000000000045')
+$$, 'the same trip sent twice');
+
+SELECT must_fail($$
+  INSERT INTO trip (travelled_on, driven_by, created_by, odometer_start, odometer_end)
+  VALUES ('2026-09-02','a0a0a0a0-0000-4000-8000-0000000000a1',
+          'a0a0a0a0-0000-4000-8000-0000000000a1', 48270, 48213)
+$$, 'an odometer that reads backwards');
+
+SELECT must_fail($$
+  INSERT INTO trip (travelled_on, driven_by, created_by, odometer_start)
+  VALUES ('2026-09-02','a0a0a0a0-0000-4000-8000-0000000000a1',
+          'a0a0a0a0-0000-4000-8000-0000000000a1', 48270)
+$$, 'one odometer reading without the other');
+
+SELECT must_fail($$
+  INSERT INTO trip (travelled_on, driven_by, created_by, start_address)
+  VALUES ('2026-09-02','a0a0a0a0-0000-4000-8000-0000000000a1',
+          'a0a0a0a0-0000-4000-8000-0000000000a1', '  ')
+$$, 'a trip that started nowhere');
+
+SELECT must_pass($$
+  INSERT INTO trip_stop (id, trip_id, seq, site_id) VALUES
+    ('9a9a9a9a-0000-4000-8000-000000000045','88888888-0000-4000-8000-000000000045', 1,
+     'c5000000-0000-4000-8000-000000000001')
+$$, 'a stop at a site');
+
+SELECT must_fail($$
+  INSERT INTO trip_stop (trip_id, seq, site_id, address) VALUES
+    ('88888888-0000-4000-8000-000000000045', 2, 'c5000000-0000-4000-8000-000000000001',
+     '101 Maple St, Auburn')
+$$, 'a stop that is a site and an address at once');
+
+SELECT must_pass($$
+  INSERT INTO trip_stop_client (trip_stop_id, entity_id, site_id, asked_there) VALUES
+    ('9a9a9a9a-0000-4000-8000-000000000045','44444444-4444-4444-4444-444444444444',
+     'c5000000-0000-4000-8000-000000000001', false),
+    ('9a9a9a9a-0000-4000-8000-000000000045','44444444-0000-4000-8000-000000000002', NULL, true)
+$$, 'a stop for its site''s client, and for one who asked once there');
+
+SELECT must_fail($$
+  INSERT INTO trip_stop_client (trip_stop_id, entity_id, site_id) VALUES
+    ('9a9a9a9a-0000-4000-8000-000000000045','44444444-0000-4000-8000-000000000003',
+     'c5000000-0000-4000-8000-000000000001')
+$$, 'a stop for a client at a site that is not theirs');
+
+SELECT must_pass($$
+  INSERT INTO trip_leg (trip_id, seq, miles, entity_id, site_id, rule, service_id, to_stop_id)
+  VALUES ('88888888-0000-4000-8000-000000000045', 1, 30, '44444444-4444-4444-4444-444444444444',
+          'c5000000-0000-4000-8000-000000000001', 'chosen', 'b5000000-0000-4000-8000-000000000057',
+          '9a9a9a9a-0000-4000-8000-000000000045')
+$$, 'a leg to its stop, given by hand');
+
+SELECT must_fail($$
+  INSERT INTO trip_leg (trip_id, seq, miles, to_stop_id)
+  VALUES ('88888888-8888-8888-8888-888888888888', 9, 30, '9a9a9a9a-0000-4000-8000-000000000045')
+$$, 'a leg to a stop on another trip');
+
 \echo 'All guards hold.'

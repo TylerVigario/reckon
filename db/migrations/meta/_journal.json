@@ -176,6 +176,13 @@
       "when": 1791392586508,
       "tag": "0024_trips_name_their_vehicle",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791396257260,
+      "tag": "0025_a_trip_is_recorded",
+      "breakpoints": true
     }
   ]
 }
