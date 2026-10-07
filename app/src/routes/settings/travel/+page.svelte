@@ -3,16 +3,27 @@
 	import Setting from '#lib/Setting.svelte';
 	import { unitPrice } from '#lib/money.svelte.ts';
 	import Day from '#lib/Day.svelte';
+	import { dated, miles } from '#lib/format.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
 	const o = $derived(data.operator);
+	// Whose it is, what it has been driven this year, and when it was retired.
+	const about = (v: { owner: string | null; retired_on: string | null; miles: string }) =>
+		[
+			v.owner ? `${v.owner}'s` : "The business's",
+			`${miles(v.miles)} on trips this year`,
+			v.owner ? null : 'pays nobody',
+			v.retired_on ? `retired ${dated(v.retired_on)}` : null
+		]
+			.filter(Boolean)
+			.join(' · ');
 </script>
 
 <Top
 	title="Travel"
-	sub="Where trips start and what a mile costs"
+	sub="Where trips start, what a mile costs, and the vehicles"
 	back={resolve('/settings')}
 	backLabel="Settings"
 />
@@ -33,6 +44,45 @@
 				</div>
 			</div>
 		</div>
+	</div>
+
+	<div class="sec">
+		<div class="sec-h">
+			<h2>Vehicles</h2>
+			<span class="sp"></span>
+			<a class="btn sm" href={resolve('/settings/travel/vehicles/new')}>Add a vehicle</a>
+		</div>
+		<div class="rows">
+			{#each data.vehicles as v (v.id)}
+				<a
+					class="rec link"
+					class:gone={v.retired_on}
+					href={resolve('/settings/travel/vehicles/[id]', { id: v.id })}
+				>
+					<div class="rec-m">
+						<div class="rec-t">
+							{v.name}{#if v.retired_on}&nbsp;<span class="lt">· retired</span>{/if}
+						</div>
+						<div class="rec-s">{about(v)}</div>
+					</div>
+					<span class="arw" aria-hidden="true">›</span>
+				</a>
+			{:else}
+				<div class="rec">
+					<div class="rec-m">
+						<div class="rec-t"><span class="lt">No vehicles yet</span></div>
+						<div class="rec-s">
+							A trip names what it was driven in, and its owner is who its miles pay
+						</div>
+					</div>
+				</div>
+			{/each}
+		</div>
+		<p class="aside">
+			Travel's vehicle rule pays a vehicle's owner, whoever drove it: a person's at their rule, the
+			business's to nobody. One that changes hands is retired and added again, so trips already
+			driven still pay who they paid.
+		</p>
 	</div>
 
 	<div class="sec">
@@ -92,4 +142,9 @@
 </div>
 
 <style>
+	.aside {
+		margin: 8px 0 0;
+		font-size: 12.5px;
+		color: var(--ink-3);
+	}
 </style>

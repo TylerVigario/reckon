@@ -23,7 +23,7 @@
 #v(6pt)
 
 #text(size: sz.small)[
-  41 tables across seven clusters. The eight `.drawio` files in
+  42 tables across seven clusters. The eight `.drawio` files in
   `docs/schema/` carry the relationships; the schema's comments carry the reasoning.
   A table drawn in more than one cluster is listed once, under the first.
 ]
@@ -328,7 +328,7 @@
 ]
 #v(7pt)
 
-#callout(tone: "note")[A service is configured, not categorised: what it is charged per, how finely, at least what, and whom it pays.  rate is the first person's and additional\_rate each extra person's: at \$120 and +\$70 a crew of three costs \$260 an hour.  Pay is for work done. Each pay\_rule is for a role or for one person, pays for time or a vehicle — hourly to the second, as a share of the line, as a fixed sum, or not at all. Among rules in force, a client's own comes first, then a person's own, then the role's.  A vehicle rule pays whoever owns the vehicle, so a vehicle the business owns pays nobody.  A covered\_time rule pays a percentage of the period's retainer charge, divided by each person's part of the covered time.  unit each charges per entry, whatever its length: a flat rate.  unit is how a service is charged; time\_tracked is whether time is captured against it. Mileage may be timed and still billed per mile.  Allotments live on agreements, service by service, never on the service itself.  bill\_to\_nearest\_seconds and minimum\_charge are the usual next questions about an hourly price. Pay is never rounded to them; it is counted as worked.  material\_lot is where stock enters, and where the Reg 1701 ex-tax purchase price is sourced. It keeps what all of it cost before tax and in tax, as the receipt says them, and a unit's share is worked out from those. A line drawn from stock takes the oldest lots first, and qty\_remaining follows what it took (stock\_draw). paid\_by is whoever paid out of their own pocket and is owed it back, or the business when empty.  A material is counted in one of the operator's units -- each, the foot, a box of 25 -- each with how it is written and how many places a quantity may have. Nothing converts one unit into another, and a line keeps its unit's name as it was billed.]
+#callout(tone: "note")[A service is configured, not categorised: what it is charged per, how finely, at least what, and whom it pays.  rate is the first person's and additional\_rate each extra person's: at \$120 and +\$70 a crew of three costs \$260 an hour.  Pay is for work done. Each pay\_rule is for a role or for one person, pays for time or a vehicle — hourly to the second, as a share of the line, as a fixed sum, or not at all. Among rules in force, a client's own comes first, then a person's own, then the role's.  A vehicle rule pays whoever owns the vehicle a trip was driven in, on each leg — a share or a sum, never by the hour — so a vehicle the business owns pays nobody.  A covered\_time rule pays a percentage of the period's retainer charge, divided by each person's part of the covered time.  unit each charges per entry, whatever its length: a flat rate.  unit is how a service is charged; time\_tracked is whether time is captured against it. Mileage may be timed and still billed per mile.  Allotments live on agreements, service by service, never on the service itself.  bill\_to\_nearest\_seconds and minimum\_charge are the usual next questions about an hourly price. Pay is never rounded to them; it is counted as worked.  material\_lot is where stock enters, and where the Reg 1701 ex-tax purchase price is sourced. It keeps what all of it cost before tax and in tax, as the receipt says them, and a unit's share is worked out from those. A line drawn from stock takes the oldest lots first, and qty\_remaining follows what it took (stock\_draw). paid\_by is whoever paid out of their own pocket and is owed it back, or the business when empty.  A material is counted in one of the operator's units -- each, the foot, a box of 25 -- each with how it is written and how many places a quantity may have. Nothing converts one unit into another, and a line keeps its unit's name as it was billed.]
 #v(4pt)
 
 #v(6pt)
@@ -376,6 +376,7 @@
     [*FK*], [driven\_by], [uuid],
     [*FK*], [created\_by], [uuid],
     [], [created\_at], [timestamptz],
+    [*FK*], [vehicle\_id], [uuid · null = not recorded],
   )
 ]
 #v(7pt)
@@ -454,7 +455,23 @@
 ]
 #v(7pt)
 
-#callout(tone: "note")[started\_at and ended\_at are when the work was done and zone is where, so it is shown as it was worked; seconds is worked out from them by the server, and worked\_on is the day it started there. An entry recorded before it kept its times has its length alone.  worked\_by is who worked the hour, and crew says whether it bills at one person's rate or the team's; created\_by is who entered it, which is how the row is explained later.  client\_uuid is made on the phone: the offline queue retries, and without it a retry that timed out enters the hour twice.  Work done by the whole crew is one row with crew = team, so its billable quantity is recorded, not worked out. Anyone who carries on alone afterwards gets a row of their own at crew = one.  A team row has no worked\_by. It names its crew in time\_entry\_crew, ticked when the timer starts, and is priced at that head count and pays each of them; created\_by is whoever ran the timer, and user.role\_id is what decides pay. A team row recorded before crews were named was given everyone who held a role when they began to be.  trip\_leg.service\_id is what a billed leg bills as, so nothing has to assume that only one service is charged per mile.]
+#block(breakable: false)[
+  #text(font: face-mono, size: sz.fine, weight: "bold")[vehicle]
+  #v(3pt)
+  #sheet(
+    (auto, auto, 1fr),
+    ([], [Column], [Type]),
+    size: sz.micro,
+    [*PK*], [id], [uuid],
+    [], [name], [text],
+    [*FK*], [owner\_id], [uuid · null = the business's],
+    [], [retired\_on], [date · null = in use],
+    [], [created\_at], [timestamptz],
+  )
+]
+#v(7pt)
+
+#callout(tone: "note")[started\_at and ended\_at are when the work was done and zone is where, so it is shown as it was worked; seconds is worked out from them by the server, and worked\_on is the day it started there. An entry recorded before it kept its times has its length alone.  worked\_by is who worked the hour, and crew says whether it bills at one person's rate or the team's; created\_by is who entered it, which is how the row is explained later.  client\_uuid is made on the phone: the offline queue retries, and without it a retry that timed out enters the hour twice.  Work done by the whole crew is one row with crew = team, so its billable quantity is recorded, not worked out. Anyone who carries on alone afterwards gets a row of their own at crew = one.  A team row has no worked\_by. It names its crew in time\_entry\_crew, ticked when the timer starts, and is priced at that head count and pays each of them; created\_by is whoever ran the timer, and user.role\_id is what decides pay. A team row recorded before crews were named was given everyone who held a role when they began to be.  trip\_leg.service\_id is what a billed leg bills as, so nothing has to assume that only one service is charged per mile.  trip.vehicle\_id is what it was driven in. The vehicle's owner is who its miles pay, by the service's vehicle rule, whoever drove; the business's own pays nobody. Whose a vehicle is never changes: one that changes hands is retired and added again.]
 #v(4pt)
 
 #v(6pt)

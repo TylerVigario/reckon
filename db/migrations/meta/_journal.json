@@ -169,6 +169,13 @@
       "when": 1791318985295,
       "tag": "0023_a_team_entry_names_its_crew",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791392586508,
+      "tag": "0024_trips_name_their_vehicle",
+      "breakpoints": true
     }
   ]
 }

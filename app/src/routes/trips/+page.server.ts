@@ -32,6 +32,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			id: tr.id,
 			travelled_on: tr.travelledOn,
 			driver: u.name,
+			vehicle: t.vehicle.name,
 			stops: townsOf(tr.id),
 			stop_count: sql<number>`(${db
 				.select({ n: count() })
@@ -47,6 +48,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		})
 		.from(tr)
 		.leftJoin(u, eq(u.id, tr.drivenBy))
+		.leftJoin(t.vehicle, eq(t.vehicle.id, tr.vehicleId))
 		.where(and(gte(tr.travelledOn, from), lt(tr.travelledOn, to)))
 		.orderBy(desc(tr.travelledOn), desc(tr.id));
 

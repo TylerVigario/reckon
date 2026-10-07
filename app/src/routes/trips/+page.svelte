@@ -9,8 +9,15 @@
 
 	// Built here rather than in the markup: an {#if} inside a sentence eats the
 	// space in front of its separator, which reads as "Avery Lind· Harbor Light Dental".
-	const detail = (t: { travelled_on: string; driver: string | null; clients: string | null }) =>
-		[day(t.travelled_on), t.driver ?? 'unassigned', t.clients].filter(Boolean).join(' · ');
+	const detail = (t: {
+		travelled_on: string;
+		driver: string | null;
+		vehicle: string | null;
+		clients: string | null;
+	}) =>
+		[day(t.travelled_on), t.driver ?? 'unassigned', t.vehicle, t.clients]
+			.filter(Boolean)
+			.join(' · ');
 
 	const title = (t: { stops: string | null; stop_count: number }) =>
 		[t.stops ?? 'No stops recorded', t.stop_count > 1 ? `${t.stop_count} stops` : null]

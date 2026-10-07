@@ -80,6 +80,17 @@ export function timePay(
 }
 
 /**
+ * What a vehicle's owner is paid for one trip leg driven in it: a share of what
+ * the leg billed, a fixed sum, or nothing, to the currency's `places`. Null when
+ * no rule reaches them -- and for a rule by the hour, which a mile has none of;
+ * the schema refuses one (0024).
+ */
+export function vehiclePay(rule: PayRule | null, line: Decimal | null, places: number) {
+	if (!rule || rule.method === 'per_hour') return null;
+	return timePay(rule, 0, line, places);
+}
+
+/**
  * What one person is paid for covered time on one entry: their rule's
  * percentage of `share`, their part of the retainer's charge, to the currency's
  * `places`. A rule of nothing, or of 0%, pays nothing even when the charge is

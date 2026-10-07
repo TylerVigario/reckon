@@ -1,11 +1,13 @@
 import { error } from '@sveltejs/kit';
 import { and, asc, eq, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { Decimal, Ratio, sum } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { townsOf } from '#lib/server/trips.ts';
 import { loadCatalogue, valueLegs } from '#lib/server/valuation/load.ts';
 import { billedAmount, jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
+import { ruleOn } from '#lib/server/valuation/pay.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
 import { UUID } from '#lib/field-rules.ts';
 import type { PageServerLoad } from './$types';
@@ -26,16 +28,25 @@ export const load: PageServerLoad = async ({ params }) => {
 	const tl = t.tripLeg;
 	const e = t.entity;
 	const u = t.user;
+	const v = t.vehicle;
+	const owner = alias(t.user, 'owner');
 
 	const [found] = await db
 		.select({
 			id: tr.id,
 			travelled_on: tr.travelledOn,
 			driver: u.name,
-			stops: townsOf(tr.id)
+			stops: townsOf(tr.id),
+			vehicle_id: tr.vehicleId,
+			vehicle: v.name,
+			vehicle_retired_on: v.retiredOn,
+			owner_id: v.ownerId,
+			owner: owner.name
 		})
 		.from(tr)
 		.leftJoin(u, eq(u.id, tr.drivenBy))
+		.leftJoin(v, eq(v.id, tr.vehicleId))
+		.leftJoin(owner, eq(owner.id, v.ownerId))
 		.where(eq(tr.id, params.id));
 	if (!found) error(404, 'no such trip');
 
@@ -74,10 +85,15 @@ export const load: PageServerLoad = async ({ params }) => {
 	]);
 
 	const travelledOn = found.travelled_on;
-	const [worth, { services, prices }, places] = await Promise.all([
+	const [worth, { services, prices, rules, people }, places] = await Promise.all([
 		valueLegs(
 			db,
-			rows.map((l) => ({ ...l, travelledOn }))
+			rows.map((l) => ({
+				...l,
+				travelledOn,
+				vehicleId: found.vehicle_id,
+				vehicleOwnerId: found.owner_id
+			}))
 		),
 		loadCatalogue(db),
 		moneyPlaces()
@@ -102,11 +118,37 @@ export const load: PageServerLoad = async ({ params }) => {
 	}
 	const roundTrips = [...alone.values()].filter((x): x is Decimal => x !== null);
 
+	// What the vehicle was paid: known only when every leg's pay is. The rule is
+	// said when one rule paid every leg the owner was paid for.
+	const billed = sum(rows.map((l) => worth.get(l.id)?.billed ?? null));
+	const pays = rows.map((l) => worth.get(l.id)?.paid ?? null);
+	const paid = found.vehicle_id && pays.every((x) => x !== null) ? sum(pays) : null;
+	const payee = found.owner_id && {
+		id: found.owner_id,
+		roleId: people.find((p) => p.id === found.owner_id)?.roleId ?? null
+	};
+	const used = payee
+		? [
+				...new Set(
+					rows
+						.filter((l) => l.serviceId && l.entityId)
+						.map((l) => ruleOn(rules, l.serviceId!, payee, l.entityId, 'vehicle', travelledOn))
+				)
+			]
+		: [];
+	const rule =
+		used.length === 1 && used[0]
+			? { pays_for: used[0].paysFor, method: used[0].method, amount: used[0].amount }
+			: null;
+
 	const trip = {
 		...found,
 		miles: sum(rows.map((l) => l.miles)).toFixed(2),
-		billed: sum(rows.map((l) => worth.get(l.id)?.billed ?? null)).toFixed(places),
-		round_trips: roundTrips.length ? sum(roundTrips).toFixed(places) : null
+		billed: billed.toFixed(places),
+		round_trips: roundTrips.length ? sum(roundTrips).toFixed(places) : null,
+		paid: paid?.toFixed(places) ?? null,
+		kept: paid ? billed.sub(paid).toFixed(places) : null,
+		rule
 	};
 	const legs = rows.map((l) => ({
 		id: l.id,

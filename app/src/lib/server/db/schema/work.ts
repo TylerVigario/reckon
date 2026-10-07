@@ -154,6 +154,32 @@ export const timeEntryCrew = pgTable(
 	]
 );
 
+/**
+ * What a trip is driven in, and whose it is (0024). Its owner is who its miles
+ * pay, by the service's vehicle rule, whoever drove it; the business's -- no
+ * owner -- pays nobody. Whose it is never changes: one that changes hands is
+ * retired and added again, so trips already driven pay who they paid.
+ */
+export const vehicle = pgTable(
+	'vehicle',
+	{
+		id: id(),
+		name: text().notNull(),
+		ownerId: uuid(),
+		/** The day it stopped being driven. It stays on the trips driven in it. */
+		retiredOn: day(),
+		createdAt: createdAt()
+	},
+	(t) => [
+		foreignKey({
+			name: 'vehicle_owner_id_fkey',
+			columns: [t.ownerId],
+			foreignColumns: [user.id]
+		}).onDelete('restrict'),
+		check('vehicle_name_is_something', sql`btrim(${t.name}) <> ''`)
+	]
+);
+
 export const trip = pgTable(
 	'trip',
 	{
@@ -161,7 +187,12 @@ export const trip = pgTable(
 		travelledOn: day().notNull(),
 		drivenBy: uuid().notNull(),
 		createdBy: uuid().notNull(),
-		createdAt: createdAt()
+		createdAt: createdAt(),
+		/**
+		 * What it was driven in (0024). Null on a trip recorded before trips named
+		 * their vehicle: nobody knows whose its miles were, so they pay nobody.
+		 */
+		vehicleId: uuid()
 	},
 	(t) => [
 		foreignKey({
@@ -173,6 +204,11 @@ export const trip = pgTable(
 			name: 'trip_created_by_fkey',
 			columns: [t.createdBy],
 			foreignColumns: [user.id]
+		}).onDelete('restrict'),
+		foreignKey({
+			name: 'trip_vehicle_id_fkey',
+			columns: [t.vehicleId],
+			foreignColumns: [vehicle.id]
 		}).onDelete('restrict')
 	]
 );

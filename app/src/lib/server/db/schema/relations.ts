@@ -12,7 +12,7 @@ import {
 	service,
 	servicePrice
 } from './catalogue.ts';
-import { timeEntry, trip, tripLeg, tripStop } from './work.ts';
+import { timeEntry, trip, tripLeg, tripStop, vehicle } from './work.ts';
 import { agreement, agreementPeriod, agreementService } from './agreements.ts';
 import {
 	invoice,
@@ -112,8 +112,14 @@ export const timeEntryRelations = relations(timeEntry, ({ one }) => ({
 
 export const tripRelations = relations(trip, ({ one, many }) => ({
 	driver: one(user, { fields: [trip.drivenBy], references: [user.id] }),
+	vehicle: one(vehicle, { fields: [trip.vehicleId], references: [vehicle.id] }),
 	stops: many(tripStop),
 	legs: many(tripLeg)
+}));
+
+export const vehicleRelations = relations(vehicle, ({ one, many }) => ({
+	owner: one(user, { fields: [vehicle.ownerId], references: [user.id] }),
+	trips: many(trip)
 }));
 
 export const tripStopRelations = relations(tripStop, ({ one }) => ({

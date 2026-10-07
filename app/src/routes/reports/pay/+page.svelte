@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import { dated, day, hours } from '#lib/format.ts';
+	import { dated, day, hours, miles } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -13,6 +13,23 @@
 	// A team job names its crew, as the server lists them.
 	const who = (j: { who: string | null }) => j.who ?? 'nobody recorded';
 
+	// Jobs and trips in one list, a day at a time; a day's jobs before its trips.
+	const days = $derived(
+		[
+			...data.jobs.map((j) => ({ kind: 'job' as const, ...j })),
+			...data.trips.map((t) => ({ kind: 'trip' as const, ...t }))
+		].sort((a, b) => a.worked_on.localeCompare(b.worked_on))
+	);
+	// A trip's miles pay whoever owns the vehicle, so that is who it names.
+	const drove = (t: { vehicle: string | null; owner: string | null; miles: string }) =>
+		[
+			t.vehicle === null
+				? 'No vehicle recorded'
+				: t.owner
+					? `${t.owner} · for the ${t.vehicle}`
+					: `The business's ${t.vehicle}`,
+			miles(t.miles)
+		].join(' · ');
 	// Built here rather than in the markup: a template that interleaves text
 	// with {#if} blocks loses the space between them.
 	const terms = (r: { billed: string; paid: string | null; since: string | null }) =>
@@ -36,29 +53,42 @@
 	<div class="sec">
 		<div class="sec-h"><h2>{data.month.label}</h2></div>
 		<div class="rows">
-			{#each data.jobs as j, i (j.job + j.worked_on + i)}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t">{j.job} · {day(j.worked_on)}</div>
-						<div class="rec-s">
-							{who(j)} · {hours(j.hours)}{#if j.heads > 1}
-								· {j.heads} on the job{/if}
+			{#each days as r, i (r.worked_on + i)}
+				{#if r.kind === 'job'}
+					<div class="rec">
+						<div class="rec-m">
+							<div class="rec-t">{r.job} · {day(r.worked_on)}</div>
+							<div class="rec-s">
+								{who(r)} · {hours(r.hours)}{#if r.heads > 1}
+									· {r.heads} on the job{/if}
+							</div>
+						</div>
+						<div class="rec-n">
+							<span class="rec-v">{money(r.paid)}</span>
+							<span class="rec-x">kept {money(r.kept)}</span>
 						</div>
 					</div>
-					<div class="rec-n">
-						<span class="rec-v">{money(j.paid)}</span>
-						<span class="rec-x">kept {money(j.kept)}</span>
+				{:else}
+					<div class="rec" class:warn={r.paid === null}>
+						<div class="rec-m">
+							<div class="rec-t">{r.job} · {day(r.worked_on)}</div>
+							<div class="rec-s">{drove(r)}</div>
+						</div>
+						<div class="rec-n">
+							<span class="rec-v">{money(r.paid)}</span>
+							<span class="rec-x">kept {money(r.kept)}</span>
+						</div>
 					</div>
-				</div>
-			{:else}
+				{/if}
+			{/each}
+			{#if !days.length}
 				<div class="rec">
 					<div class="rec-m">
 						<div class="rec-t"><span class="lt">Nothing worked</span></div>
-						<div class="rec-s">No billable hours were recorded in {data.month.label}</div>
+						<div class="rec-s">No billable hours or trips were recorded in {data.month.label}</div>
 					</div>
 				</div>
-			{/each}
-			{#if data.jobs.length}
+			{:else}
 				<div class="rec tot">
 					<div class="rec-m"><div class="rec-t">Pay due</div></div>
 					<div class="rec-n">

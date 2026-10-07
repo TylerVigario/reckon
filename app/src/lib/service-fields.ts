@@ -105,6 +105,9 @@ export function readRule(fields: Record<string, unknown>) {
 			'A rule pays a role, or one person -- one of the two.';
 	if (values.pays_for === 'covered_time' && !['percent', 'nothing'].includes(String(values.method)))
 		errors.method = 'Time a retainer covers is paid as a share of it: a percentage, or nothing.';
+	if (values.pays_for === 'vehicle' && values.method === 'per_hour')
+		errors.method =
+			'A vehicle is paid for miles, which have no hours: a percentage, a sum, or nothing.';
 	if (values.method === 'nothing') values.amount = null;
 	else if (values.amount === null) errors.amount = 'How much.';
 	else if (values.method === 'percent' && Number(values.amount) > 100)

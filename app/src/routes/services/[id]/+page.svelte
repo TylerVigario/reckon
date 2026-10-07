@@ -326,9 +326,7 @@
 								</div>
 								<div class="rec-s">
 									{r.client ?? 'Every client'} · {when(r)} · {w.v}
-									{w.x}{r.pays_for === 'vehicle'
-										? ' · not applied yet: a trip does not record its vehicle'
-										: ''}
+									{w.x}
 								</div>
 								<div class="rec-c">
 									{#if r.state === 'current'}
