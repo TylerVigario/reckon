@@ -798,6 +798,22 @@ if (agreeWith && otherClient && person) {
 		400
 	);
 	await check(
+		"a trip's route is asked for, and answers with miles or nothing",
+		'POST',
+		'/api/trips/route',
+		{ stops: stopAt(agreeWith) },
+		(/** @type {{ status: number, body: any }} */ r) =>
+			r.status === 200 &&
+			(r.body?.miles === null || (Array.isArray(r.body?.miles) && r.body.miles.length === 2))
+	);
+	await check(
+		'a route with a stop that is nowhere is refused',
+		'POST',
+		'/api/trips/route',
+		{ stops: [{}] },
+		400
+	);
+	await check(
 		'what a trip comes to is worked out before it is saved',
 		'POST',
 		'/api/trips/worth',

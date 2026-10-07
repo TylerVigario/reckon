@@ -123,7 +123,7 @@ export const placeKey = (p: Place) =>
 export const driveKey = (a: Place, b: Place) => [placeKey(a), placeKey(b)].sort().join(' ~ ');
 
 /** A drive's miles before anyone types them, and where they came from. */
-export type Estimate = { miles: string; from: 'last' | 'site'; on?: string };
+export type Estimate = { miles: string; from: 'google' | 'last' | 'site'; on?: string };
 
 /**
  * What a drive between these places most likely was: as it was last driven,

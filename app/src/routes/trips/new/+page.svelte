@@ -80,6 +80,32 @@
 	const ORDINAL = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'];
 	const nth = (i: number) => ORDINAL[i] ?? `number ${i + 1}`;
 
+	// Google's route for these places, asked of the server when they change
+	// (#lib/server/routes): the first word on a drive's miles when it has one.
+	const placesSent = $derived(
+		JSON.stringify({
+			start_address: startAddress || null,
+			end_address: endAddress || null,
+			stops: stops.map((s) => ({ site_id: s.siteId, address: s.address }))
+		})
+	);
+	let route = $state<{ for: string; miles: string[] | null } | null>(null);
+	$effect(() => {
+		const sent = placesSent;
+		if (!stops.length) return;
+		const ask = async () => {
+			const r = await fetch('/api/trips/route', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: sent
+			}).catch(() => null);
+			const answer = r?.ok ? ((await r.json()) as { miles: string[] | null }) : null;
+			route = { for: sent, miles: answer?.miles ?? null };
+		};
+		const timer = setTimeout(() => void ask(), 400);
+		return () => clearTimeout(timer);
+	});
+
 	type DriveRow = {
 		key: string;
 		from: string;
@@ -91,7 +117,10 @@
 		places.slice(1).map((to, i) => {
 			const from = places[i];
 			const key = driveKey(from, to);
-			const guess = estimate(from, to, data.known, roundTrips);
+			const google = route?.for === placesSent ? route.miles?.[i] : undefined;
+			const guess: Estimate | null = google
+				? { miles: google, from: 'google' }
+				: estimate(from, to, data.known, roundTrips);
 			return {
 				key,
 				from: short(from, stops[i - 1]),
@@ -105,9 +134,11 @@
 	const guessed = (g: Estimate | null) =>
 		!g
 			? null
-			: g.from === 'site'
-				? "half the site's round trip"
-				: `as last driven, ${dayOf(g.on ?? '')}`;
+			: g.from === 'google'
+				? "Google's route"
+				: g.from === 'site'
+					? "half the site's round trip"
+					: `as last driven, ${dayOf(g.on ?? '')}`;
 	const complete = $derived(
 		stops.length > 0 && drives.every((d) => /^\d{1,4}(\.\d{1,2})?$/.test(d.miles.trim()))
 	);
