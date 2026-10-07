@@ -253,6 +253,11 @@ keystroke, so the round trip that ruled out proxying the autocomplete does not
 apply. A trip's route is one request at the Essentials tier, ten places between its
 first and last at most, and no traffic.
 
+A host with IPv6 reaches Google over it whenever it can, from addresses that
+change within its prefix. Restrict the key to that range — its `/64` — as well as
+its IPv4 address: a key that admits only one refuses the other, and each lookup
+falls back without a word to the person using the app.
+
 Unset is a supported state, not a broken one: the address field is an ordinary
 text input.
 
