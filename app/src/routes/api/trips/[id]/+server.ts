@@ -1,10 +1,61 @@
 import { eq } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
-import { stillReferenced } from '#lib/server/field-errors.ts';
+import { refuse, stillReferenced } from '#lib/server/field-errors.ts';
+import { readTrip } from '#lib/server/trip-input.ts';
+import {
+	legsFor,
+	onAnInvoice,
+	refuseTrip,
+	tripColumns,
+	writeStops
+} from '#lib/server/trip-write.ts';
 import { UUID } from '#lib/field-rules.ts';
+import { readBody } from '#lib/json.ts';
 import { problem } from '#lib/server/problem.ts';
 import type { RequestHandler } from './$types';
+
+const BILLED = 'Its miles are on an invoice, so it stays as it was billed.';
+
+/**
+ * Changes a saved trip: everything about it, sent whole as the form sends a new
+ * one, its legs worked out again by #lib/trip-legs and its stops and legs
+ * replaced. Not once any of its miles are on an invoice: then it is as billed,
+ * and a correction goes through the invoice.
+ */
+export const PUT: RequestHandler = async ({ params, request, locals }) => {
+	if (!UUID.test(params.id)) return problem('notFound', 404, 'No trip with that id.');
+	const read = readTrip(await readBody(request));
+	if (!read.ok) return refuse(read.errors);
+	const trip = read.trip;
+	const worked = await legsFor(trip);
+	if ('refused' in worked) return worked.refused;
+
+	try {
+		const outcome = await asUser(locals.user!.id, async (tx) => {
+			// Held while it changes, so a line drawn from it cannot slip in between.
+			const [held] = await tx
+				.select({ id: t.trip.id })
+				.from(t.trip)
+				.where(eq(t.trip.id, params.id))
+				.for('update');
+			if (!held) return 'gone' as const;
+			if (await onAnInvoice(tx, params.id)) return 'billed' as const;
+			await tx.update(t.trip).set(tripColumns(trip)).where(eq(t.trip.id, params.id));
+			await tx.delete(t.tripLeg).where(eq(t.tripLeg.tripId, params.id));
+			await tx.delete(t.tripStop).where(eq(t.tripStop.tripId, params.id));
+			await writeStops(tx, params.id, trip, worked.legs, worked.serviceId);
+			return 'changed' as const;
+		});
+		if (outcome === 'gone') return problem('notFound', 404, 'No trip with that id.');
+		if (outcome === 'billed') return problem('conflict', 409, BILLED);
+		return Response.json({ id: params.id });
+	} catch (err) {
+		const refused = refuseTrip(err);
+		if (refused) return refused;
+		throw err;
+	}
+};
 
 /**
  * Removes a trip recorded wrongly, with its stops and legs. One whose miles are
@@ -18,8 +69,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 		);
 		if (gone.length === 0) return problem('notFound', 404, 'No trip with that id.');
 	} catch (e) {
-		if (stillReferenced(e))
-			return problem('conflict', 409, 'Its miles are on an invoice, so it stays as it was.');
+		if (stillReferenced(e)) return problem('conflict', 409, BILLED);
 		throw e;
 	}
 	return Response.json({ removed: params.id });

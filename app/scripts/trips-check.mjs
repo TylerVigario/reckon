@@ -217,6 +217,47 @@ check(
 	`it is kept as it was recorded (${saved})`
 );
 
+// ------------------------------------------- changed after it was saved
+await run(() =>
+	/** @type {HTMLAnchorElement | undefined} */ (
+		[...document.querySelectorAll('a')].find((a) => a.textContent?.trim() === 'Change this trip')
+	)?.click()
+);
+await settle(2500);
+const before = await milesTyped();
+const filledIn = /** @type {{ note: string; left: string; title: string }} */ (
+	await evaluate(`({
+		note: document.querySelector('#t-note')?.value ?? '',
+		left: document.querySelector('#t-left')?.value ?? '',
+		title: document.querySelector('main')?.innerText.includes('Change the trip') ? 'Change the trip' : ''
+	})`)
+);
+check(
+	before.join(' ') === '21 22 14' &&
+		filledIn.note === 'Cable, then the clinic' &&
+		filledIn.left === '1000' &&
+		filledIn.title === 'Change the trip',
+	`Change opens the trip as it was saved (${before.join(', ')}; ${filledIn.left}; ${filledIn.note})`
+);
+await run(() => {
+	const second = /** @type {HTMLInputElement} */ (document.querySelectorAll('.mi input')[1]);
+	second.value = '25';
+	second.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await set('#t-back', '1060');
+await set('#t-note', 'Cable, then the clinic, the long way');
+await settle(1200);
+await tap('Save the trip');
+await settle(2500);
+const changed = await page();
+check(
+	(await evaluate('location.pathname')) === saved &&
+		changed.includes('$16.50') &&
+		changed.includes('$39.60') &&
+		changed.includes('the long way'),
+	'the change is saved, and its legs worked out again'
+);
+
 // -------------------------------------------- one building, two clients
 await go('/trips/new');
 await addStop('Harbor Light Dental', 'Main Street office', 'Pinecrest Insurance');

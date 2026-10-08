@@ -209,8 +209,11 @@
 			</div>
 		</div>
 	{/if}
-	{#if !data.trip.invoiced}
+	{#if data.trip.invoiced}
+		<p class="aside">Its miles are on an invoice, so it stays as it was billed.</p>
+	{:else}
 		<div class="btnrow">
+			<a class="btn" href={resolve('/trips/[id]/change', { id: data.trip.id })}>Change this trip</a>
 			<button type="button" class="btn gho" onclick={remove}>Remove this trip</button>
 		</div>
 		{#if problem}<p class="why bad">{problem}</p>{/if}
@@ -226,6 +229,11 @@
 	}
 	.why {
 		margin: 0;
+	}
+	.aside {
+		margin: 0;
+		font-size: 12.5px;
+		color: var(--ink-3);
 	}
 	.why.bad {
 		color: var(--crit);

@@ -769,6 +769,34 @@ if (agreeWith && otherClient && person) {
 		(/** @type {{ status: number, body: any }} */ r) =>
 			r.status === 200 && r.body?.id === trip.body?.id
 	);
+	if (trip.body?.id) {
+		await check(
+			'a trip is changed, its legs worked out again',
+			'PUT',
+			`/api/trips/${trip.body.id}`,
+			{
+				...outAndBack,
+				note: 'Changed by write-check',
+				drives: [{ miles: '12.5' }, { miles: '13' }]
+			},
+			(/** @type {{ status: number, body: any }} */ r) =>
+				r.status === 200 && r.body?.id === trip.body?.id
+		);
+		await check(
+			'a change that leaves a drive out is refused',
+			'PUT',
+			`/api/trips/${trip.body.id}`,
+			{ ...outAndBack, drives: [{ miles: '12.5' }] },
+			400
+		);
+	}
+	await check(
+		'a trip that does not exist is not changed',
+		'PUT',
+		`/api/trips/${crypto.randomUUID()}`,
+		again(),
+		404
+	);
 	await check(
 		'a trip missing a drive is refused',
 		'POST',
@@ -836,7 +864,7 @@ const thatMonth = await (
 	await fetch(`${base}/trips?month=${fortyAgo}`, { headers: { cookie } })
 ).text();
 const billedTrip = [...thatMonth.matchAll(/\/trips\/([0-9a-f-]{36})"/g)].map((m) => m[1])[0];
-if (billedTrip)
+if (billedTrip) {
 	await check(
 		'a trip whose miles are on an invoice stays',
 		'DELETE',
@@ -844,7 +872,21 @@ if (billedTrip)
 		undefined,
 		409
 	);
-else failures.push('could not find the billed trip on /trips');
+	if (agreeWith && person)
+		await check(
+			'a trip whose miles are on an invoice is not changed',
+			'PUT',
+			`/api/trips/${billedTrip}`,
+			{
+				client_uuid: crypto.randomUUID(),
+				travelled_on: new Date().toISOString().slice(0, 10),
+				driven_by: person,
+				stops: [{ address: 'Write check yard', clients: [{ entity_id: agreeWith }] }],
+				drives: [{ miles: '1' }, { miles: '1' }]
+			},
+			409
+		);
+} else failures.push('could not find the billed trip on /trips');
 
 console.log('\n  units — named, written, counted, and let go');
 

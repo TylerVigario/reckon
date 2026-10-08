@@ -4,4 +4,4 @@
 	let { data }: PageProps = $props();
 </script>
 
-<TripForm {data} />
+<TripForm {data} start={data.draft} tripId={data.id} />
