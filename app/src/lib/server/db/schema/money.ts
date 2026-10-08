@@ -32,7 +32,13 @@ import { agreementPeriod } from './agreements.ts';
 import { timeEntry, tripLeg } from './work.ts';
 import { user } from './people.ts';
 
-export const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'void'] as const;
+/**
+ * Where an invoice is in its life: being written, sent, or voided. Paid is not
+ * one of them: it is the balance (#lib/server/balances), worked out from what
+ * is put against it, so a refund after it is paid makes it owed again rather
+ * than leaving a status that says otherwise.
+ */
+export const INVOICE_STATUSES = ['draft', 'sent', 'void'] as const;
 /**
  * How a line behaves. service, recurring and adjustment are the work and the
  * charges; the goods and costs passed on are three: material, drawn from stock;
@@ -69,16 +75,18 @@ export const invoice = pgTable(
 		periodStart: day(),
 		periodEnd: day(),
 		/**
-		 * UNUSED, PLANNED. A link that lets a client read one invoice without an
-		 * account. Nothing issues or checks a token yet, so the column is always
-		 * null and /invoice/<token> does not exist.
+		 * What the client's link is made of: /invoice/<token>, which opens this
+		 * invoice without signing in (0028). Given when it is sent, and random
+		 * enough that it cannot be guessed; null on a draft, which has no link.
 		 */
 		publicToken: text(),
 		/**
-		 * UNUSED, PLANNED. When the public link stops working. A link that never
-		 * expires is a link that is still live in an inbox in three years.
+		 * When the client's link stops working. How long a link should last is
+		 * not decided, so nothing sets it; one that is set and has passed is
+		 * refused.
 		 */
 		tokenExpiresOn: day(),
+		/** When it was sent: dated, given its due date and its link. */
 		sentAt: tstz(),
 		createdBy: uuid().notNull(),
 		/**
@@ -107,6 +115,11 @@ export const invoice = pgTable(
 		check(
 			'sent_invoices_have_dates',
 			sql`(${t.status} = 'draft') OR ((${t.issuedOn} IS NOT NULL) AND (${t.dueOn} IS NOT NULL))`
+		),
+		// A sent invoice has its link; a draft has none to give away.
+		check(
+			'sent_invoices_have_a_link',
+			sql`(${t.status} <> 'sent' OR ${t.publicToken} IS NOT NULL) AND (${t.status} <> 'draft' OR ${t.publicToken} IS NULL)`
 		),
 		check('voiding_needs_a_reason', sql`(${t.status} <> 'void') OR (${t.voidReason} IS NOT NULL)`)
 	]

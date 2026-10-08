@@ -17,6 +17,10 @@ export default defineConfig({
 			// builds an unrunnable bundle with a warning.
 			adapter: adapter(),
 
+			// Registered by the layout, and only for somebody signed in: a client
+			// opening the link to their invoice is not installing the app.
+			serviceWorker: { register: false },
+
 			/**
 			 * What the browser is allowed to load: what this origin served, and
 			 * nothing else. CDTFA and Google's server-side checks are called from

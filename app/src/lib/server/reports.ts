@@ -111,7 +111,7 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 			       ${invoiceLine.exTaxCost} as ex_tax_cost
 			  from ${invoiceLine}
 			  join ${invoice} on ${invoice.id} = ${invoiceLine.invoiceId}
-			 where ${invoice.status} in ('sent', 'paid')
+			 where ${invoice.status} = 'sent'
 			   and ${invoice.issuedOn} between ${p.start} and ${p.end}
 			   and ${invoiceLine.taxable}
 		)
@@ -166,7 +166,7 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 		.innerJoin(invoice, eq(invoice.id, invoiceLine.invoiceId))
 		.where(
 			and(
-				inArray(invoice.status, ['sent', 'paid']),
+				eq(invoice.status, 'sent'),
 				between(invoice.issuedOn, p.start, p.end),
 				eq(invoiceLine.taxSource, 'override')
 			)
@@ -227,9 +227,7 @@ export async function taxObligation(p: Period): Promise<Obligation> {
 	const raised = await db
 		.select({ id: invoice.id })
 		.from(invoice)
-		.where(
-			and(inArray(invoice.status, ['sent', 'paid']), between(invoice.issuedOn, p.start, p.end))
-		);
+		.where(and(eq(invoice.status, 'sent'), between(invoice.issuedOn, p.start, p.end)));
 	const taxes = [
 		...(
 			await taxOfInvoices(

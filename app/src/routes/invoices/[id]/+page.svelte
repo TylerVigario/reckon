@@ -23,6 +23,7 @@
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 
 	let { data }: PageProps = $props();
 
@@ -180,6 +181,26 @@
 		return words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1];
 	};
 
+	// THE CLIENT'S LINK, once it is sent: copied, or handed to the phone's share
+	// sheet. What sending did with it arrives as ?link=, and is said once.
+	let handed = $state(page.url.searchParams.get('link'));
+	let canShare = $state(false);
+	onMount(() => (canShare = typeof navigator.share === 'function'));
+	async function copyLink() {
+		if (!i.link) return;
+		await navigator.clipboard
+			.writeText(i.link)
+			.then(() => (handed = 'copied'))
+			.catch(() => {});
+	}
+	async function shareLink() {
+		if (!i.link) return;
+		await navigator
+			.share({ title: `Invoice ${i.number}`, url: i.link })
+			.then(() => (handed = 'shared'))
+			.catch(() => {});
+	}
+
 	const period = $derived(i.period_start ? monthOf(i.period_start) : null);
 	const sub = $derived([i.who, period].filter(Boolean).join(' · '));
 	const title = $derived(i.status === 'draft' ? `Draft ${i.number}` : i.number);
@@ -189,7 +210,7 @@
 	{#snippet actions()}
 		{#if i.status === 'draft'}
 			<a class="btn sm" href={resolve('/invoices/[id]/add', { id: i.id })}>Add a line</a>
-			<span class="btn pri sm">Send</span>
+			<a class="btn pri sm" href={resolve('/invoices/[id]/send', { id: i.id })}>Send</a>
 		{/if}
 	{/snippet}
 </Top>
@@ -275,24 +296,64 @@
 	{/if}
 
 	<div class="tiles">
-		<div class="tile">
-			<span class="k">Due</span>
-			<span class="v">{money(t.due)}</span>
-			<span class="s">{i.terms ? `Net ${i.terms}` : i.due_on ? day(i.due_on) : 'no terms set'}</span
-			>
-		</div>
+		{#if i.status === 'draft'}
+			<div class="tile">
+				<span class="k">Due</span>
+				<span class="v">{money(t.due)}</span>
+				<span class="s"
+					>{i.terms ? `Net ${i.terms}` : i.due_on ? day(i.due_on) : 'no terms set'}</span
+				>
+			</div>
+		{:else}
+			<!-- Paid is what is owed coming to nothing, not a status (0028). -->
+			<div class="tile">
+				<span class="k">Owed</span>
+				<span class="v" class:good={Number(data.totals.owed) === 0}>{money(data.totals.owed)}</span>
+				<span class="s">
+					{Number(data.totals.owed) === 0 ? 'Paid' : `of ${money(data.totals.due)}`}
+				</span>
+			</div>
+		{/if}
 		<div class="tile">
 			<span class="k">Status</span>
-			<span class="v sm {i.status === 'draft' ? 'warn' : 'good'}">
-				{i.status === 'draft' ? 'Draft' : 'Sent'}
+			<span class="v sm {i.status === 'draft' ? 'warn' : i.status === 'void' ? 'crit' : 'good'}">
+				{i.status === 'draft' ? 'Draft' : i.status === 'void' ? 'Voided' : 'Sent'}
 			</span>
 			<span class="s">
 				{i.status === 'draft'
 					? `Assembled ${clock(i.assembled, personalZone())}`
-					: `Sent ${day(i.sent_on)}`}
+					: `${day(i.issued_on)} · due ${day(i.due_on)}`}
 			</span>
 		</div>
 	</div>
+
+	{#if i.link}
+		<div class="sec">
+			<div class="sec-h"><h2>The client's link</h2></div>
+			<div class="rows">
+				<div class="rec">
+					<div class="rec-m">
+						<div class="rec-t link-text">{i.link.replace(/^https?:\/\//, '')}</div>
+						<div class="rec-s">
+							{handed === 'copied'
+								? 'Sent, and the link is copied.'
+								: handed === 'shared'
+									? 'Sent, and the link is shared.'
+									: handed === 'sent'
+										? 'Sent. Share the link from here.'
+										: 'Opens without signing in. Anyone with it can see this invoice.'}
+						</div>
+						<div class="acts">
+							<button type="button" class="btn sm" onclick={copyLink}>Copy</button>
+							{#if canShare}
+								<button type="button" class="btn sm" onclick={shareLink}>Share</button>
+							{/if}
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	{/if}
 
 	<div class="sec">
 		<div class="sec-h"><h2>Lines</h2></div>
@@ -495,5 +556,10 @@
 		display: flex;
 		gap: 8px;
 		margin-top: 10px;
+	}
+	.link-text {
+		font-family: var(--f-mono);
+		font-size: 13px;
+		overflow-wrap: anywhere;
 	}
 </style>

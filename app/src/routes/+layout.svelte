@@ -9,6 +9,7 @@
 	import type { RouteId } from '$app/types';
 	import TabIcon, { type Tab } from '#lib/TabIcon.svelte';
 	import { hoursBadge, zoneName } from '#lib/format.ts';
+	import { CLIENT_PAGE } from '#lib/client-link.ts';
 
 	let { data, children }: LayoutProps = $props();
 
@@ -29,6 +30,13 @@
 	// to fetch them now, so a phone that has never opened one can still open it
 	// offline.
 	onMount(() => {
+		// The service worker is registered here, for somebody signed in, rather
+		// than by SvelteKit on every page: a client opening their invoice's link
+		// is not installing the app (vite.config.ts).
+		if (data.user && 'serviceWorker' in navigator)
+			void navigator.serviceWorker
+				.register('/service-worker.js', { type: 'module' })
+				.catch(() => {});
 		if (!data.user || !navigator.onLine) return;
 		// Whatever the capture queue still holds goes now. A page opened with a
 		// signal never hears the browser say it is back online, so without this an
@@ -168,9 +176,10 @@
 	<meta name="theme-color" content={accent || '#1d6f9c'} />
 </svelte:head>
 
-{#if !data.user}
+{#if !data.user || CLIENT_PAGE.test(page.url.pathname)}
 	<!-- Signed out, there is nothing to navigate to. The shell would be a header
-	     and a row of links that all bounce back to here. -->
+	     and a row of links that all bounce back to here. A client's page is the
+	     client's, whoever opens it, so it is drawn without the shell too. -->
 	{@render children()}
 {:else}
 	<div class="app">

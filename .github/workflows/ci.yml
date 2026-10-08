@@ -290,6 +290,10 @@ jobs:
         # After offline-check, which changes the trip this pays for.
         run: node app/scripts/pay-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
+      - name: An invoice is sent with its link
+        # Last: it sends the draft lines-check made, which the checks before it add to.
+        run: node app/scripts/send-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+
       - name: Stop it
         if: always()
         run: kill "$(cat /tmp/reckon.pid)" 2>/dev/null || true

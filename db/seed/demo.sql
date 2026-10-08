@@ -386,7 +386,8 @@ INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty) VALU
   ('46c02ef2-14c7-4043-9321-34a0ecd99100','c751f2ae-b0b1-4c59-af97-96438b6bfa47','b144a78b-750a-4bd2-a84e-7d1551328565', 40);
 
 UPDATE invoice i SET status = 'sent', issued_on = d.issued, due_on = d.issued + 30,
-                     sent_at = d.issued::timestamptz
+                     sent_at = d.issued::timestamptz,
+                     public_token = replace(gen_random_uuid()::text, '-', '')
   FROM (VALUES ('2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a'::uuid, current_date - 75),
                ('ed02bc4d-1612-4a45-865a-2b5891620943'::uuid, current_date - 38),
                ('5aee3c6d-15d5-4856-9b44-4357ea9b901a'::uuid, current_date - 7)
