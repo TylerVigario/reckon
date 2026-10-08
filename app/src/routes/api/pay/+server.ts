@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm';
+import { PAID_AS } from '#lib/server/db/schema/pay.ts';
 import { Decimal, sum } from '#lib/decimal.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { readBody } from '#lib/json.ts';
@@ -23,7 +24,9 @@ const ids = (v: unknown) =>
 /**
  * Records a payment made to one person: the day, how, a note, the work it
  * covers -- entries and trips from what they are owed -- and, if there is one,
- * a correction to an earlier payment of theirs. Every figure is worked out here
+ * a correction to an earlier payment of theirs, to one of the things it paid:
+ * its guaranteed payments, say, or its reimbursement. Every figure, and what
+ * each item pays, is worked out here
  * (#lib/server/pay), not taken from the page, and kept as it was: a later role
  * or rule moves only what is still owed. A payment sent twice with one id is
  * one payment.
@@ -57,7 +60,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	const places = await moneyPlaces();
 	const c = body.correction as Record<string, unknown> | null | undefined;
-	let correction: { paymentId: string; amount: Decimal; why: string } | null = null;
+	let correction: {
+		paymentId: string;
+		amount: Decimal;
+		why: string;
+		paidAs: (typeof PAID_AS)[number];
+	} | null = null;
 	if (c && typeof c === 'object') {
 		const paymentId =
 			typeof c.payment_id === 'string' && UUID.test(c.payment_id)
@@ -69,7 +77,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				? Decimal.from(raw)
 				: no('correction', `An amount, plus or minus, to at most ${places} places.`);
 		const why = text(c.why, 200) ?? no('correction', 'Why it is corrected.');
-		if (paymentId && amount && why) correction = { paymentId, amount, why };
+		const paidAs =
+			typeof c.paid_as === 'string' && (PAID_AS as readonly string[]).includes(c.paid_as)
+				? (c.paid_as as (typeof PAID_AS)[number])
+				: no('correction', 'Which part of that payment it corrects.');
+		if (paymentId && amount && why && paidAs) correction = { paymentId, amount, why, paidAs };
 	}
 	if (Object.keys(errors).length) return refuse(errors);
 	if (!entries!.length && !trips!.length && !correction)
@@ -82,11 +94,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		...trips!.map((id) => ({ kind: 'trip' as const, id }))
 	];
 	const items = asked.map((a) => theirs.find((o) => o.kind === a.kind && o.id === a.id));
-	if (items.some((i) => !i || i.amount === null))
+	if (items.some((i) => !i || i.amount === null || i.paidAs === null))
 		return problem(
 			'conflict',
 			409,
-			'Something it covers is paid already, or no rule pays it. Open the page again.'
+			'Something it covers is paid already, no rule pays it, or their role does not say what it is paid as. Open the page again.'
 		);
 	const total = sum(items.map((i) => i!.amount)).add(correction?.amount ?? Decimal.ZERO);
 	if (total.lt(0))
@@ -105,6 +117,17 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 						and(eq(t.personPayment.id, correction.paymentId), eq(t.personPayment.userId, userId!))
 					);
 				if (!earlier || earlier.paidOn > paidOn!) return 'not-theirs' as const;
+				const [part] = await tx
+					.select({ id: t.personPaymentItem.id })
+					.from(t.personPaymentItem)
+					.where(
+						and(
+							eq(t.personPaymentItem.paymentId, correction.paymentId),
+							eq(t.personPaymentItem.paidAs, correction.paidAs)
+						)
+					)
+					.limit(1);
+				if (!part) return 'no-such-part' as const;
 			}
 			const [row] = await tx
 				.insert(t.personPayment)
@@ -133,7 +156,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					timeEntryId: i!.kind === 'time' ? i!.id : null,
 					tripId: i!.kind === 'trip' ? i!.id : null,
 					amount: i!.amount!,
-					said: i!.said
+					said: i!.said,
+					paidAs: i!.paidAs!
 				})),
 				...(correction
 					? [
@@ -142,7 +166,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 								userId: userId!,
 								correctsPaymentId: correction.paymentId,
 								amount: correction.amount.toString(),
-								said: correction.why
+								said: correction.why,
+								paidAs: correction.paidAs
 							}
 						]
 					: [])
@@ -152,6 +177,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		});
 		if (made === 'not-theirs')
 			return refuse({ correction: "That is not one of this person's earlier payments." });
+		if (made === 'no-such-part')
+			return refuse({ correction: 'That payment paid nothing of that kind to correct.' });
 		return Response.json({ id: made.id }, { status: made.repeat ? 200 : 201 });
 	} catch (err) {
 		// Two people recording the same work at once: the second finds it paid.

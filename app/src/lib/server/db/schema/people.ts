@@ -26,6 +26,13 @@ import {
 } from 'drizzle-orm/pg-core';
 import { createdAt, id, lowercaseEmail, oneOf, tstz, updatedAt } from './columns.ts';
 
+/**
+ * What a role's pay is, which decides where it is reported: a partner's
+ * guaranteed payments, an employee's wages, a contractor's fees. A fixed list,
+ * where the role's name is the business's own.
+ */
+export const PAYS_AS = ['guaranteed_payment', 'wages', 'fee'] as const;
+
 /** A 12-hour clock, or a 24-hour one, as Unicode names them (the locale key hc). */
 export const HOUR_CYCLES = ['h12', 'h23'] as const;
 
@@ -40,11 +47,18 @@ export const role = pgTable(
 	{
 		id: id(),
 		name: text().notNull(),
+		/**
+		 * What its pay is (PAYS_AS). Null is not said: a role the business named
+		 * before reckon asked, whose work is owed at no figure anyone can pay
+		 * until it says.
+		 */
+		paysAs: text({ enum: PAYS_AS }),
 		createdAt: createdAt()
 	},
 	(t) => [
 		unique('role_name_key').on(t.name),
-		check('role_name_is_something', sql`btrim(${t.name}) <> ''`)
+		check('role_name_is_something', sql`btrim(${t.name}) <> ''`),
+		oneOf('role_pays_as_check', t.paysAs, PAYS_AS)
 	]
 );
 

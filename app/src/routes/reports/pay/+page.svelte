@@ -2,6 +2,7 @@
 	import Top from '#lib/Top.svelte';
 	import { dated, day, hours, miles } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
+	import { PAID_AS_WORDS, type PaidAs } from '#lib/pay-words.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -19,6 +20,32 @@
 			...data.jobs.map((j) => ({ kind: 'job' as const, ...j })),
 			...data.trips.map((t) => ({ kind: 'trip' as const, ...t }))
 		].sort((a, b) => a.worked_on.localeCompare(b.worked_on))
+	);
+	// People by what their role says their pay is, each heading where it is
+	// reported (0027); a role that has not said comes last, to be put right.
+	const groups = $derived(
+		(['guaranteed_payment', 'wages', 'fee', null] as const)
+			.map((as) => ({ as, people: data.people.filter((p) => p.pays_as === as) }))
+			.filter((g) => g.people.length)
+	);
+	// The role's own name, where the heading does not already say it.
+	const roleOf = (p: { role: string | null; pays_as: PaidAs | null }) =>
+		p.role && p.role !== (p.pays_as && PAID_AS_WORDS[p.pays_as].role) ? p.role : null;
+	// "$170.25 for work · $24.95 for the vehicle", where a vehicle is owed for.
+	const split = (p: { owed_work: string; owed_vehicle: string }) =>
+		Number(p.owed_vehicle) !== 0
+			? `${money(p.owed_work)} for work · ${money(p.owed_vehicle)} for the vehicle`
+			: null;
+	// The month's pay by what it is, and what of it payments recorded.
+	const dueSaid = $derived(
+		[
+			...data.due_as.map(
+				(d) => `${money(d.amount)} ${d.paid_as ? PAID_AS_WORDS[d.paid_as].money : 'not said'}`
+			),
+			Number(data.recorded) !== 0 ? `${money(data.recorded)} of it paid` : null
+		]
+			.filter(Boolean)
+			.join(' · ')
 	);
 	// What a person was last paid, or that they have not been.
 	const lastOf = (p: {
@@ -63,20 +90,35 @@
 />
 
 <div class="pad">
-	{#if data.people.length}
+	{#each groups as g (g.as)}
 		<div class="sec">
-			<div class="sec-h"><h2>Owed, and paid</h2></div>
+			<div class="sec-h">
+				<h2>
+					{#if g.as}{PAID_AS_WORDS[g.as].people}
+						<span class="lt">· {PAID_AS_WORDS[g.as].money}</span>{:else}Paid as —
+						<span class="lt">not said</span>{/if}
+				</h2>
+			</div>
 			<div class="rows">
-				{#each data.people as p (p.id)}
+				{#each g.people as p (p.id)}
+					{@const also = split(p)}
 					<a
 						class="rec link"
-						class:warn={p.unknown > 0}
+						class:warn={p.unknown > 0 || !p.pays_as}
 						href={resolve('/reports/pay/[person]', { person: p.id })}
 					>
 						<div class="rec-m">
 							<div class="rec-t">
-								{p.name}{#if p.role}&nbsp;<span class="lt">· {p.role}</span>{/if}
+								{p.name}{#if roleOf(p)}&nbsp;<span class="lt">· {roleOf(p)}</span>{/if}
 							</div>
+							{#if !p.pays_as}
+								<div class="rec-s">
+									{p.role
+										? `${p.role} does not say what it is paid as`
+										: 'Holds no role, so nothing says what they are paid as'}
+								</div>
+							{/if}
+							{#if also}<div class="rec-s">{also}</div>{/if}
 							<div class="rec-s">{lastOf(p)}</div>
 						</div>
 						<div class="rec-n">
@@ -90,7 +132,7 @@
 				{/each}
 			</div>
 		</div>
-	{/if}
+	{/each}
 	<div class="sec">
 		<div class="sec-h"><h2>{data.month.label}</h2></div>
 		<div class="rows">
@@ -151,9 +193,7 @@
 				<div class="rec tot">
 					<div class="rec-m">
 						<div class="rec-t">Pay due</div>
-						{#if Number(data.recorded) !== 0}
-							<div class="rec-s">{money(data.recorded)} of it paid</div>
-						{/if}
+						{#if dueSaid}<div class="rec-s">{dueSaid}</div>{/if}
 					</div>
 					<div class="rec-n">
 						<span class="rec-v">{money(data.due)}</span>

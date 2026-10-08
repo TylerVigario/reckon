@@ -2,7 +2,7 @@ import { asc, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { Decimal, Ratio, sum } from '#lib/decimal.ts';
 import { dated, formatMoney, formatPrice, miles } from '#lib/format.ts';
-import { paysWhat } from '#lib/pay-words.ts';
+import { PAID_AS_ORDER, paysWhat, type PaidAs } from '#lib/pay-words.ts';
 import { db, type Reader } from './db/index.ts';
 import * as t from './db/schema/index.ts';
 import { businessDefaults, moneyPlaces } from './business.ts';
@@ -20,6 +20,10 @@ import { townsOf } from './trips.ts';
  * what each item it covers came to that day, and how, in words, so a later role
  * or rule moves only what is still owed. reckon records a payment; the money
  * moves at the bank.
+ *
+ * What it pays is separate (0027): time pays what the person's role says its
+ * pay is -- guaranteed payments, wages or fees -- and a trip pays back the
+ * vehicle's owner, whatever their role.
  */
 
 /** A piece of work a person is owed for. `amount` is null where no rule reaches them. */
@@ -31,6 +35,8 @@ export type Owed = {
 	/** How the figure is reached: the work, and the rule, in words -- what a payment keeps. */
 	said: string;
 	amount: string | null;
+	/** What it pays; null where their role has not said, or they hold none. */
+	paidAs: PaidAs | null;
 };
 
 const an = (word: string) => (/^[aeiou]/i.test(word) ? `an ${word}` : `a ${word}`);
@@ -70,11 +76,15 @@ export async function owed(who?: readonly string[], r: Reader = db): Promise<Map
 	const [{ currency }, catalogue, roleRows, peopleRows] = await Promise.all([
 		businessDefaults(),
 		loadCatalogue(r),
-		r.select({ id: t.role.id, name: t.role.name }).from(t.role),
+		r.select({ id: t.role.id, name: t.role.name, paysAs: t.role.paysAs }).from(t.role),
 		r.select({ id: t.user.id, name: t.user.name }).from(t.user)
 	]);
 	const roles = new Map(roleRows.map((x) => [x.id, x.name]));
 	const names = new Map(peopleRows.map((x) => [x.id, x.name]));
+	// What a person's time pays: what their role, now, says its pay is.
+	const paysAs = new Map(
+		catalogue.people.map((p) => [p.id, roleRows.find((x) => x.id === p.roleId)?.paysAs ?? null])
+	);
 	const wanted = (id: string) => !who || who.includes(id);
 	const out = new Map<string, Owed[]>();
 	const add = (userId: string, item: Owed) => out.set(userId, [...(out.get(userId) ?? []), item]);
@@ -127,7 +137,8 @@ export async function owed(who?: readonly string[], r: Reader = db): Promise<Map
 				day: e.workedOn,
 				place: e.place,
 				said: work.filter(Boolean).join(' · '),
-				amount: p.paid?.toString() ?? null
+				amount: p.paid?.toString() ?? null,
+				paidAs: paysAs.get(p.userId) ?? null
 			});
 		}
 	}
@@ -202,7 +213,8 @@ export async function owed(who?: readonly string[], r: Reader = db): Promise<Map
 					miles(sum(its.map((l) => l.miles)).toString()),
 					rule
 				].join(' · '),
-				amount: amount?.toString() ?? null
+				amount: amount?.toString() ?? null,
+				paidAs: 'reimbursement'
 			});
 		}
 	}
@@ -215,26 +227,44 @@ export async function owed(who?: readonly string[], r: Reader = db): Promise<Map
 	return out;
 }
 
-/** A person's payments, newest first, each with what it came to. */
+/** A person's payments, newest first, each with what it came to, and what each part paid. */
 export async function paymentsTo(userId: string, r: Reader = db) {
 	const places = await moneyPlaces();
-	const rows = await r
-		.select({
-			id: t.personPayment.id,
-			paid_on: t.personPayment.paidOn,
-			how: t.personPayment.how,
-			note: t.personPayment.note,
-			// person_payment named outright: a query with no join writes its own
-			// columns unqualified, and a bare id inside the subquery is the item's.
-			total: sql<string>`(select coalesce(sum(i.amount), 0)::text from person_payment_item i
-			                     where i.payment_id = person_payment.id)`,
-			items: sql<number>`(select count(*)::int from person_payment_item i
-			                     where i.payment_id = person_payment.id)`
-		})
-		.from(t.personPayment)
-		.where(eq(t.personPayment.userId, userId))
-		.orderBy(desc(t.personPayment.paidOn), desc(t.personPayment.createdAt));
-	return rows.map((p) => ({ ...p, total: Decimal.from(p.total).toFixed(places) }));
+	const [rows, parts] = await Promise.all([
+		r
+			.select({
+				id: t.personPayment.id,
+				paid_on: t.personPayment.paidOn,
+				how: t.personPayment.how,
+				note: t.personPayment.note,
+				// person_payment named outright: a query with no join writes its own
+				// columns unqualified, and a bare id inside the subquery is the item's.
+				total: sql<string>`(select coalesce(sum(i.amount), 0)::text from person_payment_item i
+				                     where i.payment_id = person_payment.id)`,
+				items: sql<number>`(select count(*)::int from person_payment_item i
+				                     where i.payment_id = person_payment.id)`
+			})
+			.from(t.personPayment)
+			.where(eq(t.personPayment.userId, userId))
+			.orderBy(desc(t.personPayment.paidOn), desc(t.personPayment.createdAt)),
+		r
+			.select({
+				paymentId: t.personPaymentItem.paymentId,
+				paidAs: t.personPaymentItem.paidAs,
+				total: sql<string>`sum(${t.personPaymentItem.amount})::text`
+			})
+			.from(t.personPaymentItem)
+			.where(eq(t.personPaymentItem.userId, userId))
+			.groupBy(t.personPaymentItem.paymentId, t.personPaymentItem.paidAs)
+	]);
+	return rows.map((p) => ({
+		...p,
+		total: Decimal.from(p.total).toFixed(places),
+		parts: parts
+			.filter((x) => x.paymentId === p.id)
+			.sort((a, b) => PAID_AS_ORDER.indexOf(a.paidAs) - PAID_AS_ORDER.indexOf(b.paidAs))
+			.map((x) => ({ paid_as: x.paidAs, total: Decimal.from(x.total).toFixed(places) }))
+	}));
 }
 
 /** One payment as it was recorded: who, when, how, and each item as it was said. */
@@ -262,6 +292,7 @@ export async function paymentOf(id: string, r: Reader = db) {
 			id: t.personPaymentItem.id,
 			amount: t.personPaymentItem.amount,
 			said: t.personPaymentItem.said,
+			paid_as: t.personPaymentItem.paidAs,
 			day: sql<
 				string | null
 			>`coalesce(${t.timeEntry.workedOn}, ${t.trip.travelledOn}, ${corrected.paidOn})`,
@@ -291,7 +322,8 @@ export async function paymentOf(id: string, r: Reader = db) {
 
 /**
  * What each payment recorded for these pieces of work, by person: how the pay
- * report shows a job or a trip as paid, with the figure it was paid at.
+ * report shows a job or a trip as paid, with the figure it was paid at and what
+ * it paid.
  */
 export async function recordedFor(
 	entryIds: readonly string[],
@@ -299,13 +331,14 @@ export async function recordedFor(
 	r: Reader = db
 ) {
 	if (!entryIds.length && !tripIds.length)
-		return new Map<string, { amount: Decimal; paidOn: string; userId: string }>();
+		return new Map<string, { amount: Decimal; paidOn: string; userId: string; paidAs: PaidAs }>();
 	const rows = await r
 		.select({
 			userId: t.personPaymentItem.userId,
 			entryId: t.personPaymentItem.timeEntryId,
 			tripId: t.personPaymentItem.tripId,
 			amount: t.personPaymentItem.amount,
+			paidAs: t.personPaymentItem.paidAs,
 			paidOn: t.personPayment.paidOn
 		})
 		.from(t.personPaymentItem)
@@ -319,7 +352,7 @@ export async function recordedFor(
 	return new Map(
 		rows.map((x) => [
 			`${x.userId}:${x.entryId ?? x.tripId}`,
-			{ amount: Decimal.from(x.amount), paidOn: x.paidOn, userId: x.userId }
+			{ amount: Decimal.from(x.amount), paidOn: x.paidOn, userId: x.userId, paidAs: x.paidAs }
 		])
 	);
 }

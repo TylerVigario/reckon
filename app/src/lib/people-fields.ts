@@ -4,7 +4,9 @@
  * A role is the operator's own word for a capacity people are paid in --
  * Partner, Employee, Contractor, or whatever a business calls them. Pay rules
  * are written against roles, so a person's role is which rules reach them.
- * No role at all means they sign in and are not paid for work.
+ * What its pay is comes from a fixed list (0027), since that, not the name,
+ * decides where the pay is reported. No role at all means they sign in and are
+ * not paid for work.
  */
 import {
 	anId,
@@ -20,8 +22,13 @@ import {
 } from './field-rules.ts';
 import { pickLocale } from './locales.ts';
 
+/** As the schema has them (#lib/server/db/schema/people), and PAID_AS_WORDS says them. */
+export const PAYS_AS = ['guaranteed_payment', 'wages', 'fee'] as const;
+
 export const ROLE_FIELDS = {
-	name: required('A role needs a name.', cap(40))
+	name: required('A role needs a name.', cap(40)),
+	// Once said, always said: there is no going back to not knowing.
+	pays_as: required('Say what the role is paid as.', oneOf(PAYS_AS))
 };
 
 export function parseRoleField(field: string, raw: string): Parsed {

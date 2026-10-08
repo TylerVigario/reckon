@@ -682,27 +682,41 @@ if (aid) {
 	await check('an agreement nothing was charged under is removed', 'DELETE', at, undefined, 200);
 }
 
-console.log('\n  roles — named, renamed, and taken away again');
+console.log('\n  roles — named, said what they pay, renamed, and taken away again');
 
 await check(
 	'a role with no name is refused',
 	'POST',
 	'/api/roles',
-	{ fields: { name: '  ' } },
+	{ fields: { name: '  ', pays_as: 'wages' } },
+	400
+);
+await check(
+	'a role that does not say what it is paid as is refused',
+	'POST',
+	'/api/roles',
+	{ fields: { name: `Check ${stamp}` } },
+	400
+);
+await check(
+	'a role paid as something not on the list is refused',
+	'POST',
+	'/api/roles',
+	{ fields: { name: `Check ${stamp}`, pays_as: 'salary' } },
 	400
 );
 const role = await check(
 	'a role is added',
 	'POST',
 	'/api/roles',
-	{ fields: { name: `Check ${stamp}` } },
+	{ fields: { name: `Check ${stamp}`, pays_as: 'wages' } },
 	201
 );
 await check(
 	'the same name twice is refused',
 	'POST',
 	'/api/roles',
-	{ fields: { name: `Check ${stamp}` } },
+	{ fields: { name: `Check ${stamp}`, pays_as: 'wages' } },
 	400
 );
 if (role.body?.id) {
@@ -712,6 +726,27 @@ if (role.body?.id) {
 		`/api/roles/${role.body.id}`,
 		{ fields: { name: `Checked ${stamp}` } },
 		200
+	);
+	await check(
+		'what it is paid as changes',
+		'PATCH',
+		`/api/roles/${role.body.id}`,
+		{ fields: { pays_as: 'fee' } },
+		200
+	);
+	await check(
+		'it cannot go back to not saying',
+		'PATCH',
+		`/api/roles/${role.body.id}`,
+		{ fields: { pays_as: '' } },
+		400
+	);
+	await check(
+		'two fields at once are refused, as a setting saves one',
+		'PATCH',
+		`/api/roles/${role.body.id}`,
+		{ fields: { name: `Both ${stamp}`, pays_as: 'wages' } },
+		400
 	);
 	await check(
 		'a role nobody holds is removed',
@@ -888,7 +923,9 @@ if (billedTrip) {
 		);
 } else failures.push('could not find the billed trip on /trips');
 
-console.log('\n  pay — recorded once, never less than nothing, never for somebody else');
+console.log(
+	'\n  pay — recorded once, never less than nothing, never for somebody else, each part as it paid'
+);
 
 // Who is owed, from the pay report; Sam's earlier payment, from Sam's page.
 const payPage = await (await fetch(`${base}/reports/pay`, { headers: { cookie } })).text();
@@ -931,7 +968,7 @@ if (sam && avery && samPaid) {
 		'/api/pay',
 		payment({
 			user_id: avery,
-			correction: { payment_id: samPaid, amount: '1.00', why: 'Not theirs' }
+			correction: { payment_id: samPaid, paid_as: 'wages', amount: '1.00', why: 'Not theirs' }
 		}),
 		400
 	);
@@ -939,11 +976,39 @@ if (sam && avery && samPaid) {
 		'a payment that would come to less than nothing is refused',
 		'POST',
 		'/api/pay',
-		payment({ correction: { payment_id: samPaid, amount: '-1000.00', why: 'Too much' } }),
+		payment({
+			correction: { payment_id: samPaid, paid_as: 'wages', amount: '-1000.00', why: 'Too much' }
+		}),
+		400
+	);
+	await check(
+		'a correction that does not say which part it corrects is refused',
+		'POST',
+		'/api/pay',
+		payment({ correction: { payment_id: samPaid, amount: '1.00', why: 'Which part?' } }),
+		400
+	);
+	await check(
+		'a correction to a part that payment did not pay is refused',
+		'POST',
+		'/api/pay',
+		payment({
+			correction: {
+				payment_id: samPaid,
+				paid_as: 'reimbursement',
+				amount: '1.00',
+				why: 'Miles it never paid'
+			}
+		}),
 		400
 	);
 	const short = payment({
-		correction: { payment_id: samPaid, amount: '1.00', why: 'Paid a dollar short' }
+		correction: {
+			payment_id: samPaid,
+			paid_as: 'wages',
+			amount: '1.00',
+			why: 'Paid a dollar short'
+		}
 	});
 	const corrected = await check('a correction alone is recorded', 'POST', '/api/pay', short, 201);
 	await check(

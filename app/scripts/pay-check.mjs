@@ -3,7 +3,10 @@
  * Proves pay is recorded when it is paid: a person's owed work, ticked, recorded
  * as a payment with the figure and the rule each came to; the pay report saying
  * they are owed nothing; the trip the payment covered staying as it was paid;
- * and a correction to the payment going on the next one.
+ * and a correction to the payment going on the next one. And that pay is
+ * separated by what it is (0027): each role says what it is paid as, the pay
+ * report groups people by it, and a payment keeps wages apart from what it paid
+ * back for the vehicle.
  *
  *   node scripts/pay-check.mjs <base-url> <email> <password>
  *
@@ -137,15 +140,47 @@ const set = (/** @type {string} */ selector, /** @type {string} */ value) =>
 		value
 	);
 
+await go('/settings/people');
+const paysAs = /** @type {string[]} */ (
+	await run(() =>
+		[...document.querySelectorAll('select[id$="-pays_as"]')].map(
+			(x) => /** @type {HTMLSelectElement} */ (x).selectedOptions[0]?.textContent?.trim() ?? ''
+		)
+	)
+);
+check(
+	['Partner — guaranteed payments', 'Employee — wages', 'Contractor — fees'].every((x) =>
+		paysAs.includes(x)
+	),
+	`each role says what it is paid as (${paysAs.join(', ')})`
+);
+
 await go('/reports/pay');
 const sams = await linkTo('Sam Ortega');
 check(!!sams, 'the pay report lists Sam among who is owed');
+check(
+	/partners\s*·\s*guaranteed payments/i.test(await page()) &&
+		/employees\s*·\s*wages/i.test(await page()),
+	'the pay report groups people by what their pay is'
+);
 await go(sams ?? '/reports/pay');
 const owedPage = await page();
-const thisPayment = /This payment\s+(\$[\d,]+\.\d\d)/.exec(owedPage)?.[1] ?? '';
+/** The payment's total, and what it says it is made of. */
+const totalRow = () =>
+	run(() => ({
+		v: document.querySelector('.rec.tot .rec-v')?.textContent?.trim() ?? '',
+		s: document.querySelector('.rec.tot .rec-s')?.textContent?.trim() ?? ''
+	}));
+const { v: thisPayment, s: madeOf } = await totalRow();
 check(
 	owedPage.includes('Trip in the Corolla') && thisPayment !== '' && thisPayment !== '$0.00',
 	`what Sam is owed is ticked, the Corolla's trip among it (${thisPayment})`
+);
+check(
+	/(^|\n)wages(\n|$)/i.test(owedPage) &&
+		/for the vehicle/i.test(owedPage) &&
+		/wages · .* reimbursed$/.test(madeOf),
+	`Sam's wages and the vehicle's reimbursement are apart, each with its own total (${madeOf})`
 );
 await set('#p-note', 'Paid by pay-check');
 await tap('Record the payment');
@@ -159,6 +194,10 @@ check(
 		paid.includes('as an Employee') &&
 		paid.includes('Paid by pay-check'),
 	`the payment is recorded, each item with its figure and rule (${paidPath})`
+);
+check(
+	/(^|\n)wages\n/i.test(paid) && /(^|\n)reimbursed\n/i.test(paid),
+	'the payment keeps its wages apart from what it paid back for the vehicle'
 );
 
 await go('/reports/pay');
@@ -201,8 +240,9 @@ const fixed = await page();
 check(
 	fixed.includes('A correction to') &&
 		fixed.includes('Paid a dollar short') &&
-		fixed.includes('$1.00'),
-	'a correction is recorded on a payment of its own, saying which it corrects'
+		fixed.includes('$1.00') &&
+		/(^|\n)wages\n/i.test(fixed),
+	'a correction is recorded on a payment of its own, saying which it corrects, and which part'
 );
 
 check(

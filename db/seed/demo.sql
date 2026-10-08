@@ -288,9 +288,10 @@ INSERT INTO person_payment (id, user_id, paid_on, how, note, client_uuid, create
 VALUES ('019a0002-0000-7000-8000-000000000001','c54bf38d-b83d-422f-af31-14a2a01aee5e',
         current_date - 20, 'Bank transfer', 'The rack move', gen_random_uuid(),
         'c41b2fab-5b71-4954-bb86-1bc803daf7ee');
-INSERT INTO person_payment_item (payment_id, user_id, time_entry_id, amount, said)
+INSERT INTO person_payment_item (payment_id, user_id, time_entry_id, amount, said, paid_as)
 SELECT '019a0002-0000-7000-8000-000000000001','c54bf38d-b83d-422f-af31-14a2a01aee5e', id, 56.00,
-       'Field service · 1.75 hr in a crew of 3 · $32.00 an hour, as an Employee, from Mar 1'
+       'Field service · 1.75 hr in a crew of 3 · $32.00 an hour, as an Employee, from Mar 1',
+       'wages'
   FROM time_entry WHERE crew = 'team';
 
 -- An assessment, charged by the visit however long it took, and on INV-0209.

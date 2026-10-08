@@ -2085,68 +2085,68 @@ SELECT must_pass($$
 $$, 'a payment to each partner');
 
 SELECT must_pass($$
-  INSERT INTO person_payment_item (payment_id, user_id, time_entry_id, amount, said)
+  INSERT INTO person_payment_item (payment_id, user_id, time_entry_id, amount, said, paid_as)
   SELECT 'f0f0f0f0-0000-4000-8000-000000000001','a0a0a0a0-0000-4000-8000-0000000000a1', id,
-         45.00, 'Field service · 1 hr · $45.00 an hour'
+         45.00, 'Field service · 1 hr · $45.00 an hour', 'guaranteed_payment'
     FROM time_entry WHERE crew = 'one' ORDER BY id LIMIT 1
 $$, 'an entry''s time, paid');
 
 SELECT must_pass($$
-  INSERT INTO person_payment_item (payment_id, user_id, trip_id, amount, said)
+  INSERT INTO person_payment_item (payment_id, user_id, trip_id, amount, said, paid_as)
   VALUES ('f0f0f0f0-0000-4000-8000-000000000001','a0a0a0a0-0000-4000-8000-0000000000a1',
-          '88888888-0000-4000-8000-000000000045', 30.00, 'Trip in the Tacoma · 30.0 mi')
+          '88888888-0000-4000-8000-000000000045', 30.00, 'Trip in the Tacoma · 30.0 mi', 'reimbursement')
 $$, 'a trip''s miles, paid to the vehicle''s owner');
 
 SELECT must_fail($$
-  INSERT INTO person_payment_item (payment_id, user_id, time_entry_id, amount, said)
+  INSERT INTO person_payment_item (payment_id, user_id, time_entry_id, amount, said, paid_as)
   SELECT 'f0f0f0f0-0000-4000-8000-000000000001','a0a0a0a0-0000-4000-8000-0000000000a1', id,
-         45.00, 'Field service · 1 hr'
+         45.00, 'Field service · 1 hr', 'guaranteed_payment'
     FROM time_entry WHERE crew = 'one' ORDER BY id LIMIT 1
 $$, 'the same work paid to a person twice');
 
 SELECT must_fail($$
-  INSERT INTO person_payment_item (payment_id, user_id, trip_id, amount, said)
+  INSERT INTO person_payment_item (payment_id, user_id, trip_id, amount, said, paid_as)
   VALUES ('f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a1',
-          '88888888-8888-8888-8888-888888888888', 10.00, 'Trip')
+          '88888888-8888-8888-8888-888888888888', 10.00, 'Trip', 'reimbursement')
 $$, 'an item on one person''s payment for another');
 
 SELECT must_pass($$
   INSERT INTO person_payment (id, user_id, paid_on, how, client_uuid, created_by) VALUES
     ('f0f0f0f0-0000-4000-8000-000000000003','a0a0a0a0-0000-4000-8000-0000000000a2','2026-10-15',
      'Cash','f1f1f1f1-0000-4000-8000-000000000004','a0a0a0a0-0000-4000-8000-0000000000a1');
-  INSERT INTO person_payment_item (payment_id, user_id, corrects_payment_id, amount, said)
+  INSERT INTO person_payment_item (payment_id, user_id, corrects_payment_id, amount, said, paid_as)
   VALUES ('f0f0f0f0-0000-4000-8000-000000000003','a0a0a0a0-0000-4000-8000-0000000000a2',
-          'f0f0f0f0-0000-4000-8000-000000000002', -5.00, 'Paid a visit twice')
+          'f0f0f0f0-0000-4000-8000-000000000002', -5.00, 'Paid a visit twice', 'guaranteed_payment')
 $$, 'a correction to an earlier payment, taking something back');
 
 SELECT must_fail($$
-  INSERT INTO person_payment_item (payment_id, user_id, corrects_payment_id, amount, said)
+  INSERT INTO person_payment_item (payment_id, user_id, corrects_payment_id, amount, said, paid_as)
   VALUES ('f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a2',
-          'f0f0f0f0-0000-4000-8000-000000000002', -5.00, 'Itself')
+          'f0f0f0f0-0000-4000-8000-000000000002', -5.00, 'Itself', 'guaranteed_payment')
 $$, 'a payment correcting itself');
 
 SELECT must_fail($$
-  INSERT INTO person_payment_item (payment_id, user_id, corrects_payment_id, amount, said)
+  INSERT INTO person_payment_item (payment_id, user_id, corrects_payment_id, amount, said, paid_as)
   VALUES ('f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a2',
-          'f0f0f0f0-0000-4000-8000-000000000001', -5.00, 'Not theirs')
+          'f0f0f0f0-0000-4000-8000-000000000001', -5.00, 'Not theirs', 'guaranteed_payment')
 $$, 'a correction to somebody else''s payment');
 
 SELECT must_fail($$
-  INSERT INTO person_payment_item (payment_id, user_id, trip_id, amount, said)
+  INSERT INTO person_payment_item (payment_id, user_id, trip_id, amount, said, paid_as)
   VALUES ('f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a2',
-          '88888888-8888-8888-8888-888888888888', -10.00, 'Trip')
+          '88888888-8888-8888-8888-888888888888', -10.00, 'Trip', 'reimbursement')
 $$, 'work that takes something back');
 
 SELECT must_fail($$
-  INSERT INTO person_payment_item (payment_id, user_id, trip_id, corrects_payment_id, amount, said)
+  INSERT INTO person_payment_item (payment_id, user_id, trip_id, corrects_payment_id, amount, said, paid_as)
   VALUES ('f0f0f0f0-0000-4000-8000-000000000003','a0a0a0a0-0000-4000-8000-0000000000a2',
-          '88888888-8888-8888-8888-888888888888','f0f0f0f0-0000-4000-8000-000000000002', 1.00, 'Both')
+          '88888888-8888-8888-8888-888888888888','f0f0f0f0-0000-4000-8000-000000000002', 1.00, 'Both', 'reimbursement')
 $$, 'an item that is two things');
 
 SELECT must_fail($$
-  INSERT INTO person_payment_item (payment_id, user_id, trip_id, amount, said)
+  INSERT INTO person_payment_item (payment_id, user_id, trip_id, amount, said, paid_as)
   VALUES ('f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a2',
-          '88888888-8888-8888-8888-888888888888', 1.00, '  ')
+          '88888888-8888-8888-8888-888888888888', 1.00, '  ', 'reimbursement')
 $$, 'an item that does not say how');
 
 SELECT must_fail($$
@@ -2167,5 +2167,62 @@ $$, 'what a payment covered taken away');
 SELECT must_fail($$
   DELETE FROM trip WHERE id = '88888888-0000-4000-8000-000000000045'
 $$, 'a trip removed after its miles are paid');
+
+\echo ''
+\echo '=== 47. a role says what its pay is, and an item what it paid ==='
+
+SELECT must_pass($$
+  DO $d$ BEGIN
+    IF (SELECT string_agg(name || '=' || pays_as, ',' ORDER BY name) FROM role
+         WHERE name IN ('Partner', 'Employee', 'Contractor'))
+       IS DISTINCT FROM 'Contractor=fee,Employee=wages,Partner=guaranteed_payment'
+    THEN RAISE EXCEPTION 'they do not say'; END IF;
+  END $d$
+$$, 'the roles every operator starts with say what they pay');
+
+SELECT must_pass($$
+  INSERT INTO role (name) VALUES ('Trainee')
+$$, 'a role that has not said what it pays');
+
+SELECT must_fail($$
+  UPDATE role SET pays_as = 'salary' WHERE name = 'Trainee'
+$$, 'a role paid as something not on the list');
+
+SELECT must_pass($$
+  UPDATE role SET pays_as = 'wages' WHERE name = 'Trainee'
+$$, 'a role saying what it pays');
+
+SELECT must_fail($$
+  INSERT INTO person_payment_item (payment_id, user_id, time_entry_id, amount, said, paid_as)
+  SELECT 'f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a2', id,
+         45.00, 'Field service · 1 hr', 'reimbursement'
+    FROM time_entry WHERE crew = 'one' ORDER BY id LIMIT 1
+$$, 'time paid as a reimbursement');
+
+SELECT must_fail($$
+  INSERT INTO person_payment_item (payment_id, user_id, trip_id, amount, said, paid_as)
+  VALUES ('f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a2',
+          '88888888-8888-8888-8888-888888888888', 10.00, 'Trip', 'guaranteed_payment')
+$$, 'a trip''s miles paid as pay, not paid back');
+
+SELECT must_fail($$
+  INSERT INTO person_payment_item (payment_id, user_id, time_entry_id, amount, said, paid_as)
+  SELECT 'f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a2', id,
+         45.00, 'Field service · 1 hr', 'salary'
+    FROM time_entry WHERE crew = 'one' ORDER BY id LIMIT 1
+$$, 'an item paid as something not on the list');
+
+SELECT must_fail($$
+  INSERT INTO person_payment_item (payment_id, user_id, time_entry_id, amount, said)
+  SELECT 'f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a2', id,
+         45.00, 'Field service · 1 hr'
+    FROM time_entry WHERE crew = 'one' ORDER BY id LIMIT 1
+$$, 'an item that does not say what it paid');
+
+SELECT must_pass($$
+  INSERT INTO person_payment_item (payment_id, user_id, corrects_payment_id, amount, said, paid_as)
+  VALUES ('f0f0f0f0-0000-4000-8000-000000000003','a0a0a0a0-0000-4000-8000-0000000000a2',
+          'f0f0f0f0-0000-4000-8000-000000000002', 2.00, 'Miles short', 'reimbursement')
+$$, 'a correction to what an earlier payment paid back');
 
 \echo 'All guards hold.'

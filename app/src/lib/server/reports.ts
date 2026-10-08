@@ -21,6 +21,7 @@ import { dated, daysAgo, names } from '#lib/format.ts';
 import { crewNames } from './choices.ts';
 import { townsOf } from './trips.ts';
 import { owed, recordedFor } from './pay.ts';
+import { PAID_AS_ORDER, type PaidAs } from '#lib/pay-words.ts';
 import { alias } from 'drizzle-orm/pg-core';
 import { Ratio } from '#lib/decimal.ts';
 
@@ -294,7 +295,12 @@ export type PersonOwed = {
 	id: string;
 	name: string;
 	role: string | null;
+	/** What their role says its pay is (0027); null where it has not said, or they hold none. */
+	pays_as: PaidAs | null;
 	owed: string;
+	/** Of `owed`, what is for their work, and what pays back their vehicle. */
+	owed_work: string;
+	owed_vehicle: string;
 	/** Pieces of their work no rule pays: owed, at a figure nobody can say. */
 	unknown: number;
 	last: { paid_on: string; total: string; how: string } | null;
@@ -323,6 +329,8 @@ export type PayOwed = {
 	/** What payments recorded, of what is due. */
 	recorded: string;
 	due: string;
+	/** `due`, by what it pays; null for pay whose role has not said. */
+	due_as: { paid_as: PaidAs | null; amount: string }[];
 	kept: string;
 	rates: HourNow[];
 };
@@ -368,9 +376,18 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 			entries.map((e) => e.id),
 			[]
 		),
-		db.select({ id: t.user.id, name: t.user.name }).from(t.user)
+		db
+			.select({ id: t.user.id, name: t.user.name, paysAs: t.role.paysAs })
+			.from(t.user)
+			.leftJoin(t.role, eq(t.role.id, t.user.roleId))
 	]);
 	const first = new Map(firstNames.map((u) => [u.id, u.name.split(' ')[0]]));
+	// What the month's pay is: as a payment recorded it, or as the person's role
+	// says now (0027).
+	const paysAs = new Map(firstNames.map((u) => [u.id, u.paysAs]));
+	const dueAs = new Map<PaidAs | null, Decimal>();
+	const owe = (as: PaidAs | null, v: Decimal | null) =>
+		v && !v.isZero() && dueAs.set(as, (dueAs.get(as) ?? Decimal.ZERO).add(v));
 
 	// One row per job per day. What makes it one job is everything that prices
 	// it: the client, the place, the service, and who worked it -- one person, or
@@ -396,10 +413,14 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 		// Each person's pay on each entry: as a payment recorded it, or as it
 		// works out now.
 		const shares = es.flatMap((e) =>
-			worth
-				.get(e.id)!
-				.people.map((p) => ({ live: p.paid, kept: recorded.get(`${p.userId}:${e.id}`) }))
+			worth.get(e.id)!.people.map((p) => ({
+				live: p.paid,
+				kept: recorded.get(`${p.userId}:${e.id}`),
+				userId: p.userId
+			}))
 		);
+		for (const x of shares)
+			owe(x.kept?.paidAs ?? paysAs.get(x.userId) ?? null, x.kept?.amount ?? x.live);
 		const paid = sumKnown(shares.map((x) => x.kept?.amount ?? x.live));
 		const kept = shares.filter((x) => x.kept).map((x) => x.kept!);
 		return {
@@ -421,6 +442,7 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 	});
 	jobs.sort((a, b) => a.worked_on.localeCompare(b.worked_on) || a.job.localeCompare(b.job));
 	const trips = await tripsPaid(p, places, first);
+	for (const x of trips) owe('reimbursement', x.paid === null ? null : Decimal.from(x.paid));
 
 	return {
 		people: await peopleOwed(places),
@@ -438,9 +460,16 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 			[...jobs, ...trips].map((j) => j.kept),
 			places
 		),
+		due_as: [...dueAs]
+			.sort(([a], [b]) => orderOf(a) - orderOf(b))
+			.map(([paid_as, v]) => ({ paid_as, amount: v.toFixed(places) })),
 		rates: await anHourNow()
 	};
 }
+
+/** Where what it pays is listed: pay by role, then what is paid back, then the unsaid. */
+const orderOf = (as: PaidAs | null) =>
+	as === null ? PAID_AS_ORDER.length : PAID_AS_ORDER.indexOf(as);
 
 /**
  * The month's trips, each with what its legs billed and what they paid the
@@ -539,13 +568,14 @@ function paidBy(
 
 /**
  * Everyone owed something, or paid before: what they are owed now, worked out
- * live, and their last payment. Most owed first.
+ * live -- for their work, and for their vehicle -- and their last payment. Most
+ * owed first; the page groups them by what their role says their pay is.
  */
 async function peopleOwed(places: number): Promise<PersonOwed[]> {
 	const [owing, people, lastPaid] = await Promise.all([
 		owed(),
 		db
-			.select({ id: t.user.id, name: t.user.name, role: t.role.name })
+			.select({ id: t.user.id, name: t.user.name, role: t.role.name, paysAs: t.role.paysAs })
 			.from(t.user)
 			.leftJoin(t.role, eq(t.role.id, t.user.roleId)),
 		db
@@ -572,7 +602,14 @@ async function peopleOwed(places: number): Promise<PersonOwed[]> {
 				id: u.id,
 				name: u.name,
 				role: u.role,
+				pays_as: u.paysAs,
 				owed: sum(items.map((i) => i.amount)).toFixed(places),
+				owed_work: sum(
+					items.filter((i) => i.paidAs !== 'reimbursement').map((i) => i.amount)
+				).toFixed(places),
+				owed_vehicle: sum(
+					items.filter((i) => i.paidAs === 'reimbursement').map((i) => i.amount)
+				).toFixed(places),
 				unknown: items.filter((i) => i.amount === null).length,
 				last: last
 					? {
