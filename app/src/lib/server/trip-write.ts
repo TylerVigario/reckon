@@ -4,7 +4,14 @@ import * as t from './db/schema/index.ts';
 import { pgError, refuse, refuseIfTheDatabaseSaidSo } from './field-errors.ts';
 import type { TripInput } from './trip-input.ts';
 import { mileServiceFor } from './trip-worth.ts';
-import { legsOf, type Leg } from '#lib/trip-legs.ts';
+import { legsOf, withRoute, type Leg } from '#lib/trip-legs.ts';
+import { routeMiles } from './routes.ts';
+import { waypointsOf } from './trips.ts';
+
+const routeOf = async (trip: TripInput) => {
+	const points = await waypointsOf(trip);
+	return points ? routeMiles(points) : null;
+};
 
 /**
  * Writing a trip, new or changed (#routes/api/trips): its legs worked out by
@@ -44,11 +51,18 @@ export function refuseTrip(err: unknown): Response | null {
 	return refuseIfTheDatabaseSaidSo(err, FIELDS, 'trip');
 }
 
-/** The trip's legs, and the service the billed ones bill as -- or why there is none. */
+/**
+ * The trip's legs, and the service the billed ones bill as -- or why there is
+ * none. A drive whose miles were an estimate -- the phone had no signal, or
+ * Google no answer -- takes Google's route now, if Google answers.
+ */
 export async function legsFor(
 	trip: TripInput
 ): Promise<{ legs: Leg[]; serviceId: string | null } | { refused: Response }> {
-	const legs = legsOf(trip.stops, trip.drives);
+	const drives = trip.drives.some((d) => d.estimated)
+		? withRoute(trip.drives, await routeOf(trip))
+		: trip.drives;
+	const legs = legsOf(trip.stops, drives);
 	if (!legs.some((l) => l.entityId)) return { legs, serviceId: null };
 	const s = await mileServiceFor(trip.serviceId);
 	if ('why' in s) return { refused: refuse({ service_id: s.why }) };

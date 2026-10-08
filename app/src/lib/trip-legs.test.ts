@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { driveKey, estimate, legsOf, shares, type Stop } from './trip-legs.ts';
+import { driveKey, estimate, legsOf, shares, withRoute, type Stop } from './trip-legs.ts';
 
 const at = (entityId: string, siteId: string | null = `${entityId}-site`, askedThere = false) => ({
 	entityId,
@@ -101,5 +101,25 @@ describe("a drive's miles before anyone types them", () => {
 	it('is nothing when neither is known', () => {
 		expect(estimate('base', { site: 'X' }, known, rounds)).toBeNull();
 		expect(estimate({ address: 'Home Depot' }, { site: 'W' }, known, rounds)).toBeNull();
+	});
+});
+
+describe("Google's route, when a trip arrives", () => {
+	const drives = [
+		{ miles: '21.0', estimated: true },
+		{ miles: '25', estimated: false },
+		{ miles: '14.0', estimated: true }
+	];
+
+	it('takes the place of every estimate, and of nothing typed', () => {
+		expect(withRoute(drives, ['21.4', '22.1', '13.9']).map((d) => d.miles)).toEqual([
+			'21.4',
+			'25',
+			'13.9'
+		]);
+	});
+
+	it('leaves every drive as it was when Google did not answer', () => {
+		expect(withRoute(drives, null)).toEqual(drives);
 	});
 });

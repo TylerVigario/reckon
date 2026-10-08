@@ -5,7 +5,26 @@ import { refuse } from '#lib/server/field-errors.ts';
 import { readTrip } from '#lib/server/trip-input.ts';
 import { legsFor, refuseTrip, tripColumns, writeStops } from '#lib/server/trip-write.ts';
 import { readBody } from '#lib/json.ts';
+import { UUID } from '#lib/field-rules.ts';
+import { db } from '#lib/server/db/index.ts';
+import { problem } from '#lib/server/problem.ts';
 import type { RequestHandler } from './$types';
+
+/**
+ * The trip recorded with this id, once it has arrived: how a phone that queued
+ * one finds where it went (#lib/queue).
+ */
+export const GET: RequestHandler = async ({ url }) => {
+	const uuid = url.searchParams.get('client_uuid') ?? '';
+	if (!UUID.test(uuid)) return problem('malformed', 400, 'Expected ?client_uuid=.');
+	const [found] = await db
+		.select({ id: t.trip.id })
+		.from(t.trip)
+		.where(eq(t.trip.clientUuid, uuid.toLowerCase()));
+	return found
+		? Response.json({ id: found.id })
+		: problem('notFound', 404, 'No trip has arrived with that id.');
+};
 
 /**
  * Records a trip: its stops, who each was for, and its legs, each given to

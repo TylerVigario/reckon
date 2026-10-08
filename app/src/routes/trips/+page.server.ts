@@ -112,6 +112,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	return {
 		unbilled: trips.filter((x) => !x.billed),
 		billed: trips.filter((x) => x.billed),
+		as_of: new Date().toISOString(),
 		totals: {
 			month: monthOf(from),
 			miles: sum(legs.map((l) => l.miles)).toFixed(2),

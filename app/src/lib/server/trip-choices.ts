@@ -73,7 +73,9 @@ export async function tripChoices(me: string) {
 		sites,
 		known,
 		services,
-		base: operator?.address ?? null
+		base: operator?.address ?? null,
+		// When this copy was made: a phone with no signal says how old it is.
+		as_of: new Date().toISOString()
 	};
 }
 

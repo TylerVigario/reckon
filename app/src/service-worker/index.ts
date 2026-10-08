@@ -19,6 +19,11 @@ import { assets, immutable } from '$app/manifest';
  * (/api/offline), and a draft that has gone out stops being kept. Each says how old its copy is when it is opened
  * from it (#lib/OfflineBanner).
  *
+ * Trips too: the list, New trip, and each recent trip whose miles are not yet
+ * billed, with its Change, so a trip is recorded or put right on the road. The
+ * queue sends it when there is a signal, and Google's route takes the place of
+ * miles the phone could only estimate.
+ *
  * Nothing else is kept. A sent invoice, a report or a setting shown from a
  * stale copy would be a figure presented as current that is not, so those
  * screens say they need a connection instead.
@@ -52,10 +57,11 @@ const OFFLINE_DATA = OFFLINE_SCREENS.map(dataOf);
 /**
  * The data of the screens the list may name: the invoices list, New draft, a
  * draft started on the phone and its Add a line, and a draft, its Add a line,
- * and each line added by hand with its Change.
+ * and each line added by hand with its Change; the trips list, New trip, and a
+ * trip with its Change.
  */
 const LISTED_DATA =
-	/^\/invoices(\/new|\/on-phone(\/add)?|\/[0-9a-f-]{36}(\/add|\/lines\/[0-9a-f-]{36}(\/change)?)?)?\/__data\.json$/;
+	/^\/(invoices(\/new|\/on-phone(\/add)?|\/[0-9a-f-]{36}(\/add|\/lines\/[0-9a-f-]{36}(\/change)?)?)?|trips(\/new|\/[0-9a-f-]{36}(\/change)?)?)\/__data\.json$/;
 
 /** The screens kept now: the ones always kept, and the ones the server last listed. */
 let listed: string[] | null = null;

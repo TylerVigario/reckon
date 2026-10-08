@@ -127,7 +127,7 @@ export function readTrip(
 				no('drives', 'A drive is given to someone the trip was for.');
 				break;
 			}
-			drives.push({ miles: m, to: to as string[] | null });
+			drives.push({ miles: m, to: to as string[] | null, estimated: d.estimated === true });
 		}
 
 	if (Object.keys(errors).length) return { ok: false, errors };
