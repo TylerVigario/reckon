@@ -79,7 +79,7 @@ export const variables = defineEnvVars({
 
 	GOOGLE_MAPS_API_KEY: {
 		description:
-			"The server's Google key: validates a chosen address and confirms a place id. Restrict it to this host's IP addresses. Unset, an address is stored as Google returned it.",
+			"The server's Google key: validates a chosen address, confirms a place id, and gives each drive of a trip its miles by Google's route. Restrict it to this host's IP addresses and to the Address Validation, Places (New) and Routes APIs. Unset, an address is stored as Google returned it, and a trip's miles are typed or come from earlier trips.",
 		schema: optional
 	},
 

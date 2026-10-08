@@ -1,10 +1,12 @@
-import { asc, eq, gte, sql } from 'drizzle-orm';
+import { asc, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { db } from './db/index.ts';
 import * as t from './db/schema/index.ts';
 import { businessToday } from './calendar.ts';
 import { sum } from '#lib/decimal.ts';
 import { driveKey, type Place } from '#lib/trip-legs.ts';
+import { operatorRow } from './operator.ts';
+import type { Waypoint } from './routes.ts';
 
 /**
  * Where a trip went, by town: a trip is titled "Woodland and Elverta", not by
@@ -80,4 +82,50 @@ export async function knownDrives(): Promise<Record<string, { miles: string; on:
 		}
 	}
 	return known;
+}
+
+/**
+ * A trip's places as Google is asked for them (#lib/server/routes): the base,
+ * by the operator's address; each site by its place id where Google gave one,
+ * or its address; anywhere else as it was typed. Null when the trip starts or
+ * ends at a base nobody has given an address.
+ */
+export async function waypointsOf(trip: {
+	startAddress: string | null;
+	endAddress: string | null;
+	stops: readonly { siteId: string | null; address: string | null }[];
+}): Promise<Waypoint[] | null> {
+	const ids = trip.stops.flatMap((s) => (s.siteId ? [s.siteId] : []));
+	const [operator, sites] = await Promise.all([
+		operatorRow(),
+		ids.length
+			? db
+					.select({
+						id: t.site.id,
+						placeId: t.site.googlePlaceId,
+						street: t.site.street,
+						city: t.site.city,
+						region: t.site.region,
+						postcode: t.site.postcode
+					})
+					.from(t.site)
+					.where(inArray(t.site.id, ids))
+			: Promise.resolve([])
+	]);
+	const base: Waypoint | null = operator?.google_place_id
+		? { placeId: operator.google_place_id }
+		: operator?.address
+			? { address: operator.address }
+			: null;
+	const at = (address: string | null): Waypoint | null => (address ? { address } : base);
+	const stops = trip.stops.map((s): Waypoint | null => {
+		if (s.address) return { address: s.address };
+		const site = sites.find((x) => x.id === s.siteId);
+		if (!site) return null;
+		return site.placeId
+			? { placeId: site.placeId }
+			: { address: `${site.street}, ${site.city}, ${site.region} ${site.postcode}` };
+	});
+	const all = [at(trip.startAddress), ...stops, at(trip.endAddress)];
+	return all.every((w) => w !== null) ? all : null;
 }

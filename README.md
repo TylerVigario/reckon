@@ -221,7 +221,7 @@ that is the only directory Vite reads a `.env` from.
 | `PGDATABASE`                     | `reckon_dev`          |                                                                                                                                                                    |
 | `DATABASE_URL`                   | —                     | wins outright over `PGHOST`/`PGDATABASE`, for TCP, another machine, or a managed service                                                                           |
 | `PUBLIC_GOOGLE_MAPS_API_KEY`     | **unset**             | the browser key. Enables address lookup; unset, addresses are typed                                                                                                |
-| `GOOGLE_MAPS_API_KEY`            | **unset**             | the server key. Validates a chosen address; unset, it is stored as Google returned it                                                                              |
+| `GOOGLE_MAPS_API_KEY`            | **unset**             | the server key. Validates a chosen address and gives a trip's drives their miles; unset, an address is stored as Google returned it and miles are typed            |
 
 **Two keys, because a Google API key carries exactly one application
 restriction.** It can be restricted to HTTP referrers _or_ to IP addresses,
@@ -245,10 +245,18 @@ else's browser. A key calling `places.googleapis.com` from a page is
 unrestrictable — the worst of the options, and not obviously so.
 
 `GOOGLE_MAPS_API_KEY` is private in `app/src/env.ts` and never reaches a page. Restrict it to
-**IP addresses** for this host, and to two APIs: **Address Validation API**, and
-**Places API (New)**, which confirms that a place id a browser sent is a place. It is
-used once per address rather than once per keystroke, so the round trip that
-ruled out proxying the autocomplete does not apply.
+**IP addresses** for this host, and to three APIs: **Address Validation API**;
+**Places API (New)**, which confirms that a place id a browser sent is a place; and
+**Routes API**, which gives each drive of a trip being recorded its miles. Each is
+used once per address or once per change to a trip's stops, rather than once per
+keystroke, so the round trip that ruled out proxying the autocomplete does not
+apply. A trip's route is one request at the Essentials tier, ten places between its
+first and last at most, and no traffic.
+
+A host with IPv6 reaches Google over it whenever it can, from addresses that
+change within its prefix. Restrict the key to that range — its `/64` — as well as
+its IPv4 address: a key that admits only one refuses the other, and each lookup
+falls back without a word to the person using the app.
 
 Unset is a supported state, not a broken one: the address field is an ordinary
 text input.
