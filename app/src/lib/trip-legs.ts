@@ -30,7 +30,16 @@ export type Stop = { visits: readonly Visit[] };
  * to where the trip ended. `to` is who it was given to by hand -- [] for nobody
  * -- and absent while the rule decides.
  */
-export type Drive = { miles: string; to?: readonly string[] | null };
+export type Drive = {
+	miles: string;
+	to?: readonly string[] | null;
+	/**
+	 * Its miles were the drive as last driven or half the site's round trip,
+	 * not typed and not Google's: Google's route takes their place when the
+	 * trip arrives, if Google answers (#lib/server/routes).
+	 */
+	estimated?: boolean;
+};
 
 export type LegRule =
 	'house_to_a' | 'a_to_b' | 'b_to_house' | 'round_trip' | 'split' | 'unassigned' | 'chosen';
@@ -143,4 +152,15 @@ export function estimate(
 	const round = roundTrips[site ?? back ?? ''];
 	if (round) return { miles: Decimal.from(round).div(2).round(1).toFixed(1), from: 'site' };
 	return null;
+}
+
+/**
+ * The drives with Google's route in place of every estimate: a drive somebody
+ * typed, or that was Google's already, keeps its miles, and so does every drive
+ * when Google did not answer.
+ */
+export function withRoute(drives: readonly Drive[], route: readonly string[] | null): Drive[] {
+	return drives.map((d, i) =>
+		d.estimated && route?.[i] ? { ...d, miles: route[i], estimated: false } : d
+	);
 }

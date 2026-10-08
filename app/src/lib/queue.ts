@@ -1,5 +1,6 @@
 import type { ProblemBody } from './problem.ts';
 import type { Conflict } from './line-conflict.ts';
+import type { TripDraft } from './trip/draft.ts';
 
 /**
  * The capture queue.
@@ -39,13 +40,19 @@ import type { Conflict } from './line-conflict.ts';
  * change made meanwhile (#lib/line-merge). What a change runs into -- a field
  * both changed, a line taken off -- is kept with it, as a refusal is, until a
  * person decides (#lib/line-conflict).
+ *
+ * TRIPS recorded or changed on the phone wait in a fifth, and go last: the
+ * trip as /api/trips takes it, the form as it was filled in, so Fix opens it
+ * again, and what the trips list shows of it meanwhile. A change names the trip
+ * it changes, and a second change before the first has gone takes its place.
  */
 const DB = 'reckon';
 const STORE = 'queue';
 const LINES = 'lines';
 const DRAFTS = 'drafts';
 const CHANGES = 'changes';
-type Store = typeof STORE | typeof LINES | typeof DRAFTS | typeof CHANGES;
+const TRIPS = 'trips';
+type Store = typeof STORE | typeof LINES | typeof DRAFTS | typeof CHANGES | typeof TRIPS;
 /** Where the queue lived before IndexedDB. Read once, emptied once moved. */
 const OLD_KEY = 'reckon.queue';
 
@@ -119,9 +126,9 @@ let opening: Promise<IDBDatabase> | null = null;
 function open(): Promise<IDBDatabase> {
 	opening ??= new Promise<IDBDatabase>((resolve, reject) => {
 		// 2: lines joined time entries; 3: drafts started here; 4: changes to
-		// lines. A phone on an earlier one keeps what it has and gains the stores
-		// it lacks.
-		const req = indexedDB.open(DB, 4);
+		// lines; 5: trips. A phone on an earlier one keeps what it has and gains
+		// the stores it lacks.
+		const req = indexedDB.open(DB, 5);
 		req.onupgradeneeded = () => {
 			const db = req.result;
 			if (!db.objectStoreNames.contains(STORE))
@@ -132,6 +139,8 @@ function open(): Promise<IDBDatabase> {
 				db.createObjectStore(DRAFTS, { keyPath: 'draft.client_uuid' });
 			if (!db.objectStoreNames.contains(CHANGES))
 				db.createObjectStore(CHANGES, { keyPath: 'change.line_id' });
+			if (!db.objectStoreNames.contains(TRIPS))
+				db.createObjectStore(TRIPS, { keyPath: 'trip.key' });
 		};
 		req.onsuccess = () => {
 			// A later version opening this database in another tab has to be
@@ -290,6 +299,7 @@ const settleDraft = (q: QueuedDraft, next: QueuedDraft | null) =>
 	settleIn(DRAFTS, q.draft.client_uuid, q, next);
 const settleChange = (q: QueuedChange, next: QueuedChange | null) =>
 	settleIn(CHANGES, q.change.line_id, q, next);
+const settleTrip = (q: QueuedTrip, next: QueuedTrip | null) => settleIn(TRIPS, q.trip.key, q, next);
 
 async function reason(r: Response): Promise<Refusal> {
 	let body: Partial<ProblemBody> = {};
@@ -391,6 +401,19 @@ async function post(): Promise<Flushed> {
 			(why) => settleChange(q, { ...q, refused: why }),
 			() => settleChange(q, null)
 		);
+		if (count(p) === 'offline') return { sent, refused };
+	}
+	for (const q of (await allTrips()).filter((q) => !q.refused)) {
+		const p = await postOne(
+			() =>
+				fetch(q.trip.trip_id ? `/api/trips/${q.trip.trip_id}` : '/api/trips', {
+					method: q.trip.trip_id ? 'PUT' : 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify(q.trip.body)
+				}),
+			(why) => settleTrip(q, { ...q, refused: why }),
+			() => settleTrip(q, null)
+		);
 		if (count(p) === 'offline') break;
 	}
 	return { sent, refused };
@@ -399,7 +422,7 @@ async function post(): Promise<Flushed> {
 let chain: Promise<unknown> = Promise.resolve();
 
 /**
- * Posts everything waiting, oldest first: time, then drafts, then lines, then changes. One flush at a time: a second call
+ * Posts everything waiting, oldest first: time, then drafts, then lines, then changes, then trips. One flush at a time: a second call
  * runs after the first, so it sees whatever was queued before it was made, and
  * no entry is ever out on two posts at once.
  */
@@ -628,19 +651,67 @@ export async function discardChange(line_id: string): Promise<void> {
 	await tx('readwrite', (s) => s.delete(line_id), CHANGES);
 }
 
-/** Everything on this phone waiting to send -- time, drafts, lines and changes -- leaving out what was refused. */
+/**
+ * A trip recorded or changed on this phone, waiting to be sent: keyed by the
+ * trip it changes, or by its own client_uuid when it is new.
+ */
+export type TripEntry = {
+	key: string;
+	/** The trip it changes; null for a trip recorded here. */
+	trip_id: string | null;
+	/** The trip as /api/trips takes it. */
+	body: Record<string, unknown>;
+	/** The form as it was filled in, which Fix opens again. */
+	draft: TripDraft;
+	/** What the trips list shows of it until it arrives. */
+	shown: { label: string; day: string; driver: string; miles: string };
+};
+
+export type QueuedTrip = {
+	trip: TripEntry;
+	queued_at: number;
+	refused?: Refusal;
+};
+
+/** Writes a trip, in place of any waiting under the same key. Resolves once it is committed. */
+export async function enqueueTrip(trip: TripEntry): Promise<void> {
+	keep();
+	await tx('readwrite', (s) => s.put({ trip, queued_at: Date.now() } satisfies QueuedTrip), TRIPS);
+}
+
+async function allTrips(): Promise<QueuedTrip[]> {
+	const rows = (await tx<QueuedTrip[]>('readonly', (s) => s.getAll(), TRIPS)) ?? [];
+	return rows.sort((a, b) => a.queued_at - b.queued_at);
+}
+
+/** Every trip recorded or changed on this phone and not yet arrived, oldest first. */
+export const tripsHeld = allTrips;
+
+/** One trip waiting on this phone. */
+export function findTrip(key: string): Promise<QueuedTrip | undefined> {
+	return tx<QueuedTrip>('readonly', (s) => s.get(key), TRIPS);
+}
+
+/** Lets go of a trip, or a change to one. A person's decision. */
+export async function discardTrip(key: string): Promise<void> {
+	await tx('readwrite', (s) => s.delete(key), TRIPS);
+}
+
+/** Everything on this phone waiting to send -- time, drafts, lines, changes and trips -- leaving out what was refused. */
 export async function waitingCount(): Promise<number> {
-	const [time, drafts, lines, changes] = await Promise.all([
+	const [time, drafts, lines, changes, trips] = await Promise.all([
 		held(),
 		allDrafts(),
 		allLines(),
-		allChanges()
+		allChanges(),
+		allTrips()
 	]);
 	return (
 		time.waiting +
 		drafts.filter((q) => !q.refused).length +
 		lines.filter((q) => !q.refused).length +
-		changes.filter((q) => !q.refused).length
+		changes.filter((q) => !q.refused).length +
+		trips.filter((q) => !q.refused).length
 	);
 }
 

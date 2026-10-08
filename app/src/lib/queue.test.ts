@@ -1,6 +1,6 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChangeEntry, Entry, LineEntry } from './queue.ts';
+import type { ChangeEntry, Entry, LineEntry, TripEntry } from './queue.ts';
 
 const entry = (client_uuid: string, extra: Partial<Entry> = {}): Entry => ({
 	client_uuid,
@@ -421,5 +421,86 @@ describe('a change to a line the server has', () => {
 		});
 		await q.flush();
 		expect(asked).toBe('DELETE /api/lines/cable?version=2&made_at=2026-10-06T21%3A30%3A00.000Z');
+	});
+});
+
+describe('a trip recorded or changed on the phone', () => {
+	const trip = (key: string, trip_id: string | null = null, note = 'Cable'): TripEntry => ({
+		key,
+		trip_id,
+		body: { client_uuid: key, note },
+		draft: {
+			clientUuid: key,
+			day: '2026-10-07',
+			driver: 'sam',
+			vehicleId: null,
+			serviceId: null,
+			startAddress: null,
+			endAddress: null,
+			stops: [],
+			typed: {},
+			given: {},
+			odometerStart: '',
+			odometerEnd: '',
+			note
+		},
+		shown: {
+			label: 'Woodland office, Clinic',
+			day: '2026-10-07',
+			driver: 'Sam Ortega',
+			miles: '57.0'
+		}
+	});
+
+	it('goes last: a new one posted, a change put to the trip it changes', async () => {
+		await q.enqueueTrip(trip('new-trip'));
+		await q.enqueueTrip(trip('saved', 'saved'));
+		await q.enqueueChange({
+			line_id: 'cable',
+			invoice_id: 'd',
+			act: 'change',
+			version: 2,
+			base: {},
+			fields: {},
+			made_at: '2026-10-06T21:30:00.000Z',
+			shown: line('x').shown
+		});
+		const sent: string[] = [];
+		vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
+			sent.push(`${init.method} ${url}`);
+			return answer(200, {});
+		});
+		expect(await q.waitingCount()).toBe(3);
+		await q.flush();
+		expect(sent).toEqual(['PATCH /api/lines/cable', 'POST /api/trips', 'PUT /api/trips/saved']);
+		expect(await q.tripsHeld()).toEqual([]);
+	});
+
+	it('changed again before it goes, is the later change', async () => {
+		await q.enqueueTrip(trip('saved', 'saved', 'Cable'));
+		await q.enqueueTrip(trip('saved', 'saved', 'Cable, the long way'));
+		const held = await q.tripsHeld();
+		expect(held.map((h) => h.trip.draft.note)).toEqual(['Cable, the long way']);
+	});
+
+	it('is kept with the reason when the server refuses it, and not sent again', async () => {
+		await q.enqueueTrip(trip('billed', 'billed'));
+		vi.stubGlobal('fetch', () =>
+			answer(409, { detail: 'Its miles are on an invoice, so it stays as it was billed.' })
+		);
+		await q.flush();
+		expect((await q.findTrip('billed'))?.refused?.detail).toBe(
+			'Its miles are on an invoice, so it stays as it was billed.'
+		);
+		expect(await q.waitingCount()).toBe(0);
+		await q.discardTrip('billed');
+		expect(await q.tripsHeld()).toEqual([]);
+	});
+
+	it('waits whole when there is no signal', async () => {
+		await q.enqueueTrip(trip('new-trip'));
+		vi.stubGlobal('fetch', () => Promise.reject(new TypeError('Failed to fetch')));
+		await q.flush();
+		expect((await q.tripsHeld()).length).toBe(1);
 	});
 });

@@ -3,6 +3,9 @@
 	import { dated, miles, quantity } from '#lib/format.ts';
 	import { readProblem } from '#lib/json.ts';
 	import { goto } from '$app/navigation';
+	import OfflineBanner from '#lib/OfflineBanner.svelte';
+	import { findTrip, waitingCount, type QueuedTrip } from '#lib/queue.ts';
+	import { onMount } from 'svelte';
 	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { Decimal } from '#lib/decimal.ts';
 	import { paysWhat } from '#lib/pay-words.ts';
@@ -56,6 +59,19 @@
 			: null
 	);
 	let problem = $state('');
+	// A change to this trip made on this phone and not yet arrived (#lib/queue).
+	let changed = $state<QueuedTrip | null>(null);
+	let waiting = $state(0);
+	onMount(() => {
+		void findTrip(data.trip.id).then(
+			(q) => (changed = q ?? null),
+			() => {}
+		);
+		void waitingCount().then(
+			(n) => (waiting = n),
+			() => {}
+		);
+	});
 	async function remove() {
 		problem = '';
 		const r = await fetch(`/api/trips/${data.trip.id}`, { method: 'DELETE' }).catch(() => null);
@@ -87,7 +103,36 @@
 
 <Top {title} {sub} back={resolve('/trips')} backLabel="Trips" />
 
+<OfflineBanner asOf={data.as_of} {waiting} />
+
 <div class="pad">
+	{#if changed}
+		<div class="rows">
+			<div class="rec" class:acc={!changed.refused} class:warn={changed.refused}>
+				<div class="rec-m">
+					{#if changed.refused}
+						<div class="rec-t">A change made on this phone was not sent</div>
+						<div class="rec-s">
+							{Object.values(changed.refused.errors ?? {})[0] ?? changed.refused.detail}
+						</div>
+					{:else}
+						<div class="rec-t">Changed on this phone</div>
+						<div class="rec-s">
+							It is sent when there is a signal. This is the trip as it was before.
+						</div>
+					{/if}
+				</div>
+				{#if changed.refused}
+					<div class="rec-n">
+						<a
+							class="btn sm"
+							href={`${resolve('/trips/new')}?fix=${encodeURIComponent(data.trip.id)}`}>Fix</a
+						>
+					</div>
+				{/if}
+			</div>
+		</div>
+	{/if}
 	<div class="tiles">
 		<div class="tile">
 			<span class="k">Billed</span>

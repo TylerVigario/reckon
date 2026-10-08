@@ -6,7 +6,10 @@
 	import { day as dayOf, miles as milesOf } from '#lib/format.ts';
 	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { paysWhat } from '#lib/pay-words.ts';
-	import { readProblem } from '#lib/json.ts';
+	import OfflineBanner from '#lib/OfflineBanner.svelte';
+	import { enqueueTrip, findTrip, flush, waitingCount } from '#lib/queue.ts';
+	import { warm } from '#lib/warm.ts';
+	import { onMount } from 'svelte';
 	import { sum } from '#lib/decimal.ts';
 	import {
 		driveKey,
@@ -104,6 +107,14 @@
 		})
 	);
 	let route = $state<{ for: string; miles: string[] | null } | null>(null);
+	let noSignal = $state(false);
+	let waiting = $state(0);
+	onMount(() => {
+		void waitingCount().then(
+			(n) => (waiting = n),
+			() => {}
+		);
+	});
 	$effect(() => {
 		const sent = placesSent;
 		if (!stops.length) return;
@@ -115,6 +126,8 @@
 			}).catch(() => null);
 			const answer = r?.ok ? ((await r.json()) as { miles: string[] | null }) : null;
 			route = { for: sent, miles: answer?.miles ?? null };
+			// No answer at all is no signal: Google's figure comes when the trip arrives.
+			noSignal = r === null;
 		};
 		const timer = setTimeout(() => void ask(), 400);
 		return () => clearTimeout(timer);
@@ -150,9 +163,14 @@
 			? null
 			: g.from === 'google'
 				? "Google's route"
-				: g.from === 'site'
-					? "half the site's round trip"
-					: `as last driven, ${dayOf(g.on ?? '')}`;
+				: [
+						g.from === 'site'
+							? "half the site's round trip"
+							: `as last driven, ${dayOf(g.on ?? '')}`,
+						noSignal ? "Google's route when it arrives" : null
+					]
+						.filter(Boolean)
+						.join(' · ');
 	const complete = $derived(
 		stops.length > 0 && drives.every((d) => /^\d{1,4}(\.\d{1,2})?$/.test(d.miles.trim()))
 	);
@@ -290,7 +308,13 @@
 				asked_there: v.askedThere
 			}))
 		})),
-		drives: drives.map((d) => ({ miles: d.miles.trim(), to: given[d.key] ?? null }))
+		// A drive whose miles were estimated says so, and Google's route takes their
+		// place when the trip arrives, if Google answers.
+		drives: drives.map((d) => ({
+			miles: d.miles.trim(),
+			to: given[d.key] ?? null,
+			estimated: d.guess?.from === 'last' || d.guess?.from === 'site'
+		}))
 	});
 
 	type Worth = {
@@ -345,29 +369,77 @@
 		};
 	});
 
+	/** A plain copy of what the form holds, which the phone's store can keep. */
+	function copy<T>(v: T): T {
+		return JSON.parse(JSON.stringify(v)) as T;
+	}
+
 	let why = $state('');
 	let saving = $state(false);
 	async function save() {
 		why = '';
-		if (day > data.today) return (why = 'Pick the day it was driven. It cannot be in the future.');
+		// A day the trip already had stands: the server took it, on its own clock.
+		if (day > data.today && day !== was?.day)
+			return (why = 'Pick the day it was driven. It cannot be in the future.');
 		if (!stops.length) return (why = 'Add where it went: a stop at least.');
 		if (!complete) return (why = 'How many miles each drive was.');
 		if (!odometerStart.trim() !== !odometerEnd.trim())
 			return (why = 'Both odometer readings, or neither.');
 		saving = true;
-		const r = await fetch(tripId ? `/api/trips/${tripId}` : '/api/trips', {
-			method: tripId ? 'PUT' : 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify(body)
-		}).catch(() => null);
-		saving = false;
-		if (!r) return (why = 'Not saved — no connection.');
-		if (!r.ok) {
-			const p = await readProblem(r);
-			return (why = Object.values(p.errors ?? {})[0] ?? p.detail ?? 'That did not save.');
+		// Written on the phone first, as time is, and sent when there is a signal:
+		// a copy, because what the form holds cannot go into the phone's store.
+		const key = tripId ?? clientUuid;
+		try {
+			await enqueueTrip({
+				key,
+				trip_id: tripId,
+				body: copy(body),
+				draft: copy({
+					clientUuid,
+					day,
+					driver,
+					vehicleId,
+					serviceId,
+					startAddress,
+					endAddress,
+					stops,
+					typed,
+					given,
+					odometerStart,
+					odometerEnd,
+					note
+				}),
+				shown: {
+					label: stops.map((s, i) => short(placeOf(s), s) || `Stop ${i + 1}`).join(', '),
+					day,
+					driver: data.people.find((p) => p.id === driver)?.name ?? '',
+					miles: driven?.toString() ?? ''
+				}
+			});
+		} catch {
+			saving = false;
+			return (why = 'This phone would not save the trip, so it is not saved.');
 		}
-		const { id } = (await r.json()) as { id: string };
-		await goto(resolve('/trips/[id]', { id }), { invalidateAll: true });
+		// A few seconds for the server to take it; no longer, so a phone with a
+		// weak signal is not left waiting on a page that has done its part.
+		await Promise.race([flush().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
+		const still = await findTrip(key).catch(() => undefined);
+		saving = false;
+		if (still?.refused)
+			return (why =
+				Object.values(still.refused.errors ?? {})[0] ?? still.refused.detail ?? 'Not saved.');
+		// Still on the phone: the trips list shows it waiting.
+		if (still) return goto(resolve('/trips'), { invalidateAll: true });
+		const id =
+			tripId ??
+			(
+				await fetch(`/api/trips?client_uuid=${encodeURIComponent(clientUuid)}`)
+					.then((r) => (r.ok ? (r.json() as Promise<{ id: string }>) : null))
+					.catch(() => null)
+			)?.id;
+		// Arrived: the worker keeps it, and its Change, for no signal from now on.
+		warm();
+		await goto(id ? resolve('/trips/[id]', { id }) : resolve('/trips'), { invalidateAll: true });
 	}
 </script>
 
@@ -473,6 +545,7 @@
 			backLabel="Trips"
 		/>
 	{/if}
+	<OfflineBanner asOf={data.as_of} {waiting} />
 	<div class="pad">
 		<div class="rows form">
 			<div class="fld">
@@ -770,6 +843,9 @@
 						</div>
 					</div>
 				</div>
+				{#if noSignal && !worth}
+					<p class="aside">Worked out when there is a signal.</p>
+				{/if}
 			</div>
 		{/if}
 

@@ -347,19 +347,23 @@ Linux packages usually create, which authenticates by user rather than by
 password. `PGHOST`, `PGDATABASE` or `DATABASE_URL` move it — to TCP, to
 another machine, or to a managed service.
 
-**Time capture works offline.** An entry is written to the browser first and
-posted when there is a connection. `POST /api/time` is safe to call twice with
-the same body, because `client_uuid` is made on the phone and carries a unique
-index; a retry returns the row that already exists.
+**Capture works offline.** Time, a draft's lines and changes to them, a draft
+started on site, and a trip recorded or changed are written to the browser first
+and sent when there is a connection. Each new thing carries a `client_uuid` made
+on the phone under a unique index, so a retry returns the row that already
+exists. A trip's miles the phone could only estimate take Google's route when it
+arrives.
 
 **It installs as an app, and opens without a signal.** A phone offers to add
 it to the home screen: named for the business, in its colour, with its logo as
 the icon where the logo is fit to be one (square, and an SVG or a PNG of 512px
-or more) and reckon's own tally where it is not. A service worker keeps Today
-and the Time screens as they were last seen, so with no signal at all the app
-still opens there — a timer starts and stops, time is entered by hand — and
-what was recorded posts when any page next opens with one. Every other screen
-says it needs a connection rather than showing a figure that may have changed.
+or more) and reckon's own tally where it is not. A service worker keeps Today,
+the Time screens, the invoices with each draft and its lines, and Trips with
+each recent trip not yet billed, as they were last seen, each saying how old it
+is. With no signal at all the app still opens there — a timer starts and stops,
+a line goes on a draft, a trip is recorded — and what was recorded posts when
+any page next opens with one. Every other screen says it needs a connection
+rather than showing a figure that may have changed.
 Signing out empties what was kept, and a new deploy is announced with a reload,
 never forced on someone mid-entry.
 

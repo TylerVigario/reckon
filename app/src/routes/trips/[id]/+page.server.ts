@@ -172,5 +172,5 @@ export const load: PageServerLoad = async ({ params }) => {
 		value: worth.get(l.id)?.billed?.toString() ?? null
 	}));
 
-	return { trip, stops, legs };
+	return { trip, stops, legs, as_of: new Date().toISOString() };
 };

@@ -30,7 +30,10 @@
  *            draft for another client, which waits on the phone too, and adds
  *            an equipment hire to it there. Then, on lines-check's draft for
  *            Harbor Light Dental, changes the jacks' description and cost, and
- *            the permit's description: both wait on the phone.
+ *            the permit's description: both wait on the phone. Then records a
+ *            trip to Harbor Light's office and Valley Oak's clinic, each drive
+ *            as last driven, and changes Sam's trip today: both wait on the
+ *            phone, on the trips list.
  *   (between, scripts/offline-meanwhile.sql: INV-0212 goes out, and Sam
  *            changes the jacks' cost and supplier and takes the permit off)
  *   back     opens a page, which posts the queue. The good entry goes; the other
@@ -42,8 +45,9 @@
  *            arrives numbered, with its hire. The jacks' description and
  *            supplier merge, and their cost -- changed in two places -- is
  *            picked from every value it has held; the permit, taken off
- *            meanwhile, is put back with its change. Then signs out, which
- *            must empty the cache the worker kept.
+ *            meanwhile, is put back with its change. The trip arrives as it was
+ *            recorded, its legs worked out on arrival, and Sam's has the change.
+ *            Then signs out, which must empty the cache the worker kept.
  */
 const [, , base = 'http://127.0.0.1:5181', email, password, phase] = process.argv;
 if (!['online', 'offline', 'back'].includes(phase ?? '')) {
@@ -156,7 +160,7 @@ const stored = (/** @type {string} */ key) =>
  */
 const inQueue = (/** @type {string} */ body) =>
 	evaluate(`new Promise((resolve) => {
-		const req = indexedDB.open('reckon', 4);
+		const req = indexedDB.open('reckon', 5);
 		req.onupgradeneeded = () => {
 			const db = req.result;
 			if (!db.objectStoreNames.contains('queue'))
@@ -167,6 +171,8 @@ const inQueue = (/** @type {string} */ body) =>
 				db.createObjectStore('drafts', { keyPath: 'draft.client_uuid' });
 			if (!db.objectStoreNames.contains('changes'))
 				db.createObjectStore('changes', { keyPath: 'change.line_id' });
+			if (!db.objectStoreNames.contains('trips'))
+				db.createObjectStore('trips', { keyPath: 'trip.key' });
 		};
 		req.onerror = () => resolve(null);
 		req.onsuccess = () => {
@@ -218,6 +224,37 @@ const STARTED_FOR = 'Valley Oak Veterinary';
 const STARTED = 'offline-check.draft';
 /** Where the lines changed with no signal are, kept between runs. */
 const CHANGED = 'offline-check.changed';
+/** Where the trip recorded and the trip changed with no signal are, kept between runs. */
+const TRIPS = 'offline-check.trips';
+/** A trip on the list driven by `who`: its own screen. */
+const tripBy = (/** @type {string} */ who) =>
+	run((/** @type {string} */ name) => {
+		const a = [...document.querySelectorAll('a.rec.link')].find((x) =>
+			x.querySelector('.rec-s')?.textContent?.includes(name)
+		);
+		return a ? a.getAttribute('href') : null;
+	}, who);
+/** A select set to the option that reads `label`, as a person picks it. */
+const choose = (/** @type {string} */ selector, /** @type {string} */ label) =>
+	run(
+		(/** @type {string} */ sel, /** @type {string} */ want) => {
+			const s = /** @type {HTMLSelectElement} */ (document.querySelector(sel));
+			s.value = [...s.options].find((o) => o.textContent?.trim() === want)?.value ?? '';
+			s.dispatchEvent(new Event('change', { bubbles: true }));
+		},
+		selector,
+		label
+	);
+const typeIn = (/** @type {string} */ selector, /** @type {string} */ value) =>
+	run(
+		(/** @type {string} */ sel, /** @type {string} */ v) => {
+			const f = /** @type {HTMLInputElement} */ (document.querySelector(sel));
+			f.value = v;
+			f.dispatchEvent(new Event('input', { bubbles: true }));
+		},
+		selector,
+		value
+	);
 /** The draft's line that says `name`: its own screen. */
 const lineHref = (/** @type {string} */ name) =>
 	run((/** @type {string} */ text) => {
@@ -589,6 +626,67 @@ if (phase === 'offline') {
 		(marked.match(/Changed on this phone/g) ?? []).length === 2,
 		'the draft marks both lines as changed on this phone'
 	);
+
+	// A trip recorded, and the demo's drive today changed, with no signal.
+	await go('/trips');
+	check(
+		(await heading()).startsWith('Trips') && /Offline/.test(await banner()),
+		'/trips opens with no server, saying how old it is'
+	);
+	const sams = await tripBy('Sam Ortega');
+	await go('/trips/new');
+	for (const [client, site] of [
+		['Harbor Light Dental', 'Woodland office'],
+		['Valley Oak Veterinary', 'Clinic']
+	]) {
+		await click('Add a stop');
+		await settle(300);
+		await choose('#s-client', client);
+		await settle(200);
+		await choose('#s-site', site);
+		await settle(200);
+		await click('Add the stop');
+		await settle(400);
+	}
+	await settle(1500);
+	const drives = /** @type {string} */ (await text());
+	check(
+		drives.includes('as last driven') && drives.includes("Google's route when it arrives"),
+		"New trip opens with no server, each drive as last driven, Google's route to come"
+	);
+	await typeIn('#t-note', 'Recorded offline by offline-check');
+	await click('Save the trip');
+	await settle(6500);
+	const listed = /** @type {string} */ (await text());
+	const newKey = /** @type {string | null} */ (
+		await inQueue(`const all = db.transaction('trips').objectStore('trips').getAll();
+			all.onsuccess = () => done(all.result.find((q) => !q.trip.trip_id)?.trip.key ?? null);
+			all.onerror = () => done(null);`)
+	);
+	check(
+		(await evaluate('location.pathname')) === '/trips' &&
+			listed.includes('On this phone') &&
+			listed.includes('Woodland office, Clinic') &&
+			newKey !== null,
+		'the trip waits on the phone, and the list shows it'
+	);
+	if (sams) {
+		await go(`${sams}/change`);
+		check(
+			(await heading()).startsWith('Change the trip'),
+			"Sam's trip opens to be changed with no server"
+		);
+		await typeIn('#t-note', 'Changed offline by offline-check');
+		await click('Save the trip');
+		await settle(6500);
+		check(
+			(await text()).includes('a change to a saved trip'),
+			'the change waits on the phone beside it'
+		);
+	} else failures.push("could not find Sam's trip on /trips");
+	await evaluate(
+		`localStorage.setItem(${JSON.stringify(TRIPS)}, ${JSON.stringify(JSON.stringify({ newKey, sams }))})`
+	);
 }
 
 if (phase === 'back') {
@@ -806,6 +904,47 @@ if (phase === 'back') {
 			!arrived.includes('On this phone'),
 		'the draft started on the phone arrives numbered with its hire, and its screen gives way to it'
 	);
+
+	// The trip and the change arrive; the drive's estimates were the last drive's,
+	// and Google, with no key here, has nothing to put in their place.
+	const trips = /** @type {{ newKey: string | null; sams: string | null }} */ (
+		JSON.parse(
+			/** @type {string} */ (
+				await evaluate(`localStorage.getItem(${JSON.stringify(TRIPS)}) ?? '{}'`)
+			)
+		)
+	);
+	await go('/trips');
+	await settle(2500);
+	const tripsLeft =
+		await inQueue(`const all = db.transaction('trips').objectStore('trips').getAll();
+		all.onsuccess = () => done(all.result.length);
+		all.onerror = () => done(null);`);
+	const found = trips.newKey
+		? /** @type {{ id?: string } | null} */ (
+				await evaluate(
+					`fetch('/api/trips?client_uuid=${trips.newKey}').then((r) => (r.ok ? r.json() : null))`
+				)
+			)
+		: null;
+	check(
+		tripsLeft === 0 && !(await text()).includes('On this phone') && !!found?.id,
+		'the trip recorded and the change made with no signal arrive'
+	);
+	if (found?.id) {
+		await go(`/trips/${found.id}`);
+		const arrivedTrip = /** @type {string} */ (await text());
+		check(
+			arrivedTrip.includes('Recorded offline by offline-check') &&
+				arrivedTrip.includes('Woodland office') &&
+				arrivedTrip.includes('$37.62'),
+			'the trip is as it was recorded, its legs worked out on arrival'
+		);
+	}
+	if (trips.sams) {
+		await go(trips.sams);
+		check((await text()).includes('Changed offline by offline-check'), "Sam's trip has the change");
+	}
 
 	await evaluate(`document.querySelector('form[action="/logout"]')?.requestSubmit()`);
 	await settle(2500);
