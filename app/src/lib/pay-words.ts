@@ -64,3 +64,34 @@ export function vehicleWords(
 	});
 	return `Its miles pay ${owner} ${each.join('; ')}.`;
 }
+
+/**
+ * What a person's pay is (0027), as every screen says it: the role that is
+ * paid it, what the money is called, and the heading over it. A trip pays back
+ * the vehicle's owner whatever their role, so a reimbursement has no role.
+ */
+export const PAID_AS_WORDS = {
+	guaranteed_payment: {
+		role: 'Partner',
+		people: 'Partners',
+		money: 'guaranteed payments',
+		heading: 'Guaranteed payments'
+	},
+	wages: { role: 'Employee', people: 'Employees', money: 'wages', heading: 'Wages' },
+	fee: { role: 'Contractor', people: 'Contractors', money: 'fees', heading: 'Fees' },
+	reimbursement: { role: null, people: null, money: 'reimbursed', heading: 'For the vehicle' }
+} as const;
+
+export type PaidAs = keyof typeof PAID_AS_WORDS;
+
+/** The order they are listed in: pay first, by role, then what is paid back. */
+export const PAID_AS_ORDER: readonly PaidAs[] = [
+	'guaranteed_payment',
+	'wages',
+	'fee',
+	'reimbursement'
+];
+
+/** "Partner — guaranteed payments": what a role is paid as, where it is chosen. */
+export const paysAsLabel = (k: Exclude<PaidAs, 'reimbursement'>) =>
+	`${PAID_AS_WORDS[k].role} — ${PAID_AS_WORDS[k].money}`;

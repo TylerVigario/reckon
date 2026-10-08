@@ -14,9 +14,16 @@ import {
 	uniqueIndex,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { createdAt, day, id, money } from './columns.ts';
-import { user } from './people.ts';
+import { createdAt, day, id, money, oneOf } from './columns.ts';
+import { PAYS_AS, user } from './people.ts';
 import { timeEntry, trip } from './work.ts';
+
+/**
+ * What an item paid: the person's pay, as their role says it is (PAYS_AS), or a
+ * reimbursement -- what a trip pays the owner of the vehicle, whatever their
+ * role.
+ */
+export const PAID_AS = [...PAYS_AS, 'reimbursement'] as const;
 
 /**
  * A payment to one person: the day it was made, how, and a note. Never changed
@@ -59,8 +66,9 @@ export const personPayment = pgTable(
  * What a payment covered, each as it was worked out that day: an entry's time,
  * a trip's miles for the vehicle the person owns, or a correction to an earlier
  * payment, plus or minus. `said` is how the figure was reached -- the hours and
- * the rule, in words -- kept as it was, whatever the rules say later. A piece of
- * work is paid to a person once.
+ * the rule, in words -- and `paidAs` what it paid, both kept as they were,
+ * whatever the rules or the person's role say later. A piece of work is paid to
+ * a person once.
  */
 export const personPaymentItem = pgTable(
 	'person_payment_item',
@@ -72,7 +80,9 @@ export const personPaymentItem = pgTable(
 		tripId: uuid(),
 		correctsPaymentId: uuid(),
 		amount: money().notNull(),
-		said: text().notNull()
+		said: text().notNull(),
+		/** What it paid (PAID_AS); a correction says which part of the earlier payment it corrects. */
+		paidAs: text({ enum: PAID_AS }).notNull()
 	},
 	(t) => [
 		uniqueIndex('person_payment_item_entry_once')
@@ -92,6 +102,12 @@ export const personPaymentItem = pgTable(
 			sql`(${t.amount} >= 0) OR (${t.correctsPaymentId} IS NOT NULL)`
 		),
 		check('person_payment_item_says_how', sql`btrim(${t.said}) <> ''`),
+		oneOf('person_payment_item_paid_as_check', t.paidAs, PAID_AS),
+		// A trip pays back the vehicle; time is pay.
+		check(
+			'person_payment_item_paid_as_fits',
+			sql`(${t.tripId} IS NULL OR ${t.paidAs} = 'reimbursement') AND (${t.timeEntryId} IS NULL OR ${t.paidAs} <> 'reimbursement')`
+		),
 		// A correction is to another payment, made before.
 		check(
 			'person_payment_item_corrects_another',

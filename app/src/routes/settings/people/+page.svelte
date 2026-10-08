@@ -1,7 +1,8 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
-	import { parsePersonField, parseRoleField, ROLE_FIELDS } from '#lib/people-fields.ts';
+	import { parsePersonField, parseRoleField, PAYS_AS, ROLE_FIELDS } from '#lib/people-fields.ts';
+	import { paysAsLabel } from '#lib/pay-words.ts';
 	import { parseAll } from '#lib/field-rules.ts';
 	import { readProblem } from '#lib/json.ts';
 	import { refreshAll } from '$app/navigation';
@@ -17,14 +18,22 @@
 		{ value: '', label: 'Not paid — signs in only' }
 	]);
 
+	// What a role is paid as decides where its pay is reported. A role named
+	// before reckon asked has not said, and offers that until it does.
+	const paysAsOptions = (said: string | null) => [
+		...(said ? [] : [{ value: '', label: 'Not said — choose one' }]),
+		...PAYS_AS.map((k) => ({ value: k, label: paysAsLabel(k) }))
+	];
+
 	let newRole = $state('');
+	let newPaysAs = $state('');
 	let adding = $state(false);
 	let problem = $state('');
 
 	async function addRole() {
-		const fields = { name: newRole };
+		const fields = { name: newRole, pays_as: newPaysAs };
 		const local = parseAll(ROLE_FIELDS, fields).errors;
-		problem = local.name ?? '';
+		problem = local.name ?? local.pays_as ?? '';
 		if (problem) return;
 		adding = true;
 		const r = await fetch('/api/roles', {
@@ -34,12 +43,14 @@
 		}).catch(() => null);
 		adding = false;
 		if (!r?.ok) {
+			const errors = r ? (await readProblem(r)).errors : null;
 			problem = r
-				? ((await readProblem(r)).errors?.name ?? 'That did not save.')
+				? (errors?.name ?? errors?.pays_as ?? 'That did not save.')
 				: 'Not saved — no connection.';
 			return;
 		}
 		newRole = '';
+		newPaysAs = '';
 		await refreshAll();
 	}
 
@@ -104,16 +115,26 @@
 							validate={parseRoleField}
 							onsaved={() => refreshAll()}
 						/>
+						<Setting
+							name="pays_as"
+							key={r.id}
+							label="Paid as"
+							value={r.pays_as ?? ''}
+							options={paysAsOptions(r.pays_as)}
+							endpoint="/api/roles/{r.id}"
+							validate={parseRoleField}
+							onsaved={() => refreshAll()}
+						/>
 						{#if !r.holders && !r.rules}
-							<button type="button" class="btn sm gho" onclick={() => removeRole(r.id)}
+							<button type="button" class="btn sm gho del" onclick={() => removeRole(r.id)}
 								>Delete {r.name}</button
 							>
 						{/if}
 					</div>
 				{/each}
-				<div class="fld">
-					<label for="new-role">A new role</label>
-					<div class="add">
+				<div class="role">
+					<div class="fld">
+						<label for="new-role">A new role</label>
 						<input
 							id="new-role"
 							class="inp"
@@ -121,14 +142,23 @@
 							bind:value={newRole}
 							onkeydown={(e) => e.key === 'Enter' && addRole()}
 						/>
-						<button
-							type="button"
-							class="btn pri"
-							onclick={addRole}
-							disabled={adding || !newRole.trim()}>Add</button
-						>
 					</div>
-					{#if problem}<small class="why">{problem}</small>{/if}
+					<div class="fld">
+						<label for="new-pays-as">Paid as</label>
+						<div class="add">
+							<select id="new-pays-as" class="inp" bind:value={newPaysAs}>
+								<option value="" disabled>Choose one</option>
+								{#each PAYS_AS as k (k)}<option value={k}>{paysAsLabel(k)}</option>{/each}
+							</select>
+							<button
+								type="button"
+								class="btn pri"
+								onclick={addRole}
+								disabled={adding || !newRole.trim() || !newPaysAs}>Add</button
+							>
+						</div>
+						{#if problem}<small class="why">{problem}</small>{/if}
+					</div>
 				</div>
 			</div>
 		</div>
@@ -147,10 +177,20 @@
 		</div>
 		<div class="rec">
 			<div class="rec-m">
+				<div class="rec-t"><span class="lt">What a role is paid as</span></div>
+				<div class="rec-s">
+					Decides where its pay is reported: a partner's guaranteed payments on the partnership's
+					return, an employee's wages through payroll, before withholding, and a contractor's fees
+					on a 1099. Pay for someone's own vehicle is a reimbursement, whatever their role.
+				</div>
+			</div>
+		</div>
+		<div class="rec">
+			<div class="rec-m">
 				<div class="rec-t"><span class="lt">A role is who someone is now</span></div>
 				<div class="rec-s">
-					Pay is not yet recorded when it is paid, so until it is, changing someone's role changes
-					what the reports say their unpaid work pays.
+					A payment keeps what each item was paid as, so changing someone's role moves only what is
+					still owed.
 				</div>
 			</div>
 		</div>
@@ -161,9 +201,13 @@
 	.role {
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		gap: 10px;
 	}
-	.role .btn {
+	.role + .role {
+		padding-top: 14px;
+		border-top: 1px solid var(--line);
+	}
+	.role .del {
 		align-self: flex-start;
 		color: var(--crit);
 	}

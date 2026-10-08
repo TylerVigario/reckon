@@ -2,22 +2,29 @@ import { asUser } from '#lib/server/db/index.ts';
 import { role } from '#lib/server/db/schema/index.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { parseAll } from '#lib/field-rules.ts';
-import { ROLE_FIELDS } from '#lib/people-fields.ts';
+import { PAYS_AS, ROLE_FIELDS } from '#lib/people-fields.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
 import { readFields } from '#lib/json.ts';
 
-/** Adds a role to the operator's own list. A name already on it is refused. */
+/**
+ * Adds a role to the operator's own list, with what it is paid as. A name
+ * already on it is refused.
+ */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields)
+		return problem('malformed', 400, 'Expected { fields: { name: value, pays_as: value } }.');
 	const { values, errors } = parseAll(ROLE_FIELDS, fields);
 	if (Object.keys(errors).length > 0) return refuse(errors);
 	try {
 		const [made] = await asUser(locals.user!.id, (tx) =>
 			tx
 				.insert(role)
-				.values({ name: String(values.name) })
+				.values({
+					name: String(values.name),
+					paysAs: values.pays_as as (typeof PAYS_AS)[number]
+				})
 				.returning({ id: role.id })
 		);
 		return Response.json({ id: made.id }, { status: 201 });

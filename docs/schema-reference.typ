@@ -250,6 +250,7 @@
     size: sz.micro,
     [*PK*], [id], [uuid],
     [*UK*], [name], [text · the operator's word],
+    [], [pays\_as], [kind of pay · null = not said],
     [], [created\_at], [timestamptz],
   )
 ]
@@ -328,7 +329,7 @@
 ]
 #v(7pt)
 
-#callout(tone: "note")[A service is configured, not categorised: what it is charged per, how finely, at least what, and whom it pays.  rate is the first person's and additional\_rate each extra person's: at \$120 and +\$70 a crew of three costs \$260 an hour.  Pay is for work done. Each pay\_rule is for a role or for one person, pays for time or a vehicle — hourly to the second, as a share of the line, as a fixed sum, or not at all. Among rules in force, a client's own comes first, then a person's own, then the role's.  A vehicle rule pays whoever owns the vehicle a trip was driven in, on each leg — a share or a sum, never by the hour — so a vehicle the business owns pays nobody.  A covered\_time rule pays a percentage of the period's retainer charge, divided by each person's part of the covered time.  unit each charges per entry, whatever its length: a flat rate.  unit is how a service is charged; time\_tracked is whether time is captured against it. Mileage may be timed and still billed per mile.  Allotments live on agreements, service by service, never on the service itself.  bill\_to\_nearest\_seconds and minimum\_charge are the usual next questions about an hourly price. Pay is never rounded to them; it is counted as worked.  material\_lot is where stock enters, and where the Reg 1701 ex-tax purchase price is sourced. It keeps what all of it cost before tax and in tax, as the receipt says them, and a unit's share is worked out from those. A line drawn from stock takes the oldest lots first, and qty\_remaining follows what it took (stock\_draw). paid\_by is whoever paid out of their own pocket and is owed it back, or the business when empty.  A material is counted in one of the operator's units -- each, the foot, a box of 25 -- each with how it is written and how many places a quantity may have. Nothing converts one unit into another, and a line keeps its unit's name as it was billed.]
+#callout(tone: "note")[A service is configured, not categorised: what it is charged per, how finely, at least what, and whom it pays.  rate is the first person's and additional\_rate each extra person's: at \$120 and +\$70 a crew of three costs \$260 an hour.  Pay is for work done. Each pay\_rule is for a role or for one person, pays for time or a vehicle — hourly to the second, as a share of the line, as a fixed sum, or not at all. Among rules in force, a client's own comes first, then a person's own, then the role's.  A role's name is the operator's; pays\_as is a fixed list -- a partner's guaranteed payments, an employee's wages, a contractor's fees -- since that, not the name, decides where pay is reported. Null is a role named before it was asked, whose work cannot be paid until it says.  A vehicle rule pays whoever owns the vehicle a trip was driven in, on each leg — a share or a sum, never by the hour — so a vehicle the business owns pays nobody.  A covered\_time rule pays a percentage of the period's retainer charge, divided by each person's part of the covered time.  unit each charges per entry, whatever its length: a flat rate.  unit is how a service is charged; time\_tracked is whether time is captured against it. Mileage may be timed and still billed per mile.  Allotments live on agreements, service by service, never on the service itself.  bill\_to\_nearest\_seconds and minimum\_charge are the usual next questions about an hourly price. Pay is never rounded to them; it is counted as worked.  material\_lot is where stock enters, and where the Reg 1701 ex-tax purchase price is sourced. It keeps what all of it cost before tax and in tax, as the receipt says them, and a unit's share is worked out from those. A line drawn from stock takes the oldest lots first, and qty\_remaining follows what it took (stock\_draw). paid\_by is whoever paid out of their own pocket and is owed it back, or the business when empty.  A material is counted in one of the operator's units -- each, the foot, a box of 25 -- each with how it is written and how many places a quantity may have. Nothing converts one unit into another, and a line keeps its unit's name as it was billed.]
 #v(4pt)
 
 #v(6pt)
@@ -982,11 +983,12 @@
     [*FK*], [corrects\_payment\_id], [uuid · an earlier payment],
     [], [amount], [numeric · as it came to],
     [], [said], [text · how, in words],
+    [], [paid\_as], [its pay, or reimbursement],
   )
 ]
 #v(7pt)
 
-#callout(tone: "note")[A payment to a person is recorded with what it covered: each item a time entry, a trip -- its miles, paid to the owner of the vehicle it was driven in -- or a correction to an earlier payment of theirs, plus or minus.  amount and said are what it came to that day and how: the hours and the rule, in words, whatever the rules say later. A piece of work is paid to a person once.  Neither table changes once written; a correction is an item on the next payment. reckon records a payment, and the money moves at the bank.]
+#callout(tone: "note")[A payment to a person is recorded with what it covered: each item a time entry, a trip -- its miles, paid to the owner of the vehicle it was driven in -- or a correction to an earlier payment of theirs, plus or minus.  amount and said are what it came to that day and how: the hours and the rule, in words, whatever the rules say later. A piece of work is paid to a person once.  paid\_as is what it paid: what the person's role said their pay was -- guaranteed payments, wages or fees -- or, for a trip, a reimbursement, whatever their role. A correction says which part of the earlier payment it corrects.  Neither table changes once written; a correction is an item on the next payment. reckon records a payment, and the money moves at the bank.]
 #v(4pt)
 
 #v(6pt)

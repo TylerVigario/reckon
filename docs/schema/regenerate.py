@@ -193,6 +193,7 @@ T["pay_rule"] = [("PK","id","uuid"),("FK","service_id","uuid"),
     ("","method","per_hour|percent|fixed|nothing"),("","amount","numeric · none for nothing"),
     ("","effective_from","date"),("","created_at","timestamptz")]
 T["role"] = [("PK","id","uuid"),("UK","name","text · the operator's word"),
+    ("","pays_as","kind of pay · null = not said"),
     ("","created_at","timestamptz")]
 T["unit"] = [("PK","id","uuid"),("UK","name","text · the operator's"),
     ("","short","text · beside a figure"),("","places","int · 0–4"),("","created_at","timestamptz")]
@@ -324,7 +325,8 @@ T["person_payment"] = [("PK","id","uuid"),("FK","user_id","uuid · who was paid"
 T["person_payment_item"] = [("PK","id","uuid"),("FK","payment_id","uuid"),
     ("FK","user_id","uuid · the payment's person"),("FK","time_entry_id","uuid · an entry's time, or"),
     ("FK","trip_id","uuid · a trip's miles, or"),("FK","corrects_payment_id","uuid · an earlier payment"),
-    ("","amount","numeric · as it came to"),("","said","text · how, in words")]
+    ("","amount","numeric · as it came to"),("","said","text · how, in words"),
+    ("","paid_as","its pay, or reimbursement")]
 T["user"] = [("PK","id","uuid"),("","name","text"),("UK","email","text · lowercase"),
     ("","email_verified","bool"),("","image","text"),
     ("FK","role_id","uuid · null = not paid"),("","active","bool"),
@@ -453,6 +455,10 @@ c += [note("n3", "A service is configured, not categorised: what it is charged p
                  "for time or a vehicle — hourly to the second, as a share of the "
                  "line, as a fixed sum, or not at all. Among rules in force, a client's "
                  "own comes first, then a person's own, then the role's.\n\n"
+                 "A role's name is the operator's; pays_as is a fixed list -- a partner's "
+                 "guaranteed payments, an employee's wages, a contractor's fees -- since "
+                 "that, not the name, decides where pay is reported. Null is a role named "
+                 "before it was asked, whose work cannot be paid until it says.\n\n"
                  "A vehicle rule pays whoever owns the vehicle a trip was driven in, "
                  "on each leg — a share or a sum, never by the hour — so a vehicle the "
                  "business owns pays nobody.\n\n"
@@ -695,6 +701,10 @@ c += [note("n9", "A payment to a person is recorded with what it covered: each i
                  "amount and said are what it came to that day and how: the hours and the "
                  "rule, in words, whatever the rules say later. A piece of work is paid to a "
                  "person once.\n\n"
+                 "paid_as is what it paid: what the person's role said their pay was -- "
+                 "guaranteed payments, wages or fees -- or, for a trip, a reimbursement, "
+                 "whatever their role. A correction says which part of the earlier payment "
+                 "it corrects.\n\n"
                  "Neither table changes once written; a correction is an item on the next "
                  "payment. reckon records a payment, and the money moves at the bank.",
            40, 800, 1176, 220)]
