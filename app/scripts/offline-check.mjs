@@ -654,6 +654,14 @@ if (phase === 'offline') {
 		drives.includes('as last driven') && drives.includes("Google's route when it arrives"),
 		"New trip opens with no server, each drive as last driven, Google's route to come"
 	);
+	// What the drives came to here, as last driven: what the trip arrives with,
+	// Google having no key in this run. Which earlier trip drove them last turns
+	// on the clocks the run is under, so the figure is read, not assumed.
+	const driven = /** @type {number} */ (
+		await evaluate(
+			`[...document.querySelectorAll('.mi input')].reduce((n, i) => n + Number(i.value), 0)`
+		)
+	);
 	await typeIn('#t-note', 'Recorded offline by offline-check');
 	await click('Save the trip');
 	await settle(6500);
@@ -685,7 +693,7 @@ if (phase === 'offline') {
 		);
 	} else failures.push("could not find Sam's trip on /trips");
 	await evaluate(
-		`localStorage.setItem(${JSON.stringify(TRIPS)}, ${JSON.stringify(JSON.stringify({ newKey, sams }))})`
+		`localStorage.setItem(${JSON.stringify(TRIPS)}, ${JSON.stringify(JSON.stringify({ newKey, sams, driven }))})`
 	);
 }
 
@@ -907,7 +915,7 @@ if (phase === 'back') {
 
 	// The trip and the change arrive; the drive's estimates were the last drive's,
 	// and Google, with no key here, has nothing to put in their place.
-	const trips = /** @type {{ newKey: string | null; sams: string | null }} */ (
+	const trips = /** @type {{ newKey: string | null; sams: string | null; driven: number }} */ (
 		JSON.parse(
 			/** @type {string} */ (
 				await evaluate(`localStorage.getItem(${JSON.stringify(TRIPS)}) ?? '{}'`)
@@ -937,8 +945,9 @@ if (phase === 'back') {
 		check(
 			arrivedTrip.includes('Recorded offline by offline-check') &&
 				arrivedTrip.includes('Woodland office') &&
-				arrivedTrip.includes('$37.62'),
-			'the trip is as it was recorded, its legs worked out on arrival'
+				arrivedTrip.includes(`${trips.driven.toFixed(1)} mi driven`) &&
+				/Leg assignment.*Harbor Light Dental.*Valley Oak Veterinary/i.test(arrivedTrip),
+			`the trip is as it was recorded, its legs worked out on arrival (${trips.driven.toFixed(1)} mi)`
 		);
 	}
 	if (trips.sams) {
