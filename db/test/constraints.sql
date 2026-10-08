@@ -215,7 +215,8 @@ SELECT must_pass($$
    WHERE invoice_id = '77777777-7777-7777-7777-777777777777' AND seq = 3
 $$, 'editing a line while it is still a draft');
 
-UPDATE invoice SET status='sent', issued_on='2026-09-04', due_on='2026-10-04', sent_at=now()
+UPDATE invoice SET status='sent', issued_on='2026-09-04', due_on='2026-10-04', sent_at=now(),
+       public_token=gen_random_uuid()::text
  WHERE id = '77777777-7777-7777-7777-777777777777';
 
 SELECT must_fail($$
@@ -238,15 +239,15 @@ SELECT must_fail($$
    WHERE id = '77777777-7777-7777-7777-777777777777'
 $$, 'changing the due date of a sent invoice');
 
-SELECT must_pass($$
+SELECT must_fail($$
   UPDATE invoice SET status = 'paid' WHERE id = '77777777-7777-7777-7777-777777777777'
-$$, 'marking a sent invoice paid');
+$$, 'marking an invoice paid: paid is what it owes, not a status');
 
 SELECT must_fail($$
   UPDATE invoice SET status = 'void' WHERE id = '77777777-7777-7777-7777-777777777777'
 $$, 'voiding without a reason');
 
--- Paid now, which is still sent: none of these may reach it (#24).
+-- Sent: none of these may reach it (#24).
 INSERT INTO invoice (id, number, entity_id, created_by) VALUES
   ('77777777-0000-4000-8000-0000000000d1','INV-0413',
    '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1'),
@@ -254,7 +255,8 @@ INSERT INTO invoice (id, number, entity_id, created_by) VALUES
    '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1');
 INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount)
 VALUES ('77777777-0000-4000-8000-0000000000d1',1,'service','Still a draft',1,10,10);
-UPDATE invoice SET status='sent', issued_on='2026-09-04', due_on='2026-10-04', sent_at=now()
+UPDATE invoice SET status='sent', issued_on='2026-09-04', due_on='2026-10-04', sent_at=now(),
+       public_token=gen_random_uuid()::text
  WHERE id = '77777777-0000-4000-8000-0000000000d2';
 
 SELECT must_fail($$
@@ -567,7 +569,8 @@ BEGIN
 END $$;
 
 -- And once sent, it cannot move at all.
-UPDATE invoice SET status='sent', issued_on='2026-09-16', due_on='2026-10-16', sent_at=now()
+UPDATE invoice SET status='sent', issued_on='2026-09-16', due_on='2026-10-16', sent_at=now(),
+       public_token=gen_random_uuid()::text
  WHERE id = '7777aaaa-7777-7777-7777-777777777777';
 
 SELECT must_fail($$
@@ -1740,7 +1743,8 @@ INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, uni
 INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty) VALUES
   ('38383838-0000-4000-8000-0000000000b3','38383838-0000-4000-8000-000000000001',
    '66666666-6666-6666-6666-666666666666',10);
-UPDATE invoice SET status = 'sent', issued_on = '2026-10-03', due_on = '2026-11-02', sent_at = now()
+UPDATE invoice SET status='sent', issued_on = '2026-10-03', due_on = '2026-11-02', sent_at = now(),
+       public_token=gen_random_uuid()::text
  WHERE id = '7777eeee-7777-7777-7777-777777777738';
 
 SELECT must_fail($$
@@ -2224,5 +2228,46 @@ SELECT must_pass($$
   VALUES ('f0f0f0f0-0000-4000-8000-000000000003','a0a0a0a0-0000-4000-8000-0000000000a2',
           'f0f0f0f0-0000-4000-8000-000000000002', 2.00, 'Miles short', 'reimbursement')
 $$, 'a correction to what an earlier payment paid back');
+
+\echo ''
+\echo '=== 48. an invoice is sent with its link, and paid is its balance ==='
+
+INSERT INTO invoice (id, number, entity_id, created_by) VALUES
+  ('77777777-0000-4000-8000-0000000000e1','INV-0480',
+   '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1');
+INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount)
+VALUES ('77777777-0000-4000-8000-0000000000e1',1,'service','To be sent',1,40,40);
+
+SELECT must_fail($$
+  UPDATE invoice SET public_token = 'a-draft-has-no-link-to-give'
+   WHERE id = '77777777-0000-4000-8000-0000000000e1'
+$$, 'a draft with a link');
+
+SELECT must_fail($$
+  UPDATE invoice SET status = 'sent', issued_on = '2026-10-08', due_on = '2026-11-07', sent_at = now()
+   WHERE id = '77777777-0000-4000-8000-0000000000e1'
+$$, 'an invoice sent without its link');
+
+SELECT must_fail($$
+  UPDATE invoice SET status = 'sent', issued_on = '2026-10-08', due_on = '2026-11-07', sent_at = now(),
+         public_token = (SELECT public_token FROM invoice WHERE public_token IS NOT NULL LIMIT 1)
+   WHERE id = '77777777-0000-4000-8000-0000000000e1'
+$$, 'two invoices sharing one link');
+
+SELECT must_pass($$
+  UPDATE invoice SET status = 'sent', issued_on = '2026-10-08', due_on = '2026-11-07', sent_at = now(),
+         public_token = 'the-link-to-inv-0480-sent-today'
+   WHERE id = '77777777-0000-4000-8000-0000000000e1'
+$$, 'an invoice sent, dated, with its link');
+
+SELECT must_fail($$
+  UPDATE invoice SET public_token = 'a-new-link-for-inv-0480'
+   WHERE id = '77777777-0000-4000-8000-0000000000e1'
+$$, 'a sent invoice''s link changed');
+
+SELECT must_fail($$
+  UPDATE invoice SET public_token = NULL
+   WHERE id = '77777777-0000-4000-8000-0000000000e1'
+$$, 'a sent invoice''s link taken away');
 
 \echo 'All guards hold.'

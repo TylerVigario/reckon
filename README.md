@@ -86,7 +86,16 @@ whichever query reaches it first — a long way from the cause.
 /clients         every client; /clients/:id is one, with its sites and agreements
 /invoices        drafts, sent and paid
 /settings        everything about the operator
+/invoice/:token  one sent invoice, for the client: opens without signing in
 ```
+
+A draft is sent from its own Send screen, which dates it, gives it its due date
+and its link, and hands the link to the phone's share sheet or the clipboard.
+The link is the only thing that opens a page without signing in, and it opens
+that invoice alone: what it asks for, what is still owed on it, and who it is
+from. Nothing of how the work was done is on it. Paid is not a status: an
+invoice is paid when what is owed on it, less payments and credit notes, comes
+to nothing.
 
 Timers run in `localStorage`, several at once — one person can be on a job
 while another is on something else, and one phone tracks both. They survive a
@@ -291,8 +300,8 @@ drift.
 **SvelteKit** (Svelte 5 runes), **Postgres** 18 through **Drizzle** on
 node-postgres, **Better Auth**, and an **offline queue** for time capture —
 IndexedDB plus retry, not a sync engine.
-Printed invoices through Typst and card payments through Stripe are planned;
-neither is wired in yet.
+Printed invoices through Typst, and payments through Stripe on the client's
+link, are planned; neither is wired in yet.
 
 **The server works in UTC, and there are two clocks.** Every database
 connection is opened in UTC whatever the host's default is, and every moment is
@@ -365,7 +374,9 @@ a line goes on a draft, a trip is recorded — and what was recorded posts when
 any page next opens with one. Every other screen says it needs a connection
 rather than showing a figure that may have changed.
 Signing out empties what was kept, and a new deploy is announced with a reload,
-never forced on someone mid-entry.
+never forced on someone mid-entry. The service worker is registered for
+somebody signed in, and only then, so a client opening their invoice's link is
+not installing the app.
 
 ## Licence
 

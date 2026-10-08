@@ -5,18 +5,20 @@ import { taxSql, type TaxRounding } from './tax-rules.ts';
 const i = t.invoice;
 const il = t.invoiceLine;
 const pa = t.paymentAllocation;
+const ca = t.creditApplication;
 
 /**
  * Every invoice, what it comes to, and what is still to pay on it -- a subquery
  * to join or select from, with the columns invoice_id, entity_id, status, net,
- * tax, gross, paid and owed.
+ * tax, gross, paid, credited and owed.
  *
  * net is the lines; tax is what they carry, rounded as the business's tax rule
  * rounds it (#lib/server/tax-rules), to the currency's `places` (#lib/currency);
  * gross is the two together: what the invoice asks for. owed is gross less what
- * payments have been put against it, and never below nothing, so a part-paid
- * invoice is still owed its remainder and an overpaid one is not owed a
- * negative.
+ * payments have been put against it and what credit notes have taken off it,
+ * and never below nothing, so a part-paid invoice is still owed its remainder
+ * and an overpaid one is not owed a negative. An invoice is paid when nothing
+ * is owed: that is a figure, not a status (0028).
  *
  * Stated once, so the home page, the client list, a client's page, the invoice
  * list and an invoice itself cannot disagree about what somebody owes.
@@ -31,12 +33,15 @@ export function balances(rounding: TaxRounding, places: number): SQL {
 	       ${at(sql`coalesce(tx.tax, 0)`)} as tax,
 	       ${at(sql`coalesce(lt.net, 0) + coalesce(tx.tax, 0)`)} as gross,
 	       ${at(sql`coalesce(a.paid, 0)`)} as paid,
-	       ${at(sql`greatest(coalesce(lt.net, 0) + coalesce(tx.tax, 0) - coalesce(a.paid, 0), 0)`)} as owed
+	       ${at(sql`coalesce(c.credited, 0)`)} as credited,
+	       ${at(sql`greatest(coalesce(lt.net, 0) + coalesce(tx.tax, 0) - coalesce(a.paid, 0) - coalesce(c.credited, 0), 0)`)} as owed
 	  from ${i}
 	  left join (select ${il.invoiceId} as invoice_id, sum(${il.amount}) as net
 	               from ${il} group by 1) lt on lt.invoice_id = ${i.id}
 	  left join ${taxSql(rounding, places)} tx on tx.invoice_id = ${i.id}
 	  left join (select ${pa.invoiceId} as invoice_id, sum(${pa.amount}) as paid
 	               from ${pa} group by 1) a on a.invoice_id = ${i.id}
+	  left join (select ${ca.invoiceId} as invoice_id, sum(${ca.amount}) as credited
+	               from ${ca} group by 1) c on c.invoice_id = ${i.id}
 )`;
 }

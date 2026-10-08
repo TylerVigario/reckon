@@ -255,9 +255,9 @@ T["agreement_period"] = [("PK","id","uuid"),("FK","agreement_id","uuid"),
 
 T["invoice"] = [("PK","id","uuid"),("UK","client_uuid","uuid · started on a phone"),
     ("UK","number","text"),("FK","entity_id","uuid"),
-    ("","status","draft|sent|paid|void"),("","issued_on","date"),("","due_on","date"),
-    ("","period_start","date"),("","period_end","date"),("UK","public_token","text"),
-    ("","token_expires_on","date"),("","sent_at","timestamptz"),
+    ("","status","draft|sent|void"),("","issued_on","date"),("","due_on","date"),
+    ("","period_start","date"),("","period_end","date"),("UK","public_token","text · the client's link"),
+    ("","token_expires_on","date · none set"),("","sent_at","timestamptz"),
     ("FK","created_by","uuid"),("","void_reason","text"),("","created_at","timestamptz")]
 T["invoice_line"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the phone"),
     ("","version","int · its saves, 1 when added"),
@@ -596,8 +596,11 @@ c += [edge("e60","invoice","invoice_line","is made of"),
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1"))]
 c += [note("n6", "A tax override is stored per line, so one invoice can carry lines at "
                  "two sites; setting it across an invoice writes the column many times.\n\n"
-                 "Emailing an invoice, printing it as a PDF and taking card payment "
-                 "through Stripe are planned; none is built yet.\n\n"
+                 "Sending dates an invoice, gives it its due date and public_token: the "
+                 "link a client opens it by, without signing in, shared from the phone. "
+                 "Paid is not a status but the balance: what is owed, less payments and "
+                 "credit notes, coming to nothing. Emailing an invoice, printing it as a "
+                 "PDF and taking payment through Stripe are planned.\n\n"
                  "A sent invoice is immutable and a credit note is the only way"
                  " to change what a client owes. Credits belong to the entity, never to "
                  "an invoice.\n\n"

@@ -578,13 +578,13 @@
     [*UK*], [client\_uuid], [uuid · started on a phone],
     [*UK*], [number], [text],
     [*FK*], [entity\_id], [uuid],
-    [], [status], [draft|sent|paid|void],
+    [], [status], [draft|sent|void],
     [], [issued\_on], [date],
     [], [due\_on], [date],
     [], [period\_start], [date],
     [], [period\_end], [date],
-    [*UK*], [public\_token], [text],
-    [], [token\_expires\_on], [date],
+    [*UK*], [public\_token], [text · the client's link],
+    [], [token\_expires\_on], [date · none set],
     [], [sent\_at], [timestamptz],
     [*FK*], [created\_by], [uuid],
     [], [void\_reason], [text],
@@ -682,7 +682,7 @@
 ]
 #v(7pt)
 
-#callout(tone: "note")[A tax override is stored per line, so one invoice can carry lines at two sites; setting it across an invoice writes the column many times.  Emailing an invoice, printing it as a PDF and taking card payment through Stripe are planned; none is built yet.  A sent invoice is immutable and a credit note is the only way to change what a client owes. Credits belong to the entity, never to an invoice.  One provenance FK per line, or none, so the return groups by what produced each line.  A line drawn from stock names its material, and stock\_draw what it took off each lot, oldest first; a trigger takes that off the lot's qty\_remaining and puts it back if the draw goes. It is costed at the average of what is on the shelf, or the oldest first, as operator.stock\_costing says, and keeps the cost it was drawn at.  unit is what qty counts, frozen at issue like tax\_rate\_pct, so a line keeps its unit if the service is later changed. Null when the quantity counts nothing, as on a flat charge or an adjustment.  What is bought for a job, or paid on the client's behalf, is a line of its own kind: from whom, who paid -- a person, who is owed it back, or the business -- and its receipt.  A line added by hand is saved on the phone first and sent when there is a signal; client\_uuid, made on the phone, keeps a retry from adding it twice. A draft started there takes its number when it arrives. A line meant for a draft that went out first starts a new draft for the client, and moved\_from\_invoice\_id keeps which it was meant for. A change made on a phone says which version it began from, and one made meanwhile is merged with it field by field.]
+#callout(tone: "note")[A tax override is stored per line, so one invoice can carry lines at two sites; setting it across an invoice writes the column many times.  Sending dates an invoice, gives it its due date and public\_token: the link a client opens it by, without signing in, shared from the phone. Paid is not a status but the balance: what is owed, less payments and credit notes, coming to nothing. Emailing an invoice, printing it as a PDF and taking payment through Stripe are planned.  A sent invoice is immutable and a credit note is the only way to change what a client owes. Credits belong to the entity, never to an invoice.  One provenance FK per line, or none, so the return groups by what produced each line.  A line drawn from stock names its material, and stock\_draw what it took off each lot, oldest first; a trigger takes that off the lot's qty\_remaining and puts it back if the draw goes. It is costed at the average of what is on the shelf, or the oldest first, as operator.stock\_costing says, and keeps the cost it was drawn at.  unit is what qty counts, frozen at issue like tax\_rate\_pct, so a line keeps its unit if the service is later changed. Null when the quantity counts nothing, as on a flat charge or an adjustment.  What is bought for a job, or paid on the client's behalf, is a line of its own kind: from whom, who paid -- a person, who is owed it back, or the business -- and its receipt.  A line added by hand is saved on the phone first and sent when there is a signal; client\_uuid, made on the phone, keeps a retry from adding it twice. A draft started there takes its number when it arrives. A line meant for a draft that went out first starts a new draft for the client, and moved\_from\_invoice\_id keeps which it was meant for. A change made on a phone says which version it began from, and one made meanwhile is merged with it field by field.]
 #v(4pt)
 
 #v(6pt)

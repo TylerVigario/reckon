@@ -1,11 +1,10 @@
 -- What happens on the server while the phone offline-check drives is out of
 -- reach, as if from another phone. Run between its offline and back phases.
 --
--- INV-0212, which the phone added a permit to, goes out: the permit has to
--- start a new draft. Nothing in the app sends an invoice yet, so it goes out
--- here.
+-- INV-0212, which the phone added a permit to, goes out, as if sent from
+-- another phone: the permit has to start a new draft.
 UPDATE invoice SET status = 'sent', issued_on = current_date, due_on = current_date + 30,
-                   sent_at = now()
+                   sent_at = now(), public_token = replace(gen_random_uuid()::text, '-', '')
  WHERE number = 'INV-0212';
 
 -- On the draft lines-check made -- the one with its jacks -- Sam changes the

@@ -15,6 +15,7 @@ import { businessDefaults } from '#lib/server/business.ts';
 import { readLocaleFrom } from '#lib/format.ts';
 import { readCurrencyFrom } from '#lib/currency.ts';
 import { localeTag, weekStartOf, type HourCycle } from '#lib/locales.ts';
+import { CLIENT_PAGE } from '#lib/client-link.ts';
 
 /**
  * Made when the server starts rather than at its first request, so a
@@ -59,6 +60,8 @@ export const init: ServerInit = () => {
  * colour and mark.
  */
 const OPEN = new Set(['/login', '/manifest.webmanifest', '/operator/logo', '/operator/theme.css']);
+// And the client's link to a sent invoice (#lib/client-link): one page, opened
+// by a token nobody can guess, showing that invoice and nothing else.
 
 /**
  * One place decides whether a request is allowed. Per-route checks are how a
@@ -100,7 +103,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.currency = business.currency;
 
 	const path = event.url.pathname;
-	if (!event.locals.user && !OPEN.has(path)) {
+	if (!event.locals.user && !OPEN.has(path) && !CLIENT_PAGE.test(path)) {
 		// The capture queue keeps 5xx and drops 4xx, and 401 is neither: the
 		// entry is fine, the session is not. It answers 401 so the queue can
 		// tell the difference, and queue.ts keeps it.

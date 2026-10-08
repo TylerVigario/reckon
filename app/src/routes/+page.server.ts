@@ -52,15 +52,15 @@ export const load: PageServerLoad = async ({ locals }) => {
 		  -- CDTFA. Whether a return was paid is a fact about the world, not
 		  -- something the invoices know, which is why it is subtracted from a
 		  -- table rather than inferred.
-		  round(coalesce(sum(b.tax) filter (where b.status in ('sent', 'paid')), 0)
+		  round(coalesce(sum(b.tax) filter (where b.status = 'sent'), 0)
 		   - (select coalesce(sum(${il.exTaxCost} * ${il.taxRatePct} / 100), 0)
 		        from ${il} join ${i} on ${i.id} = ${il.invoiceId}
-		       where ${il.taxable} and ${i.status} in ('sent', 'paid')
+		       where ${il.taxable} and ${i.status} = 'sent'
 		         and (select ${t.operator.claimsTaxPaidPurchasesResold} from ${t.operator}))
 		   - (select coalesce(sum(${t.taxRemittance.amount}), 0) from ${t.taxRemittance}),
 		   ${places}::int)::text as tax_held
 		  from ${owing} b
-		 where b.status in ('sent', 'paid', 'draft')`);
+		 where b.status in ('sent', 'draft')`);
 
 	// Anything that cannot proceed until somebody decides. An invoice out past
 	// the operator's own chase-after figure, and an address CDTFA has not been

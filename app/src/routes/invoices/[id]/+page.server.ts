@@ -10,6 +10,7 @@ import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { lineTaxSql } from '#lib/server/tax-rules.ts';
 import { day, monthName, names } from '#lib/format.ts';
 import { crewNames } from '#lib/server/choices.ts';
+import { clientLink } from '#lib/client-link.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -19,7 +20,7 @@ import type { PageServerLoad } from './$types';
  * the rate that was applied and where it came from, so an invoice sent in June
  * still says what June said, whatever the rate table says today.
  */
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, url }) => {
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
 	const owing = balances(rounding, places);
 	if (!UUID.test(params.id)) error(404, 'no such invoice');
@@ -50,6 +51,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			issued_on: i.issuedOn,
 			due_on: i.dueOn,
 			sent_on: sql<string | null>`${personalDay(i.sentAt)}::text`,
+			token: i.publicToken,
 			// A moment: drawn on the page, in the person's own zone.
 			assembled: i.createdAt,
 			period_start: i.periodStart,
@@ -121,6 +123,7 @@ export const load: PageServerLoad = async ({ params }) => {
 				taxable_measure: string;
 				tax: string;
 				due: string;
+				owed: string;
 				resold: string;
 				due_on_return: string;
 				district: string | null;
@@ -138,6 +141,8 @@ export const load: PageServerLoad = async ({ params }) => {
 		  -- with it: the same figures the invoice list and every balance use.
 		  (select b.tax from ${owing} b where b.invoice_id = ${params.id})::text as tax,
 		  (select b.gross from ${owing} b where b.invoice_id = ${params.id})::text as due,
+		  -- What is still owed on it: less what payments and credit notes took off.
+		  (select b.owed from ${owing} b where b.invoice_id = ${params.id})::text as owed,
 		  -- Reg 1701, where the operator has made that election: goods resold
 		  -- after tax was paid on them come off the measure, at the cost
 		  -- recorded on each line, and the return is taxed line by line on
@@ -210,8 +215,10 @@ export const load: PageServerLoad = async ({ params }) => {
 			.groupBy(dst.id, dst.number)
 	]);
 
+	const { token, ...shown } = invoice;
 	return {
-		invoice,
+		// A sent invoice's link, on the origin this was asked on (#lib/client-link).
+		invoice: { ...shown, link: token ? clientLink(url.origin, token) : null },
 		lines: lines.map(
 			({
 				worker,
