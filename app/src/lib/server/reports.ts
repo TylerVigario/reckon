@@ -1,4 +1,4 @@
-import { and, asc, between, eq, inArray, lte, gte, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, between, desc, eq, inArray, lte, gte, isNull, or, sql } from 'drizzle-orm';
 import { Decimal, sum, sumMoney } from '#lib/decimal.ts';
 import { db } from './db/index.ts';
 import { businessToday } from './calendar.ts';
@@ -20,6 +20,7 @@ import { rateIsStale } from './stale.ts';
 import { dated, daysAgo, names } from '#lib/format.ts';
 import { crewNames } from './choices.ts';
 import { townsOf } from './trips.ts';
+import { owed, recordedFor } from './pay.ts';
 import { alias } from 'drizzle-orm/pg-core';
 import { Ratio } from '#lib/decimal.ts';
 
@@ -270,6 +271,9 @@ export async function taxObligation(p: Period): Promise<Obligation> {
 	};
 }
 
+/** Who was paid for a job or a trip, and the day (0026). */
+export type PaidBy = { who: string; paid_on: string };
+
 export type PayJob = {
 	job: string;
 	worked_on: string;
@@ -280,6 +284,20 @@ export type PayJob = {
 	earned: string | null;
 	paid: string | null;
 	kept: string | null;
+	/** Of `paid`, what payments recorded, at the figure they recorded. */
+	recorded: string | null;
+	paid_by: PaidBy[];
+};
+
+/** A person's pay: what they are owed now, and their last payment. */
+export type PersonOwed = {
+	id: string;
+	name: string;
+	role: string | null;
+	owed: string;
+	/** Pieces of their work no rule pays: owed, at a figure nobody can say. */
+	unknown: number;
+	last: { paid_on: string; total: string; how: string } | null;
 };
 
 /** A trip's miles, and what they paid the vehicle they were driven in. */
@@ -294,11 +312,16 @@ export type PayTrip = {
 	earned: string | null;
 	paid: string | null;
 	kept: string | null;
+	recorded: string | null;
+	paid_by: PaidBy[];
 };
 
 export type PayOwed = {
+	people: PersonOwed[];
 	jobs: PayJob[];
 	trips: PayTrip[];
+	/** What payments recorded, of what is due. */
+	recorded: string;
 	due: string;
 	kept: string;
 	rates: HourNow[];
@@ -338,6 +361,16 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 		.leftJoin(t.user, eq(t.user.id, t.timeEntry.workedBy))
 		.where(and(eq(t.timeEntry.billable, true), between(t.timeEntry.workedOn, p.start, p.end)));
 	const worth = await valueEntries(db, entries);
+	// What payments recorded for this work: paid at that figure, whatever the
+	// rules say now (0026).
+	const [recorded, firstNames] = await Promise.all([
+		recordedFor(
+			entries.map((e) => e.id),
+			[]
+		),
+		db.select({ id: t.user.id, name: t.user.name }).from(t.user)
+	]);
+	const first = new Map(firstNames.map((u) => [u.id, u.name.split(' ')[0]]));
 
 	// One row per job per day. What makes it one job is everything that prices
 	// it: the client, the place, the service, and who worked it -- one person, or
@@ -360,7 +393,15 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 	const jobs: PayJob[] = [...groups.values()].map((es) => {
 		const w = es.map((e) => worth.get(e.id)!);
 		const earned = sumKnown(w.map((x) => x.earned));
-		const paid = sumKnown(w.map((x) => x.paid));
+		// Each person's pay on each entry: as a payment recorded it, or as it
+		// works out now.
+		const shares = es.flatMap((e) =>
+			worth
+				.get(e.id)!
+				.people.map((p) => ({ live: p.paid, kept: recorded.get(`${p.userId}:${e.id}`) }))
+		);
+		const paid = sumKnown(shares.map((x) => x.kept?.amount ?? x.live));
+		const kept = shares.filter((x) => x.kept).map((x) => x.kept!);
 		return {
 			job: es[0].place,
 			worked_on: es[0].workedOn,
@@ -373,15 +414,22 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 				.toString(),
 			earned: earned?.toFixed(places) ?? null,
 			paid: paid?.toFixed(places) ?? null,
-			kept: earned && paid ? earned.sub(paid).toFixed(places) : null
+			kept: earned && paid ? earned.sub(paid).toFixed(places) : null,
+			recorded: kept.length ? sum(kept.map((k) => k.amount)).toFixed(places) : null,
+			paid_by: paidBy(kept, first)
 		};
 	});
 	jobs.sort((a, b) => a.worked_on.localeCompare(b.worked_on) || a.job.localeCompare(b.job));
-	const trips = await tripsPaid(p, places);
+	const trips = await tripsPaid(p, places, first);
 
 	return {
+		people: await peopleOwed(places),
 		jobs,
 		trips,
+		recorded: sumMoney(
+			[...jobs, ...trips].map((j) => j.recorded),
+			places
+		),
 		due: sumMoney(
 			[...jobs, ...trips].map((j) => j.paid),
 			places
@@ -399,7 +447,11 @@ export async function payOwed(p: Period): Promise<PayOwed> {
  * vehicle's owner (0024): nothing for the business's own, and not known for a
  * trip that does not say what it was driven in.
  */
-async function tripsPaid(p: Period, places: number): Promise<PayTrip[]> {
+async function tripsPaid(
+	p: Period,
+	places: number,
+	first: ReadonlyMap<string, string>
+): Promise<PayTrip[]> {
 	const owner = alias(t.user, 'owner');
 	const found = await db
 		.select({
@@ -444,11 +496,21 @@ async function tripsPaid(p: Period, places: number): Promise<PayTrip[]> {
 			};
 		})
 	);
+	const recorded = await recordedFor(
+		[],
+		found.map((f) => f.id)
+	);
 	return found.map((f) => {
 		const mine = legs.filter((l) => l.tripId === f.id);
 		const earned = sumKnown(mine.map((l) => worth.get(l.id)?.billed ?? null));
 		const pays = mine.map((l) => worth.get(l.id)?.paid ?? null);
-		const paid = pays.length && pays.every((x) => x !== null) ? sum(pays) : null;
+		// As a payment recorded it, or as it works out now.
+		const kept = f.ownerId ? recorded.get(`${f.ownerId}:${f.id}`) : undefined;
+		const paid = kept
+			? kept.amount
+			: pays.length && pays.every((x) => x !== null)
+				? sum(pays)
+				: null;
 		return {
 			trip_id: f.id,
 			job: f.towns ?? 'No stops recorded',
@@ -458,9 +520,71 @@ async function tripsPaid(p: Period, places: number): Promise<PayTrip[]> {
 			miles: sum(mine.map((l) => l.miles)).toFixed(2),
 			earned: earned?.toFixed(places) ?? null,
 			paid: paid?.toFixed(places) ?? null,
-			kept: earned && paid ? earned.sub(paid).toFixed(places) : null
+			kept: earned && paid ? earned.sub(paid).toFixed(places) : null,
+			recorded: kept ? kept.amount.toFixed(places) : null,
+			paid_by: paidBy(kept ? [kept] : [], first)
 		};
 	});
+}
+
+/** "Sam paid Oct 8": each person a payment recorded for the work, at its latest. */
+function paidBy(
+	kept: readonly { userId: string; paidOn: string }[],
+	first: ReadonlyMap<string, string>
+): PaidBy[] {
+	const latest = new Map<string, string>();
+	for (const k of kept) if ((latest.get(k.userId) ?? '') < k.paidOn) latest.set(k.userId, k.paidOn);
+	return [...latest].map(([id, paid_on]) => ({ who: first.get(id) ?? '', paid_on }));
+}
+
+/**
+ * Everyone owed something, or paid before: what they are owed now, worked out
+ * live, and their last payment. Most owed first.
+ */
+async function peopleOwed(places: number): Promise<PersonOwed[]> {
+	const [owing, people, lastPaid] = await Promise.all([
+		owed(),
+		db
+			.select({ id: t.user.id, name: t.user.name, role: t.role.name })
+			.from(t.user)
+			.leftJoin(t.role, eq(t.role.id, t.user.roleId)),
+		db
+			.selectDistinctOn([t.personPayment.userId], {
+				userId: t.personPayment.userId,
+				paid_on: t.personPayment.paidOn,
+				how: t.personPayment.how,
+				// Named outright: unjoined, a bare id inside would be the item's.
+				total: sql<string>`(select coalesce(sum(i.amount), 0)::text from person_payment_item i
+				                     where i.payment_id = person_payment.id)`
+			})
+			.from(t.personPayment)
+			.orderBy(
+				t.personPayment.userId,
+				desc(t.personPayment.paidOn),
+				desc(t.personPayment.createdAt)
+			)
+	]);
+	return people
+		.map((u) => {
+			const items = owing.get(u.id) ?? [];
+			const last = lastPaid.find((l) => l.userId === u.id);
+			return {
+				id: u.id,
+				name: u.name,
+				role: u.role,
+				owed: sum(items.map((i) => i.amount)).toFixed(places),
+				unknown: items.filter((i) => i.amount === null).length,
+				last: last
+					? {
+							paid_on: last.paid_on,
+							how: last.how,
+							total: Decimal.from(last.total).toFixed(places)
+						}
+					: null
+			};
+		})
+		.filter((x) => x.last || Number(x.owed) !== 0 || x.unknown)
+		.sort((a, b) => Number(b.owed) - Number(a.owed) || a.name.localeCompare(b.name));
 }
 
 export type HourNow = {

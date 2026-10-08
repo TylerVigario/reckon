@@ -25,6 +25,7 @@ CLUSTERS = [
     ("06-money-out.drawio",           "Money out"),
     ("07-money-in.drawio",            "Money in"),
     ("08-operator-and-record.drawio", "The operator, and the record"),
+    ("09-pay.drawio",                 "Pay, as it was paid"),
 ]
 
 seen = set()

@@ -1,3 +1,4 @@
+import { personPayment, personPaymentItem } from './pay.ts';
 // How the tables reach each other, for Drizzle's relational queries. The
 // foreign keys are the constraints; these are only the paths a query may walk.
 
@@ -194,4 +195,16 @@ export const taxRemittanceRelations = relations(taxRemittance, ({ one }) => ({
 
 export const recordHistoryRelations = relations(recordHistory, ({ one }) => ({
 	changedBy: one(user, { fields: [recordHistory.changedBy], references: [user.id] })
+}));
+
+export const personPaymentRelations = relations(personPayment, ({ one, many }) => ({
+	person: one(user, { fields: [personPayment.userId], references: [user.id] }),
+	items: many(personPaymentItem)
+}));
+
+export const personPaymentItemRelations = relations(personPaymentItem, ({ one }) => ({
+	payment: one(personPayment, {
+		fields: [personPaymentItem.paymentId],
+		references: [personPayment.id]
+	})
 }));

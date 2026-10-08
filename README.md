@@ -30,7 +30,7 @@ against an invented case.
 | `db/migrations/`                | the schema as applied SQL: generated from the above, and hand-written migrations for whatever Drizzle can't say |
 | `db/test/constraints.sql`       | proves the guards, both ways                                                                                    |
 | `app/src/lib/server/valuation/` | what an hour bills, what it pays, what a retainer covers, and the tax split — exact decimals, tested            |
-| `docs/schema/*.drawio`          | the data model: an overview and seven clusters                                                                  |
+| `docs/schema/*.drawio`          | the data model: an overview and eight clusters                                                                  |
 | `docs/schema/regenerate.py`     | lays the diagrams out from one definition of the tables; overwrites hand edits                                  |
 | `docs/schema/make-printable.py` | derives the printed reference from the diagrams                                                                 |
 | `docs/schema-reference.typ`     | generated — do not hand-edit                                                                                    |

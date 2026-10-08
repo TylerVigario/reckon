@@ -888,6 +888,74 @@ if (billedTrip) {
 		);
 } else failures.push('could not find the billed trip on /trips');
 
+console.log('\n  pay — recorded once, never less than nothing, never for somebody else');
+
+// Who is owed, from the pay report; Sam's earlier payment, from Sam's page.
+const payPage = await (await fetch(`${base}/reports/pay`, { headers: { cookie } })).text();
+const payee = (/** @type {string} */ name) =>
+	[
+		...payPage.matchAll(
+			/href="[^"]*\/reports\/pay\/([0-9a-f-]{36})"[\s\S]*?class="rec-t"[^>]*>(?:\s|<!--[^>]*-->)*([^<&]+)/g
+		)
+	].find((m) => m[2].trim() === name)?.[1];
+const sam = payee('Sam Ortega');
+const avery = payee('Avery Lind');
+const samPage = sam
+	? await (await fetch(`${base}/reports/pay/${sam}`, { headers: { cookie } })).text()
+	: '';
+const samPaid = /\/reports\/pay\/payments\/([0-9a-f-]{36})"/.exec(samPage)?.[1];
+if (sam && avery && samPaid) {
+	const payment = (/** @type {Record<string, unknown>} */ over) => ({
+		client_uuid: crypto.randomUUID(),
+		user_id: sam,
+		// Yesterday on UTC's clock: never in the business's future, and after Sam's
+		// payment three weeks ago, whatever clocks the run is under.
+		paid_on: new Date(Date.now() - 86400000).toISOString().slice(0, 10),
+		how: 'Bank transfer',
+		entries: [],
+		trips: [],
+		correction: null,
+		...over
+	});
+	await check('a payment covering nothing is refused', 'POST', '/api/pay', payment({}), 400);
+	await check(
+		'a payment for work that is not owed is refused',
+		'POST',
+		'/api/pay',
+		payment({ entries: [crypto.randomUUID()] }),
+		409
+	);
+	await check(
+		"a correction to somebody else's payment is refused",
+		'POST',
+		'/api/pay',
+		payment({
+			user_id: avery,
+			correction: { payment_id: samPaid, amount: '1.00', why: 'Not theirs' }
+		}),
+		400
+	);
+	await check(
+		'a payment that would come to less than nothing is refused',
+		'POST',
+		'/api/pay',
+		payment({ correction: { payment_id: samPaid, amount: '-1000.00', why: 'Too much' } }),
+		400
+	);
+	const short = payment({
+		correction: { payment_id: samPaid, amount: '1.00', why: 'Paid a dollar short' }
+	});
+	const corrected = await check('a correction alone is recorded', 'POST', '/api/pay', short, 201);
+	await check(
+		'the same payment sent again is one payment',
+		'POST',
+		'/api/pay',
+		short,
+		(/** @type {{ status: number, body: any }} */ r) =>
+			r.status === 200 && r.body?.id === corrected.body?.id
+	);
+} else failures.push("could not find Sam, Avery and Sam's earlier payment on the pay pages");
+
 console.log('\n  units — named, written, counted, and let go');
 
 await check(

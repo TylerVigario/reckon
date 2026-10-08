@@ -3,7 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { tripChoices } from '#lib/server/trip-choices.ts';
-import { onAnInvoice } from '#lib/server/trip-write.ts';
+import { settled } from '#lib/server/trip-write.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { sum } from '#lib/decimal.ts';
 import { driveKey, type Place } from '#lib/trip-legs.ts';
@@ -14,13 +14,13 @@ import type { PageServerLoad } from './$types';
 /**
  * A saved trip, back in the form as it was saved: its stops and who each was
  * for, each drive's miles as recorded and who it was given to by hand. A trip
- * whose miles are on an invoice is not changed here, and its own screen says so.
+ * whose miles are billed or paid is not changed here, and its own screen says so.
  */
 export const load: PageServerLoad = async ({ params, locals }) => {
 	if (!UUID.test(params.id)) error(404, 'No trip with that id.');
 	const [trip] = await db.select().from(t.trip).where(eq(t.trip.id, params.id));
 	if (!trip) error(404, 'No trip with that id.');
-	if (await onAnInvoice(db, params.id)) redirect(303, resolve('/trips/[id]', { id: params.id }));
+	if (await settled(db, params.id)) redirect(303, resolve('/trips/[id]', { id: params.id }));
 
 	const [choices, stops, clients, legs] = await Promise.all([
 		tripChoices(locals.user!.id),

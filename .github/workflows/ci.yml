@@ -286,6 +286,10 @@ jobs:
           done
           check back
 
+      - name: Pay is recorded when it is paid, and stands
+        # After offline-check, which changes the trip this pays for.
+        run: node app/scripts/pay-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+
       - name: Stop it
         if: always()
         run: kill "$(cat /tmp/reckon.pid)" 2>/dev/null || true

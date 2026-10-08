@@ -317,6 +317,14 @@ T["operator"] = [("PK","id","uuid"),("","singleton","bool · one row only"),("",
     ("","fiscal_year_end_month","1–12"),
     ("","claims_tax_paid_purchases_resold","bool"),
     ("","mileage_assignment","actual|round_trip_per_client")]
+T["person_payment"] = [("PK","id","uuid"),("FK","user_id","uuid · who was paid"),
+    ("","paid_on","date"),("","how","text · bank transfer, cash…"),("","note","text"),
+    ("UK","client_uuid","uuid · made where it was recorded"),("FK","created_by","uuid · who recorded it"),
+    ("","created_at","timestamptz")]
+T["person_payment_item"] = [("PK","id","uuid"),("FK","payment_id","uuid"),
+    ("FK","user_id","uuid · the payment's person"),("FK","time_entry_id","uuid · an entry's time, or"),
+    ("FK","trip_id","uuid · a trip's miles, or"),("FK","corrects_payment_id","uuid · an earlier payment"),
+    ("","amount","numeric · as it came to"),("","said","text · how, in words")]
 T["user"] = [("PK","id","uuid"),("","name","text"),("UK","email","text · lowercase"),
     ("","email_verified","bool"),("","image","text"),
     ("FK","role_id","uuid · null = not paid"),("","active","bool"),
@@ -669,6 +677,28 @@ c += [note("n8", "Anyone who can sign in can see and change everything: "
                  "with its line. made_at is when a change was made on a phone, beside "
                  "changed_at, when it arrived.", 40, 1000, 1300, 330)]
 files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 1370))
+
+# 09 -- pay, as it was paid
+c = at("person_payment",40,60) + at("person_payment_item",480,60) + at("user",40,330) \
+  + at("time_entry",880,60) + at("trip",880,480)
+c += [edge("e90","user","person_payment","is paid",
+           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=0")
+                 .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1")),
+      edge("e91","person_payment","person_payment_item","covers"),
+      edge("e92","person_payment_item","time_entry","pays for",
+           S_EDGE.replace("exitY=0.5","exitY=0.6").replace("entryY=0.5","entryY=0.3201")),
+      edge("e93","person_payment_item","trip","its miles",
+           S_EDGE.replace("exitY=0.5","exitY=0.75").replace("entryY=0.5","entryY=0.3"))]
+c += [note("n9", "A payment to a person is recorded with what it covered: each item a time "
+                 "entry, a trip -- its miles, paid to the owner of the vehicle it was driven "
+                 "in -- or a correction to an earlier payment of theirs, plus or minus.\n\n"
+                 "amount and said are what it came to that day and how: the hours and the "
+                 "rule, in words, whatever the rules say later. A piece of work is paid to a "
+                 "person once.\n\n"
+                 "Neither table changes once written; a correction is an item on the next "
+                 "payment. reckon records a payment, and the money moves at the bank.",
+           40, 800, 1176, 220)]
+files.append(write("09-pay.drawio", "Pay, as it was paid", c, 1260, 1060))
 
 for f in files:
     print(f"  {f}")

@@ -162,6 +162,9 @@ export type PersonPay = {
 	timePaid: Decimal | null;
 	coveredPaid: Decimal | null;
 	paid: Decimal | null;
+	/** The rules that set it, where one reached them: what a payment says it was paid by. */
+	timeRule: PayRule | null;
+	coveredRule: PayRule | null;
 };
 
 export type Worth = {
@@ -241,29 +244,24 @@ export function worth(entries: readonly Entry[], ctx: Context): Map<string, Wort
 
 		const payees = e.crew === 'team' ? crewOf(e) : ctx.people.filter((p) => p.id === e.workedBy);
 		const people: PersonPay[] = payees.map((p) => {
-			const timePaid =
-				billedSeconds !== null && billedSeconds > 0
-					? timePay(
-							ruleOn(ctx.rules, e.serviceId, p, e.entityId, 'time', e.workedOn),
-							billedSeconds,
-							billed,
-							places
-						)
-					: zero;
-			const coveredPaid =
-				c.coveredSeconds && c.coveredSeconds > 0
-					? coveredPay(
-							ruleOn(ctx.rules, e.serviceId, p, e.entityId, 'covered_time', e.workedOn),
-							shareEach,
-							places
-						)
-					: zero;
+			const billedTime = billedSeconds !== null && billedSeconds > 0;
+			const covered = !!c.coveredSeconds && c.coveredSeconds > 0;
+			const timeRule = billedTime
+				? ruleOn(ctx.rules, e.serviceId, p, e.entityId, 'time', e.workedOn)
+				: null;
+			const coveredRule = covered
+				? ruleOn(ctx.rules, e.serviceId, p, e.entityId, 'covered_time', e.workedOn)
+				: null;
+			const timePaid = billedTime ? timePay(timeRule, billedSeconds, billed, places) : zero;
+			const coveredPaid = covered ? coveredPay(coveredRule, shareEach, places) : zero;
 			return {
 				userId: p.id,
 				coveredSeconds: c.coveredSeconds,
 				timePaid,
 				coveredPaid,
-				paid: timePaid && coveredPaid ? timePaid.add(coveredPaid) : null
+				paid: timePaid && coveredPaid ? timePaid.add(coveredPaid) : null,
+				timeRule,
+				coveredRule
 			};
 		});
 		const known = people.filter((p) => p.paid !== null);

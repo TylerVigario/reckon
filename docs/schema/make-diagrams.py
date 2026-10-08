@@ -33,6 +33,7 @@ PAGES = [
     ("07-money-in.drawio", "Money in", "Payments, credits, and what closes an invoice."),
     ("08-operator-and-record.drawio", "The operator, and the record",
      "The business itself, who signs in, and what changed."),
+    ("09-pay.drawio", "Pay, as it was paid", "What each person was paid, and for what."),
 ]
 
 # Slack inside the viewBox. Edge labels are placed after the extent is taken

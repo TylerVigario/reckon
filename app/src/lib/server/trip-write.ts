@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import type { Reader } from './db/index.ts';
 import * as t from './db/schema/index.ts';
 import { pgError, refuse, refuseIfTheDatabaseSaidSo } from './field-errors.ts';
@@ -119,12 +119,24 @@ export async function writeStops(
 	);
 }
 
-/** Whether any of a trip's miles are on an invoice, which leaves the trip as billed. */
-export const onAnInvoice = async (tx: Reader, tripId: string) =>
-	(
-		await tx
-			.select({ n: sql<number>`count(*)::int` })
-			.from(t.invoiceLine)
-			.innerJoin(t.tripLeg, eq(t.tripLeg.id, t.invoiceLine.tripLegId))
-			.where(eq(t.tripLeg.tripId, tripId))
-	)[0].n > 0;
+/**
+ * Whether a trip is settled, and how: any of its miles on an invoice, which
+ * leaves it as billed, or in a payment to its vehicle's owner (0026), which
+ * leaves it as paid. Null while it is neither, and may change.
+ */
+export async function settled(tx: Reader, tripId: string): Promise<'billed' | 'paid' | null> {
+	const [row] = await tx
+		.select({
+			billed: sql<boolean>`exists (select 1 from invoice_line il join trip_leg l on l.id = il.trip_leg_id
+			                             where l.trip_id = ${tripId})`,
+			paid: sql<boolean>`exists (select 1 from person_payment_item i where i.trip_id = ${tripId})`
+		})
+		.from(sql`(select 1) as one`);
+	return row.billed ? 'billed' : row.paid ? 'paid' : null;
+}
+
+/** What a settled trip says when somebody tries to change or remove it. */
+export const SETTLED = {
+	billed: 'Its miles are on an invoice, so it stays as it was billed.',
+	paid: 'Its miles are in a payment for the vehicle, so it stays as it was paid.'
+} as const;

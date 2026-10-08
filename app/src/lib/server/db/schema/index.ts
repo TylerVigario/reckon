@@ -8,4 +8,5 @@ export * from './work.ts';
 export * from './agreements.ts';
 export * from './money.ts';
 export * from './operator.ts';
+export * from './pay.ts';
 export * from './relations.ts';
