@@ -43,6 +43,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			odometer_start: tr.odometerStart,
 			odometer_end: tr.odometerEnd,
 			invoiced: sql<boolean>`exists (select 1 from invoice_line il join trip_leg l on l.id = il.trip_leg_id where l.trip_id = ${tr.id})`,
+			paid_for: sql<boolean>`exists (select 1 from person_payment_item i where i.trip_id = ${tr.id})`,
 			vehicle_id: tr.vehicleId,
 			vehicle: v.name,
 			vehicle_retired_on: v.retiredOn,

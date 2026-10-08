@@ -23,7 +23,7 @@
 #v(6pt)
 
 #text(size: sz.small)[
-  43 tables across seven clusters. The eight `.drawio` files in
+  45 tables across eight clusters. The nine `.drawio` files in
   `docs/schema/` carry the relationships; the schema's comments carry the reasoning.
   A table drawn in more than one cluster is listed once, under the first.
 ]
@@ -940,6 +940,53 @@
 #v(7pt)
 
 #callout(tone: "note")[Anyone who can sign in can see and change everything: user has no permission columns. role\_id is not access: it is the capacity someone is paid in, which pay rules are written against.  Each person keeps a time zone, a locale, a clock and a first day of the week. Empty follows the business's -- its own timezone and locale -- or what the locale says.  user, session, account and verification are Better Auth's, in its shape. A password is an account whose provider\_id is credential, and what it holds is an argon2id hash. There is no sign-up: people are added from the command line.  A session is a row, not a stateless token: one server, one database, and every page reads it anyway, so a stateless token would save no round trip and cost revocation. The cookie is the token signed with the server's secret, so a copy of this table lets nobody in without the secret as well.  Which migrations a database has seen is Drizzle's record, in drizzle.\_\_drizzle\_migrations, so re-running db/apply.sh applies only what is new.  Everything that identifies the business is the operator's to supply: logo is nullable and the interface renders trading\_name in its place.  An included-hours figure is a client's, on their agreement, and what is paid to whoever answers is a dated pay\_rule.  record\_history is append-only and exists to explain a figure, not to police one. An invoice line is followed from its birth: what it was when added, each field changed, and what it was when taken off. A receipt is described rather than copied while its row holds it, and kept whole once the history is the only place it is: replaced, or taken off with its line. made\_at is when a change was made on a phone, beside changed\_at, when it arrived.]
+#v(4pt)
+
+#v(6pt)
+
+#colbreak(weak: true)
+#band[Pay, as it was paid]
+#v(5pt)
+
+#block(breakable: false)[
+  #text(font: face-mono, size: sz.fine, weight: "bold")[person\_payment]
+  #v(3pt)
+  #sheet(
+    (auto, auto, 1fr),
+    ([], [Column], [Type]),
+    size: sz.micro,
+    [*PK*], [id], [uuid],
+    [*FK*], [user\_id], [uuid · who was paid],
+    [], [paid\_on], [date],
+    [], [how], [text · bank transfer, cash…],
+    [], [note], [text],
+    [*UK*], [client\_uuid], [uuid · made where it was recorded],
+    [*FK*], [created\_by], [uuid · who recorded it],
+    [], [created\_at], [timestamptz],
+  )
+]
+#v(7pt)
+
+#block(breakable: false)[
+  #text(font: face-mono, size: sz.fine, weight: "bold")[person\_payment\_item]
+  #v(3pt)
+  #sheet(
+    (auto, auto, 1fr),
+    ([], [Column], [Type]),
+    size: sz.micro,
+    [*PK*], [id], [uuid],
+    [*FK*], [payment\_id], [uuid],
+    [*FK*], [user\_id], [uuid · the payment's person],
+    [*FK*], [time\_entry\_id], [uuid · an entry's time, or],
+    [*FK*], [trip\_id], [uuid · a trip's miles, or],
+    [*FK*], [corrects\_payment\_id], [uuid · an earlier payment],
+    [], [amount], [numeric · as it came to],
+    [], [said], [text · how, in words],
+  )
+]
+#v(7pt)
+
+#callout(tone: "note")[A payment to a person is recorded with what it covered: each item a time entry, a trip -- its miles, paid to the owner of the vehicle it was driven in -- or a correction to an earlier payment of theirs, plus or minus.  amount and said are what it came to that day and how: the hours and the rule, in words, whatever the rules say later. A piece of work is paid to a person once.  Neither table changes once written; a correction is an item on the next payment. reckon records a payment, and the money moves at the bank.]
 #v(4pt)
 
 #v(6pt)

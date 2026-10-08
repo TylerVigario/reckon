@@ -1,12 +1,13 @@
 import { eq } from 'drizzle-orm';
-import { asUser } from '#lib/server/db/index.ts';
+import { asUser, db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { refuse, stillReferenced } from '#lib/server/field-errors.ts';
 import { readTrip } from '#lib/server/trip-input.ts';
 import {
 	legsFor,
-	onAnInvoice,
 	refuseTrip,
+	settled,
+	SETTLED,
 	tripColumns,
 	writeStops
 } from '#lib/server/trip-write.ts';
@@ -14,8 +15,6 @@ import { UUID } from '#lib/field-rules.ts';
 import { readBody } from '#lib/json.ts';
 import { problem } from '#lib/server/problem.ts';
 import type { RequestHandler } from './$types';
-
-const BILLED = 'Its miles are on an invoice, so it stays as it was billed.';
 
 /**
  * Changes a saved trip: everything about it, sent whole as the form sends a new
@@ -40,7 +39,8 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 				.where(eq(t.trip.id, params.id))
 				.for('update');
 			if (!held) return 'gone' as const;
-			if (await onAnInvoice(tx, params.id)) return 'billed' as const;
+			const done = await settled(tx, params.id);
+			if (done) return done;
 			await tx.update(t.trip).set(tripColumns(trip)).where(eq(t.trip.id, params.id));
 			await tx.delete(t.tripLeg).where(eq(t.tripLeg.tripId, params.id));
 			await tx.delete(t.tripStop).where(eq(t.tripStop.tripId, params.id));
@@ -48,7 +48,7 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 			return 'changed' as const;
 		});
 		if (outcome === 'gone') return problem('notFound', 404, 'No trip with that id.');
-		if (outcome === 'billed') return problem('conflict', 409, BILLED);
+		if (outcome !== 'changed') return problem('conflict', 409, SETTLED[outcome]);
 		return Response.json({ id: params.id });
 	} catch (err) {
 		const refused = refuseTrip(err);
@@ -63,13 +63,16 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
  */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (!UUID.test(params.id)) return problem('notFound', 404, 'No trip with that id.');
+	const done = await settled(db, params.id);
+	if (done) return problem('conflict', 409, SETTLED[done]);
 	try {
 		const gone = await asUser(locals.user!.id, (tx) =>
 			tx.delete(t.trip).where(eq(t.trip.id, params.id)).returning({ id: t.trip.id })
 		);
 		if (gone.length === 0) return problem('notFound', 404, 'No trip with that id.');
 	} catch (e) {
-		if (stillReferenced(e)) return problem('conflict', 409, BILLED);
+		// Settled between the question and the delete.
+		if (stillReferenced(e)) return problem('conflict', 409, SETTLED.billed);
 		throw e;
 	}
 	return Response.json({ removed: params.id });

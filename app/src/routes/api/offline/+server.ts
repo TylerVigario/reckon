@@ -13,8 +13,8 @@ import type { RequestHandler } from './$types';
  * takes no lines, and is shown only with a signal.
  *
  * Trips too: the list, New trip, and each trip of the past sixty days whose
- * miles are not on an invoice, with its Change, so a trip is recorded or put
- * right on the road.
+ * miles are neither billed nor paid, with its Change, so a trip is recorded or
+ * put right on the road.
  */
 export const GET: RequestHandler = async () => {
 	const since = Temporal.PlainDate.from(businessToday()).subtract({ days: 60 }).toString();
@@ -39,7 +39,8 @@ export const GET: RequestHandler = async () => {
 				and(
 					gte(trip.travelledOn, since),
 					sql`not exists (select 1 from invoice_line il join trip_leg l on l.id = il.trip_leg_id
-					                 where l.trip_id = ${trip.id})`
+					                 where l.trip_id = ${trip.id})`,
+					sql`not exists (select 1 from person_payment_item i where i.trip_id = ${trip.id})`
 				)
 			)
 	]);

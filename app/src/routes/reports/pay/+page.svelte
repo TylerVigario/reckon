@@ -20,6 +20,19 @@
 			...data.trips.map((t) => ({ kind: 'trip' as const, ...t }))
 		].sort((a, b) => a.worked_on.localeCompare(b.worked_on))
 	);
+	// What a person was last paid, or that they have not been.
+	const lastOf = (p: {
+		unknown: number;
+		last: { paid_on: string; total: string; how: string } | null;
+	}) =>
+		[
+			p.last
+				? `Last paid ${day(p.last.paid_on)} · ${money(p.last.total)} · ${p.last.how.toLowerCase()}`
+				: 'Nothing paid yet',
+			p.unknown ? `${p.unknown} with no rule to pay ${p.unknown === 1 ? 'it' : 'them'}` : null
+		]
+			.filter(Boolean)
+			.join(' · ');
 	// A trip's miles pay whoever owns the vehicle, so that is who it names.
 	const drove = (t: { vehicle: string | null; owner: string | null; miles: string }) =>
 		[
@@ -50,6 +63,34 @@
 />
 
 <div class="pad">
+	{#if data.people.length}
+		<div class="sec">
+			<div class="sec-h"><h2>Owed, and paid</h2></div>
+			<div class="rows">
+				{#each data.people as p (p.id)}
+					<a
+						class="rec link"
+						class:warn={p.unknown > 0}
+						href={resolve('/reports/pay/[person]', { person: p.id })}
+					>
+						<div class="rec-m">
+							<div class="rec-t">
+								{p.name}{#if p.role}&nbsp;<span class="lt">· {p.role}</span>{/if}
+							</div>
+							<div class="rec-s">{lastOf(p)}</div>
+						</div>
+						<div class="rec-n">
+							<span class="rec-v" class:good={Number(p.owed) === 0 && !p.unknown}
+								>{money(p.owed)}</span
+							>
+							<span class="rec-x">owed</span>
+						</div>
+						<span class="arw" aria-hidden="true">›</span>
+					</a>
+				{/each}
+			</div>
+		</div>
+	{/if}
 	<div class="sec">
 		<div class="sec-h"><h2>{data.month.label}</h2></div>
 		<div class="rows">
@@ -62,6 +103,15 @@
 								{who(r)} · {hours(r.hours)}{#if r.heads > 1}
 									· {r.heads} on the job{/if}
 							</div>
+							{#if r.paid_by.length}
+								<div class="rec-c">
+									{#each r.paid_by as b (b.who + b.paid_on)}
+										<span class="chip good"
+											><span class="dot"></span>{b.who} paid {day(b.paid_on)}</span
+										>
+									{/each}
+								</div>
+							{/if}
 						</div>
 						<div class="rec-n">
 							<span class="rec-v">{money(r.paid)}</span>
@@ -73,6 +123,15 @@
 						<div class="rec-m">
 							<div class="rec-t">{r.job} · {day(r.worked_on)}</div>
 							<div class="rec-s">{drove(r)}</div>
+							{#if r.paid_by.length}
+								<div class="rec-c">
+									{#each r.paid_by as b (b.who + b.paid_on)}
+										<span class="chip good"
+											><span class="dot"></span>{b.who} paid {day(b.paid_on)}</span
+										>
+									{/each}
+								</div>
+							{/if}
 						</div>
 						<div class="rec-n">
 							<span class="rec-v">{money(r.paid)}</span>
@@ -90,7 +149,12 @@
 				</div>
 			{:else}
 				<div class="rec tot">
-					<div class="rec-m"><div class="rec-t">Pay due</div></div>
+					<div class="rec-m">
+						<div class="rec-t">Pay due</div>
+						{#if Number(data.recorded) !== 0}
+							<div class="rec-s">{money(data.recorded)} of it paid</div>
+						{/if}
+					</div>
 					<div class="rec-n">
 						<span class="rec-v">{money(data.due)}</span>
 						<span class="rec-x">kept {money(data.kept)}</span>
@@ -125,3 +189,10 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	.lt {
+		font-weight: 400;
+		color: var(--ink-3);
+	}
+</style>

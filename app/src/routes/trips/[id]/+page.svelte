@@ -256,6 +256,8 @@
 	{/if}
 	{#if data.trip.invoiced}
 		<p class="aside">Its miles are on an invoice, so it stays as it was billed.</p>
+	{:else if data.trip.paid_for}
+		<p class="aside">Its miles are in a payment for the vehicle, so it stays as it was paid.</p>
 	{:else}
 		<div class="btnrow">
 			<a class="btn" href={resolve('/trips/[id]/change', { id: data.trip.id })}>Change this trip</a>

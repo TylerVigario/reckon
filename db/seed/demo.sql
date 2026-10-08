@@ -282,6 +282,17 @@ SELECT e.id, u.id
   FROM time_entry e CROSS JOIN "user" u
  WHERE e.crew = 'team' AND u.active AND u.role_id IS NOT NULL;
 
+-- Sam was paid for his share of it three weeks ago, by bank transfer: the
+-- figure and the rule as they were that day. Avery and Jordan are still owed.
+INSERT INTO person_payment (id, user_id, paid_on, how, note, client_uuid, created_by)
+VALUES ('019a0002-0000-7000-8000-000000000001','c54bf38d-b83d-422f-af31-14a2a01aee5e',
+        current_date - 20, 'Bank transfer', 'The rack move', gen_random_uuid(),
+        'c41b2fab-5b71-4954-bb86-1bc803daf7ee');
+INSERT INTO person_payment_item (payment_id, user_id, time_entry_id, amount, said)
+SELECT '019a0002-0000-7000-8000-000000000001','c54bf38d-b83d-422f-af31-14a2a01aee5e', id, 56.00,
+       'Field service · 1.75 hr in a crew of 3 · $32.00 an hour, as an Employee, from Mar 1'
+  FROM time_entry WHERE crew = 'team';
+
 -- An assessment, charged by the visit however long it took, and on INV-0209.
 INSERT INTO time_entry (id, client_uuid, worked_on, seconds, crew, worked_by, created_by,
                         entity_id, site_id, service_id, billable, note)

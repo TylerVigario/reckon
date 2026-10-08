@@ -2073,4 +2073,99 @@ SELECT must_fail($$
   VALUES ('88888888-8888-8888-8888-888888888888', 9, 30, '9a9a9a9a-0000-4000-8000-000000000045')
 $$, 'a leg to a stop on another trip');
 
+\echo ''
+\echo '=== 46. pay is recorded when it is paid, once, and stands ==='
+
+SELECT must_pass($$
+  INSERT INTO person_payment (id, user_id, paid_on, how, client_uuid, created_by) VALUES
+    ('f0f0f0f0-0000-4000-8000-000000000001','a0a0a0a0-0000-4000-8000-0000000000a1','2026-10-01',
+     'Bank transfer','f1f1f1f1-0000-4000-8000-000000000001','a0a0a0a0-0000-4000-8000-0000000000a1'),
+    ('f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a2','2026-10-01',
+     'Cash','f1f1f1f1-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'a payment to each partner');
+
+SELECT must_pass($$
+  INSERT INTO person_payment_item (payment_id, user_id, time_entry_id, amount, said)
+  SELECT 'f0f0f0f0-0000-4000-8000-000000000001','a0a0a0a0-0000-4000-8000-0000000000a1', id,
+         45.00, 'Field service · 1 hr · $45.00 an hour'
+    FROM time_entry WHERE crew = 'one' ORDER BY id LIMIT 1
+$$, 'an entry''s time, paid');
+
+SELECT must_pass($$
+  INSERT INTO person_payment_item (payment_id, user_id, trip_id, amount, said)
+  VALUES ('f0f0f0f0-0000-4000-8000-000000000001','a0a0a0a0-0000-4000-8000-0000000000a1',
+          '88888888-0000-4000-8000-000000000045', 30.00, 'Trip in the Tacoma · 30.0 mi')
+$$, 'a trip''s miles, paid to the vehicle''s owner');
+
+SELECT must_fail($$
+  INSERT INTO person_payment_item (payment_id, user_id, time_entry_id, amount, said)
+  SELECT 'f0f0f0f0-0000-4000-8000-000000000001','a0a0a0a0-0000-4000-8000-0000000000a1', id,
+         45.00, 'Field service · 1 hr'
+    FROM time_entry WHERE crew = 'one' ORDER BY id LIMIT 1
+$$, 'the same work paid to a person twice');
+
+SELECT must_fail($$
+  INSERT INTO person_payment_item (payment_id, user_id, trip_id, amount, said)
+  VALUES ('f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a1',
+          '88888888-8888-8888-8888-888888888888', 10.00, 'Trip')
+$$, 'an item on one person''s payment for another');
+
+SELECT must_pass($$
+  INSERT INTO person_payment (id, user_id, paid_on, how, client_uuid, created_by) VALUES
+    ('f0f0f0f0-0000-4000-8000-000000000003','a0a0a0a0-0000-4000-8000-0000000000a2','2026-10-15',
+     'Cash','f1f1f1f1-0000-4000-8000-000000000004','a0a0a0a0-0000-4000-8000-0000000000a1');
+  INSERT INTO person_payment_item (payment_id, user_id, corrects_payment_id, amount, said)
+  VALUES ('f0f0f0f0-0000-4000-8000-000000000003','a0a0a0a0-0000-4000-8000-0000000000a2',
+          'f0f0f0f0-0000-4000-8000-000000000002', -5.00, 'Paid a visit twice')
+$$, 'a correction to an earlier payment, taking something back');
+
+SELECT must_fail($$
+  INSERT INTO person_payment_item (payment_id, user_id, corrects_payment_id, amount, said)
+  VALUES ('f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a2',
+          'f0f0f0f0-0000-4000-8000-000000000002', -5.00, 'Itself')
+$$, 'a payment correcting itself');
+
+SELECT must_fail($$
+  INSERT INTO person_payment_item (payment_id, user_id, corrects_payment_id, amount, said)
+  VALUES ('f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a2',
+          'f0f0f0f0-0000-4000-8000-000000000001', -5.00, 'Not theirs')
+$$, 'a correction to somebody else''s payment');
+
+SELECT must_fail($$
+  INSERT INTO person_payment_item (payment_id, user_id, trip_id, amount, said)
+  VALUES ('f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a2',
+          '88888888-8888-8888-8888-888888888888', -10.00, 'Trip')
+$$, 'work that takes something back');
+
+SELECT must_fail($$
+  INSERT INTO person_payment_item (payment_id, user_id, trip_id, corrects_payment_id, amount, said)
+  VALUES ('f0f0f0f0-0000-4000-8000-000000000003','a0a0a0a0-0000-4000-8000-0000000000a2',
+          '88888888-8888-8888-8888-888888888888','f0f0f0f0-0000-4000-8000-000000000002', 1.00, 'Both')
+$$, 'an item that is two things');
+
+SELECT must_fail($$
+  INSERT INTO person_payment_item (payment_id, user_id, trip_id, amount, said)
+  VALUES ('f0f0f0f0-0000-4000-8000-000000000002','a0a0a0a0-0000-4000-8000-0000000000a2',
+          '88888888-8888-8888-8888-888888888888', 1.00, '  ')
+$$, 'an item that does not say how');
+
+SELECT must_fail($$
+  INSERT INTO person_payment (user_id, paid_on, how, client_uuid, created_by)
+  VALUES ('a0a0a0a0-0000-4000-8000-0000000000a1','2026-10-02',' ',
+          'f1f1f1f1-0000-4000-8000-000000000003','a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'a payment that does not say how');
+
+SELECT must_fail($$
+  UPDATE person_payment SET paid_on = '2026-10-02'
+   WHERE id = 'f0f0f0f0-0000-4000-8000-000000000001'
+$$, 'a payment changed after it is recorded');
+
+SELECT must_fail($$
+  DELETE FROM person_payment_item WHERE payment_id = 'f0f0f0f0-0000-4000-8000-000000000001'
+$$, 'what a payment covered taken away');
+
+SELECT must_fail($$
+  DELETE FROM trip WHERE id = '88888888-0000-4000-8000-000000000045'
+$$, 'a trip removed after its miles are paid');
+
 \echo 'All guards hold.'
