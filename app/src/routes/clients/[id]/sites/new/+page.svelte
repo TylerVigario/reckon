@@ -6,6 +6,8 @@
 	import type { PageProps } from './$types';
 	import { readJson, readProblem } from '#lib/json.ts';
 	import { resolve } from '$app/paths';
+	import AddressField from '#lib/AddressField.svelte';
+	import type { Resolved } from '#lib/google.ts';
 
 	let { data }: PageProps = $props();
 
@@ -34,10 +36,11 @@
 	let slugTouched = $state(false);
 	let slugTyped = $state('');
 	const slug = $derived(slugTouched ? slugTyped : toSlug(label));
-	let street = $state('');
-	let city = $state('');
-	let region = $state('CA');
-	let postcode = $state('');
+	// THE ADDRESS IS ONE FIELD (8 October 2026), chosen from Google's
+	// suggestions: its parts are Google's for the place chosen, sent with the
+	// place's id for the server to confirm, and never typed.
+	let address = $state('');
+	let chosen = $state<Resolved | null>(null);
 	let miles = $state('');
 	let minutes = $state('');
 
@@ -48,10 +51,11 @@
 	const fields = $derived({
 		label,
 		slug,
-		street,
-		city,
-		region,
-		postcode,
+		street: chosen?.street ?? '',
+		city: chosen?.city ?? '',
+		region: chosen?.region ?? '',
+		postcode: chosen?.postcode ?? '',
+		google_place_id: chosen?.placeId ?? '',
 		round_trip_miles: miles,
 		drive_minutes: minutes,
 		active: 'true'
@@ -96,6 +100,10 @@
 	}
 
 	const show = (name: string) => errors[name] ?? '';
+	// What is wrong with the address, whichever of its parts it is about.
+	const addressWhy = $derived(
+		['google_place_id', 'street', 'city', 'region', 'postcode'].map(show).find(Boolean) ?? ''
+	);
 </script>
 
 <Top
@@ -139,27 +147,9 @@
 						</small>
 						{#if show('slug')}<small class="bad">{show('slug')}</small>{/if}
 					</label>
-					<label class="fld">
-						<span>Street</span>
-						<input class="inp" bind:value={street} placeholder="8556 Gibson Ranch Park Rd" />
-						{#if show('street')}<small class="bad">{show('street')}</small>{/if}
-					</label>
-					<div class="trio">
-						<label class="fld">
-							<span>City</span>
-							<input class="inp" bind:value={city} placeholder="Elverta" />
-							{#if show('city')}<small class="bad">{show('city')}</small>{/if}
-						</label>
-						<label class="fld">
-							<span>State</span>
-							<input class="inp" bind:value={region} />
-							{#if show('region')}<small class="bad">{show('region')}</small>{/if}
-						</label>
-						<label class="fld">
-							<span>Postcode</span>
-							<input class="inp" bind:value={postcode} inputmode="numeric" placeholder="95626" />
-							{#if show('postcode')}<small class="bad">{show('postcode')}</small>{/if}
-						</label>
+					<div class="fld">
+						<AddressField label="Address" bind:value={address} onchosen={(a) => (chosen = a)} />
+						{#if addressWhy}<small class="bad">{addressWhy}</small>{/if}
 					</div>
 					<div class="duo">
 						<label class="fld">
@@ -195,15 +185,6 @@
 		flex-direction: column;
 		gap: 12px;
 		width: 100%;
-	}
-	.trio {
-		display: grid;
-		gap: 12px;
-	}
-	@media (min-width: 560px) {
-		.trio {
-			grid-template-columns: 2fr 1fr 1fr;
-		}
 	}
 	.acts {
 		display: flex;

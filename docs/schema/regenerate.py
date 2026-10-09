@@ -152,7 +152,7 @@ T["site"] = [("PK","id","uuid"),("FK","entity_id","uuid · one client"),
     ("UK","slug","text · in the URL, per client"),
     ("","label","text · this client's name for it"),("","display","text · generated"),
     ("","street","text"),("","city","text"),("","region","text"),("","postcode","text"),
-    ("","google_place_id","text"),("","address_verified_on","date"),
+    ("","google_place_id","text · the place chosen"),("","address_verified_on","date"),
     ("","area_verified_on","date · last asked, NOT NULL"),
     ("","tax_area_code","text · CDTFA TAC, NOT NULL"),
     ("","tax_jurisdiction","text · CDTFA's name, NOT NULL"),
@@ -408,6 +408,10 @@ c += [note("n2", "One building can host two businesses and one person can act fo
                  "the old one. A second copy of a published rate goes stale without "
                  "telling anyone, and is then charged at addresses it was never true "
                  "for.\n\n"
+                 "A site’s address is chosen from Google’s suggestions, never typed: "
+                 "street, city, region and postcode are Google’s parts for the place "
+                 "chosen, stored with google_place_id once Google confirms it, and moved "
+                 "only together. A suite or unit is in the label.\n\n"
                  "CDTFA’s published rate layer carries StateRate, CountyRate and "
                  "CityRate beside the total, keyed by the same TAC the rate API returns "
                  "— StateRate is one value for every jurisdiction in the state, so the "

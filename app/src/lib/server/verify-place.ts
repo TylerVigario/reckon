@@ -7,11 +7,9 @@ import { GOOGLE_MAPS_API_KEY } from '$app/env/private';
  * for anything. Places Details (New) answers in one request, and a field mask
  * of the id alone keeps it on the cheapest SKU.
  *
- * GOOGLE BEING DOWN NEVER STOPS A SAVE. A network failure, a
- * timeout or a missing key all return 'unknown', and the address saves without
- * a verification date. Unverified is not invalid -- the alternative is an
- * address that cannot be corrected because the service that would confirm it
- * is down. Only a definite answer that the place does not exist refuses.
+ * A network failure, a timeout or a missing key all return 'unknown': Google
+ * did not say. What a caller does with that is the caller's; an address does
+ * not save on it (confirmPlace).
  */
 export type Verdict = 'real' | 'no-such-place' | 'unknown';
 
@@ -35,8 +33,27 @@ export async function verifyPlace(placeId: string): Promise<Verdict> {
 		// problem rather than the operator's, and neither says anything about
 		// the address they just chose.
 		if (r.status === 404) return 'no-such-place';
+		// Logged for whoever runs the installation: a key Google refuses, or one
+		// not allowed this API, is theirs to put right, and looks to the person
+		// saving an address like Google being away.
+		console.error('Google would not confirm a place', r.status, await r.text().catch(() => ''));
 		return 'unknown';
 	} catch {
 		return 'unknown';
 	}
+}
+
+/**
+ * AN ADDRESS IS SAVED ONLY AS A PLACE GOOGLE CONFIRMS (8 October 2026): it is
+ * chosen from Google's suggestions and online only, so one Google did not
+ * confirm -- because it does not know it, or could not be asked -- is not
+ * saved. Null when it may be; otherwise why not, in the reader's words.
+ */
+export async function confirmPlace(placeId: string | null | undefined): Promise<string | null> {
+	if (!placeId) return "Choose the address from Google's suggestions.";
+	const verdict = await verifyPlace(placeId);
+	if (verdict === 'real') return null;
+	if (verdict === 'no-such-place')
+		return 'Google does not know that place. Choose the address again.';
+	return 'Google could not confirm the address just now, so it is not saved. Try again.';
 }

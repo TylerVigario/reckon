@@ -6,6 +6,7 @@ import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { lookUpClient } from '#lib/server/find.ts';
 import { SITE_FIELDS, parseSiteField } from '#lib/site-fields.ts';
 import { priceAddress, NoAnswer } from '#lib/server/cdtfa.ts';
+import { confirmPlace } from '#lib/server/verify-place.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
 import { readFields } from '#lib/json.ts';
@@ -21,6 +22,11 @@ import { readFields } from '#lib/json.ts';
  * without them. So the address is priced before the row is written, and a
  * place CDTFA cannot answer for is refused with their reason rather than
  * stored as a site nobody can bill from.
+ *
+ * THE ADDRESS IS A PLACE GOOGLE CONFIRMS (8 October 2026): chosen from
+ * Google's suggestions, its parts arrive with its place id, and Google is asked
+ * whether that is a place before anything else is. Online only: an address
+ * Google could not confirm is not saved.
  *
  * THE CLIENT IS IN THE PATH, not in the body. A site belongs to exactly one
  * client -- site_belongs_to_one_client says so -- and an endpoint that took
@@ -61,6 +67,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	}
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
+	const notAPlace = await confirmPlace(String(row.google_place_id));
+	if (notAPlace) return refuse({ google_place_id: notAPlace });
+
 	let priced;
 	try {
 		priced = await priceAddress({
@@ -97,6 +106,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 							city: String(row.city),
 							region: String(row.region),
 							postcode: String(row.postcode),
+							googlePlaceId: String(row.google_place_id),
+							addressVerifiedOn: areaVerifiedOn,
 							roundTripMiles: optional(row.round_trip_miles, String),
 							driveMinutes: optional(row.drive_minutes, Number),
 							entityId: entity_id,

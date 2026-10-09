@@ -371,23 +371,59 @@ console.log('\n  one save must not erase another');
 	// slug -- the row stays, because invoices point at it -- so a fixed name
 	// makes this pass once and then collide for ever.
 	const stamp = Date.now().toString(36);
+	// An address is chosen from Google's suggestions and confirmed by Google
+	// (8 October 2026): typed parts are refused, and so is a place Google did
+	// not confirm -- here, with no key to ask by, any place at all.
+	const typed = {
+		label: `Write check ${stamp}`,
+		street: '526 C St',
+		city: 'Marysville',
+		region: 'CA',
+		postcode: '95901'
+	};
+	await check(
+		'a site with an address typed rather than chosen is refused',
+		'POST',
+		`/api/clients/${clientSlug}/sites`,
+		{ fields: typed },
+		(/** @type {{ status: number, body: any }} */ r) =>
+			r.status === 400 && /google/i.test(String(r.body?.errors?.google_place_id ?? ''))
+	);
 	const made = await call('POST', `/api/clients/${clientSlug}/sites`, {
-		fields: {
-			label: `Write check ${stamp}`,
-			street: '526 C St',
-			city: 'Marysville',
-			region: 'CA',
-			postcode: '95901'
-		}
+		fields: { ...typed, google_place_id: 'ChIJN1t_tDeuEmsRUsoyG83frY4' }
 	});
 
 	if (made.status === 201) {
 		passed++;
-		console.log('  ✓ a site is created and priced by CDTFA');
-		// Addressed by slug from here, which is the whole point of nesting it.
-		const at = `/api/clients/${clientSlug}/sites/${made.body.slug}`;
+		console.log('  ✓ a site is created at a place Google confirms, and priced by CDTFA');
+	} else if (made.status === 400 && made.body?.errors?.google_place_id) {
+		passed++;
+		console.log('  ✓ a place Google did not confirm is not a site');
+	} else if (JSON.stringify(made.body).includes('CDTFA')) {
+		console.log('  – site creation skipped: CDTFA could not be reached');
+	} else {
+		failures.push(`creating a site: ${made.status} ${JSON.stringify(made.body)?.slice(0, 140)}`);
+		console.log('  ✗ a site is created, or refused, as its place is confirmed');
+	}
 
+	// A site the demo already has, put back as it was.
+	const sitesPage = await (
+		await fetch(`${base}/clients/${clientSlug}/sites`, { headers: { cookie } })
+	).text();
+	const existing =
+		made.status === 201
+			? made.body.slug
+			: [...sitesPage.matchAll(new RegExp(`/clients/${clientSlug}/sites/([a-z0-9-]+)"`, 'g'))]
+					.map((m) => m[1])
+					.find((slug) => slug !== 'new');
+	if (existing) {
+		const at = `/api/clients/${clientSlug}/sites/${existing}`;
+		const page = await (
+			await fetch(`${base}/clients/${clientSlug}/sites/${existing}`, { headers: { cookie } })
+		).text();
+		const label = /<h1[^>]*>(?:\s|<!--[^>]*-->)*([^<]+?)\s*</.exec(page)?.[1];
 		await check('a site renames', 'PATCH', at, { fields: { label: `Renamed ${stamp}` } }, 200);
+		if (label) await check('and takes its own name back', 'PATCH', at, { fields: { label } }, 200);
 		await check('a rate cannot be typed in', 'PATCH', at, { fields: { tax_rate_pct: '0' } }, 400);
 		await check(
 			'a slug that leaves nothing is refused',
@@ -397,34 +433,38 @@ console.log('\n  one save must not erase another');
 			400
 		);
 		await check(
-			'an address CDTFA cannot place is refused',
+			'part of an address on its own is refused: an address moves whole',
 			'PATCH',
 			at,
-			{ fields: { street: 'zzzz', city: 'zzzz', postcode: '00000' } },
+			{ fields: { street: '1001 D St' } },
+			400
+		);
+		await check(
+			'an address with a place Google did not confirm is refused',
+			'PATCH',
+			at,
+			{ fields: { ...typed, label: undefined, google_place_id: 'not-a-place-at-all' } },
 			400
 		);
 		if (otherSlug)
 			await check(
 				'the site is not reachable through another client',
 				'PATCH',
-				`/api/clients/${otherSlug}/sites/${made.body.slug}`,
+				`/api/clients/${otherSlug}/sites/${existing}`,
 				{ fields: { label: 'Should not work' } },
 				404
 			);
-		await check(
-			'somebody is added at the site',
-			'POST',
-			`${at}/contacts`,
-			{ name: 'Write Check', is_primary: true },
-			201
-		);
-		await check('the site closes', 'DELETE', at, undefined, 200);
-	} else if (JSON.stringify(made.body).includes('CDTFA')) {
-		console.log('  – site endpoints skipped: CDTFA could not be reached');
-	} else {
-		failures.push(`creating a site: ${made.status} ${JSON.stringify(made.body)?.slice(0, 140)}`);
-		console.log('  ✗ a site is created and priced by CDTFA');
-	}
+		if (made.status === 201) {
+			await check(
+				'somebody is added at the site',
+				'POST',
+				`${at}/contacts`,
+				{ name: 'Write Check', is_primary: true },
+				201
+			);
+			await check('the site closes', 'DELETE', at, undefined, 200);
+		}
+	} else failures.push(`no site of ${clientSlug} to change`);
 }
 
 console.log('\n  services — made, priced, and taken away again');

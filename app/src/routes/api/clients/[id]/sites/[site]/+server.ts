@@ -8,6 +8,7 @@ import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
 import { ADDRESS_FIELDS, parseSiteField } from '#lib/site-fields.ts';
 import { priceAddress, NoAnswer, type Priced } from '#lib/server/cdtfa.ts';
+import { confirmPlace } from '#lib/server/verify-place.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
 import {
@@ -30,6 +31,11 @@ import { readFields } from '#lib/json.ts';
  *
  * The rate fields themselves are not in the registry and cannot be named by a
  * request. There is no way to type a rate into this system.
+ *
+ * AN ADDRESS MOVES WHOLE (8 October 2026): its four parts, as Google gave them
+ * for the place chosen, with that place's id, which Google is asked about. A
+ * part on its own is refused -- there is no typing one -- and so is a place
+ * Google could not confirm.
  */
 const MOST_AT_ONCE = 8;
 
@@ -81,6 +87,18 @@ export const PATCH: RequestHandler = async (event) => {
 		.from(sites)
 		.where(eq(sites.id, id));
 
+	if (ADDRESS_FIELDS.some((f) => f in row) || 'google_place_id' in row) {
+		const missing = [...ADDRESS_FIELDS, 'google_place_id'].filter((f) => !(f in row));
+		if (missing.length)
+			return refuse(
+				Object.fromEntries(
+					missing.map((f) => [f, "An address moves whole: choose it from Google's suggestions."])
+				)
+			);
+		const notAPlace = await confirmPlace(String(row.google_place_id));
+		if (notAPlace) return refuse({ google_place_id: notAPlace });
+		row.address_verified_on = businessToday();
+	}
 	const moved = ADDRESS_FIELDS.some((f) => f in row && String(row[f]) !== String(site[f] ?? ''));
 
 	let priced: Priced | null = null;

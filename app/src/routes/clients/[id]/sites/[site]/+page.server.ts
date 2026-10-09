@@ -35,6 +35,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			city: s.city,
 			region: s.region,
 			postcode: s.postcode,
+			google_place_id: s.googlePlaceId,
 			round_trip_miles: s.roundTripMiles,
 			drive_minutes: s.driveMinutes,
 			active: s.active,

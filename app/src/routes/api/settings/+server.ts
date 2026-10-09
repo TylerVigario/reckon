@@ -5,7 +5,7 @@ import { invoice, operator } from '#lib/server/db/schema/index.ts';
 import { camel } from '#lib/server/db/rows.ts';
 import { type Errors, refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { parseField } from '#lib/settings-fields.ts';
-import { verifyPlace } from '#lib/server/verify-place.ts';
+import { confirmPlace } from '#lib/server/verify-place.ts';
 import { knownZone } from '#lib/server/zones.ts';
 import { rememberBusiness } from '#lib/server/business.ts';
 import type { TaxRuleSet } from '#lib/server/tax-rules.ts';
@@ -87,16 +87,19 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 			});
 	}
 
-	// The browser asserted this place id. Google is asked whether it is a place
-	// -- and Google's answer, not the browser's claim, is what sets the date
-	// saying when this was last confirmed.
+	// An address is a place chosen from Google's suggestions, with its id, and
+	// Google is asked whether it is one: its answer, not the browser's claim,
+	// is what lets the address save and dates when it was confirmed. No
+	// address at all is the one other thing it may be.
 	let verified = false;
-	if (row.google_place_id) {
-		const verdict = await verifyPlace(row.google_place_id as string);
-		if (verdict === 'no-such-place')
-			return refuse({ address: 'Google does not know that place. Choose the address again.' });
-		verified = verdict === 'real';
-	}
+	if ('address' in row) {
+		if (row.address) {
+			const why = await confirmPlace(row.google_place_id as string | null);
+			if (why) return refuse({ address: why });
+			verified = true;
+		} else row.google_place_id = null;
+	} else if ('google_place_id' in row)
+		return refuse({ address: 'An address and its place are saved together.' });
 
 	// The business's time zone: its clock for overdue, ageing and report months,
 	// and the zone a person follows until they set their own. It has to be one

@@ -9,6 +9,7 @@
 	} from '#lib/google.ts';
 	import { readJson } from '#lib/json.ts';
 	import type { Verdict } from '#lib/verdict.ts';
+	import { onMount, untrack } from 'svelte';
 
 	/**
 	 * An address, chosen rather than typed.
@@ -30,29 +31,49 @@
 		label = 'Address',
 		value = $bindable<string>(''),
 		placeId = $bindable<string | null>(null),
-		onresolved,
-		oncommit
+		onchosen
 	}: {
 		label?: string;
 		value?: string;
 		placeId?: string | null;
-		onresolved?: (a: Resolved) => void;
 		/**
-		 * The address is settled -- a place was chosen, or focus left a box
-		 * somebody typed into. Fires once per settling, so a caller that saves
-		 * on it does not save a half-typed street.
+		 * A place was chosen from Google's suggestions and its parts fetched:
+		 * the one moment an address changes (8 October 2026). Typing alone
+		 * never does.
 		 */
-		oncommit?: (a: { value: string; placeId: string | null }) => void;
+		onchosen?: (a: Resolved) => void;
 	} = $props();
 
 	/**
+	 * AN ADDRESS IS CHOSEN, NEVER TYPED, and only with Google to choose from.
+	 * What is typed is a question to Google's suggestions; leaving the box
+	 * without choosing one puts back the address that was there. With no key,
+	 * or no connection, the box says so and takes nothing: there is no address
+	 * to be had without Google, so there is no typed one standing in for it.
+	 */
+	const live = addressesAreLive;
+	let kept = $state({ value: untrack(() => value), placeId: untrack(() => placeId) });
+	let online = $state(true);
+	let notChosen = $state(false);
+	onMount(() => {
+		online = navigator.onLine;
+		const on = () => (online = true);
+		const off = () => (online = false);
+		addEventListener('online', on);
+		addEventListener('offline', off);
+		return () => {
+			removeEventListener('online', on);
+			removeEventListener('offline', off);
+		};
+	});
+	const usable = $derived(live && online);
+
+	/**
 	 * A choice is being resolved. Blur fires before the click that picked a
-	 * suggestion finishes, so without this the field would commit what was
-	 * typed and then commit again with what Google returned.
+	 * suggestion finishes, so without this the field would put back the old
+	 * address and then take Google's.
 	 */
 	let choosing = $state(false);
-
-	const live = addressesAreLive;
 
 	// What validation said about the chosen address, if a server key exists.
 	let verdict = $state<Verdict | null>(null);
@@ -96,7 +117,8 @@
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	function typed(v: string) {
 		value = v;
-		// A chosen place no longer describes what is in the box.
+		notChosen = false;
+		// What is in the box is a question now, not a place.
 		placeId = null;
 		clearTimeout(timer);
 		timer = setTimeout(() => void look(v), 200);
@@ -111,7 +133,8 @@
 			const a = await resolve(s);
 			value = a.formatted;
 			placeId = a.placeId;
-			onresolved?.(a);
+			kept = { value, placeId };
+			onchosen?.(a);
 
 			// Once per address, on the server, with the other key. Choosing a
 			// place says it exists; this says it is deliverable. It never blocks
@@ -135,12 +158,12 @@
 			}
 		} catch (e) {
 			failed = (e as Error).message;
+			({ value, placeId } = kept);
 		} finally {
 			// Fetching the details ends the session; the next keystroke starts one.
 			session = null;
 			choosing = false;
 			input?.focus();
-			oncommit?.({ value, placeId });
 		}
 	}
 
@@ -173,16 +196,19 @@
 		aria-expanded={open}
 		aria-controls="address-list"
 		aria-autocomplete="list"
-		placeholder={live ? 'Start typing an address' : 'Address'}
+		placeholder={usable ? 'Start typing, then choose the address' : ''}
+		disabled={!usable}
 		{value}
 		oninput={(e) => typed(e.currentTarget.value)}
 		onkeydown={key}
 		onblur={() =>
 			setTimeout(() => {
 				open = false;
-				// choose() commits for itself, with the resolved place rather
-				// than whatever was half-typed before the click.
-				if (!choosing) oncommit?.({ value, placeId });
+				// Left without choosing: what was typed was never an address.
+				if (!choosing && value !== kept.value) {
+					({ value, placeId } = kept);
+					notChosen = true;
+				}
 			}, 160)}
 	/>
 
@@ -203,7 +229,11 @@
 		{/if}
 	{/if}
 	{#if !live}
-		<span class="hint">PUBLIC_GOOGLE_MAPS_API_KEY is not set, so addresses are typed.</span>
+		<span class="hint warn">No Google key is set here, so no address can be looked up.</span>
+	{:else if !online}
+		<span class="hint warn">Looking an address up needs a connection.</span>
+	{:else if notChosen}
+		<span class="hint warn">Not changed: an address is one of Google's suggestions.</span>
 	{/if}
 
 	{#if open}
@@ -262,6 +292,10 @@
 		padding: 0.55rem 0.65rem;
 		width: 100%;
 		box-sizing: border-box;
+	}
+	input:disabled {
+		color: var(--ink-faint);
+		cursor: not-allowed;
 	}
 	input:focus-visible {
 		outline: 2px solid var(--accent);
