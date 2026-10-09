@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.6.0](https://github.com/TylerVigario/reckon/compare/v0.5.0...v0.6.0) (2026-10-09)
+
+### Features
+
+* Stock is received in the app, with its costs, who paid and its receipt ([#61](https://github.com/TylerVigario/reckon/pull/61))
+* A draft takes lines for what was bought or paid for, with who paid and the receipt ([#64](https://github.com/TylerVigario/reckon/pull/64))
+* A draft takes lines drawn from stock, costed at the average or the oldest first ([#65](https://github.com/TylerVigario/reckon/pull/65))
+* Lines wait on the phone, and a draft opens with no signal ([#66](https://github.com/TylerVigario/reckon/pull/66))
+* A draft can be started with no signal, and a line meant for one that went out starts another ([#67](https://github.com/TylerVigario/reckon/pull/67))
+* A line added by hand can be changed or taken off its draft, and keeps its whole history ([#68](https://github.com/TylerVigario/reckon/pull/68))
+* A line changed on a phone with no signal is merged field by field with any change made meanwhile ([#69](https://github.com/TylerVigario/reckon/pull/69))
+* A team entry names who was on it, and bills and pays at that crew ([#70](https://github.com/TylerVigario/reckon/pull/70))
+* A trip names its vehicle, and its miles pay the vehicle's owner ([#72](https://github.com/TylerVigario/reckon/pull/72))
+* A trip is recorded in the app, each leg given to whoever caused it ([#73](https://github.com/TylerVigario/reckon/pull/73))
+* A trip's drives take their miles from Google's route ([#74](https://github.com/TylerVigario/reckon/pull/74))
+* A trip is changed after it is saved ([#75](https://github.com/TylerVigario/reckon/pull/75))
+* A trip is recorded or changed with no signal, and sent when there is one ([#77](https://github.com/TylerVigario/reckon/pull/77))
+* Pay is recorded when it is paid, and stands ([#78](https://github.com/TylerVigario/reckon/pull/78))
+* Pay is separated by what each role is paid as ([#79](https://github.com/TylerVigario/reckon/pull/79))
+* An invoice is sent with its link ([#80](https://github.com/TylerVigario/reckon/pull/80))
+* An address is one field, chosen from Google, and stored in its pieces ([#81](https://github.com/TylerVigario/reckon/pull/81))
+
+### Bug Fixes
+
+* The behaviour job waits a minute for its browser, and says when it never came ([#63](https://github.com/TylerVigario/reckon/pull/63))
+* A team is whoever is ticked, in the start page's prompt and the schema ([#71](https://github.com/TylerVigario/reckon/pull/71))
+
 ## [0.5.0](https://github.com/TylerVigario/reckon/compare/v0.4.0...v0.5.0) (2026-10-05)
 
 ### Features
