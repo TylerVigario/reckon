@@ -22,7 +22,8 @@
 
 	// The address is three columns that only make sense together -- the text,
 	// the place it is, and when Google last agreed -- so it is the one thing
-	// here that does not go through <Setting>.
+	// here that does not go through <Setting>. It is chosen from Google's
+	// suggestions, and saved when it is (#lib/AddressField).
 	let address = $state(untrack(() => data.operator?.address ?? ''));
 	let placeId = $state<string | null>(untrack(() => data.operator?.google_place_id ?? null));
 	let addrStatus = $state<'idle' | 'saving' | 'ok' | 'bad'>('idle');
@@ -58,10 +59,7 @@
 			if (r.ok) {
 				addrStored = key;
 				addrStatus = 'ok';
-				addrSaid =
-					a.placeId && !(out as { address_verified?: boolean }).address_verified
-						? 'Saved, not confirmed'
-						: 'Saved';
+				addrSaid = 'Saved';
 				clearAddrOk = setTimeout(() => {
 					if (addrStatus === 'ok') addrStatus = 'idle';
 				}, 2500);
@@ -135,7 +133,12 @@
 						{#if addrStatus === 'saving'}Saving…{:else if addrStatus === 'ok'}{addrSaid}{/if}
 					</span>
 				</label>
-				<AddressField label="" bind:value={address} bind:placeId oncommit={saveAddress} />
+				<AddressField
+					label=""
+					bind:value={address}
+					bind:placeId
+					onchosen={(a) => saveAddress({ value: a.formatted, placeId: a.placeId })}
+				/>
 				{#if addrStatus === 'bad'}<small class="why">{addrWhy}</small>{/if}
 			</div>
 

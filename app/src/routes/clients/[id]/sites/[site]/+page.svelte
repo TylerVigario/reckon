@@ -8,6 +8,8 @@
 	import type { PageProps } from './$types';
 	import { readProblem } from '#lib/json.ts';
 	import { resolve } from '$app/paths';
+	import AddressField from '#lib/AddressField.svelte';
+	import type { Resolved } from '#lib/google.ts';
 
 	let { data }: PageProps = $props();
 	const s = $derived(data.site);
@@ -24,6 +26,46 @@
 	const api = $derived(`/api/clients/${s.client_slug}/sites/${s.slug}`);
 
 	const made = $derived(rateParts(s.state_rate_pct, s.district_rate_pct));
+
+	/**
+	 * THE ADDRESS IS ONE FIELD (8 October 2026). Choosing a place saves it
+	 * whole -- its parts as Google gave them and the place's id -- so CDTFA is
+	 * asked once; the field is drawn afresh from the site as saved.
+	 */
+	const addressLine = $derived(
+		`${s.street}, ${s.city}, ${s.region ?? ''} ${s.postcode}`.replace(/\s+/g, ' ').trim()
+	);
+	let moving = $state<'' | 'saving' | 'bad'>('');
+	let movingWhy = $state('');
+	async function moveTo(a: Resolved) {
+		moving = 'saving';
+		const r = await fetch(api, {
+			method: 'PATCH',
+			headers: {
+				'content-type': 'application/json',
+				...(version ? { 'if-match': `"${version}"` } : {})
+			},
+			body: JSON.stringify({
+				fields: {
+					street: a.street ?? '',
+					city: a.city ?? '',
+					region: a.region ?? '',
+					postcode: a.postcode ?? '',
+					google_place_id: a.placeId
+				}
+			})
+		}).catch(() => null);
+		if (!r?.ok) {
+			const p = r ? await readProblem(r) : null;
+			moving = 'bad';
+			movingWhy = r
+				? (Object.values(p?.errors ?? {})[0] ?? p?.detail ?? 'That did not save.')
+				: 'Not saved — no connection.';
+			return;
+		}
+		moving = '';
+		await refreshAll();
+	}
 
 	// Adding somebody: an existing person of this client's, or a new one.
 	let adding = $state(false);
@@ -134,47 +176,22 @@
 					})}
 				required
 			/>
-			<Setting
-				name="street"
-				label="Street"
-				value={s.street}
-				endpoint={api}
-				{version}
-				onversion={(v) => (version = v)}
-				validate={parseSiteField}
-				required
-			/>
-			<Setting
-				name="city"
-				label="City"
-				value={s.city}
-				endpoint={api}
-				{version}
-				onversion={(v) => (version = v)}
-				validate={parseSiteField}
-				required
-			/>
-			<Setting
-				name="region"
-				label="State"
-				value={s.region}
-				endpoint={api}
-				{version}
-				onversion={(v) => (version = v)}
-				validate={parseSiteField}
-				required
-			/>
-			<Setting
-				name="postcode"
-				label="Postcode"
-				value={s.postcode}
-				endpoint={api}
-				{version}
-				onversion={(v) => (version = v)}
-				validate={parseSiteField}
-				hint="CDTFA will not price an address without one"
-				required
-			/>
+			{#key addressLine + (s.google_place_id ?? '')}
+				<div class="fld">
+					<label for="address-input">Address</label>
+					<AddressField
+						label=""
+						value={addressLine}
+						placeId={s.google_place_id}
+						onchosen={moveTo}
+					/>
+					{#if moving === 'saving'}
+						<small>Asking CDTFA…</small>
+					{:else if moving === 'bad'}
+						<small class="why">{movingWhy}</small>
+					{/if}
+				</div>
+			{/key}
 			<Setting
 				name="round_trip_miles"
 				label="Round trip"
@@ -314,6 +331,9 @@
 </div>
 
 <style>
+	.why {
+		color: var(--crit);
+	}
 	.acts {
 		display: flex;
 		gap: 8px;

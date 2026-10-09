@@ -264,11 +264,18 @@ first and last at most, and no traffic.
 
 A host with IPv6 reaches Google over it whenever it can, from addresses that
 change within its prefix. Restrict the key to that range — its `/64` — as well as
-its IPv4 address: a key that admits only one refuses the other, and each lookup
-falls back without a word to the person using the app.
+its IPv4 address: a key that admits only one refuses the other, and every address
+is refused with it.
 
-Unset is a supported state, not a broken one: the address field is an ordinary
-text input.
+An address is chosen, never typed. Wherever one is looked up — a site's, the
+business's own — it is one field: what is typed asks Google for suggestions,
+choosing one saves it, and leaving without choosing changes nothing. The server
+asks Google whether the place is one before it stores the address's street, city,
+state and postcode with the place id, and an address Google could not confirm is
+not saved. Google's Places policy lets the place id be kept indefinitely and the
+street address an end user selects be kept as theirs; reckon keeps no coordinates.
+Without both keys, or without a connection, the field says so and takes nothing:
+there is no typed address standing in for a place.
 
 ## Documents
 

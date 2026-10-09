@@ -42,13 +42,16 @@ export const SITE_FIELDS = {
 		return v.length > 80 ? no('At most 80 characters.') : ok(v);
 	},
 
+	// The address is chosen from Google's suggestions (8 October 2026), and these
+	// are its parts as Google gave them, with the place they are -- never typed.
 	// Street, city and postcode are all required, here as in the schema: the
 	// CDTFA lookup takes all three or answers nothing, and a site with no rate
 	// cannot be billed from.
-	street: required('CDTFA needs a street to price this address.', cap(200)),
-	city: required('CDTFA needs a city to price this address.', cap(120)),
-	region: required('A state is needed.', cap(60)),
-	postcode: required('CDTFA needs a postcode to price this address.', cap(20)),
+	street: required('That place has no street: choose a street address.', cap(200)),
+	city: required('That place has no city: choose a street address.', cap(120)),
+	region: required('That place has no state: choose a street address.', cap(60)),
+	postcode: required('That place has no postcode, and CDTFA needs one.', cap(20)),
+	google_place_id: required("Choose the address from Google's suggestions.", cap(300)),
 
 	// Round trip from the yard, and how long it takes. Both optional: a site
 	// nobody has measured still bills for the work done at it.
@@ -60,7 +63,10 @@ export const SITE_FIELDS = {
 
 export type SiteFieldName = keyof typeof SITE_FIELDS;
 
-/** The fields that, when changed, mean CDTFA has to be asked again. */
+/**
+ * The fields that, when changed, mean CDTFA has to be asked again. They move
+ * together, with the place they are (google_place_id), or not at all.
+ */
 export const ADDRESS_FIELDS = [
 	'street',
 	'city',
