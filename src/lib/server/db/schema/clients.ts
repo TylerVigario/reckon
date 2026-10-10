@@ -126,6 +126,11 @@ export const site = pgTable(
 		 * different facts and the screens say which.
 		 */
 		areaVerifiedOn: day().notNull(),
+		/**
+		 * From the business and back, and the drive there: Google's route,
+		 * worked out whenever the place is chosen, or typed over by hand. Empty
+		 * when nobody could say, rather than a figure for where the site was.
+		 */
 		roundTripMiles: decimal(8, 1),
 		driveMinutes: integer(),
 		active: boolean().default(true).notNull(),

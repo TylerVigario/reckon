@@ -44,6 +44,40 @@
 	let miles = $state('');
 	let minutes = $state('');
 
+	/**
+	 * HOW FAR IT IS, AS SOON AS IT IS CHOSEN (8 October 2026): Google's route
+	 * from the business and back, there to be typed over before anything is
+	 * saved. A place chosen again is somewhere else, so what the boxes held goes
+	 * with it, typed or not.
+	 */
+	let measured = $state('');
+	let asking = 0;
+	async function choose(a: Resolved) {
+		chosen = a;
+		const mine = ++asking;
+		measured = 'Asking Google how far it is…';
+		const r = await fetch('/api/sites/drive', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ fields: { google_place_id: a.placeId } })
+		}).catch(() => null);
+		const d = r?.ok
+			? ((await readJson(r).catch(() => null)) as {
+					round_trip_miles: string | null;
+					drive_minutes: number | null;
+					why: string | null;
+				} | null)
+			: null;
+		// Another place was chosen while this one was being asked about.
+		if (mine !== asking) return;
+		miles = d?.round_trip_miles ?? '';
+		minutes =
+			d?.drive_minutes === null || d?.drive_minutes === undefined ? '' : String(d.drive_minutes);
+		measured = !d
+			? 'Google could not be asked how far it is. Type it if you know it.'
+			: (d.why ?? "Google's route from the business and back. Type over it if you know better.");
+	}
+
 	let errors = $state<Record<string, string>>({});
 	let saying = $state('');
 	let saving = $state(false);
@@ -148,7 +182,7 @@
 						{#if show('slug')}<small class="bad">{show('slug')}</small>{/if}
 					</label>
 					<div class="fld">
-						<AddressField label="Address" bind:value={address} onchosen={(a) => (chosen = a)} />
+						<AddressField label="Address" bind:value={address} onchosen={choose} />
 						{#if addressWhy}<small class="bad">{addressWhy}</small>{/if}
 					</div>
 					<div class="duo">
@@ -165,6 +199,9 @@
 							{#if show('drive_minutes')}<small class="bad">{show('drive_minutes')}</small>{/if}
 						</label>
 					</div>
+					<small class="lt"
+						>{measured || 'Google works these out when the address is chosen.'}</small
+					>
 					{#if saying}<div class="rec-s bad">{saying}</div>{/if}
 					<div class="acts">
 						<button class="btn pri" onclick={create} disabled={saving}>

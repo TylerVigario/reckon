@@ -159,7 +159,8 @@ T["site"] = [("PK","id","uuid"),("FK","entity_id","uuid · one client"),
     ("","tax_rate_pct","numeric · CDTFA's rate, NOT NULL"),
     ("","state_rate_pct","numeric · the state's share"),
     ("","district_rate_pct","numeric · the districts on top"),
-    ("","round_trip_miles","numeric"),("","drive_minutes","int"),("","active","bool"),
+    ("","round_trip_miles","numeric · Google's route"),("","drive_minutes","int · one way"),
+    ("","active","bool"),
     ("","created_at","timestamptz")]
 T["contact"] = [("PK","id","uuid"),("","name","text"),("","email","text"),
     ("","phone","text"),("","note","text")]
@@ -411,7 +412,11 @@ c += [note("n2", "One building can host two businesses and one person can act fo
                  "A site’s address is chosen from Google’s suggestions, never typed: "
                  "street, city, region and postcode are Google’s parts for the place "
                  "chosen, stored with google_place_id once Google confirms it, and moved "
-                 "only together. A suite or unit is in the label.\n\n"
+                 "only together. A suite or unit is in the label. round_trip_miles and "
+                 "drive_minutes are Google’s route there and back from the business, "
+                 "measured whenever the place is chosen and typed over where somebody "
+                 "knows better; a site that moved where Google cannot say keeps "
+                 "neither.\n\n"
                  "CDTFA’s published rate layer carries StateRate, CountyRate and "
                  "CityRate beside the total, keyed by the same TAC the rate API returns "
                  "— StateRate is one value for every jurisdiction in the state, so the "

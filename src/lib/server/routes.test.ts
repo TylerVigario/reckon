@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('$app/env/private', () => ({ GOOGLE_MAPS_API_KEY: 'test-key' }));
 
-const { routeMiles } = await import('./routes.ts');
+const { roundTrip, routeMiles } = await import('./routes.ts');
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -79,5 +79,69 @@ describe("a trip's miles by Google's route", () => {
 		});
 		expect(await routeMiles([place(500), place(501)])).toEqual(['0.6']);
 		expect(signal).toBeInstanceOf(AbortSignal);
+	});
+});
+
+describe("a site's drive, there and back", () => {
+	/** Google, answering with the way there and the way back. */
+	const google2 = (there: { m: number; d?: string }, back: { m: number; d?: string }) => {
+		const asked: { body: Record<string, unknown>; headers: Record<string, string> }[] = [];
+		vi.stubGlobal('fetch', (_: string, init: RequestInit) => {
+			asked.push({
+				body: JSON.parse(init.body as string) as Record<string, unknown>,
+				headers: init.headers as Record<string, string>
+			});
+			const legs = [
+				{ distanceMeters: there.m, duration: there.d },
+				{ distanceMeters: back.m, duration: back.d }
+			];
+			return Promise.resolve(Response.json({ routes: [{ legs }] }));
+		});
+		return asked;
+	};
+
+	it('is one request from the business, by the site, and back, with the time asked for', async () => {
+		const asked = google2({ m: 66098, d: '2495s' }, { m: 66184, d: '2532s' });
+		expect(await roundTrip({ placeId: 'base' }, place(600))).toEqual({
+			miles: '82.2',
+			minutes: 42
+		});
+		expect(asked).toHaveLength(1);
+		expect(asked[0].body).toEqual({
+			origin: { placeId: 'base' },
+			destination: { placeId: 'base' },
+			intermediates: [place(600)],
+			travelMode: 'DRIVE'
+		});
+		expect(asked[0].headers['X-Goog-FieldMask']).toBe(
+			'routes.legs.distanceMeters,routes.legs.duration'
+		);
+	});
+
+	it('counts both ways for the miles, and the way there for the time', async () => {
+		google2({ m: 1609.344 * 10, d: '600s' }, { m: 1609.344 * 12, d: '900s' });
+		expect(await roundTrip({ placeId: 'base' }, place(700))).toEqual({
+			miles: '22.0',
+			minutes: 10
+		});
+	});
+
+	it('says nothing rather than guess the time when Google gives none', async () => {
+		google2({ m: 1000 }, { m: 1000 });
+		expect(await roundTrip({ placeId: 'base' }, place(800))).toBeNull();
+	});
+
+	it('says nothing when Google refuses', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.stubGlobal('fetch', () => Promise.resolve(new Response('denied', { status: 403 })));
+		expect(await roundTrip({ placeId: 'base' }, place(850))).toBeNull();
+	});
+
+	it('does not ask again for a place it has just measured', async () => {
+		google2({ m: 1000, d: '60s' }, { m: 1000, d: '60s' });
+		await roundTrip({ placeId: 'base' }, place(900));
+		const again = google2({ m: 9999, d: '999s' }, { m: 9999, d: '999s' });
+		expect(await roundTrip({ placeId: 'base' }, place(900))).toEqual({ miles: '1.2', minutes: 1 });
+		expect(again).toHaveLength(0);
 	});
 });

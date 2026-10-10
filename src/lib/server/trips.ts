@@ -6,6 +6,7 @@ import { businessToday } from './calendar.ts';
 import { sum } from '#lib/decimal.ts';
 import { driveKey, type Place } from '#lib/trip-legs.ts';
 import { operatorRow } from './operator.ts';
+import { baseOf } from './site-drive.ts';
 import type { Waypoint } from './routes.ts';
 
 /**
@@ -112,11 +113,7 @@ export async function waypointsOf(trip: {
 					.where(inArray(t.site.id, ids))
 			: Promise.resolve([])
 	]);
-	const base: Waypoint | null = operator?.google_place_id
-		? { placeId: operator.google_place_id }
-		: operator?.address
-			? { address: operator.address }
-			: null;
+	const base = baseOf(operator);
 	const at = (address: string | null): Waypoint | null => (address ? { address } : base);
 	const stops = trip.stops.map((s): Waypoint | null => {
 		if (s.address) return { address: s.address };

@@ -255,8 +255,8 @@ to `.env` for local development, beside `vite.config.ts`, where Vite reads it.
 | `PGHOST`                         | `/var/run/postgresql` | a unix socket, which peer-authenticates rather than asking for a password                                                                                          |
 | `PGDATABASE`                     | `reckon_dev`          |                                                                                                                                                                    |
 | `DATABASE_URL`                   | —                     | wins outright over `PGHOST`/`PGDATABASE`, for TCP, another machine, or a managed service                                                                           |
-| `PUBLIC_GOOGLE_MAPS_API_KEY`     | **unset**             | the browser key. Enables address lookup; unset, addresses are typed                                                                                                |
-| `GOOGLE_MAPS_API_KEY`            | **unset**             | the server key. Validates a chosen address and gives a trip's drives their miles; unset, an address is stored as Google returned it and miles are typed            |
+| `PUBLIC_GOOGLE_MAPS_API_KEY`     | **unset**             | the browser key. Address lookup; unset, no address can be chosen, so none is saved                                                                                 |
+| `GOOGLE_MAPS_API_KEY`            | **unset**             | the server key. Confirms a chosen place, and measures a site's drive and a trip's miles; unset, no address is saved and miles are typed                            |
 
 **Two keys, because a Google API key carries exactly one application
 restriction.** It can be restricted to HTTP referrers _or_ to IP addresses,
@@ -282,11 +282,13 @@ unrestrictable — the worst of the options, and not obviously so.
 `GOOGLE_MAPS_API_KEY` is private in `src/env.ts` and never reaches a page. Restrict it to
 **IP addresses** for this host, and to three APIs: **Address Validation API**;
 **Places API (New)**, which confirms that a place id a browser sent is a place; and
-**Routes API**, which gives each drive of a trip being recorded its miles. Each is
-used once per address or once per change to a trip's stops, rather than once per
-keystroke, so the round trip that ruled out proxying the autocomplete does not
-apply. A trip's route is one request at the Essentials tier, ten places between its
-first and last at most, and no traffic.
+**Routes API**, which gives each drive of a trip being recorded its miles, and a
+site its round trip and drive time whenever its place is chosen. Each is used once
+per address or once per change to a trip's stops, rather than once per keystroke,
+so the round trip that ruled out proxying the autocomplete does not apply. A
+trip's route is one request at the Essentials tier, ten places between its first
+and last at most, and no traffic; a site's is one request, from the business by
+the site and back.
 
 A host with IPv6 reaches Google over it whenever it can, from addresses that
 change within its prefix. Restrict the key to that range — its `/64` — as well as
