@@ -467,6 +467,30 @@ console.log('\n  one save must not erase another');
 	} else failures.push(`no site of ${clientSlug} to change`);
 }
 
+// How far a place is, asked for on New site before anything is saved: Google's
+// route there and back, or nothing and why. With no key, as here, it is the why.
+console.log('\n  how far a place is, before it is a site');
+await check(
+	'a place is measured, or said why not',
+	'POST',
+	'/api/sites/drive',
+	{ fields: { google_place_id: 'ChIJN1t_tDeuEmsRUsoyG83frY4' } },
+	(/** @type {{ status: number, body: any }} */ r) =>
+		r.status === 200 &&
+		(r.body?.why === null
+			? r.body.round_trip_miles !== null && r.body.drive_minutes !== null
+			: typeof r.body?.why === 'string' &&
+				r.body.round_trip_miles === null &&
+				r.body.drive_minutes === null)
+);
+await check(
+	'a place not chosen from Google is refused',
+	'POST',
+	'/api/sites/drive',
+	{ fields: { google_place_id: '' } },
+	400
+);
+
 console.log('\n  services — made, priced, and taken away again');
 
 // Days far from today on purpose: the harness's clock and the database's can

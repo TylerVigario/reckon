@@ -53,8 +53,10 @@ export const SITE_FIELDS = {
 	postcode: required('That place has no postcode, and CDTFA needs one.', cap(20)),
 	google_place_id: required("Choose the address from Google's suggestions.", cap(300)),
 
-	// Round trip from the yard, and how long it takes. Both optional: a site
-	// nobody has measured still bills for the work done at it.
+	// Round trip from the business and back, and the drive there in minutes.
+	// Google's route works them out whenever the place is chosen, and either is
+	// typed over where somebody knows better. Both optional: a site nobody
+	// could measure still bills for the work done at it.
 	round_trip_miles: optional(decimal(8, 1)),
 	drive_minutes: optional(whole(0)),
 

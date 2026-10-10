@@ -6,7 +6,7 @@
 	import { hours, pct, rateParts } from '#lib/format.ts';
 	import Day from '#lib/Day.svelte';
 	import type { PageProps } from './$types';
-	import { readProblem } from '#lib/json.ts';
+	import { readJson, readProblem } from '#lib/json.ts';
 	import { resolve } from '$app/paths';
 	import AddressField from '#lib/AddressField.svelte';
 	import type { Resolved } from '#lib/google.ts';
@@ -30,13 +30,16 @@
 	/**
 	 * THE ADDRESS IS ONE FIELD (8 October 2026). Choosing a place saves it
 	 * whole -- its parts as Google gave them and the place's id -- so CDTFA is
-	 * asked once; the field is drawn afresh from the site as saved.
+	 * asked once, and Google's route measures the drive again; the field, the
+	 * round trip and the drive time are drawn afresh from the site as saved.
 	 */
 	const addressLine = $derived(
 		`${s.street}, ${s.city}, ${s.region ?? ''} ${s.postcode}`.replace(/\s+/g, ' ').trim()
 	);
 	let moving = $state<'' | 'saving' | 'bad'>('');
 	let movingWhy = $state('');
+	// Why the drive was not measured, when it was asked for and could not be.
+	let unmeasured = $state('');
 	async function moveTo(a: Resolved) {
 		moving = 'saving';
 		const r = await fetch(api, {
@@ -63,6 +66,8 @@
 				: 'Not saved — no connection.';
 			return;
 		}
+		const done = (await readJson(r).catch(() => null)) as { unmeasured?: string | null } | null;
+		unmeasured = done?.unmeasured ?? '';
 		moving = '';
 		await refreshAll();
 	}
@@ -186,34 +191,36 @@
 						onchosen={moveTo}
 					/>
 					{#if moving === 'saving'}
-						<small>Asking CDTFA…</small>
+						<small>Asking CDTFA, and Google how far it is…</small>
 					{:else if moving === 'bad'}
 						<small class="why">{movingWhy}</small>
+					{:else if unmeasured}
+						<small class="why">{unmeasured}</small>
 					{/if}
 				</div>
+				<Setting
+					name="round_trip_miles"
+					label="Round trip"
+					value={s.round_trip_miles ?? ''}
+					endpoint={api}
+					{version}
+					onversion={(v) => (version = v)}
+					validate={parseSiteField}
+					inputmode="decimal"
+					hint="Miles from the business and back, by Google's route until typed over"
+				/>
+				<Setting
+					name="drive_minutes"
+					label="Drive time"
+					value={s.drive_minutes ?? ''}
+					endpoint={api}
+					{version}
+					onversion={(v) => (version = v)}
+					validate={parseSiteField}
+					inputmode="numeric"
+					hint="Minutes, one way, by Google's route until typed over"
+				/>
 			{/key}
-			<Setting
-				name="round_trip_miles"
-				label="Round trip"
-				value={s.round_trip_miles ?? ''}
-				endpoint={api}
-				{version}
-				onversion={(v) => (version = v)}
-				validate={parseSiteField}
-				inputmode="decimal"
-				hint="Miles from the yard and back"
-			/>
-			<Setting
-				name="drive_minutes"
-				label="Drive time"
-				value={s.drive_minutes ?? ''}
-				endpoint={api}
-				{version}
-				onversion={(v) => (version = v)}
-				validate={parseSiteField}
-				inputmode="numeric"
-				hint="Minutes, one way"
-			/>
 		</div>
 	</div>
 

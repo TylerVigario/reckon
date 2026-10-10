@@ -7,6 +7,7 @@ import { lookUpClient } from '#lib/server/find.ts';
 import { SITE_FIELDS, parseSiteField } from '#lib/site-fields.ts';
 import { priceAddress, NoAnswer } from '#lib/server/cdtfa.ts';
 import { confirmPlace } from '#lib/server/verify-place.ts';
+import { measureDrive } from '#lib/server/site-drive.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
 import { readFields } from '#lib/json.ts';
@@ -27,6 +28,11 @@ import { readFields } from '#lib/json.ts';
  * Google's suggestions, its parts arrive with its place id, and Google is asked
  * whether that is a place before anything else is. Online only: an address
  * Google could not confirm is not saved.
+ *
+ * AND HOW FAR IT IS (8 October 2026). A site given no round trip and no drive
+ * time has them from Google's route, there and back from the business
+ * (#lib/server/site-drive). New site has already asked, and sends what it was
+ * told or what was typed over it; this is the same answer for any other caller.
  *
  * THE CLIENT IS IN THE PATH, not in the body. A site belongs to exactly one
  * client -- site_belongs_to_one_client says so -- and an endpoint that took
@@ -81,6 +87,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		// Against the postcode, because that is the field most often wrong and
 		// the one the reader can act on. The message is CDTFA's own.
 		return refuse({ postcode: e instanceof NoAnswer ? e.message : 'CDTFA could not be reached.' });
+	}
+
+	if (row.round_trip_miles === null && row.drive_minutes === null) {
+		const { drive } = await measureDrive(String(row.google_place_id));
+		if (drive) Object.assign(row, { round_trip_miles: drive.miles, drive_minutes: drive.minutes });
 	}
 
 	try {
