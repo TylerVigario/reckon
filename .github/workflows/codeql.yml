@@ -2,7 +2,7 @@ name: CodeQL
 
 # Static analysis of the application and of the workflows.
 #
-#   javascript-typescript   the server and the shared library under app/src,
+#   javascript-typescript   the server and the shared library under src,
 #                           the scripts that run against a database, and the
 #                           repository tooling. The server is where a request
 #                           meets SQL and the filesystem.
@@ -16,10 +16,10 @@ name: CodeQL
 # exists is what stops anyone checking by hand.
 #
 # - Svelte components. CodeQL extracts .ts, .js and Vue, not .svelte, so the
-#   markup and the script blocks in app/src/routes and app/src/lib/*.svelte
+#   markup and the script blocks in src/routes and src/lib/*.svelte
 #   are not read. The modules they import are.
-# - db/: the migrations and the guard suite are SQL, and db/apply.sh is shell.
-#   Nothing here analyses either; the guard suite is itself the check on the
+# - drizzle/ and tests/db/: the migrations and the guard suite are SQL, and
+#   nothing here analyses SQL; the guard suite is itself the check on the
 #   schema.
 # - workflow_dispatch inputs. The actions queries treat data an outsider
 #   controls as untrusted, not inputs a collaborator dispatches.
@@ -44,7 +44,7 @@ on:
     # against rules that did not exist when it was written. GitHub disables a
     # public repository's scheduled workflows after 60 days without activity;
     # re-enable from the Actions tab if reckon goes that quiet.
-    - cron: "17 7 * * 1"
+    - cron: '17 7 * * 1'
   workflow_dispatch:
 
 concurrency:
@@ -90,8 +90,8 @@ jobs:
           config: |
             paths-ignore:
               - '**/node_modules'
-              - app/build
-              - app/.svelte-kit
+              - build
+              - .svelte-kit
               - vendor
 
       - name: Analyse

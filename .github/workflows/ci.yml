@@ -52,8 +52,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      # The migrator is Drizzle's, run by node from the application's
-      # dependencies.
+      # The migrator is Drizzle's, run by node from the dependencies.
       - uses: ./.github/actions/setup
       - name: The migrations are the schema
         # The schema is TypeScript and the migrations are generated from it. A
@@ -62,17 +61,17 @@ jobs:
         # to write. stdin is closed so a question drizzle-kit would ask fails
         # rather than waits.
         run: |
-          (cd app && npx drizzle-kit generate --name drift < /dev/null)
-          if [ -n "$(git status --porcelain db/migrations)" ]; then
-            git status --porcelain db/migrations
-            echo "::error::the schema changed without a migration -- run drizzle-kit generate in app/"
+          npx drizzle-kit generate --name drift < /dev/null
+          if [ -n "$(git status --porcelain drizzle)" ]; then
+            git status --porcelain drizzle
+            echo "::error::the schema changed without a migration -- run npm run db:generate"
             exit 1
           fi
       - name: Every guard, both ways
-        # Builds a scratch database, applies the schema, proves every guard
-        # group, drops it. This asserts the schema applies cleanly from nothing
-        # as much as it asserts the guards.
-        run: db/apply.sh --test
+        # Builds a scratch database, brings it up to date as the server would,
+        # proves every guard group, drops it. This asserts the schema applies
+        # cleanly from nothing as much as it asserts the guards.
+        run: npm run db:test
 
   typecheck:
     name: Typecheck
@@ -80,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup
-      - run: npm run check --prefix app
+      - run: npm run check
 
   format:
     name: Format
@@ -88,7 +87,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup
-      - run: npm run format --prefix app
+      - run: npm run format
 
   lint:
     name: Lint
@@ -99,7 +98,7 @@ jobs:
       # Type-aware, so it needs the types svelte-kit sync writes. `npm ci` runs
       # prepare, which runs sync -- but say so, because a lint that silently
       # loses its type information reports nothing and passes.
-      - run: npm run lint --prefix app
+      - run: npm run lint
 
   unit:
     name: Unit
@@ -108,18 +107,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup
       - name: The rules, the formatters and the CDTFA contract
-        run: npm run test --prefix app
+        run: npm run test
       # The date helpers parse at noon so that no timezone can move a date onto
       # the day before. One run, in one zone, cannot show that -- so the same
       # tests run again at UTC+14 and UTC-11, which are the two ends it breaks
       # at: parsed at midnight, 1 Jan reads as 31 Dec at UTC-11.
       - name: And again at both ends of the date line
-        run: npm run test:tz --prefix app
-      # The rule a release's version is checked by, before it becomes a tag.
-      # Node's own runner: the release workflow runs the rule before anything
-      # is installed, so it has no dependencies to test with either.
-      - name: What a release may be numbered
-        run: node --test 'scripts/*.test.mjs'
+        run: npm run test:tz
 
   behaviour:
     name: Behaviour
@@ -159,7 +153,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup
-      - run: npm run build --prefix app
+      - run: npm run build
 
       - name: The tax-rate refresh starts, outside SvelteKit
         # It runs under plain Node and imports the app's own CDTFA client and
@@ -168,13 +162,13 @@ jobs:
         # no network: it proves the script loads, connects and finds its day.
         run: |
           createdb reckon_empty
-          db/apply.sh reckon_empty
-          PGDATABASE=reckon_empty node app/scripts/refresh-tax-rates.mjs --dry-run
+          npm run db:migrate -- reckon_empty
+          PGDATABASE=reckon_empty node scripts/refresh-tax-rates.mjs --dry-run
 
       - name: The database and the valuation round tax alike
         # Every scope and method of a tax rule's rounding, in SQL and in
         # TypeScript, over the same made-up lines. Nothing is written.
-        run: PGDATABASE=reckon_empty node app/scripts/tax-check.mjs
+        run: PGDATABASE=reckon_empty node tests/tax-check.mjs
 
       - name: A business to run the checks against
         # The database's default zone is set to one nobody keeps. reckon opens
@@ -183,14 +177,14 @@ jobs:
         run: |
           createdb reckon_ci
           psql -q -d postgres -c "ALTER DATABASE reckon_ci SET TimeZone = 'Pacific/Kiritimati'"
-          db/apply.sh reckon_ci
-          psql -q -v ON_ERROR_STOP=1 -d reckon_ci -f db/seed/demo.sql
+          npm run db:migrate -- reckon_ci
+          npm run db:seed -- reckon_ci
           printf 'ci-only-password\nci-only-password\n' \
-            | node app/scripts/user.mjs password avery@kestrel.example
+            | node scripts/user.mjs password avery@kestrel.example
 
       - name: Start it
         run: |
-          node app/build/index.js &
+          node build &
           echo $! > /tmp/reckon.pid
           for _ in $(seq 1 30); do
             curl -sf -o /dev/null "http://127.0.0.1:5178/login" && exit 0
@@ -202,10 +196,10 @@ jobs:
         # Validation has one source of truth for the page and the endpoint --
         # they import the same registry. The database is the third, and this
         # is what stops it drifting into "The database refused that value".
-        run: npm run check:schema --prefix app
+        run: npm run check:schema
 
       - name: Every route answers, signed in
-        run: node app/scripts/smoke.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/smoke.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: Every screen renders, with nothing on the console
         # A page can answer 200 with its body already doomed: SvelteKit renders
@@ -230,38 +224,38 @@ jobs:
             cat /tmp/chrome.log
             exit 1
           fi
-          node app/scripts/console-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+          node tests/console-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: A browser without Temporal gets the polyfill, and keeps it for offline
         # This Chrome has Temporal of its own, so every check above takes the
         # browser's path. This one takes it away before the page runs, as a
         # phone without it would be.
-        run: node app/scripts/temporal-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/temporal-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: Every write works, and the wrong ones are refused
         # Needs the network: creating a site is a CDTFA lookup, and the check
         # reports that as skipped rather than failed if they cannot be reached.
-        run: node app/scripts/write-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/write-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: A person's zone comes from their browser, and travel asks first
-        run: node app/scripts/zone-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/zone-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: Past work takes a start and one other, and fills in the third
-        run: node app/scripts/past-work-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/past-work-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: Stock is received, with its costs, who paid and its receipt
-        run: node app/scripts/receive-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/receive-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: Lines are added to a draft, drawn from stock or bought and paid for with receipts
-        run: node app/scripts/lines-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/lines-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: A trip is recorded, each leg to whoever caused it, and what it pays its vehicle
-        run: node app/scripts/trips-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/trips-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: A sign-in replaces a password hash made at older parameters
         # Every hash the steps above meet was made at today's parameters, so
         # the replacement could stop and they would all stay green.
-        run: node app/scripts/rehash-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/rehash-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: It installs, and time and lines on a draft work with the server out of reach
         # Out of reach for real: the server is stopped between the runs, because
@@ -271,14 +265,14 @@ jobs:
         # across, as on a phone. The server comes back with the job's own
         # environment, so the session survives the restart.
         run: |
-          check() { node app/scripts/offline-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password "$1"; }
+          check() { node tests/offline-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password "$1"; }
           check online
           kill "$(cat /tmp/reckon.pid)"
           sleep 1
           check offline
           # While the phone is out of reach, the server moves on without it.
-          psql -q -v ON_ERROR_STOP=1 -d reckon_ci -f app/scripts/offline-meanwhile.sql
-          node app/build/index.js &
+          psql -q -v ON_ERROR_STOP=1 -d reckon_ci -f tests/offline-meanwhile.sql
+          node build &
           echo $! > /tmp/reckon.pid
           for _ in $(seq 1 30); do
             curl -sf -o /dev/null "http://127.0.0.1:$PORT/login" && break
@@ -288,11 +282,11 @@ jobs:
 
       - name: Pay is recorded when it is paid, and stands
         # After offline-check, which changes the trip this pays for.
-        run: node app/scripts/pay-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/pay-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: An invoice is sent with its link
         # Last: it sends the draft lines-check made, which the checks before it add to.
-        run: node app/scripts/send-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/send-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: Stop it
         if: always()
@@ -328,12 +322,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup
-      - run: npm run build --prefix app
+      - run: npm run build
 
-      - name: Give it a schema to serve
-        run: |
-          createdb reckon_ci
-          db/apply.sh reckon_ci
+      - name: An empty database, which the server brings up to date as it starts
+        run: createdb reckon_ci
 
       - name: The build produced a server that serves a page
         # A build that emits files nobody runs is not a proven build. This is
@@ -344,7 +336,7 @@ jobs:
           # Without one the server refuses to start, which is the point.
           BETTER_AUTH_SECRET: ci-only-secret-for-a-database-that-ends-with-the-job
         run: |
-          node app/build/index.js &
+          node build &
           pid=$!
           trap 'kill $pid 2>/dev/null || true' EXIT
           for _ in $(seq 1 20); do

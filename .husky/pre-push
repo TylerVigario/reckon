@@ -34,4 +34,4 @@ done
 
 # The schema is the thing this repository is most careful about, and the guard
 # suite is seconds. Discovering a broken guard in CI costs a round trip.
-db/apply.sh --test
+npm run db:test

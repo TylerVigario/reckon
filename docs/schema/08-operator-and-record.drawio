@@ -415,7 +415,7 @@ user, session, account and verification are Better Auth&apos;s, in its shape. A 
 
 A session is a row, not a stateless token: one server, one database, and every page reads it anyway, so a stateless token would save no round trip and cost revocation. The cookie is the token signed with the server&apos;s secret, so a copy of this table lets nobody in without the secret as well.
 
-Which migrations a database has seen is Drizzle&apos;s record, in drizzle.__drizzle_migrations, so re-running db/apply.sh applies only what is new.
+Which migrations a database has seen is Drizzle&apos;s record, in drizzle.__drizzle_migrations, so bringing it up to date again applies only what is new.
 
 Everything that identifies the business is the operator&apos;s to supply: logo is nullable and the interface renders trading_name in its place.
 

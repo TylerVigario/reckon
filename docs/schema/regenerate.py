@@ -5,7 +5,7 @@ WARNING: this OVERWRITES every .drawio file beside it. A box moved or a note
 added in draw.io is lost the next time it runs, so once a diagram is edited by
 hand, the .drawio file is the source and this script is not.
 
-Table definitions here mirror app/src/lib/server/db/schema. Notes say why a
+Table definitions here mirror src/lib/server/db/schema. Notes say why a
 table is the shape it is.
 
 Usage:  python3 regenerate.py
@@ -676,7 +676,7 @@ c += [note("n8", "Anyone who can sign in can see and change everything: "
                  "signed with the server's secret, so a copy of this table lets nobody "
                  "in without the secret as well.\n\n"
                  "Which migrations a database has seen is Drizzle's record, in "
-                 "drizzle.__drizzle_migrations, so re-running db/apply.sh applies only "
+                 "drizzle.__drizzle_migrations, so bringing it up to date again applies only "
                  "what is new.\n\n"
                  "Everything that identifies the business is the operator's to supply: "
                  "logo is nullable and the interface renders trading_name in its place.\n\n"

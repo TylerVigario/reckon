@@ -53,7 +53,7 @@ body:
     attributes:
       label: If this is a schema problem — which guard should have caught it?
       description: >-
-        `db/test/constraints.sql` asserts each rule both ways. A bug that got
+        `tests/db/constraints.sql` asserts each rule both ways. A bug that got
         past it usually means a guard is missing or passes for the wrong reason,
         and that is more useful to know than the symptom.
     validations:

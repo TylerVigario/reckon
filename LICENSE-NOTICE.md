@@ -19,10 +19,10 @@ plainly, and says what is deliberately not here.
 The machinery. Everything that would still be useful for a different
 business with different clients in it:
 
-- `app/` — the SvelteKit application in full: routes, components, the
-  capture queue, the session handling, the database access
-- `db/` — the schema, the guard suite, and the tooling that applies and
-  proves them
+- `src/` and `static/` — the SvelteKit application in full: routes,
+  components, the capture queue, the session handling, the database access
+- `drizzle/`, `tests/` and `scripts/` — the migrations, the guard suite and
+  the behaviour checks, and the commands that apply, prove and release them
 - `docs/schema/` — the diagram generator and the printable it derives
 - `.github/` and the build configuration
 

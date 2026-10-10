@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { compareVersions, nextVersion, releaseVersion } from './release-version.mjs';
@@ -52,7 +52,8 @@ describe('nextVersion', () => {
 });
 
 describe('from the command line, as the release workflow runs it', () => {
-	const run = (...args) =>
+	/** @typedef {{ status: number, stdout: string, stderr: string }} Exited */
+	const run = (/** @type {string[]} */ ...args) =>
 		execFileSync('node', ['scripts/release-version.mjs', ...args], { encoding: 'utf8' });
 
 	it('prints the version to use', () => {
@@ -62,7 +63,7 @@ describe('from the command line, as the release workflow runs it', () => {
 	it('exits 1, saying why, for anything it refuses', () => {
 		assert.throws(
 			() => run('vv0.4.0', '0.3.1'),
-			(e) => {
+			(/** @type {Exited} */ e) => {
 				assert.equal(e.status, 1);
 				assert.match(e.stderr, /"vv0\.4\.0" is not a version number/);
 				assert.equal(e.stdout, '');
@@ -71,7 +72,7 @@ describe('from the command line, as the release workflow runs it', () => {
 		);
 		assert.throws(
 			() => run('0.3.0', '0.3.1'),
-			(e) => e.status === 1
+			(/** @type {Exited} */ e) => e.status === 1
 		);
 	});
 });
