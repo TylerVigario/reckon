@@ -32,7 +32,11 @@
 
 const VERSION = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
-/** The version as it is to be used -- "0.4.0" -- or throws, saying why not. */
+/**
+ * The version as it is to be used -- "0.4.0" -- or throws, saying why not.
+ * @param {string} given
+ * @returns {string}
+ */
 export function releaseVersion(given) {
 	const m = VERSION.exec(given);
 	if (!m) {
@@ -43,7 +47,12 @@ export function releaseVersion(given) {
 	return `${m[1]}.${m[2]}.${m[3]}`;
 }
 
-/** Negative, zero or positive as a is older than, the same as, or newer than b. */
+/**
+ * Negative, zero or positive as a is older than, the same as, or newer than b.
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
 export function compareVersions(a, b) {
 	const pa = releaseVersion(a).split('.').map(BigInt);
 	const pb = releaseVersion(b).split('.').map(BigInt);
@@ -54,6 +63,9 @@ export function compareVersions(a, b) {
 /**
  * The version to release, given what main records: the same version is
  * allowed through (the workflow then has nothing to do), an older one is not.
+ * @param {string} given
+ * @param {string} [recorded]
+ * @returns {string}
  */
 export function nextVersion(given, recorded) {
 	const version = releaseVersion(given);
@@ -68,7 +80,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	try {
 		console.log(nextVersion(given ?? '', recorded));
 	} catch (e) {
-		console.error(e.message);
+		console.error(/** @type {Error} */ (e).message);
 		process.exit(1);
 	}
 }

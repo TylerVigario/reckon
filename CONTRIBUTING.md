@@ -39,20 +39,20 @@ worth.** Where a constraint or a trigger can refuse a row that should not
 exist, it does — because two callers can disagree about a rule and cannot
 disagree about a constraint. What an hour bills, what it pays and what a
 retainer covers is arithmetic, done once, in exact decimals, in
-`app/src/lib/server/valuation`, and tested there. A pull request that moves a
+`src/lib/server/valuation`, and tested there. A pull request that moves a
 rule between the two needs to say why.
 
-**Every guard is tested both ways.** `db/test/constraints.sql` asserts that the
+**Every guard is tested both ways.** `tests/db/constraints.sql` asserts that the
 wrong thing is refused _and_ that the ordinary thing is allowed. A guard that
 also blocks ordinary use is a bug, not a guard, and a guard that passes for the
 wrong reason is what the second assertion catches.
 
 **The schema is one place, and it says what is true.**
-`app/src/lib/server/db/schema/` defines every table, a file per area, and is how
-anybody learns what the database holds. The migrations are generated from it
-with `npx drizzle-kit generate` in `app/`, and CI fails a schema change that
-arrives without its migration. What Drizzle cannot express is in the one
-hand-written migration, `db/migrations/0001_integrity.sql`.
+`src/lib/server/db/schema/` defines every table, a file per area, and is how
+anybody learns what the database holds. The migrations in `drizzle/` are
+generated from it with `npm run db:generate`, and CI fails a schema change that
+arrives without its migration. What Drizzle cannot express is in hand-written
+migrations, beginning with `drizzle/0001_integrity.sql`.
 
 **After the first release, a migration is added and never edited.** Other
 people's databases already ran the old one.
@@ -63,34 +63,31 @@ people's databases already ran the old one.
 git clone --recurse-submodules https://github.com/TylerVigario/reckon.git
 cd reckon
 
-npm ci                      # repository tooling, and the git hooks
-npm ci --prefix app         # the application
+npm ci                      # the dependencies, and the git hooks
 
-cp app/.env.example app/.env
-$EDITOR app/.env            # PGDATABASE=reckon_dev
+cp .env.example .env
+$EDITOR .env                # PGDATABASE=reckon_dev
 
 createdb reckon_dev
-db/apply.sh --test          # prove the schema before applying it anywhere
-db/apply.sh reckon_dev      # apply every migration not yet recorded
-
-cd app
-psql -d reckon_dev -f ../db/seed/demo.sql                              # the invented business
+npm run db:test             # prove the schema before applying it anywhere
+npm run db:migrate -- reckon_dev
+npm run db:seed -- reckon_dev                                     # the invented business
 node scripts/user.mjs password avery@kestrel.example --insecure   # its owner, Avery
 npm run dev
 ```
 
-`app/.env.example` carries **production** defaults, so change the database
-before using it — a file that defaults to a development database is one copy
-away from a production process writing invoices into it.
+`.env.example` carries **production** defaults, so change the database before
+using it — a file that defaults to a development database is one copy away from
+a production process writing invoices into it.
 
-**Both `npm ci` commands, and the root one first.** It installs the `commit-msg`
-hook, and without it a bad commit message is only caught when CI rejects the
-pull request title.
+**`npm ci` installs the git hooks**: `commit-msg`, without which a bad commit
+message is only caught when CI rejects the pull request title, and `pre-push`,
+which proves the guards before anything leaves.
 
-`db/apply.sh` connects the way `psql` does, so `PGHOST`, `PGUSER` and the rest
-apply. If your cluster wants a different user, become one:
-`sudo -u postgres db/apply.sh …`. It runs the migrations with node, from the
-application's dependencies, which is why `npm ci --prefix app` comes first.
+The database commands connect the way `psql` does, so `PGHOST`, `PGUSER` and the
+rest apply. If your cluster wants a different user, become one:
+`sudo -u postgres npm run db:migrate -- …`. The server brings its own database up
+to date as it starts, too, so `npm run dev` alone keeps `reckon_dev` current.
 
 Node is pinned in [`.nvmrc`](.nvmrc). Postgres 18 or newer — every id defaults
 to `uuidv7()`, which does not predate it. CI runs 18, which is what the guards
@@ -99,15 +96,13 @@ are proved against.
 ## Before you open a pull request
 
 ```bash
-npm run ci        # from the repository root
+npm run ci
 ```
 
-That is the guard suite and then the application's own gate, in one command.
-**From the root, not from `app/`**: the application's `ci` script is formatting,
-linting, typechecking, the unit tests and the build, and running that one leaves
-the schema unproven while looking like it did not.
+That is formatting, linting, typechecking, the unit tests at both ends of the
+date line, the guard suite and the build, in one command.
 
-What it does not run is the behaviour suite — the harnesses in `app/scripts`
+What it does not run is the behaviour suite — the checks in `tests/`
 that sign in and drive the running application. Those need a database and a
 browser, so CI runs them and this command does not. A green run here is not a
 green CI run, and the difference is the assertions most worth having.

@@ -19,17 +19,22 @@ places, chosen because CDTFA answers for them, so every rate and district in the
 seed is a real answer for a real address.
 
 **The reasoning is kept beside the rule.** The schema says why each rule
-exists, table by table, and `db/test/constraints.sql` proves it both ways,
+exists, table by table, and `tests/db/constraints.sql` proves it both ways,
 against an invented case.
 
 ## Where things are
 
+reckon is a SvelteKit project with Drizzle, laid out as both lay one out.
+
 |                                 |                                                                                                                 |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `app/src/lib/server/db/schema/` | the schema, in TypeScript, a file per area, with every table's reasons beside it                                |
-| `db/migrations/`                | the schema as applied SQL: generated from the above, and hand-written migrations for whatever Drizzle can't say |
-| `db/test/constraints.sql`       | proves the guards, both ways                                                                                    |
-| `app/src/lib/server/valuation/` | what an hour bills, what it pays, what a retainer covers, and the tax split — exact decimals, tested            |
+| `src/lib/server/db/schema/`     | the schema, in TypeScript, a file per area, with every table's reasons beside it                                |
+| `drizzle/`                      | the schema as applied SQL: generated from the above, and hand-written migrations for whatever Drizzle can't say |
+| `src/lib/server/db/migrate.ts`  | brings a database up to date, which the server does as it starts                                                |
+| `src/lib/server/valuation/`     | what an hour bills, what it pays, what a retainer covers, and the tax split — exact decimals, tested            |
+| `tests/db/constraints.sql`      | proves the guards, both ways                                                                                    |
+| `tests/`                        | the behaviour checks, which drive the built app in a browser against an invented business                       |
+| `scripts/`                      | the commands: adding people, refreshing tax rates, migrating, proving the guards, making a release              |
 | `docs/schema/*.drawio`          | the data model: an overview and eight clusters                                                                  |
 | `docs/schema/regenerate.py`     | lays the diagrams out from one definition of the tables; overwrites hand edits                                  |
 | `docs/schema/make-printable.py` | derives the printed reference from the diagrams                                                                 |
@@ -39,9 +44,17 @@ against an invented case.
 ## The database
 
 ```bash
-db/apply.sh --test        build a scratch database, prove every guard, drop it
-db/apply.sh <database>    apply any migration not yet recorded
+npm run db:test                              a scratch database, brought up to date, every guard proven, dropped
+npm run db:migrate -- <database>             bring a database up to date
+npm run db:seed -- <database>                the invented business the checks run against
+npm run db:generate -- --name what-changed   the migration for a change to the schema
 ```
+
+**The server brings its database up to date as it starts**, before it answers
+anything: every migration in `drizzle/` the database has not seen, by Drizzle's
+migrator, each in a transaction. One that fails stops it starting, so nothing is
+ever served from a database the code does not expect. `npm run db:migrate` does
+the same for a database named on its command line.
 
 Where the database can hold a rule about what may be stored rather than
 trusting the application to remember it, it does — and every guard is tested
@@ -49,33 +62,25 @@ both ways, because one that also blocks ordinary use is a bug rather than a
 guard. What a stored row is _worth_ is the application's: it is arithmetic, and
 it is done once, in `#lib/server/valuation`.
 
-The schema is changed in `app/src/lib/server/db/schema/`, and the migration
-written from it:
+The schema is changed in `src/lib/server/db/schema/`, and the migration
+written from it with `npm run db:generate`. What Drizzle cannot express — the
+triggers that freeze a sent invoice and keep the history, one foreign key, the
+roles every operator starts with — is in the hand-written
+`drizzle/0001_integrity.sql`, with its invoice guards made to hold in
+`0002_sent_invoices_hold.sql` and a file described in the history rather than
+copied into it in `0003_history_describes_binary.sql`. A new one starts as
+`npm run db:generate -- --custom --name what-changed`.
 
-```bash
-cd app && npx drizzle-kit generate --name what-changed
-```
+The commands connect the way every other Postgres client does — `PGHOST`,
+`PGPORT`, `PGUSER`, `PGPASSWORD` — and add nothing of their own. Whoever owns a
+database owns everything a migration makes, since the owner is who the
+application connects as; `npm run db:migrate`, run by another role, acts as the
+owner.
 
-What Drizzle cannot express — the triggers that freeze a sent invoice and keep
-the history, one foreign key, the roles every operator starts with — is in the
-hand-written `db/migrations/0001_integrity.sql`, with its invoice guards made to
-hold in `0002_sent_invoices_hold.sql` and a file described in the history rather
-than copied into it in `0003_history_describes_binary.sql`. A new one starts as
-`npx drizzle-kit generate --custom --name what-changed`. `db/apply.sh` runs the
-migrations with node, so it needs node and the application's dependencies: a
-clone's `app/node_modules`, or a release's own.
-
-`db/apply.sh` connects the way every other Postgres client does — `PGHOST`,
-`PGPORT`, `PGUSER`, `PGPASSWORD` — and adds nothing of its own; the database
-is named on its command line. Being the
-right user is the caller's job: a service unit says `User=`, a shell says
-`sudo -u postgres db/apply.sh …`.
-
-It checks afterwards that nothing in `public` or `drizzle` — where the record
-of applied migrations is kept — is owned by anyone but the database's owner,
-and refuses if it is. An object made by another role is
-invisible to the application, and that surfaces as a permission error from
-whichever query reaches it first — a long way from the cause.
+Afterwards nothing in `public` or `drizzle` — where the record of applied
+migrations is kept — may be owned by anyone else, or it stops. An object made by
+another role is invisible to the application, and that surfaces as a permission
+error from whichever query reaches it first — a long way from the cause.
 
 ## The application
 
@@ -149,9 +154,9 @@ account, so it says nothing about which addresses have one.
 There is no sign-up. Everyone who signs in is added from the command line:
 
 ```bash
-node app/scripts/user.mjs add you@example.com "Your Name" --role Partner
-node app/scripts/user.mjs password you@example.com
-node app/scripts/user.mjs list
+node scripts/user.mjs add you@example.com "Your Name" --role Partner
+node scripts/user.mjs password you@example.com
+node scripts/user.mjs list
 ```
 
 It prompts for the password rather than taking an argument — a password in
@@ -163,7 +168,7 @@ Twelve characters at least, checked on the first entry rather than after the
 second. On a development database, `--insecure` lifts that and says so:
 
 ```bash
-node app/scripts/user.mjs password avery@kestrel.example --insecure   # the seeded user
+node scripts/user.mjs password avery@kestrel.example --insecure   # the seeded user
 ```
 
 **`BETTER_AUTH_SECRET` must be set when the server runs**, 32 characters at
@@ -206,17 +211,38 @@ Name a header the proxy sets from the connection. One it overwrites, like an
 `X-Forwarded-For` is one a client can start, so it also needs `XFF_DEPTH`: the
 number of proxies in front, 1 for one.
 
+## A release
+
+A release is one tarball, built by `npm run release` and published with its
+provenance attested: the part of this repository that runs, at the same paths it
+has here, with its production dependencies installed, so a host needs Node and
+nothing else.
+
+|                    |                                                            |
+| ------------------ | ---------------------------------------------------------- |
+| `build/`           | the application; `node build` runs it                      |
+| `drizzle/`         | the migrations, which the application applies as it starts |
+| `scripts/user.mjs` | adds the people who sign in                                |
+| `node_modules/`    | the production dependencies, from `npm ci --omit dev`      |
+| `package.json`     | and `package-lock.json`, as they are in the repository     |
+| `RELEASE`          | the version, the commit, and the Node it was built with    |
+| `MANIFEST.sha256`  | every file's digest, so what is installed can be checked   |
+
+Run it from its own directory — a service unit's `WorkingDirectory` — since the
+migrations are read from `drizzle/` there. A deploy is a backup of the database,
+the release unpacked, and the server restarted: it brings the database up to
+date before it answers anything.
+
 ## Environment
 
 Everything the process needs, and nothing that belongs in the database.
-[`app/src/env.ts`](app/src/env.ts) declares each variable with its default and
+[`src/env.ts`](src/env.ts) declares each variable with its default and
 its check, and every one is read when the server starts rather than built in, so
 the same artifact runs on any host with any values. A value that fails its check
 stops the server at start with the reason.
 
-[`app/.env.example`](app/.env.example) is the same list as a file, and is what
-to copy to `app/.env` for local development — beside `vite.config.ts`, because
-that is the only directory Vite reads a `.env` from.
+[`.env.example`](.env.example) is the same list as a file, and is what to copy
+to `.env` for local development, beside `vite.config.ts`, where Vite reads it.
 
 |                                  |                       |                                                                                                                                                                    |
 | -------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -237,7 +263,7 @@ restriction.** It can be restricted to HTTP referrers _or_ to IP addresses,
 never both — so the key a browser uses and the key this server uses cannot be
 the same key without one of them being unrestricted.
 
-**`PUBLIC_` is deliberate: that key reaches the browser.** `public: true` in `app/src/env.ts` is what sends it there; the prefix is what tells whoever fills in the environment. Address lookup is a
+**`PUBLIC_` is deliberate: that key reaches the browser.** `public: true` in `src/env.ts` is what sends it there; the prefix is what tells whoever fills in the environment. Address lookup is a
 type-ahead, and the browser calls Google directly. Proxying it through here
 would put the browser-to-server leg in front of every keystroke — over whatever
 uplink the host has, from a phone, in the places this is used. Direct is one hop
@@ -253,7 +279,7 @@ restriction instead, which cannot mean anything when the caller is somebody
 else's browser. A key calling `places.googleapis.com` from a page is
 unrestrictable — the worst of the options, and not obviously so.
 
-`GOOGLE_MAPS_API_KEY` is private in `app/src/env.ts` and never reaches a page. Restrict it to
+`GOOGLE_MAPS_API_KEY` is private in `src/env.ts` and never reaches a page. Restrict it to
 **IP addresses** for this host, and to three APIs: **Address Validation API**;
 **Places API (New)**, which confirms that a place id a browser sent is a place; and
 **Routes API**, which gives each drive of a trip being recorded its miles. Each is
@@ -353,12 +379,13 @@ rounded.
 ## The app
 
 ```bash
-cd app && npm install && cd ..
-createdb reckon_dev && db/apply.sh reckon_dev
-cd app && npm run dev
+npm install
+createdb reckon_dev
+npm run dev                         # brings reckon_dev up to date as it starts
+npm run db:seed -- reckon_dev       # the invented business, if it is wanted
 ```
 
-`app/` is SvelteKit. By default it connects to Postgres over the unix socket
+By default it connects to Postgres over the unix socket
 Linux packages usually create, which authenticates by user rather than by
 password. `PGHOST`, `PGDATABASE` or `DATABASE_URL` move it — to TCP, to
 another machine, or to a managed service.

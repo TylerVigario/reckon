@@ -47,7 +47,7 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: "How big a step: auto lets the commits decide; patch, minor or major overrides them (rarely needed)"
+        description: 'How big a step: auto lets the commits decide; patch, minor or major overrides them (rarely needed)'
         type: choice
         options: [auto, patch, minor, major]
         default: auto

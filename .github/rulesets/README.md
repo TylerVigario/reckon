@@ -50,7 +50,7 @@ Its blast radius is the App's own permissions, and those are `contents: write`
 and `metadata: read`. Notably absent is any `workflows` scope, so the actor that can
 write the branch cannot rewrite what runs on it.
 
-An App and not an actor *type*: a type would exempt every automation acting in
+An App and not an actor _type_: a type would exempt every automation acting in
 that role, which is the whole population the rule constrains.
 
 The App has to be installed before this file is applied, because **a bypass

@@ -1,8 +1,7 @@
 name: Setup CI environment
 description: >-
-  Install Node at the version .nvmrc pins, cache npm, and install both
-  dependency sets — the repository's tooling at the root and the application's
-  under app/.
+  Install Node at the version .nvmrc pins, cache npm, and install the
+  dependencies.
 
   The caller runs actions/checkout first: a local-path action reference needs
   this file already on disk.
@@ -16,15 +15,15 @@ runs:
         node-version-file: .nvmrc
 
     - name: Compute npm cache key
-      # Hashes the dependency fields of both manifests rather than the
-      # lockfiles: a release rewrites the root version in package-lock.json,
+      # Hashes the manifest's dependency fields rather than the lockfile: a
+      # release rewrites the root version in package-lock.json,
       # so a lockfile-hashed key would rotate on every release and leave one
       # stale cache behind each time.
       id: cache-key
       shell: bash
       run: |
         NODE_MAJOR=$(sed -E 's/^[^0-9]*([0-9]+).*/\1/' .nvmrc)
-        HASH=$(jq -S -s '[.[] | {dependencies,devDependencies}]' package.json app/package.json \
+        HASH=$(jq -S '{dependencies,devDependencies}' package.json \
           | sha256sum | cut -c1-16)
         echo "key=npm-${{ runner.os }}-node${NODE_MAJOR}-${HASH}" >> "$GITHUB_OUTPUT"
 
@@ -38,4 +37,3 @@ runs:
     - shell: bash
       run: |
         npm ci --prefer-offline
-        npm ci --prefer-offline --prefix app

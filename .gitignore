@@ -1,19 +1,24 @@
-# Generated. press renders into here and it is never committed.
+# Dependencies.
+node_modules/
+
+# Built: the application, SvelteKit's generated types, and press's renders.
+/build/
+/.svelte-kit/
 print/
 
-# Dependencies, at the root and in the application.
-node_modules/
+# Vite's scratch copies of its config.
+vite.config.ts.timestamp-*
 
 # Python bytecode from the diagram tooling.
 __pycache__/
 *.pyc
 
-# Build output.
-app/build/
-app/.svelte-kit/
-
-# Local environment. Nothing here is a secret worth having, and that is the
-# point: if it were, it would not be in a file next to the source.
+# The local environment, which may hold keys for development. Never committed:
+# .env.example says what goes in it.
 .env
 .env.*
 !.env.example
+
+# What an operating system leaves behind.
+.DS_Store
+Thumbs.db

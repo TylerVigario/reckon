@@ -26,6 +26,6 @@ body:
     attributes:
       label: Does this contradict a rule the schema enforces?
       description: The table, column or guard it conflicts with, or "no".
-      placeholder: "no"
+      placeholder: 'no'
     validations:
       required: true

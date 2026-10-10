@@ -1,28 +1,31 @@
 /**
- * Builds the release artifact: one tarball a host can extract and run with no
- * toolchain, no network, and no build step.
+ * Builds the release: one tarball holding the part of this repository that
+ * runs, at the same paths it has here, with its dependencies installed.
  *
- * WHY SELF-CONTAINED. A deploy target need hold no runner and no build tooling.
- * If the host had to run `npm ci` it would need a path to the registry and a
- * compiler for anything native, and a deploy could then fail for reasons with
- * nothing to do with the code being deployed. Shipping node_modules inside the
- * artifact moves every one of those failures to CI, where they block a release
- * instead of breaking a running system.
+ *   build/             the application, from `vite build`; `node build` runs it
+ *   drizzle/           the migrations, which the application applies when it starts
+ *   scripts/user.mjs   the command that adds the people who sign in
+ *   package.json       and package-lock.json, as they are here
+ *   node_modules/      the production dependencies, from `npm ci --omit dev`
+ *   .env.example       what the environment may set
+ *   LICENSE, LICENSE-NOTICE.md, CHANGELOG.md
+ *   RELEASE            which commit, on what, with which Node
+ *   MANIFEST.sha256    every file above, so what is installed can be checked
  *
- * WHY THAT IS SAFE ACROSS DISTRIBUTIONS. The only native dependency is
- * @node-rs/argon2, which ships prebuilt N-API binaries per platform inside the
- * published package. What has to match is the ABI, not the distribution: any
- * glibc linux-x64 host takes the linux-x64-gnu binary assembled here, and N-API
- * keeps it valid across Node majors. Asserted below rather than assumed -- if
- * that stops being true this fails instead of shipping something that cannot
- * hash a password. A musl target would need its own build.
+ * THE SAME PATHS AS A CLONE. What runs from a release runs from a clone the same
+ * way, so nothing has to know which of the two it is in: the server finds its
+ * migrations in drizzle/ beside build/ in either.
  *
- * WHY db/ IS IN THE TARBALL. The schema is applied on the host, by the host,
- * from the same artifact that carries the code that expects it. A migration
- * that lives only in git would have to be fetched separately, and then "which
- * schema is this version expecting" is answered by two things that can drift.
+ * SELF-CONTAINED. adapter-node needs the build, package.json and the production
+ * dependencies; they are installed here, from the lockfile, so a host needs
+ * Node and nothing else -- no registry to reach, no compiler for anything
+ * native -- and every way an install can fail fails in CI, where it stops a
+ * release, rather than on the host, where it stops a deploy. The one native
+ * dependency, @node-rs/argon2, ships prebuilt binaries in its package, so any
+ * glibc linux-x64 host takes the one installed here; that is checked below
+ * rather than assumed.
  *
- *   node scripts/make-release.mjs                  # version from package.json
+ *   node scripts/make-release.mjs                  # the version in package.json
  *   node scripts/make-release.mjs --version 1.2.3
  *   node scripts/make-release.mjs --out /tmp/dir --changelog /tmp/CHANGELOG.md
  */
@@ -33,36 +36,34 @@ import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { releaseVersion } from './release-version.mjs';
 
+/** @type {(name: string, fallback: string) => string} */
 const arg = (name, fallback) => {
 	const i = process.argv.indexOf(`--${name}`);
 	return i === -1 ? fallback : process.argv[i + 1];
 };
+/** @type {(cmd: string, args: string[], opts?: import('node:child_process').ExecFileSyncOptions) => string} */
 const run = (cmd, args, opts = {}) =>
-	execFileSync(cmd, args, { stdio: 'pipe', encoding: 'utf8', ...opts });
+	String(execFileSync(cmd, args, { stdio: 'pipe', encoding: 'utf8', ...opts }) ?? '');
+/** @type {(msg: string) => never} */
 const die = (msg) => {
 	console.error(`error: ${msg}`);
 	process.exit(1);
 };
 
-// The root manifest is the version of record. app/package.json is private and
-// published to nobody, so it carries 0.0.0 rather than a second number to keep
-// in step. Checked by the same rule the release workflow uses: it names the
-// staging directory this clears, and goes into the artifact's package.json.
 let version;
 try {
 	version = releaseVersion(
 		arg('version', JSON.parse(fs.readFileSync('package.json', 'utf8')).version)
 	);
 } catch (e) {
-	die(e.message);
+	die(/** @type {Error} */ (e).message);
 }
 const outDir = path.resolve(arg('out', 'dist-release'));
 const name = `reckon-${version}`;
 const staging = path.join(outDir, name);
 
-// A release must be traceable to a commit. A dirty tree would put changes in
-// the tarball that no commit records, which makes "what is running" a question
-// nobody can answer later.
+// A release is traceable to a commit: a dirty tree would put changes in it that
+// no commit records, and "what is running" would have no answer.
 const commit = run('git', ['rev-parse', 'HEAD']).trim();
 const dirty = run('git', ['status', '--porcelain']).trim();
 if (dirty && !process.argv.includes('--allow-dirty')) {
@@ -76,67 +77,33 @@ console.log(`building ${name} from ${commit.slice(0, 8)}${dirty ? ' (DIRTY)' : '
 fs.rmSync(staging, { recursive: true, force: true });
 fs.mkdirSync(staging, { recursive: true });
 
-// Rebuilt here rather than trusting whatever app/build happens to hold.
+// Built here, not taken from whatever build/ happens to hold.
 console.log('  vite build');
-run('npm', ['run', 'build', '--prefix', 'app'], { stdio: 'inherit' });
-fs.cpSync('app/build', path.join(staging, 'build'), { recursive: true });
+run('npm', ['run', 'build'], { stdio: 'inherit' });
 
-// The schema, and the tooling that applies and proves it.
-for (const p of ['db/migrations', 'db/test', 'db/apply.sh']) {
-	fs.cpSync(p, path.join(staging, p), { recursive: true });
-}
-fs.chmodSync(path.join(staging, 'db/apply.sh'), 0o755);
-// The migrator db/apply.sh runs, and the command that adds the people who sign
-// in. Both are plain JavaScript over the runtime dependencies, so the host
-// runs them with the node it already has.
-fs.mkdirSync(path.join(staging, 'scripts'), { recursive: true });
-for (const script of ['migrate.mjs', 'user.mjs'])
-	fs.copyFileSync(`app/scripts/${script}`, path.join(staging, 'scripts', script));
+const take = (/** @type {string} */ p) => fs.cpSync(p, path.join(staging, p), { recursive: true });
+for (const p of [
+	'build',
+	'drizzle',
+	'scripts/user.mjs',
+	'package.json',
+	'package-lock.json',
+	'.env.example',
+	'LICENSE',
+	'LICENSE-NOTICE.md'
+])
+	take(p);
 
-// The licence travels with the software, because this tarball IS the
-// distribution. AGPL-3.0 conditions redistribution on the recipient getting the
-// terms with it; a licence that only exists in a repository somebody may not
-// have is not a licence they were given.
-fs.copyFileSync('LICENSE', path.join(staging, 'LICENSE'));
-fs.copyFileSync('LICENSE-NOTICE.md', path.join(staging, 'LICENSE-NOTICE.md'));
-
-// And the list of what the process reads. Nothing in production loads a .env --
-// the service manager supplies these -- but whoever writes that unit has to
-// know what to put in it, and the artifact is where they will look.
-fs.copyFileSync('app/.env.example', path.join(staging, '.env.example'));
-
-// The artifact gets its OWN minimal manifest. Copying the application's would
-// list every build dependency, and `npm install` here would then resolve all of
-// them — reinstating the tree this approach exists to avoid.
-fs.writeFileSync(
-	path.join(staging, 'package.json'),
-	JSON.stringify({ name: 'reckon', version, private: true, type: 'module' }, null, 2) + '\n'
-);
-
-// adapter-node leaves `dependencies` external rather than bundling them, so
-// they are exactly what has to be installed — read off the application's
-// manifest, pinned to what its lockfile resolved.
-const appPkg = JSON.parse(fs.readFileSync('app/package.json', 'utf8'));
-const lock = JSON.parse(fs.readFileSync('app/package-lock.json', 'utf8'));
-const pinned = Object.keys(appPkg.dependencies ?? {}).map((dep) => {
-	const entry = lock.packages?.[`node_modules/${dep}`];
-	if (!entry?.version) die(`${dep} is a runtime dependency but absent from app/package-lock.json.`);
-	return `${dep}@${entry.version}`;
+// The production dependencies, exactly as the lockfile resolved them. No
+// lifecycle script runs: nothing here needs one, and @node-rs/argon2 carries
+// its binaries in the published package rather than fetching them.
+console.log('  npm ci --omit dev');
+run('npm', ['ci', '--omit', 'dev', '--ignore-scripts', '--no-audit', '--no-fund'], {
+	cwd: staging,
+	stdio: 'inherit'
 });
-console.log(`  runtime: ${pinned.join(', ') || '(none)'}`);
 
-// --ignore-scripts: a release build does not execute package lifecycle
-// scripts, and nothing here needs one. @node-rs/argon2 carries its binaries in
-// the published package rather than fetching in a postinstall, and the
-// assertion below fails the build if that ever changes.
-if (pinned.length) {
-	run('npm', ['install', ...pinned, '--ignore-scripts', '--no-audit', '--no-fund', '--no-save'], {
-		cwd: staging,
-		stdio: 'inherit'
-	});
-}
-
-// Fail loudly rather than ship an artifact whose password hashing cannot load.
+// An artifact whose password hashing cannot load is not shipped.
 const native = path.join(staging, 'node_modules/@node-rs/argon2-linux-x64-gnu');
 if (!fs.existsSync(native)) {
 	const got = fs
@@ -148,19 +115,16 @@ if (!fs.existsSync(native)) {
 	);
 }
 
-// The changelog ships inside the artifact: RELEASE pins which commit this is,
-// the changelog says what that commit changed, and it says so without needing a
-// path back to the release notes — the same reason node_modules is in here.
+// What changed, inside the artifact, so it is known without a path back to the
+// release notes.
 const changelogSrc = arg('changelog', 'CHANGELOG.md');
 if (!fs.existsSync(changelogSrc))
 	die(`${changelogSrc} is missing — the artifact would ship without its history.`);
 fs.copyFileSync(changelogSrc, path.join(staging, 'CHANGELOG.md'));
 
-// Identity, so a running instance traces back to a commit without guessing
-// from a version number. `commit` is the commit whose SOURCE produced these
-// bytes — during a release that is the parent of the tagged commit, because
-// the build happens before anything is written. `git rev-parse <tag>^`
-// recovers it from the other direction.
+// Which commit's source made these bytes. During a release that is the parent
+// of the tagged commit, since the build comes before anything is written;
+// `git rev-parse <tag>^` finds it from the other side.
 fs.writeFileSync(
 	path.join(staging, 'RELEASE'),
 	[
@@ -173,30 +137,30 @@ fs.writeFileSync(
 	].join('\n')
 );
 
-// Per-file manifest, so "is what is installed still what was built" is
-// answerable at any time rather than only at download. An attestation covers
-// the tarball's digest and says nothing about the extracted tree afterwards —
-// and the extracted tree is what actually runs.
+// Every file and its digest, so "is what is installed what was built" can be
+// answered of the extracted tree at any time; an attestation covers only the
+// tarball.
 const files = [];
 (function walk(dir) {
-	for (const e of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1)) {
+	for (const e of fs
+		.readdirSync(dir, { withFileTypes: true })
+		.sort((a, b) => (a.name < b.name ? -1 : 1))) {
 		const full = path.join(dir, e.name);
 		if (e.isDirectory()) walk(full);
 		else if (e.isFile()) files.push(full);
 	}
 })(staging);
+fs.writeFileSync(
+	path.join(staging, 'MANIFEST.sha256'),
+	files
+		.map((f) => {
+			const sum = createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+			return `${sum}  ${path.relative(staging, f)}`;
+		})
+		.join('\n') + '\n'
+);
 
-const manifest = files
-	.map((f) => {
-		const rel = path.relative(staging, f);
-		const sum = createHash('sha256').update(fs.readFileSync(f)).digest('hex');
-		return `${sum}  ${rel}`;
-	})
-	.join('\n');
-fs.writeFileSync(path.join(staging, 'MANIFEST.sha256'), manifest + '\n');
-
-// Deterministic within a build: sorted, no owner, fixed mtime. Two builds of
-// the same tree should differ only where the inputs did.
+// Deterministic within a build: sorted, no owner, the commit's own time.
 const tarball = path.join(outDir, `${name}.tar.gz`);
 run('tar', [
 	'--sort=name',

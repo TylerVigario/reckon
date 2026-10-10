@@ -1,0 +1,15 @@
+{
+	"extends": "$app/tsconfig",
+	"compilerOptions": {
+		"sourceMap": true,
+		"strict": true
+	},
+	// $app/tsconfig names no files. scripts/ and tests/ are listed beside src/
+	// because the commands, and the checks that prove the app actually runs, are
+	// typechecked and type-aware linted like the app itself; "*" is the
+	// repository's own config files.
+	"include": ["src", "scripts", "tests", "*", ".commitlintrc.js"],
+	// The service worker runs in another kind of scope, so it is its own project:
+	// src/service-worker/tsconfig.json, checked by `npm run check`.
+	"exclude": ["src/service-worker"]
+}
