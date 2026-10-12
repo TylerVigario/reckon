@@ -3,7 +3,8 @@ import { GOOGLE_MAPS_API_KEY } from '$app/env/private';
 /**
  * A TRIP'S MILES BY GOOGLE'S ROUTE: the Routes API, asked by this server only,
  * with the server's key (decided 7 October 2026), for each drive between a
- * trip's places in order.
+ * trip's places in order -- and a site's drive, from the business there and
+ * back, with how long the way there takes (8 October 2026).
  *
  * One request a trip. Up to ten places between the first and the last is the
  * Essentials tier, whose free allowance is ten thousand requests a month; a
@@ -29,6 +30,7 @@ const METRES_A_MILE = 1609.344;
 // that changes.
 const DAY_MS = 86_400_000;
 const asked = new Map<string, { miles: string[]; at: number }>();
+const driven = new Map<string, { drive: Drive; at: number }>();
 
 const waypoint = (w: Waypoint) =>
 	'placeId' in w ? { placeId: w.placeId } : { address: w.address };
@@ -46,9 +48,9 @@ export async function routeMiles(points: readonly Waypoint[]): Promise<string[] 
 	// Pieces that share their ends: 0..11, 11..22, and so on.
 	for (let from = 0; from < points.length - 1; from += BETWEEN + 1) {
 		const piece = points.slice(from, from + BETWEEN + 2);
-		const metres = await legsOf(piece, key);
-		if (!metres) return null;
-		miles.push(...metres.map((m) => (m / METRES_A_MILE).toFixed(1)));
+		const legs = await legsOf(piece, key, false);
+		if (!legs) return null;
+		miles.push(...legs.map((l) => (l.metres / METRES_A_MILE).toFixed(1)));
 	}
 	if (miles.length !== points.length - 1) return null;
 
@@ -57,15 +59,54 @@ export async function routeMiles(points: readonly Waypoint[]): Promise<string[] 
 	return miles;
 }
 
-/** Each leg of one request, in metres. */
-async function legsOf(piece: readonly Waypoint[], key: string): Promise<number[] | null> {
+/** A site's drive: there and back, in miles to a tenth, and the way there in whole minutes. */
+export type Drive = { miles: string; minutes: number };
+
+/**
+ * From the business to a place and back again, as one request of two legs.
+ * The way back is driven too, and need not be the way there, so the round trip
+ * is both legs' miles; the time is the way there, which is what a visit waits
+ * on. Null when Google cannot say, as for a trip.
+ */
+export async function roundTrip(base: Waypoint, place: Waypoint): Promise<Drive | null> {
+	const key = GOOGLE_MAPS_API_KEY;
+	if (!key) return null;
+
+	const cacheKey = JSON.stringify([base, place]);
+	const kept = driven.get(cacheKey);
+	if (kept && Date.now() - kept.at < DAY_MS) return kept.drive;
+
+	const legs = await legsOf([base, place, base], key, true);
+	if (!legs) return null;
+	const [there, back] = legs;
+	if (there.seconds === null) return null;
+	const drive = {
+		miles: ((there.metres + back.metres) / METRES_A_MILE).toFixed(1),
+		minutes: Math.round(there.seconds / 60)
+	};
+
+	if (driven.size >= 500) driven.delete(driven.keys().next().value!);
+	driven.set(cacheKey, { drive, at: Date.now() });
+	return drive;
+}
+
+/** Each leg of one request: its metres, and its seconds where they were asked for. */
+async function legsOf(
+	piece: readonly Waypoint[],
+	key: string,
+	timed: boolean
+): Promise<{ metres: number; seconds: number | null }[] | null> {
 	try {
 		const r = await fetch(ENDPOINT, {
 			method: 'POST',
 			headers: {
 				'content-type': 'application/json',
 				'X-Goog-Api-Key': key,
-				'X-Goog-FieldMask': 'routes.legs.distanceMeters'
+				// The duration without traffic is the same Essentials tier as the
+				// distance.
+				'X-Goog-FieldMask': timed
+					? 'routes.legs.distanceMeters,routes.legs.duration'
+					: 'routes.legs.distanceMeters'
 			},
 			body: JSON.stringify({
 				origin: waypoint(piece[0]),
@@ -79,12 +120,17 @@ async function legsOf(piece: readonly Waypoint[], key: string): Promise<number[]
 			console.error('Google would not give a route', r.status, await r.text().catch(() => ''));
 			return null;
 		}
-		const body = (await r.json()) as { routes?: { legs?: { distanceMeters?: number }[] }[] };
+		const body = (await r.json()) as {
+			routes?: { legs?: { distanceMeters?: number; duration?: string }[] }[];
+		};
 		const legs = body.routes?.[0]?.legs ?? [];
 		// A leg between two places at one spot has no distance at all, and says
-		// nothing rather than zero.
-		const metres = legs.map((l) => l.distanceMeters ?? 0);
-		return metres.length === piece.length - 1 ? metres : null;
+		// nothing rather than zero; its duration is "0s".
+		const out = legs.map((l) => ({
+			metres: l.distanceMeters ?? 0,
+			seconds: timed && /^\d+(\.\d+)?s$/.test(l.duration ?? '') ? parseFloat(l.duration!) : null
+		}));
+		return out.length === piece.length - 1 ? out : null;
 	} catch {
 		return null;
 	}

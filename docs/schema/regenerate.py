@@ -159,7 +159,13 @@ T["site"] = [("PK","id","uuid"),("FK","entity_id","uuid · one client"),
     ("","tax_rate_pct","numeric · CDTFA's rate, NOT NULL"),
     ("","state_rate_pct","numeric · the state's share"),
     ("","district_rate_pct","numeric · the districts on top"),
-    ("","round_trip_miles","numeric"),("","drive_minutes","int"),("","active","bool"),
+    ("","google_round_trip_miles","numeric · Google's route"),
+    ("","google_drive_minutes","int · Google's, one way"),
+    ("","typed_round_trip_miles","numeric · typed over it"),
+    ("","typed_drive_minutes","int · typed over it"),
+    ("","round_trip_miles","numeric · generated: in force"),
+    ("","drive_minutes","int · generated: in force"),
+    ("","active","bool"),
     ("","created_at","timestamptz")]
 T["contact"] = [("PK","id","uuid"),("","name","text"),("","email","text"),
     ("","phone","text"),("","note","text")]
@@ -389,7 +395,7 @@ files.append(write("01-overview.drawio", "Overview", c, 1100, 580))
 
 # 02 -- who and where
 c = at("entity",40,60) + at("site",800,60) \
-  + at("contact",800,580) + at("entity_contact",440,240) \
+  + at("contact",800,650) + at("entity_contact",440,240) \
   + at("site_contact",440,460) \
   + at("site_tax_check",1200,60) + at("tax_remittance",1200,340)
 c += [edge("e22","entity","entity_contact","is reached via"),
@@ -411,7 +417,14 @@ c += [note("n2", "One building can host two businesses and one person can act fo
                  "A site’s address is chosen from Google’s suggestions, never typed: "
                  "street, city, region and postcode are Google’s parts for the place "
                  "chosen, stored with google_place_id once Google confirms it, and moved "
-                 "only together. A suite or unit is in the label.\n\n"
+                 "only together. A suite or unit is in the label. The google_ figures "
+                 "are Google’s route there and back from the business, measured "
+                 "whenever the place is chosen and whenever the business moves; the "
+                 "typed_ ones are typed over them where somebody knows better, and kept "
+                 "beside them so Google’s stays in view. round_trip_miles and "
+                 "drive_minutes are generated: the typed figure, or Google’s where none "
+                 "is. A site that moves where Google cannot say keeps neither, and what "
+                 "was typed goes with the move.\n\n"
                  "CDTFA’s published rate layer carries StateRate, CountyRate and "
                  "CityRate beside the total, keyed by the same TAC the rate API returns "
                  "— StateRate is one value for every jurisdiction in the state, so the "
@@ -436,8 +449,8 @@ c += [note("n2", "One building can host two businesses and one person can act fo
                  "site is that client’s and the person is that client’s contact.\n\n"
                  "A site belongs to exactly one client; two clients at one address are "
                  "two sites.",
-           40, 720, 1480, 280)]
-files.append(write("02-who-and-where.drawio", "Who and where", c, 1560, 1040))
+           40, 810, 1480, 280)]
+files.append(write("02-who-and-where.drawio", "Who and where", c, 1560, 1130))
 
 # 03 -- catalogue
 c = at("service",40,60) + at("service_price",440,60) + at("pay_rule",440,280) \
@@ -628,7 +641,7 @@ c += [note("n6", "A tax override is stored per line, so one invoice can carry li
                  "client, and moved_from_invoice_id keeps which it was meant for. A change "
                  "made on a phone says which version it began from, and one made "
                  "meanwhile is merged with it field by field.", 880, 480, 640, 330)]
-files.append(write("06-money-out.drawio", "Money out", c, 1600, 1200))
+files.append(write("06-money-out.drawio", "Money out", c, 1600, 1300))
 
 # 07 -- money in
 c = at("payment",40,60) + at("payment_allocation",440,60) + at("refund",440,220) \

@@ -110,7 +110,7 @@ INSERT INTO entity (id, name, slug) VALUES
 -- Harbor Light's Main Street office and Pinecrest's Suite 210 are both at 101
 -- Maple St. The Woodland office's rate is 230 days old.
 INSERT INTO site (id, entity_id, label, slug, street, city, region, postcode,
-                  round_trip_miles, drive_minutes, tax_jurisdiction, tax_rate_pct,
+                  google_round_trip_miles, google_drive_minutes, tax_jurisdiction, tax_rate_pct,
                   state_rate_pct, district_rate_pct, tax_area_code,
                   area_verified_on) VALUES
   ('75aea465-ad04-43e1-b6b4-d7132872a870','46b1aaa1-0ade-4002-bfb5-9a80b547c2ed',

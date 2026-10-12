@@ -6,6 +6,7 @@ import { camel } from '#lib/server/db/rows.ts';
 import { type Errors, refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { parseField } from '#lib/settings-fields.ts';
 import { confirmPlace } from '#lib/server/verify-place.ts';
+import { measureEverySite } from '#lib/server/site-drive.ts';
 import { knownZone } from '#lib/server/zones.ts';
 import { rememberBusiness } from '#lib/server/business.ts';
 import type { TaxRuleSet } from '#lib/server/tax-rules.ts';
@@ -36,6 +37,10 @@ import { readFields } from '#lib/json.ts';
  *      been issued cannot be handed out again
  *   4. the browser's word against Google's: a place id is checked with Google
  *      rather than believed, and Google's answer is what dates the check
+ *
+ * And one thing after: a business that moves has every site's drive measured
+ * again from where it now is (#lib/server/site-drive), since Google's were
+ * measured from where it was.
  *
  * Everything it refuses comes back keyed by field, so the page can show it
  * under the box that caused it rather than as a banner about "an error".
@@ -110,7 +115,14 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 		row.timezone = known;
 	}
 
-	const [exists] = await db.select({ id: operator.id }).from(operator).limit(1);
+	const [exists] = await db
+		.select({ id: operator.id, address: operator.address, placeId: operator.googlePlaceId })
+		.from(operator)
+		.limit(1);
+	const moved =
+		'address' in row &&
+		((row.address || null) !== (exists?.address || null) ||
+			(row.google_place_id || null) !== (exists?.placeId || null));
 	// The registry's keys are the columns' own names; the schema's are camelCase.
 	const values = camel(row) as Partial<typeof operator.$inferInsert>;
 
@@ -146,6 +158,8 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 		throw e;
 	}
 
+	const sites = moved ? await measureEverySite(locals.user!.id) : null;
+
 	// The business's clock, locale and currency move the moment they are saved.
 	if (typeof row.timezone === 'string') await rememberBusiness({ zone: row.timezone });
 	if (typeof row.locale === 'string') await rememberBusiness({ locale: row.locale });
@@ -155,5 +169,5 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 
 	// The stored values go back, not the submitted ones: "usd" is saved as USD
 	// and #4F6D8A as #4f6d8a, and the field should show what is actually there.
-	return Response.json({ saved: row, address_verified: verified });
+	return Response.json({ saved: row, address_verified: verified, sites });
 };

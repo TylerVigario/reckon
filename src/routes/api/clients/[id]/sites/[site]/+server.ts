@@ -9,6 +9,7 @@ import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
 import { ADDRESS_FIELDS, parseSiteField } from '#lib/site-fields.ts';
 import { priceAddress, NoAnswer, type Priced } from '#lib/server/cdtfa.ts';
 import { confirmPlace } from '#lib/server/verify-place.ts';
+import { measureDrive } from '#lib/server/site-drive.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
 import {
@@ -36,6 +37,12 @@ import { readFields } from '#lib/json.ts';
  * for the place chosen, with that place's id, which Google is asked about. A
  * part on its own is refused -- there is no typing one -- and so is a place
  * Google could not confirm.
+ *
+ * A NEW PLACE IS MEASURED AGAIN (8 October 2026): Google's round trip and
+ * drive time are its route to it (#lib/server/site-drive). A site that moved
+ * where Google cannot say has neither, since both measured somewhere else. A
+ * figure typed over Google's stands until the site moves, and goes with the
+ * move unless the same request types it again (12 October 2026).
  */
 const MOST_AT_ONCE = 8;
 
@@ -82,6 +89,7 @@ export const PATCH: RequestHandler = async (event) => {
 			city: sites.city,
 			region: sites.region,
 			postcode: sites.postcode,
+			google_place_id: sites.googlePlaceId,
 			tax_rate_pct: sites.taxRatePct
 		})
 		.from(sites)
@@ -100,6 +108,8 @@ export const PATCH: RequestHandler = async (event) => {
 		row.address_verified_on = businessToday();
 	}
 	const moved = ADDRESS_FIELDS.some((f) => f in row && String(row[f]) !== String(site[f] ?? ''));
+	const placed =
+		'google_place_id' in row && String(row.google_place_id) !== (site.google_place_id ?? '');
 
 	let priced: Priced | null = null;
 	if (moved) {
@@ -129,6 +139,23 @@ export const PATCH: RequestHandler = async (event) => {
 		});
 	}
 	const answer = priced;
+
+	// Measured once CDTFA has priced it, as a new site is: a move CDTFA refuses
+	// is not saved, and need not have asked Google anything.
+	let unmeasured: string | null = null;
+	if (moved || placed) {
+		const { drive, why } = await measureDrive(String(row.google_place_id));
+		unmeasured = why;
+		if (drive || moved)
+			Object.assign(row, {
+				google_round_trip_miles: drive?.miles ?? null,
+				google_drive_minutes: drive?.minutes ?? null
+			});
+	}
+	// What was typed was about where the site was.
+	if (moved)
+		for (const f of ['typed_round_trip_miles', 'typed_drive_minutes'])
+			if (!(f in row)) row[f] = null;
 
 	let after: { version: string } | undefined;
 	try {
@@ -160,7 +187,10 @@ export const PATCH: RequestHandler = async (event) => {
 	}
 
 	if (!after) return staleRead('This site', event.url.pathname);
-	return withVersion(Response.json({ saved: row, priced, version: after.version }), after.version);
+	return withVersion(
+		Response.json({ saved: row, priced, unmeasured, version: after.version }),
+		after.version
+	);
 };
 
 /**

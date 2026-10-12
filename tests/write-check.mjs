@@ -425,6 +425,31 @@ console.log('\n  one save must not erase another');
 		await check('a site renames', 'PATCH', at, { fields: { label: `Renamed ${stamp}` } }, 200);
 		if (label) await check('and takes its own name back', 'PATCH', at, { fields: { label } }, 200);
 		await check('a rate cannot be typed in', 'PATCH', at, { fields: { tax_rate_pct: '0' } }, 400);
+		// The demo's sites carry Google's figures and none typed, so emptying
+		// the typed one puts the site back as it was.
+		await check(
+			"a round trip is typed over Google's",
+			'PATCH',
+			at,
+			{ fields: { typed_round_trip_miles: '12.5' } },
+			(/** @type {{ status: number, body: any }} */ r) =>
+				r.status === 200 && r.body?.saved?.typed_round_trip_miles === '12.5'
+		);
+		await check(
+			"and emptied, so Google's is in force again",
+			'PATCH',
+			at,
+			{ fields: { typed_round_trip_miles: '' } },
+			(/** @type {{ status: number, body: any }} */ r) =>
+				r.status === 200 && r.body?.saved?.typed_round_trip_miles === null
+		);
+		await check(
+			"Google's own figure cannot be typed in",
+			'PATCH',
+			at,
+			{ fields: { google_round_trip_miles: '1' } },
+			400
+		);
 		await check(
 			'a slug that leaves nothing is refused',
 			'PATCH',
@@ -466,6 +491,30 @@ console.log('\n  one save must not erase another');
 		}
 	} else failures.push(`no site of ${clientSlug} to change`);
 }
+
+// How far a place is, asked for on New site before anything is saved: Google's
+// route there and back, or nothing and why. With no key, as here, it is the why.
+console.log('\n  how far a place is, before it is a site');
+await check(
+	'a place is measured, or said why not',
+	'POST',
+	'/api/sites/drive',
+	{ fields: { google_place_id: 'ChIJN1t_tDeuEmsRUsoyG83frY4' } },
+	(/** @type {{ status: number, body: any }} */ r) =>
+		r.status === 200 &&
+		(r.body?.why === null
+			? r.body.google_round_trip_miles !== null && r.body.google_drive_minutes !== null
+			: typeof r.body?.why === 'string' &&
+				r.body.google_round_trip_miles === null &&
+				r.body.google_drive_minutes === null)
+);
+await check(
+	'a place not chosen from Google is refused',
+	'POST',
+	'/api/sites/drive',
+	{ fields: { google_place_id: '' } },
+	400
+);
 
 console.log('\n  services — made, priced, and taken away again');
 

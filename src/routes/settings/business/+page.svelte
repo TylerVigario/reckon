@@ -29,6 +29,8 @@
 	let addrStatus = $state<'idle' | 'saving' | 'ok' | 'bad'>('idle');
 	let addrSaid = $state('Saved');
 	let addrWhy = $state('');
+	// What moving the business did to every site's drive (#lib/server/site-drive).
+	let addrSites = $state('');
 	let addrStored = $state(
 		untrack(() =>
 			JSON.stringify({
@@ -54,12 +56,23 @@
 				})
 			});
 			const out = r.ok
-				? ((await readJson(r).catch(() => ({}))) as Saved & { address_verified?: boolean })
+				? ((await readJson(r).catch(() => ({}))) as Saved & {
+						address_verified?: boolean;
+						sites?: { sites: number; unmeasured: number } | null;
+					})
 				: await readProblem(r);
 			if (r.ok) {
 				addrStored = key;
 				addrStatus = 'ok';
 				addrSaid = 'Saved';
+				const m = 'sites' in out ? out.sites : null;
+				addrSites = !m?.sites
+					? ''
+					: m.unmeasured === 0
+						? "Every site's drive is measured again from here."
+						: !a.value
+							? "With no address, Google measures no site's drive."
+							: `Google could not measure ${m.unmeasured} of ${m.sites} sites from here.`;
 				clearAddrOk = setTimeout(() => {
 					if (addrStatus === 'ok') addrStatus = 'idle';
 				}, 2500);
@@ -139,7 +152,8 @@
 					bind:placeId
 					onchosen={(a) => saveAddress({ value: a.formatted, placeId: a.placeId })}
 				/>
-				{#if addrStatus === 'bad'}<small class="why">{addrWhy}</small>{/if}
+				{#if addrStatus === 'bad'}<small class="why">{addrWhy}</small>
+				{:else if addrSites}<small>{addrSites}</small>{/if}
 			</div>
 
 			<div class="pair">

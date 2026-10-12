@@ -7,6 +7,7 @@ import { lookUpClient } from '#lib/server/find.ts';
 import { SITE_FIELDS, parseSiteField } from '#lib/site-fields.ts';
 import { priceAddress, NoAnswer } from '#lib/server/cdtfa.ts';
 import { confirmPlace } from '#lib/server/verify-place.ts';
+import { measureDrive } from '#lib/server/site-drive.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
 import { readFields } from '#lib/json.ts';
@@ -27,6 +28,12 @@ import { readFields } from '#lib/json.ts';
  * Google's suggestions, its parts arrive with its place id, and Google is asked
  * whether that is a place before anything else is. Online only: an address
  * Google could not confirm is not saved.
+ *
+ * AND HOW FAR IT IS (8 October 2026). Google's route there and back from the
+ * business (#lib/server/site-drive) is asked here, whoever the caller, and kept
+ * beside any round trip or drive time typed over it (12 October 2026). New
+ * site has already asked, to show it, so this is the same answer from the
+ * cache.
  *
  * THE CLIENT IS IN THE PATH, not in the body. A site belongs to exactly one
  * client -- site_belongs_to_one_client says so -- and an endpoint that took
@@ -83,6 +90,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		return refuse({ postcode: e instanceof NoAnswer ? e.message : 'CDTFA could not be reached.' });
 	}
 
+	const { drive } = await measureDrive(String(row.google_place_id));
+
 	try {
 		const optional = <T>(v: unknown, as: (v: unknown) => T) =>
 			v === null || v === undefined ? null : as(v);
@@ -108,8 +117,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 							postcode: String(row.postcode),
 							googlePlaceId: String(row.google_place_id),
 							addressVerifiedOn: areaVerifiedOn,
-							roundTripMiles: optional(row.round_trip_miles, String),
-							driveMinutes: optional(row.drive_minutes, Number),
+							googleRoundTripMiles: drive?.miles ?? null,
+							googleDriveMinutes: drive?.minutes ?? null,
+							typedRoundTripMiles: optional(row.typed_round_trip_miles, String),
+							typedDriveMinutes: optional(row.typed_drive_minutes, Number),
 							entityId: entity_id,
 							active: true,
 							taxRatePct: priced.rate,

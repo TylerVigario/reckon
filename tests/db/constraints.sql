@@ -70,7 +70,7 @@ INSERT INTO invoice (id, number, entity_id, created_by) VALUES
 INSERT INTO site (id, entity_id, label, slug, street, city, region, postcode,
                   tax_jurisdiction, tax_rate_pct, state_rate_pct, district_rate_pct,
                   tax_area_code, area_verified_on,
-                  round_trip_miles, drive_minutes) VALUES
+                  google_round_trip_miles, google_drive_minutes) VALUES
   ('c5000000-0000-4000-8000-000000000001','44444444-4444-4444-4444-444444444444',
    'Front office','front-office','101 Maple St','Auburn','CA','95603',
    'AUBURN', 7.2500, 7.2500, 0.0000, '310110000000', current_date, 60, 66),
@@ -990,6 +990,37 @@ BEGIN
   END IF;
   RAISE NOTICE '  says where %, and % / % are left alone', office, coloma, yuba;
 END $$;
+
+-- The figures in force are the typed ones where there are any, and Google's
+-- where there are not: emptying a typed figure puts Google's back.
+DO $$
+DECLARE googles numeric; typed numeric; emptied numeric;
+BEGIN
+  SELECT round_trip_miles INTO googles FROM site WHERE id = 'c5000000-0000-4000-8000-00000000000a';
+  UPDATE site SET typed_round_trip_miles = 50 WHERE id = 'c5000000-0000-4000-8000-00000000000a';
+  SELECT round_trip_miles INTO typed FROM site WHERE id = 'c5000000-0000-4000-8000-00000000000a';
+  UPDATE site SET typed_round_trip_miles = NULL WHERE id = 'c5000000-0000-4000-8000-00000000000a';
+  SELECT round_trip_miles INTO emptied FROM site WHERE id = 'c5000000-0000-4000-8000-00000000000a';
+
+  IF googles IS DISTINCT FROM 44 THEN
+    RAISE EXCEPTION 'GUARD MISSING: with nothing typed the round trip gave %, not Google''s 44', googles;
+  END IF;
+  IF typed IS DISTINCT FROM 50 THEN
+    RAISE EXCEPTION 'GUARD MISSING: a typed round trip of 50 gave %', typed;
+  END IF;
+  IF emptied IS DISTINCT FROM 44 THEN
+    RAISE EXCEPTION 'GUARD MISSING: emptied, the round trip gave %, not Google''s 44', emptied;
+  END IF;
+  RAISE NOTICE '  in force  the typed round trip over Google''s, and Google''s once it is emptied';
+END $$;
+
+SELECT must_fail($$
+  UPDATE site SET google_round_trip_miles = -1 WHERE id = 'c5000000-0000-4000-8000-00000000000a'
+$$, 'a round trip from Google below nothing');
+
+SELECT must_fail($$
+  UPDATE site SET round_trip_miles = 1 WHERE id = 'c5000000-0000-4000-8000-00000000000a'
+$$, 'the round trip in force written over both');
 
 -- An entry that has been billed cannot go; the invoice is built from it.
 DO $$

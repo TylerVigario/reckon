@@ -41,7 +41,8 @@
 		value?: string | number | null;
 		type?: string;
 		placeholder?: string;
-		hint?: string;
+		/** Under the box; or worked out from what the box holds, as it is typed. */
+		hint?: string | ((current: string) => string);
 		options?: { value: string; label: string }[] | null;
 		inputmode?: 'numeric' | 'decimal' | undefined;
 		required?: boolean;
@@ -240,7 +241,7 @@
 	{#if status === 'bad'}
 		<small class="why" id="{id}-why">{why}</small>
 	{:else if hint}
-		<small>{hint}</small>
+		<small>{typeof hint === 'function' ? hint(current) : hint}</small>
 	{/if}
 </div>
 
