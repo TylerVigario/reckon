@@ -38,11 +38,11 @@ import { readFields } from '#lib/json.ts';
  * part on its own is refused -- there is no typing one -- and so is a place
  * Google could not confirm.
  *
- * A NEW PLACE IS MEASURED AGAIN (8 October 2026): its round trip and drive time
- * are Google's route to it (#lib/server/site-drive), unless the same request
- * gives them. A site that moved where Google cannot say keeps neither, since
- * both measured somewhere else; a figure typed over Google's stands until the
- * site moves again.
+ * A NEW PLACE IS MEASURED AGAIN (8 October 2026): Google's round trip and
+ * drive time are its route to it (#lib/server/site-drive). A site that moved
+ * where Google cannot say has neither, since both measured somewhere else. A
+ * figure typed over Google's stands until the site moves, and goes with the
+ * move unless the same request types it again (12 October 2026).
  */
 const MOST_AT_ONCE = 8;
 
@@ -143,14 +143,19 @@ export const PATCH: RequestHandler = async (event) => {
 	// Measured once CDTFA has priced it, as a new site is: a move CDTFA refuses
 	// is not saved, and need not have asked Google anything.
 	let unmeasured: string | null = null;
-	if ((moved || placed) && !('round_trip_miles' in row) && !('drive_minutes' in row)) {
+	if (moved || placed) {
 		const { drive, why } = await measureDrive(String(row.google_place_id));
-		if (drive) Object.assign(row, { round_trip_miles: drive.miles, drive_minutes: drive.minutes });
-		else {
-			unmeasured = why;
-			if (moved) Object.assign(row, { round_trip_miles: null, drive_minutes: null });
-		}
+		unmeasured = why;
+		if (drive || moved)
+			Object.assign(row, {
+				google_round_trip_miles: drive?.miles ?? null,
+				google_drive_minutes: drive?.minutes ?? null
+			});
 	}
+	// What was typed was about where the site was.
+	if (moved)
+		for (const f of ['typed_round_trip_miles', 'typed_drive_minutes'])
+			if (!(f in row)) row[f] = null;
 
 	let after: { version: string } | undefined;
 	try {

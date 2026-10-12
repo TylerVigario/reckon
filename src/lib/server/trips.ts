@@ -6,7 +6,7 @@ import { businessToday } from './calendar.ts';
 import { sum } from '#lib/decimal.ts';
 import { driveKey, type Place } from '#lib/trip-legs.ts';
 import { operatorRow } from './operator.ts';
-import { baseOf } from './site-drive.ts';
+import { baseOf, siteAt } from './site-drive.ts';
 import type { Waypoint } from './routes.ts';
 
 /**
@@ -119,9 +119,7 @@ export async function waypointsOf(trip: {
 		if (s.address) return { address: s.address };
 		const site = sites.find((x) => x.id === s.siteId);
 		if (!site) return null;
-		return site.placeId
-			? { placeId: site.placeId }
-			: { address: `${site.street}, ${site.city}, ${site.region} ${site.postcode}` };
+		return siteAt(site);
 	});
 	const all = [at(trip.startAddress), ...stops, at(trip.endAddress)];
 	return all.every((w) => w !== null) ? all : null;

@@ -40,6 +40,21 @@
 	let movingWhy = $state('');
 	// Why the drive was not measured, when it was asked for and could not be.
 	let unmeasured = $state('');
+
+	/**
+	 * GOOGLE'S STAYS IN VIEW (12 October 2026). The box is what was typed, with
+	 * Google's figure greyed in it while nothing is; once something is, the line
+	 * under it says what Google's was, since the box no longer can.
+	 */
+	function said(typed: string, google: string | number | null, route: string, figure: string) {
+		if (typed.trim())
+			return google === null
+				? 'Yours. Google has not measured it'
+				: `Yours. Google's route is ${google}; empty the box to use it`;
+		return google === null
+			? `${figure}. Google has not measured it; type it if you know it`
+			: `${route}. Type yours to use it instead`;
+	}
 	async function moveTo(a: Resolved) {
 		moving = 'saving';
 		const r = await fetch(api, {
@@ -199,26 +214,35 @@
 					{/if}
 				</div>
 				<Setting
-					name="round_trip_miles"
+					name="typed_round_trip_miles"
 					label="Round trip"
-					value={s.round_trip_miles ?? ''}
+					value={s.typed_round_trip_miles ?? ''}
+					placeholder={s.google_round_trip_miles ?? ''}
 					endpoint={api}
 					{version}
 					onversion={(v) => (version = v)}
 					validate={parseSiteField}
 					inputmode="decimal"
-					hint="Miles from the business and back, by Google's route until typed over"
+					hint={(typed) =>
+						said(
+							typed,
+							s.google_round_trip_miles,
+							"Google's route from the business and back",
+							'Miles from the business and back'
+						)}
 				/>
 				<Setting
-					name="drive_minutes"
+					name="typed_drive_minutes"
 					label="Drive time"
-					value={s.drive_minutes ?? ''}
+					value={s.typed_drive_minutes ?? ''}
+					placeholder={s.google_drive_minutes === null ? '' : String(s.google_drive_minutes)}
 					endpoint={api}
 					{version}
 					onversion={(v) => (version = v)}
 					validate={parseSiteField}
 					inputmode="numeric"
-					hint="Minutes, one way, by Google's route until typed over"
+					hint={(typed) =>
+						said(typed, s.google_drive_minutes, "Google's route, one way", 'Minutes, one way')}
 				/>
 			{/key}
 		</div>

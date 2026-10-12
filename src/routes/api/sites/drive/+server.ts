@@ -7,8 +7,8 @@ import type { RequestHandler } from './$types';
 
 /**
  * How far a place is, before it is a site (#lib/server/site-drive): New site
- * asks the moment a place is chosen, so the round trip and drive time are there
- * to be seen, and typed over, before anything is saved. Google's route there
+ * asks the moment a place is chosen, so Google's round trip and drive time are
+ * there to be seen, and typed over, before anything is saved. Google's route there
  * and back from the business; nulls, and why, when it cannot be said.
  */
 export const POST: RequestHandler = async ({ request }) => {
@@ -20,7 +20,11 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	const { drive, why } = await measureDrive(String(parsed.value));
 	return Response.json(
-		{ round_trip_miles: drive?.miles ?? null, drive_minutes: drive?.minutes ?? null, why },
+		{
+			google_round_trip_miles: drive?.miles ?? null,
+			google_drive_minutes: drive?.minutes ?? null,
+			why
+		},
 		{ headers: { 'cache-control': 'no-store' } }
 	);
 };

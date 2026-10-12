@@ -46,15 +46,18 @@
 
 	/**
 	 * HOW FAR IT IS, AS SOON AS IT IS CHOSEN (8 October 2026): Google's route
-	 * from the business and back, there to be typed over before anything is
-	 * saved. A place chosen again is somewhere else, so what the boxes held goes
-	 * with it, typed or not.
+	 * from the business and back, greyed in the boxes until something is typed
+	 * over it, and named under them once it is (12 October 2026). A place chosen
+	 * again is somewhere else, so what was typed goes with it.
 	 */
+	let google = $state<{ miles: string | null; minutes: number | null } | null>(null);
 	let measured = $state('');
 	let asking = 0;
 	async function choose(a: Resolved) {
 		chosen = a;
 		const mine = ++asking;
+		google = null;
+		miles = minutes = '';
 		measured = 'Asking Google how far it is…';
 		const r = await fetch('/api/sites/drive', {
 			method: 'POST',
@@ -63,20 +66,31 @@
 		}).catch(() => null);
 		const d = r?.ok
 			? ((await readJson(r).catch(() => null)) as {
-					round_trip_miles: string | null;
-					drive_minutes: number | null;
+					google_round_trip_miles: string | null;
+					google_drive_minutes: number | null;
 					why: string | null;
 				} | null)
 			: null;
 		// Another place was chosen while this one was being asked about.
 		if (mine !== asking) return;
-		miles = d?.round_trip_miles ?? '';
-		minutes =
-			d?.drive_minutes === null || d?.drive_minutes === undefined ? '' : String(d.drive_minutes);
+		google =
+			d?.why === null
+				? { miles: d.google_round_trip_miles, minutes: d.google_drive_minutes }
+				: null;
 		measured = !d
 			? 'Google could not be asked how far it is. Type it if you know it.'
-			: (d.why ?? "Google's route from the business and back. Type over it if you know better.");
+			: (d.why ?? '');
 	}
+
+	/** What the line under the boxes says once Google has answered: whose each figure is. */
+	const whose = $derived.by(() => {
+		if (!google) return measured;
+		if (!miles.trim() && !minutes.trim())
+			return "Google's route from the business: there and back, and one way. Type yours to use it instead.";
+		const of = (typed: string, name: string, theirs: string | number | null) =>
+			typed.trim() ? `${name} is yours; Google's route is ${theirs}.` : `${name} is Google's.`;
+		return `${of(miles, 'Round trip', google.miles)} ${of(minutes, 'Drive time', google.minutes)} Empty a box to use Google's.`;
+	});
 
 	let errors = $state<Record<string, string>>({});
 	let saying = $state('');
@@ -90,8 +104,8 @@
 		region: chosen?.region ?? '',
 		postcode: chosen?.postcode ?? '',
 		google_place_id: chosen?.placeId ?? '',
-		round_trip_miles: miles,
-		drive_minutes: minutes,
+		typed_round_trip_miles: miles,
+		typed_drive_minutes: minutes,
 		active: 'true'
 	});
 
@@ -188,20 +202,32 @@
 					<div class="duo">
 						<label class="fld">
 							<span>Round trip, miles</span>
-							<input class="inp" bind:value={miles} inputmode="decimal" placeholder="38" />
-							{#if show('round_trip_miles')}
-								<small class="bad">{show('round_trip_miles')}</small>
+							<input
+								class="inp"
+								bind:value={miles}
+								inputmode="decimal"
+								placeholder={google?.miles ?? ''}
+							/>
+							{#if show('typed_round_trip_miles')}
+								<small class="bad">{show('typed_round_trip_miles')}</small>
 							{/if}
 						</label>
 						<label class="fld">
 							<span>Drive time, minutes</span>
-							<input class="inp" bind:value={minutes} inputmode="numeric" placeholder="44" />
-							{#if show('drive_minutes')}<small class="bad">{show('drive_minutes')}</small>{/if}
+							<input
+								class="inp"
+								bind:value={minutes}
+								inputmode="numeric"
+								placeholder={google?.minutes === null || google?.minutes === undefined
+									? ''
+									: String(google.minutes)}
+							/>
+							{#if show('typed_drive_minutes')}
+								<small class="bad">{show('typed_drive_minutes')}</small>
+							{/if}
 						</label>
 					</div>
-					<small class="lt"
-						>{measured || 'Google works these out when the address is chosen.'}</small
-					>
+					<small class="lt">{whose || 'Google works these out when the address is chosen.'}</small>
 					{#if saying}<div class="rec-s bad">{saying}</div>{/if}
 					<div class="acts">
 						<button class="btn pri" onclick={create} disabled={saving}>

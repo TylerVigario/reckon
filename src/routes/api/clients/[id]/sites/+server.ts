@@ -29,10 +29,11 @@ import { readFields } from '#lib/json.ts';
  * whether that is a place before anything else is. Online only: an address
  * Google could not confirm is not saved.
  *
- * AND HOW FAR IT IS (8 October 2026). A site given no round trip and no drive
- * time has them from Google's route, there and back from the business
- * (#lib/server/site-drive). New site has already asked, and sends what it was
- * told or what was typed over it; this is the same answer for any other caller.
+ * AND HOW FAR IT IS (8 October 2026). Google's route there and back from the
+ * business (#lib/server/site-drive) is asked here, whoever the caller, and kept
+ * beside any round trip or drive time typed over it (12 October 2026). New
+ * site has already asked, to show it, so this is the same answer from the
+ * cache.
  *
  * THE CLIENT IS IN THE PATH, not in the body. A site belongs to exactly one
  * client -- site_belongs_to_one_client says so -- and an endpoint that took
@@ -89,10 +90,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		return refuse({ postcode: e instanceof NoAnswer ? e.message : 'CDTFA could not be reached.' });
 	}
 
-	if (row.round_trip_miles === null && row.drive_minutes === null) {
-		const { drive } = await measureDrive(String(row.google_place_id));
-		if (drive) Object.assign(row, { round_trip_miles: drive.miles, drive_minutes: drive.minutes });
-	}
+	const { drive } = await measureDrive(String(row.google_place_id));
 
 	try {
 		const optional = <T>(v: unknown, as: (v: unknown) => T) =>
@@ -119,8 +117,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 							postcode: String(row.postcode),
 							googlePlaceId: String(row.google_place_id),
 							addressVerifiedOn: areaVerifiedOn,
-							roundTripMiles: optional(row.round_trip_miles, String),
-							driveMinutes: optional(row.drive_minutes, Number),
+							googleRoundTripMiles: drive?.miles ?? null,
+							googleDriveMinutes: drive?.minutes ?? null,
+							typedRoundTripMiles: optional(row.typed_round_trip_miles, String),
+							typedDriveMinutes: optional(row.typed_drive_minutes, Number),
 							entityId: entity_id,
 							active: true,
 							taxRatePct: priced.rate,

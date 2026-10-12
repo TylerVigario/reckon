@@ -425,6 +425,31 @@ console.log('\n  one save must not erase another');
 		await check('a site renames', 'PATCH', at, { fields: { label: `Renamed ${stamp}` } }, 200);
 		if (label) await check('and takes its own name back', 'PATCH', at, { fields: { label } }, 200);
 		await check('a rate cannot be typed in', 'PATCH', at, { fields: { tax_rate_pct: '0' } }, 400);
+		// The demo's sites carry Google's figures and none typed, so emptying
+		// the typed one puts the site back as it was.
+		await check(
+			"a round trip is typed over Google's",
+			'PATCH',
+			at,
+			{ fields: { typed_round_trip_miles: '12.5' } },
+			(/** @type {{ status: number, body: any }} */ r) =>
+				r.status === 200 && r.body?.saved?.typed_round_trip_miles === '12.5'
+		);
+		await check(
+			"and emptied, so Google's is in force again",
+			'PATCH',
+			at,
+			{ fields: { typed_round_trip_miles: '' } },
+			(/** @type {{ status: number, body: any }} */ r) =>
+				r.status === 200 && r.body?.saved?.typed_round_trip_miles === null
+		);
+		await check(
+			"Google's own figure cannot be typed in",
+			'PATCH',
+			at,
+			{ fields: { google_round_trip_miles: '1' } },
+			400
+		);
 		await check(
 			'a slug that leaves nothing is refused',
 			'PATCH',
@@ -478,10 +503,10 @@ await check(
 	(/** @type {{ status: number, body: any }} */ r) =>
 		r.status === 200 &&
 		(r.body?.why === null
-			? r.body.round_trip_miles !== null && r.body.drive_minutes !== null
+			? r.body.google_round_trip_miles !== null && r.body.google_drive_minutes !== null
 			: typeof r.body?.why === 'string' &&
-				r.body.round_trip_miles === null &&
-				r.body.drive_minutes === null)
+				r.body.google_round_trip_miles === null &&
+				r.body.google_drive_minutes === null)
 );
 await check(
 	'a place not chosen from Google is refused',

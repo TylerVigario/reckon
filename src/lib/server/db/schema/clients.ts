@@ -127,12 +127,20 @@ export const site = pgTable(
 		 */
 		areaVerifiedOn: day().notNull(),
 		/**
-		 * From the business and back, and the drive there: Google's route,
-		 * worked out whenever the place is chosen, or typed over by hand. Empty
-		 * when nobody could say, rather than a figure for where the site was.
+		 * From the business and back, and the drive there, by Google's route:
+		 * measured whenever the place is chosen and whenever the business moves.
+		 * Empty when Google could not say, rather than a figure for where the
+		 * site or the business was.
 		 */
-		roundTripMiles: decimal(8, 1),
-		driveMinutes: integer(),
+		googleRoundTripMiles: decimal(8, 1),
+		googleDriveMinutes: integer(),
+		/**
+		 * The same two, typed over Google's by somebody who knows better. Kept
+		 * beside Google's, which stays in view, and dropped when the site moves:
+		 * they were about where it was.
+		 */
+		typedRoundTripMiles: decimal(8, 1),
+		typedDriveMinutes: integer(),
 		active: boolean().default(true).notNull(),
 		createdAt: createdAt(),
 		/** The label, with the city after it where the label does not already say it. */
@@ -143,6 +151,13 @@ export const site = pgTable(
     WHEN (POSITION((lower(label)) IN (lower(city))) > 0) THEN label
     ELSE ((label || ', '::text) || city)
 END`
+		),
+		/** The figures in force: what was typed, and Google's where nothing was. */
+		roundTripMiles: decimal(8, 1).generatedAlwaysAs(
+			sql`COALESCE(typed_round_trip_miles, google_round_trip_miles)`
+		),
+		driveMinutes: integer().generatedAlwaysAs(
+			sql`COALESCE(typed_drive_minutes, google_drive_minutes)`
 		),
 		/**
 		 * CDTFA's TAC for the address. Changes when the address moves between
@@ -194,14 +209,16 @@ END`
 			sql`(${t.street} <> '') AND (${t.city} <> '') AND (${t.postcode} <> '')`
 		),
 		nonNegative('site_district_rate_pct_check', t.districtRatePct),
-		nonNegative('site_drive_minutes_check', t.driveMinutes),
+		nonNegative('site_google_drive_minutes_check', t.googleDriveMinutes),
+		nonNegative('site_google_round_trip_miles_check', t.googleRoundTripMiles),
 		check(
 			'site_rate_parts_sum_to_the_rate',
 			sql`(${t.stateRatePct} + ${t.districtRatePct}) = ${t.taxRatePct}`
 		),
-		nonNegative('site_round_trip_miles_check', t.roundTripMiles),
 		slugFormat('site_slug_is_a_slug', t.slug),
 		nonNegative('site_state_rate_pct_check', t.stateRatePct),
+		nonNegative('site_typed_drive_minutes_check', t.typedDriveMinutes),
+		nonNegative('site_typed_round_trip_miles_check', t.typedRoundTripMiles),
 		nonNegative('site_verified_rate_pct_check', t.taxRatePct)
 	]
 );

@@ -283,9 +283,10 @@ unrestrictable — the worst of the options, and not obviously so.
 **IP addresses** for this host, and to three APIs: **Address Validation API**;
 **Places API (New)**, which confirms that a place id a browser sent is a place; and
 **Routes API**, which gives each drive of a trip being recorded its miles, and a
-site its round trip and drive time whenever its place is chosen. Each is used once
-per address or once per change to a trip's stops, rather than once per keystroke,
-so the round trip that ruled out proxying the autocomplete does not apply. A
+site its round trip and drive time whenever its place is chosen — every site's at
+once when the business's is. Each is used once per address or once per change to
+a trip's stops, rather than once per keystroke, so the round trip that ruled out
+proxying the autocomplete does not apply. A
 trip's route is one request at the Essentials tier, ten places between its first
 and last at most, and no traffic; a site's is one request, from the business by
 the site and back.
