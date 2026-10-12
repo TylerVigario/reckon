@@ -40,7 +40,7 @@
 		await discardTrip(key).catch(() => {});
 		await read();
 	}
-	const fix = (key: string) => `${resolve('/trips/new')}?fix=${encodeURIComponent(key)}`;
+	const fix = (key: string) => resolve(`/trips/new?fix=${encodeURIComponent(key)}`);
 	const shown = (q: QueuedTrip) =>
 		[
 			day(q.trip.shown.day),

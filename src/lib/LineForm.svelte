@@ -68,7 +68,7 @@
 		 * The draft's own screen: where the form goes back to, and after a save.
 		 * A draft started here is one screen with the draft in its query.
 		 */
-		back: ResolvedPathname | `${ResolvedPathname}?${string}`;
+		back: ResolvedPathname;
 		/**
 		 * A line already on the draft, to be changed: its fields as Add a line
 		 * names them, whether it has a receipt, and -- one from stock -- what it

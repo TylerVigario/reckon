@@ -51,7 +51,7 @@
 			// Started: the worker keeps it for no signal from now on.
 			warm();
 			await goto(resolve('/invoices/[id]', { id }));
-		} else await goto(`${resolve('/invoices/on-phone')}?draft=${encodeURIComponent(uuid)}`);
+		} else await goto(resolve(`/invoices/on-phone?draft=${encodeURIComponent(uuid)}`));
 	}
 </script>
 

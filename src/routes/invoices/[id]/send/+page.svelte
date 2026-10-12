@@ -77,10 +77,9 @@
 		} catch {
 			// Cancelled, or not allowed: it is sent either way.
 		}
-		await goto(
-			`${resolve('/invoices/[id]', { id: i.id })}${handed ? `?link=${handed}` : '?link=sent'}`,
-			{ invalidateAll: true }
-		);
+		await goto(resolve(`/invoices/[id]?link=${handed || 'sent'}`, { id: i.id }), {
+			invalidateAll: true
+		});
 	}
 </script>
 

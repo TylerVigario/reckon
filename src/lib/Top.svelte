@@ -34,11 +34,11 @@
 	}: {
 		title: string;
 		sub?: string;
-		/** A screen, resolved, and its query where it has one: a draft started on a phone. */
-		back?: ResolvedPathname | `${ResolvedPathname}?${string}` | null;
+		/** A screen, resolved with its query where it has one: a draft started on a phone. */
+		back?: ResolvedPathname | null;
 		backLabel?: string;
 		/** Every ancestor, outermost first. The current screen is the title. */
-		trail?: { href: ResolvedPathname | `${ResolvedPathname}?${string}`; label: string }[] | null;
+		trail?: { href: ResolvedPathname; label: string }[] | null;
 		actions?: import('svelte').Snippet;
 	} = $props();
 
@@ -52,13 +52,11 @@
 		<nav class="crumbs" aria-label="Where this sits">
 			{#each path as c, i (c.href + i)}
 				{#if i}<span class="sep" aria-hidden="true">›</span>{/if}
-				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolved by the caller; ResolvedPathname enforces it -->
 				<a href={c.href}>{c.label}</a>
 			{/each}
 		</nav>
 	{/if}
 	<div class="inner">
-		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- as above -->
 		{#if path.length === 1}<a class="back" href={path[0].href}>{path[0].label}</a>{/if}
 		<h1>
 			{title}{#if sub}<small>{sub}</small>{/if}

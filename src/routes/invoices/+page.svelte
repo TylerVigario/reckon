@@ -74,7 +74,7 @@
 				{#each started as q (q.draft.client_uuid)}
 					<a
 						class="rec link"
-						href={`${resolve('/invoices/on-phone')}?draft=${encodeURIComponent(q.draft.client_uuid)}`}
+						href={resolve(`/invoices/on-phone?draft=${encodeURIComponent(q.draft.client_uuid)}`)}
 					>
 						<div class="rec-m">
 							<div class="rec-t">New draft · {q.draft.who}</div>

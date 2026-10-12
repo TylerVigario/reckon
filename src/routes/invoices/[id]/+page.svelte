@@ -281,8 +281,10 @@
 							<div class="acts">
 								<a
 									class="btn sm pri"
-									href={`${resolve('/invoices/[id]/add', { id: i.id })}?fix=${encodeURIComponent(q.line.client_uuid)}`}
-									>Fix</a
+									href={resolve(
+										`/invoices/[id]/add?fix=${encodeURIComponent(q.line.client_uuid)}`,
+										{ id: i.id }
+									)}>Fix</a
 								>
 								<button class="btn sm gho" onclick={() => letGo(q.line.client_uuid)}>
 									{confirming === q.line.client_uuid ? 'Tap again to discard' : 'Discard'}

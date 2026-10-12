@@ -103,9 +103,7 @@
 >
 	{#snippet actions()}
 		{#if draft && !draft.refused}
-			<a
-				class="btn sm"
-				href={`${resolve('/invoices/on-phone/add')}?draft=${encodeURIComponent(uuid)}`}
+			<a class="btn sm" href={resolve(`/invoices/on-phone/add?draft=${encodeURIComponent(uuid)}`)}
 				>Add a line</a
 			>
 		{/if}
