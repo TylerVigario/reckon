@@ -223,7 +223,7 @@
 							<div class="acts">
 								<a
 									class="btn sm pri"
-									href={`${resolve('/timesheet/manual')}?fix=${encodeURIComponent(e.client_uuid)}`}
+									href={resolve(`/timesheet/manual?fix=${encodeURIComponent(e.client_uuid)}`)}
 									>Fix</a
 								>
 								<button class="btn sm gho" onclick={() => letGo(e.client_uuid)}>

@@ -18,9 +18,7 @@
 			() => (draft = null)
 		);
 	});
-	const back = $derived(
-		`${resolve('/invoices/on-phone')}?draft=${encodeURIComponent(uuid)}` as const
-	);
+	const back = $derived(resolve(`/invoices/on-phone?draft=${encodeURIComponent(uuid)}`));
 </script>
 
 {#if draft}

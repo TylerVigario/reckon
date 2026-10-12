@@ -124,9 +124,8 @@
 				</div>
 				{#if changed.refused}
 					<div class="rec-n">
-						<a
-							class="btn sm"
-							href={`${resolve('/trips/new')}?fix=${encodeURIComponent(data.trip.id)}`}>Fix</a
+						<a class="btn sm" href={resolve(`/trips/new?fix=${encodeURIComponent(data.trip.id)}`)}
+							>Fix</a
 						>
 					</div>
 				{/if}

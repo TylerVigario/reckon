@@ -7,6 +7,15 @@
 # Grouped for minor and patch only. A major is where the breakage lives, and in
 # a group a bump that is fine is held back by one that is not -- so a major
 # arrives on its own and can be refused on its own.
+#
+# Two majors are refused here rather than one pull request at a time, because
+# each waits on something outside this repository:
+#
+# - @types/node describes the Node the host runs, which .nvmrc pins. It moves
+#   with .nvmrc when the host moves to Node 26 (#13), never ahead of it.
+# - typescript 7 ships its compiler without the API that svelte-check,
+#   typescript-eslint and SvelteKit are built on, and none of the three
+#   accepts it yet (#88). This comes off when they do.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -17,16 +26,24 @@ updates:
       dependencies:
         patterns: ['*']
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: '@types/node'
+        update-types: [version-update:semver-major]
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
     commit-message:
       prefix: build
 
+  # "/" is the workflows. The composite actions under .github/actions pin
+  # actions too, and are read only when named.
   - package-ecosystem: github-actions
-    directory: /
+    directories: ['/', '/.github/actions/*']
     schedule:
       interval: weekly
     groups:
       actions:
         patterns: ['*']
         update-types: [minor, patch]
+        group-by: dependency-name
     commit-message:
       prefix: ci

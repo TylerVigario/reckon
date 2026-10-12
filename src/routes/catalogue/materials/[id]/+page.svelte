@@ -16,7 +16,7 @@
 	backLabel="Materials"
 >
 	{#snippet actions()}
-		<a class="btn sm pri" href={`${resolve('/catalogue/materials/receive')}?material=${m.id}`}
+		<a class="btn sm pri" href={resolve(`/catalogue/materials/receive?material=${m.id}`)}
 			>Receive stock</a
 		>
 	{/snippet}
