@@ -73,12 +73,14 @@ printf '\302\240\n' | "$GREP" -qP '(*UTF)^[\p{Z}\p{Cf}]$' 2>/dev/null \
 # different projects.
 #
 # PRESS_PDFTOTEXT and PRESS_PDFFONTS exist because on Windows PATH is not the
-# user's to order. Git for Windows' sh prepends its own /mingw64/bin and
-# /usr/bin at startup, so the Xpdf binaries it bundles win inside every tool
-# no matter what PowerShell or a .bashrc resolves — a Windows contributor has
-# no reachable lever. Naming the executable directly is that lever, and it is
-# press-scoped: nothing else on the machine reads these names, so unlike
-# renaming the bundled binaries it shifts no other tool's dependency.
+# user's to order. Git for Windows' sh prepends its own /mingw64/bin and /usr/bin at
+# startup, so the Xpdf pdftotext it bundles wins inside every tool, no matter what
+# PowerShell or a .bashrc resolves: winget puts poppler's Library/bin on the user PATH,
+# and outside sh, where mingw64/bin is not on PATH at all, poppler's is the one found. A
+# Windows contributor has no reachable lever. Naming the executable directly is that
+# lever, and it is press-scoped: nothing else on the machine reads these names, so unlike
+# renaming the bundled binary it shifts no other tool's dependency. (Measured on Git
+# 2.55, which bundles no pdffonts or pdftoppm.)
 #
 # The assertion is unchanged either way. Being pointable does not mean being
 # trusted; whatever it is aimed at still has to say poppler.
@@ -97,7 +99,8 @@ for spec in "PRESS_PDFTOTEXT $PDFTOTEXT" "PRESS_PDFFONTS $PDFFONTS"; do
              "$tool" -v 2>&1 | head -1 | sed 's/^/  /' >&2
              echo "       extractors disagree about which glyphs a PDF contains, so the" >&2
              echo "       glyph check is only meaningful against poppler." >&2
-             echo "       Put it first on PATH, or set $var to it directly." >&2
+             echo "       Put it first on PATH, or set $var to it directly. On Windows, Git's sh puts" >&2
+             echo "       its own /mingw64/bin, with Xpdf's pdftotext, ahead of PATH: set $var there." >&2
              exit 1; }
 done
 # The vendored families, from the font files' names; fonts/ also holds their licences.
@@ -413,4 +416,7 @@ done
 if [ "$rc" -eq 0 ] && [ -z "$optional" ]; then
     if [ -z "$hit" ]; then echo "press: $pdf clean"; else echo "press: $pdf passes, with its accepted findings"; fi
 fi
+# For stamp.sh's build record: the audit ran every pass and passed. A build whose audit skipped
+# anything is not recorded, so the next build audits again once the tools are there.
+if [ "$rc" -eq 0 ] && [ -z "$skipped" ] && [ -n "${PRESS_AUDIT_RAN:-}" ]; then : > "$PRESS_AUDIT_RAN"; fi
 exit "$rc"

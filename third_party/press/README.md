@@ -125,6 +125,15 @@ are missing, the build says the audit was skipped and why, and succeeds: buildin
 depends on them. `check.sh` is the same audit for when it must run, as in CI: without its tools
 it refuses.
 
+**An unchanged document is not built again.** One file in press's folder, `.build-record`,
+records what each document's last build read — every file typst lists, the fonts, typst's
+version, press's tools, the flags and the zone — each with a checksum, and what its audit said.
+When all of it still matches, the build says unchanged at once, without compiling or auditing,
+and repeats what the audit said. Only a build whose audit ran in full and passed is recorded,
+so a failing document, or one built without the audit's tools, is built and audited every time.
+The kit's own `.gitignore` keeps the record out of git, an update replaces it with press's
+folder, and deleting it costs one full build per document, never a wrong answer.
+
 **A page the document did not set** — a scanned form it fills in, an embedded PDF page — is
 marked with `scan(...)`. The audit then reads a copy with every scan hidden, so the scan's own
 fonts, text layer and edge-to-edge ink are not findings, and what the document sets over it is
@@ -204,10 +213,15 @@ failed its audit. Export `PRESS_TZ` from the justfile.
   `press.just`), and a Python 3 on `PATH` as `python` or `python3`.
 - The tools run in Git's `sh`, in `C:\Program Files\Git\bin`. Git's default PATH choice adds
   only `Git\cmd`, which has no `sh`: add the `bin` directory to your user `PATH`.
-- winget does not put poppler's programs on `PATH`, and inside `sh` Git's own Xpdf
-  `pdftotext` would come first anyway. Set `PRESS_PDFTOTEXT`, `PRESS_PDFFONTS` and
-  `PRESS_PDFTOPPM` in your user environment, with forward slashes, to the three programs in
-  poppler's `Library/bin` (under `%LOCALAPPDATA%/Microsoft/WinGet/Packages/`).
+- **Set `PRESS_PDFTOTEXT`, even though PowerShell finds poppler.** winget puts poppler's
+  `Library/bin` on your user `PATH`, and `where pdftotext` in PowerShell finds poppler's. The
+  tools run in Git's `sh`, though, which puts Git's own `/mingw64/bin` ahead of everything on
+  `PATH`, and Git bundles Xpdf's `pdftotext`. Inside `sh` that one wins, and the audit refuses
+  it: builds say "not audited: pdftotext is not poppler's". No `PATH` order fixes this. Set
+  `PRESS_PDFTOTEXT` in your user environment, with forward slashes, to `pdftotext.exe` in
+  poppler's `Library/bin` (under `%LOCALAPPDATA%/Microsoft/WinGet/Packages/`). Git bundles no
+  `pdffonts` or `pdftoppm`; `PRESS_PDFFONTS` and `PRESS_PDFTOPPM` pin those the same way if you
+  want all three fixed.
 
 ## Writing a document
 

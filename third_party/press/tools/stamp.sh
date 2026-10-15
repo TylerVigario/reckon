@@ -115,21 +115,109 @@ trial=
 trap 'rm -rf "$work"; if [ -n "$trial" ]; then rm -f "$trial"; fi' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+# THE BUILD RECORD. A PDF is unchanged only if nothing it was made from changed, and that is
+# known without compiling it. One file in press's own folder, .build-record, holds an entry per
+# document and PDF: what its last build read -- every file typst lists, the fonts in each font
+# path (typst does not list fonts), the typst version, press's tools, the flags, the zone --
+# with a SHA-256 of each, the PDF's own, its stamp, and what the audit said. When all of it still
+# matches, the build says unchanged without compiling or auditing again, and repeats what the
+# audit said. Only a build whose audit ran every pass and passed is recorded: one that failed, or
+# skipped anything for want of a tool, has its entry removed, so the next build audits again.
+#
+# The record is a cache. press's .gitignore keeps it out of git, an update replaces press's
+# folder and the record with it, and deleting it costs one full build per document, never a
+# wrong answer. A record press cannot write leaves the build as it was. check.sh, the audit asked
+# for by name, never uses it. Two builds at once each write a whole new record and the later
+# one stands, which costs the other document a rebuild.
+here=$(dirname "$0")
+record=$here/../.build-record
+entry_head=$(printf '== %s\t%s' "$src" "$pdf")
+# entry: this document's entry from the record, without its heading.
+entry() { [ -f "$record" ] && awk -v h="$entry_head" '$0 == h { on = 1; next } /^== / { on = 0 } on' "$record"; }
+# others: the record without this document's entry.
+others() {
+    if [ -f "$record" ]; then
+        awk -v h="$entry_head" '/^== / { on = ($0 != h) } NR == 1 || on' "$record"
+    else
+        echo "press build record 1"
+    fi
+}
+# write_record: replace the record with what is on stdin, whole, or leave it if press's folder
+# cannot be written.
+write_record() { cat > "$record.$$" 2>/dev/null && mv "$record.$$" "$record" 2>/dev/null || rm -f "$record.$$" 2>/dev/null || true; }
+if command -v sha256sum >/dev/null 2>&1; then dig=sha256sum; else dig="shasum -a 256"; fi
+# fontdirs <typst flags...>: the font paths a build reads, from the flags and the environment.
+fontdirs() {
+    want=
+    for a in "$@"; do
+        if [ -n "$want" ]; then printf '%s\n' "$a"; want=; continue; fi
+        case $a in
+            --font-path) want=1 ;;
+            --font-path=*) printf '%s\n' "${a#--font-path=}" ;;
+        esac
+    done
+    if [ -n "${TYPST_FONT_PATHS:-}" ]; then printf '%s\n' "$TYPST_FONT_PATHS" | tr ':;' '\n\n'; fi
+}
+# key <typst flags...>: what the build depends on besides the files typst lists.
+key() {
+    echo "typst $(typst --version)"
+    printf 'flags'; printf ' %s' "$@"; echo
+    echo "zone $zone"
+    echo "env ${TYPST_ROOT-}|${TYPST_FONT_PATHS-}|${TYPST_IGNORE_SYSTEM_FONTS-}"
+    # shellcheck disable=SC2086  # $dig is a command and its arguments
+    $dig "$here/stamp.sh" "$here/check.sh" "$here/ink-margin.py" "$here/line-overlap.py" | sed 's/^/tool /'
+    fontdirs "$@" | while IFS= read -r d; do
+        [ -d "$d" ] && find "$d" -type f \( -name '*.[ot]tf' -o -name '*.tt[c]' -o -name '*.ot[c]' \)
+    done | LC_ALL=C sort | tr '\n' '\000' | xargs -0 $dig 2>/dev/null | sed 's/^/font /'
+}
+if [ -z "${PRESS_IN_CHECK:-}" ] && [ -z "${PRESS_STAMP_AS:-}" ]; then
+    key "$@" > "$work/key"
+    entry > "$work/entry" || true
+    if [ -s "$work/entry" ] && [ -f "$pdf" ]; then
+        # shellcheck disable=SC2086
+        { cat "$work/key"; echo "pdf $($dig "$pdf" | cut -d ' ' -f 1)"; } > "$work/now"
+        sed -n 's/^input //p' "$work/entry" > "$work/inputs"
+        # shellcheck disable=SC2086
+        if head -n "$(wc -l < "$work/now")" "$work/entry" | cmp -s - "$work/now" \
+                && [ -s "$work/inputs" ] && $dig -c --status "$work/inputs" 2>/dev/null; then
+            sed -n 's/^note //p' "$work/entry" >&2
+            printf 'unchanged %s\n' "$(when "$(sed -n 's/^stamp //p' "$work/entry")")"
+            exit 0
+        fi
+    fi
+    if [ -s "$work/entry" ]; then others | write_record; fi
+fi
 [ -n "${PRESS_IN_CHECK:-}" ] || set -- "$@" --deps "$work/deps" --deps-format zero
 
-# finish <status> <typst flags...>: say what typst printed and what the build made, then audit
-# it, and exit with the audit's answer.
+# finish <status> <stamp> <typst flags...>: say what typst printed and what the build made,
+# then audit it; record the build if the audit passed, and exit with the audit's answer.
 finish() {
-    st=$1
-    shift
+    st=$1 stamp=$2
+    shift 2
     [ -n "$out" ] && printf '%s\n' "$out" >&2
-    printf '%s\n' "$st"
+    printf '%s %s\n' "$st" "$(when "$stamp")"
     [ -z "${PRESS_IN_CHECK:-}" ] || exit 0
     printf '%s\n' "$out" > "$work/log"
-    here=$(dirname "$0")
-    PRESS_AUDIT=optional PRESS_BUILT_DEPS="$work/deps" PRESS_BUILT_LOG="$work/log" \
-        sh "$here/check.sh" "$src" "$pdf" "$here/.." "$@"
-    exit $?
+    s=0
+    PRESS_AUDIT=optional PRESS_BUILT_DEPS="$work/deps" PRESS_BUILT_LOG="$work/log" PRESS_AUDIT_RAN="$work/ran" \
+        sh "$here/check.sh" "$src" "$pdf" "$here/.." "$@" 2> "$work/notes" || s=$?
+    cat "$work/notes" >&2
+    [ "$s" -eq 0 ] || exit "$s"
+    [ -f "$work/ran" ] || exit 0
+    # shellcheck disable=SC2086
+    {
+        others
+        printf '%s\n' "$entry_head"
+        cat "$work/key"
+        echo "pdf $($dig "$pdf" | cut -d ' ' -f 1)"
+        echo "stamp $stamp"
+        tr '\000\\' '\n/' < "$work/deps" | while IFS= read -r f; do
+            if [ -n "$f" ] && [ -f "$f" ]; then printf '%s\000' "$f"; fi
+        done | xargs -0 $dig | sed 's/^/input /'
+        sed 's/^/note /' "$work/notes"
+    } | write_record
+    exit 0
 }
 
 # Compile $src at stamp $1 into $2; typst's own output goes to stdout for the caller.
@@ -157,7 +245,7 @@ if [ -n "$old" ]; then
     if out=$(at "$old" "$trial" "$@"); then
         if cmp -s "$trial" "$pdf"; then
             rm -f "$trial"
-            finish "unchanged $(when "$old")" "$@"
+            finish unchanged "$old" "$@"
         fi
     else
         rm -f "$trial"
@@ -168,7 +256,7 @@ if [ -n "$old" ]; then
 fi
 
 if out=$(at "$now" "$pdf" "$@"); then
-    finish "$( [ -n "$old" ] && echo changed || echo new ) $(when "$now")" "$@"
+    finish "$( [ -n "$old" ] && echo changed || echo new )" "$now" "$@"
 fi
 printf '%s\n' "$out" >&2
 exit 1

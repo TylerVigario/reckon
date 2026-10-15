@@ -321,6 +321,11 @@ at. The audit needs poppler and a Python, and a build without them says it was
 not audited. **Always `npm run print:check` before a document goes anywhere**:
 it is the same audit, and it refuses to run without them.
 
+A document whose inputs have not changed since a build that passed its audit is
+not built again: press keeps a record of that build in
+`third_party/press/.build-record`, which its own `.gitignore` keeps out of git.
+`print:check` audits every time.
+
 The stamp — when a document's content last changed — is in UTC, so a page that
 prints it says the same wherever it was built.
 

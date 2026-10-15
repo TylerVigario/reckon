@@ -15,7 +15,9 @@
  * content last changed, and audits what it built; report.sh says what was
  * made. The audit needs poppler and a Python. Without them a build says it was
  * not audited and still succeeds, which is why check exists: check.sh is the
- * same audit, and it refuses to run without them.
+ * same audit, and it refuses to run without them. A document whose inputs are
+ * unchanged since a build that passed its audit is not built again; stamp.sh
+ * keeps that record in third_party/press, and check.sh never reads it.
  *
  * The stamp is in UTC. reckon's documents are read wherever reckon is used, so
  * a page that prints its stamp says the same wherever it was built.
