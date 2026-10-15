@@ -34,12 +34,12 @@ reckon is a SvelteKit project with Drizzle, laid out as both lay one out.
 | `src/lib/server/valuation/`     | what an hour bills, what it pays, what a retainer covers, and the tax split — exact decimals, tested            |
 | `tests/db/constraints.sql`      | proves the guards, both ways                                                                                    |
 | `tests/`                        | the behaviour checks, which drive the built app in a browser against an invented business                       |
-| `scripts/`                      | the commands: adding people, refreshing tax rates, migrating, proving the guards, making a release              |
+| `scripts/`                      | the commands: adding people, refreshing tax rates, migrating, proving the guards, printing, making a release    |
 | `docs/schema/*.drawio`          | the data model: an overview and eight clusters                                                                  |
 | `docs/schema/regenerate.py`     | lays the diagrams out from one definition of the tables; overwrites hand edits                                  |
 | `docs/schema/make-printable.py` | derives the printed reference from the diagrams                                                                 |
 | `docs/schema-reference.typ`     | generated — do not hand-edit                                                                                    |
-| `vendor/press`                  | the `@vts/press` Typst package, as a submodule                                                                  |
+| `third_party/press/`            | press, the Typst library, fonts and tools the documents are set in, installed from its release                  |
 
 ## The database
 
@@ -309,23 +309,33 @@ there is no typed address standing in for a place.
 ## Documents
 
 ```bash
-just build docs/schema-reference.typ
-just all
-just check docs/schema-reference.typ
-just clean
+npm run print                                 every document under docs/, into print/
+npm run print -- docs/schema-reference.typ    one of them
+npm run print:check                           the audit, refusing without its tools
 ```
 
-**Always `just check` before a document goes anywhere.** It catches font
-substitution and ink inside the unprintable margin, both of which `typst
-compile` reports as success.
+Every build is audited for what `typst compile` reports as success: a font
+substituted, a glyph that vanished, ink inside the unprintable margin, text
+printed on text. A finding fails the build, with the PDF still written to look
+at. The audit needs poppler and a Python, and a build without them says it was
+not audited. **Always `npm run print:check` before a document goes anywhere**:
+it is the same audit, and it refuses to run without them.
+
+The stamp — when a document's content last changed — is in UTC, so a page that
+prints it says the same wherever it was built.
 
 `print/` is gitignored — it is derived.
+
+press is at `third_party/press/`, committed as its release installed it. A newer
+release is the installer line in `third_party/press/README.md`, run from
+`third_party/`, and the diff it leaves. Only ever a release, never press's
+`main` between releases.
 
 ## Regenerating the schema reference
 
 ```bash
 python3 docs/schema/make-printable.py
-just build docs/schema-reference.typ
+npm run print -- docs/schema-reference.typ
 ```
 
 The diagrams are the source; the reference derives from them, so the two cannot

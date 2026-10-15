@@ -27,7 +27,7 @@ export default defineConfig([
 		'node_modules/',
 		'static/',
 		'drizzle/',
-		'vendor/',
+		'third_party/',
 		'print/',
 		'dist-release/'
 	]),

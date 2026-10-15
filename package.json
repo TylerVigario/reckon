@@ -29,7 +29,9 @@
 		"db:seed": "psql -q -v ON_ERROR_STOP=1 -f src/lib/server/db/seed/demo.sql",
 		"db:test": "node scripts/db-test.mjs",
 		"ci": "npm run format && npm run lint && npm run check && npm run test && npm run test:tz && npm run db:test && npm run build",
-		"release": "node scripts/make-release.mjs"
+		"release": "node scripts/make-release.mjs",
+		"print": "node scripts/print.mjs",
+		"print:check": "node scripts/print.mjs --check"
 	},
 	"devDependencies": {
 		"@commitlint/cli": "^21.2.3",

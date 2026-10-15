@@ -7,7 +7,7 @@ Nothing is transcribed, so the printable cannot drift from the drawings.
 
 Usage:
     python3 docs/schema/make-printable.py
-    just build docs/schema-reference.typ
+    npm run print -- docs/schema-reference.typ
 """
 
 import pathlib
@@ -101,7 +101,7 @@ HEAD = r'''// The reckon schema, as a printed reference.
 // sequence, readable beside a keyboard. The notes beside each cluster say why
 // a table is the shape it is.
 
-#import "@vts/press:0.1.0": *
+#import "/third_party/press/lib.typ": *
 
 #set page(..dense, footer: context {
   set text(size: sz.micro, fill: ink-faint)
@@ -179,4 +179,4 @@ head = (HEAD.replace("@@N_TABLES@@", word(len(seen)))
 OUT.write_text(head + "#columns(2, gutter: 16pt)[\n" + "\n".join(parts) + "\n]\n" + TAIL)
 print(f"{OUT}")
 print(f"  {len(seen)} tables from {len(CLUSTERS)} clusters")
-print("  build:  just build docs/schema-reference.typ")
+print("  build:  npm run print -- docs/schema-reference.typ")

@@ -13,7 +13,7 @@ and the printable follows.
 
 Usage:
     python3 docs/schema/make-diagrams.py
-    just build docs/schema-diagrams.typ
+    npm run print -- docs/schema-diagrams.typ
 """
 
 import pathlib
@@ -171,7 +171,7 @@ HEAD = r'''// The schema diagrams, as a printed set.
 // table in one sequence. This carries what that cannot, which is what points at
 // what.
 
-#import "@vts/press:0.1.0": *
+#import "/third_party/press/lib.typ": *
 
 #set page(paper: "us-letter", flipped: true,
   margin: (x: 0.65in, top: 0.6in, bottom: 0.75in), footer-descent: 0.12in,
@@ -198,4 +198,4 @@ for i, (filename, title, blurb) in enumerate(PAGES):
 OUT.write_text(HEAD + "\n" + "\n".join(parts))
 print(f"{OUT}")
 print(f"  {len(PAGES)} diagrams, {OUT.stat().st_size // 1024} KB of inline SVG")
-print("  build:  just build docs/schema-diagrams.typ")
+print("  build:  npm run print -- docs/schema-diagrams.typ")
