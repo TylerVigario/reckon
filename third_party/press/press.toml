@@ -1,0 +1,9 @@
+# press's version and the oldest typst it works with — the one place each is written.
+#
+# press is a set of files a document imports by path, not a Typst package, so this is not a
+# typst.toml. `version` is the version last released; the release writes the new one, and
+# nothing else writes it. lib.typ reads both: press-version prints the version, and an assert
+# refuses a typst older than `typst`. tools/stamp.sh reads `typst` before the flags that need
+# it, check.sh finds press's lib.typ beside this file, and CI builds at exactly that typst.
+version = "0.4.0"
+typst = "0.14.0"

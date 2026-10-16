@@ -60,7 +60,7 @@ people's databases already ran the old one.
 ## Getting it running
 
 ```bash
-git clone --recurse-submodules https://github.com/TylerVigario/reckon.git
+git clone https://github.com/TylerVigario/reckon.git
 cd reckon
 
 npm ci                      # the dependencies, and the git hooks

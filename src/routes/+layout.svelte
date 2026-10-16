@@ -250,7 +250,7 @@
 
 <style>
 	/* Press's own faces, subset to what the interface draws. The same Montserrat
-	   and Open Sans the PDF is set in, because both come out of @vts/press --
+	   and Open Sans the PDF is set in, because both come out of press --
 	   an invoice on screen and the same invoice on paper should not be set in
 	   two different voices. */
 	@font-face {

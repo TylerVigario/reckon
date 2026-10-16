@@ -7,7 +7,7 @@
 // sequence, readable beside a keyboard. The notes beside each cluster say why
 // a table is the shape it is.
 
-#import "@vts/press:0.1.0": *
+#import "/third_party/press/lib.typ": *
 
 #set page(..dense, footer: context {
   set text(size: sz.micro, fill: ink-faint)

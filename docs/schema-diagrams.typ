@@ -13,7 +13,7 @@
 // table in one sequence. This carries what that cannot, which is what points at
 // what.
 
-#import "@vts/press:0.1.0": *
+#import "/third_party/press/lib.typ": *
 
 #set page(paper: "us-letter", flipped: true,
   margin: (x: 0.65in, top: 0.6in, bottom: 0.75in), footer-descent: 0.12in,
