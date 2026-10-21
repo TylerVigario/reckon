@@ -9,11 +9,12 @@
 
 #import "/third_party/press/lib.typ": *
 
+#set document(title: [reckon schema reference])
 #set page(..dense, footer: context {
   set text(size: sz.micro, fill: ink-faint)
   grid(columns: (1fr, auto),
     align(left)[reckon · schema reference · generated from the .drawio files],
-    align(right)[Page #counter(page).display("1 of 1", both: true)])
+    align(right)[#updated() · Page #counter(page).display("1 of 1", both: true)])
 })
 #set text(font: face-text, size: sz.fine, fill: ink, lang: "en")
 #set par(leading: 0.55em, spacing: 0.6em, justify: false)

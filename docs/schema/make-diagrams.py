@@ -173,13 +173,14 @@ HEAD = r'''// The schema diagrams, as a printed set.
 
 #import "/third_party/press/lib.typ": *
 
+#set document(title: [reckon schema diagrams])
 #set page(paper: "us-letter", flipped: true,
   margin: (x: 0.65in, top: 0.6in, bottom: 0.75in), footer-descent: 0.12in,
   footer: context {
     set text(size: sz.micro, fill: ink-faint)
     grid(columns: (1fr, auto),
       align(left)[reckon · schema diagrams · generated from `docs/schema/`],
-      align(right)[Page #counter(page).display("1 of 1", both: true)])
+      align(right)[#updated() · Page #counter(page).display("1 of 1", both: true)])
   })
 #set text(font: face-text, size: sz.fine, fill: ink, lang: "en")
 #show raw: set text(font: face-mono, size: sz.micro)
