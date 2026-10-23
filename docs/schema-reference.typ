@@ -9,19 +9,15 @@
 
 #import "/third_party/press/lib.typ": *
 
-#set document(title: [reckon schema reference])
-#set page(..dense, footer: context {
-  set text(size: sz.micro, fill: ink-faint)
-  grid(columns: (1fr, auto),
-    align(left)[reckon · schema reference · generated from the .drawio files],
-    align(right)[#updated() · Page #counter(page).display("1 of 1", both: true)])
-})
-#set text(font: face-text, size: sz.fine, fill: ink, lang: "en")
+#show: brief.with(
+  title: [reckon schema reference],
+  meta: [The schema, as a printed reference],
+  preset: dense,
+  footer: footer(status: [generated from the .drawio files]),
+)
+#set text(size: sz.fine)
 #set par(leading: 0.55em, spacing: 0.6em, justify: false)
-#show raw: set text(font: face-mono, size: sz.micro)
-
-#titlebar([reckon], [The schema, as a printed reference])
-#v(6pt)
+#show raw: set text(size: sz.micro)
 
 #text(size: sz.small)[
   45 tables across eight clusters. The nine `.drawio` files in
@@ -32,8 +28,7 @@
 #v(10pt)
 #columns(2, gutter: 16pt)[
 #colbreak(weak: true)
-#band[Who and where]
-#v(5pt)
+== Who and where
 
 #block(breakable: false)[
   #text(font: face-mono, size: sz.fine, weight: "bold")[entity]
@@ -185,8 +180,7 @@
 #v(6pt)
 
 #colbreak(weak: true)
-#band[What you sell]
-#v(5pt)
+== What you sell
 
 #block(breakable: false)[
   #text(font: face-mono, size: sz.fine, weight: "bold")[service]
@@ -340,8 +334,7 @@
 #v(6pt)
 
 #colbreak(weak: true)
-#band[Work as it is captured]
-#v(5pt)
+== Work as it is captured
 
 #block(breakable: false)[
   #text(font: face-mono, size: sz.fine, weight: "bold")[time\_entry]
@@ -505,8 +498,7 @@
 #v(6pt)
 
 #colbreak(weak: true)
-#band[Agreements]
-#v(5pt)
+== Agreements
 
 #block(breakable: false)[
   #text(font: face-mono, size: sz.fine, weight: "bold")[agreement]
@@ -569,8 +561,7 @@
 #v(6pt)
 
 #colbreak(weak: true)
-#band[Money out]
-#v(5pt)
+== Money out
 
 #block(breakable: false)[
   #text(font: face-mono, size: sz.fine, weight: "bold")[invoice]
@@ -693,8 +684,7 @@
 #v(6pt)
 
 #colbreak(weak: true)
-#band[Money in]
-#v(5pt)
+== Money in
 
 #block(breakable: false)[
   #text(font: face-mono, size: sz.fine, weight: "bold")[payment]
@@ -770,8 +760,7 @@
 #v(6pt)
 
 #colbreak(weak: true)
-#band[The operator, and the record]
-#v(5pt)
+== The operator, and the record
 
 #block(breakable: false)[
   #text(font: face-mono, size: sz.fine, weight: "bold")[operator]
@@ -951,8 +940,7 @@
 #v(6pt)
 
 #colbreak(weak: true)
-#band[Pay, as it was paid]
-#v(5pt)
+== Pay, as it was paid
 
 #block(breakable: false)[
   #text(font: face-mono, size: sz.fine, weight: "bold")[person\_payment]
@@ -1002,8 +990,7 @@
 
 #pagebreak()
 
-#band[What the database refuses]
-#v(5pt)
+== What the database refuses
 
 #text(size: sz.fine)[
   Where the database can hold a rule rather than trusting the application to

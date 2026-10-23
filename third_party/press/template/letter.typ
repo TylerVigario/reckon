@@ -1,11 +1,15 @@
 // A letter, from press's letter template. It imports press and applies letter(), which sets the
-// page, the letterhead and the date; the rest is placeholder for your own. Use it as it is, or
-// copy letter() into your repository and change your copy: press asks neither.
+// page, the letterhead and the date; the rest is placeholder for your own. Use it as it is, apply
+// your repository's own template that wraps letter(), or copy letter() into your repository and
+// change your copy: press prefers none of them.
 //
 //   sh third_party/press/tools/new.sh docs/<name> letter    (or `just new docs/<name> letter`)
 //
 // copies it to docs/<name>/main.typ, with the import below rewritten to where press sits.
 // In press's own tree the import is relative, ../lib.typ, so the starter compiles there.
+//
+// What only you can supply, a name, a date, an address, is marked open(): it prints in red, and
+// every build says how many are left until each is replaced. The rest is an example to rewrite.
 //
 // ---------------------------------------------------------------------------
 // What a letter here does:
@@ -27,25 +31,25 @@
 #import "../lib.typ": *
 
 #show: letter.with(
-  title: [Letter to Recipient Name],
+  title: open[Letter to Recipient Name],
   author: "Your Name",
   contact: (
-    [123 Street Name, Town, ST 00000],
-    [(555) 555-0100],
-    link("mailto:you@example.com"),
+    open[123 Street Name, Town, ST 00000],
+    open[(555) 555-0100],
+    open(link("mailto:you@example.com")),
   ),
-  date: [15 October 2026],
+  date: open[15 October 2026],
 )
 
-Recipient Name \
-Title \
-Organisation \
-Street Address \
-Town, ST 00000
+#open[Recipient Name] \
+#open[Title] \
+#open[Organisation] \
+#open[Street Address] \
+#open[Town, ST 00000]
 
-#re([Account 0000-0000], [date of service 1 January 2026])
+#re(open[Account 0000-0000], open[date of service 1 January 2026])
 
-Dear Recipient Name,
+Dear #open[Recipient Name],
 
 The first paragraph says why you are writing and what you are asking for, so a reader who
 stops here still knows.

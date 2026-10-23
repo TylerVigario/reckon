@@ -1,0 +1,9 @@
+# Line endings are LF, whatever git does on checkout. Git for Windows checks text out with CRLF
+# by default (core.autocrlf), and sh reads the carriage return as part of each line, so
+# tools/*.sh would stop on their first command. This file ships in the kit, so a repository that
+# commits press's folder checks it out with LF without a line of its own.
+* text=auto eol=lf
+
+# The vendored faces are binary: never converted, never diffed as text.
+*.ttf binary
+*.otf binary
