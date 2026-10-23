@@ -7,7 +7,7 @@ Nothing is transcribed, so the printable cannot drift from the drawings.
 
 Usage:
     python3 docs/schema/make-printable.py
-    npm run print -- docs/schema-reference.typ
+    npm run print:build -- docs/schema-reference.typ
 """
 
 import pathlib
@@ -76,7 +76,7 @@ for filename, title in CLUSTERS:
     if not fresh:
         continue
 
-    parts.append(f"#colbreak(weak: true)\n#band[{title}]\n#v(5pt)\n")
+    parts.append(f"#colbreak(weak: true)\n== {title}\n")
     for name, rows in fresh:
         body = "\n".join(f"    [{'*'+esc(k)+'*' if k else ''}], [{esc(c)}], [{esc(t)}],"
                          for k, c, t in rows)
@@ -103,19 +103,15 @@ HEAD = r'''// The reckon schema, as a printed reference.
 
 #import "/third_party/press/lib.typ": *
 
-#set document(title: [reckon schema reference])
-#set page(..dense, footer: context {
-  set text(size: sz.micro, fill: ink-faint)
-  grid(columns: (1fr, auto),
-    align(left)[reckon · schema reference · generated from the .drawio files],
-    align(right)[#updated() · Page #counter(page).display("1 of 1", both: true)])
-})
-#set text(font: face-text, size: sz.fine, fill: ink, lang: "en")
+#show: brief.with(
+  title: [reckon schema reference],
+  meta: [The schema, as a printed reference],
+  preset: dense,
+  footer: footer(status: [generated from the .drawio files]),
+)
+#set text(size: sz.fine)
 #set par(leading: 0.55em, spacing: 0.6em, justify: false)
-#show raw: set text(font: face-mono, size: sz.micro)
-
-#titlebar([reckon], [The schema, as a printed reference])
-#v(6pt)
+#show raw: set text(size: sz.micro)
 
 #text(size: sz.small)[
   @@N_TABLES@@ tables across @@N_CLUSTERS@@ clusters. The @@N_FILES@@ `.drawio` files in
@@ -129,8 +125,7 @@ HEAD = r'''// The reckon schema, as a printed reference.
 TAIL = r'''
 #pagebreak()
 
-#band[What the database refuses]
-#v(5pt)
+== What the database refuses
 
 #text(size: sz.fine)[
   Where the database can hold a rule rather than trusting the application to
@@ -180,4 +175,4 @@ head = (HEAD.replace("@@N_TABLES@@", word(len(seen)))
 OUT.write_text(head + "#columns(2, gutter: 16pt)[\n" + "\n".join(parts) + "\n]\n" + TAIL)
 print(f"{OUT}")
 print(f"  {len(seen)} tables from {len(CLUSTERS)} clusters")
-print("  build:  npm run print -- docs/schema-reference.typ")
+print("  build:  npm run print:build -- docs/schema-reference.typ")

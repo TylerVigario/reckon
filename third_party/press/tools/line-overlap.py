@@ -92,9 +92,9 @@ def lines_by_page(xml):
     except ImportError:
         # Importing ElementTree always succeeds; a Python built without expat fails here,
         # at the first parse, and its traceback would name neither the check nor a remedy.
-        print("press: skipping the line-overlap check (this python has no XML parser)",
-              file=sys.stderr)
-        return
+        # The pass did not run, which is not a page with nothing on it: exit 2, never 0.
+        die("press: the line-overlap check needs a python with an XML parser (expat); this one\n"
+            "       has none: set PRESS_PYTHON to one that has")
     except ET.ParseError as e:
         # A truncated or non-XML answer means the binary is not producing what
         # -bbox-layout should, which is a tooling fault rather than a document

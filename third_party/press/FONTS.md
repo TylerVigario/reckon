@@ -75,6 +75,27 @@ containing every symbol it needs, build it, and audit it with `tools/check.sh`. 
 symbols the vendored faces actually carry, or vendor a face that carries them and add it to
 the table above.
 
+### Scripts — where a word changes face
+
+The stack covers a script the head face lacks letter by letter, so a word can change face
+partway. Open Sans carries Latin, Cyrillic and monotonic Greek (τέκνον), but not polytonic
+Greek — the breathing marks of Greek Extended, U+1F00–1FFF — and not Hebrew. Liberation Sans
+carries both, so `ἀφίενταί` in body text draws its first letter from Liberation Sans and the
+rest from Open Sans, and a line of Hebrew comes from Liberation Sans entirely. Exit 0, and the
+audit passes, because both faces are vendored. Measured with `fc-query` on the kit's own files,
+letters carried of each block:
+
+| Block | Open Sans | Liberation Sans | Montserrat |
+|---|---|---|---|
+| Greek and Coptic, U+0370–03FF (144) | 75 | 127 | 8 |
+| Greek Extended, U+1F00–1FFF (256) | 1 | 233 | 0 |
+| Hebrew, U+0590–05FF (112) | 0 | 87 | 0 |
+| Cyrillic, U+0400–04FF (256) | 255 | 256 | 222 |
+
+A passage in polytonic Greek or Hebrew is set in `face-sans`, `#text(font: face-sans)[…]`,
+so each word stays in one face. A document that sets these scripts throughout needs a face
+that carries them, vendored and added to the table above.
+
 ### Weight level — the table above is a constraint, not an inventory
 
 **Requesting a weight or style that is not vendored fails silently and completely.** The

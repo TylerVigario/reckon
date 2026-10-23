@@ -13,7 +13,7 @@ and the printable follows.
 
 Usage:
     python3 docs/schema/make-diagrams.py
-    npm run print -- docs/schema-diagrams.typ
+    npm run print:build -- docs/schema-diagrams.typ
 """
 
 import pathlib
@@ -24,16 +24,16 @@ HERE = pathlib.Path(__file__).resolve().parent
 OUT = HERE.parent / "schema-diagrams.typ"
 
 PAGES = [
-    ("01-overview.drawio", "The shape of it", "Every cluster, and how they meet."),
-    ("02-who-and-where.drawio", "Who and where", "Clients, their sites, and the people to ask for."),
-    ("03-catalogue.drawio", "What you sell", "Services, materials, and what each is worth."),
-    ("04-work-captured.drawio", "Work as it is captured", "Time and travel, as they are recorded."),
-    ("05-agreements.drawio", "Agreements", "Recurring charges and what they include."),
-    ("06-money-out.drawio", "Money out", "Invoices and the lines they are built from."),
-    ("07-money-in.drawio", "Money in", "Payments, credits, and what closes an invoice."),
+    ("01-overview.drawio", "The shape of it", "every cluster, and how they meet"),
+    ("02-who-and-where.drawio", "Who and where", "clients, their sites, and the people to ask for"),
+    ("03-catalogue.drawio", "What you sell", "services, materials, and what each is worth"),
+    ("04-work-captured.drawio", "Work as it is captured", "time and travel, as they are recorded"),
+    ("05-agreements.drawio", "Agreements", "recurring charges and what they include"),
+    ("06-money-out.drawio", "Money out", "invoices and the lines they are built from"),
+    ("07-money-in.drawio", "Money in", "payments, credits, and what closes an invoice"),
     ("08-operator-and-record.drawio", "The operator, and the record",
-     "The business itself, who signs in, and what changed."),
-    ("09-pay.drawio", "Pay, as it was paid", "What each person was paid, and for what."),
+     "the business itself, who signs in, and what changed"),
+    ("09-pay.drawio", "Pay, as it was paid", "what each person was paid, and for what"),
 ]
 
 # Slack inside the viewBox. Edge labels are placed after the extent is taken
@@ -173,17 +173,15 @@ HEAD = r'''// The schema diagrams, as a printed set.
 
 #import "/third_party/press/lib.typ": *
 
-#set document(title: [reckon schema diagrams])
-#set page(paper: "us-letter", flipped: true,
-  margin: (x: 0.65in, top: 0.6in, bottom: 0.75in), footer-descent: 0.12in,
-  footer: context {
-    set text(size: sz.micro, fill: ink-faint)
-    grid(columns: (1fr, auto),
-      align(left)[reckon · schema diagrams · generated from `docs/schema/`],
-      align(right)[#updated() · Page #counter(page).display("1 of 1", both: true)])
-  })
-#set text(font: face-text, size: sz.fine, fill: ink, lang: "en")
-#show raw: set text(font: face-mono, size: sz.micro)
+#show: brief.with(
+  title: [reckon schema diagrams],
+  meta: [@@N_PAGES@@ diagrams, one to a page],
+  preset: (paper: "us-letter", flipped: true,
+    margin: (x: 0.65in, top: 0.6in, bottom: 0.75in), footer-descent: 0.12in),
+  footer: footer(status: [generated from `docs/schema/`]),
+)
+#set text(size: sz.fine)
+#show raw: set text(size: sz.micro)
 '''
 
 parts = []
@@ -192,11 +190,14 @@ for i, (filename, title, blurb) in enumerate(PAGES):
     body = svg.replace("\\", "\\\\").replace('"', '\\"')
     parts.append(
         ("" if i == 0 else "#pagebreak()\n")
-        + f"#titlebar([{title}], [{blurb}])\n#v(8pt)\n"
+        + f"= {title} — {blurb}\n"
         + '#align(center)[#image(bytes("' + body
         + '"), format: "svg", width: 98%, height: 74%, fit: "contain")]\n')
 
-OUT.write_text(HEAD + "\n" + "\n".join(parts))
+WORDS = {2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six", 7: "Seven", 8: "Eight",
+         9: "Nine", 10: "Ten", 11: "Eleven", 12: "Twelve"}
+OUT.write_text(HEAD.replace("@@N_PAGES@@", WORDS.get(len(PAGES), str(len(PAGES))))
+               + "\n" + "\n".join(parts))
 print(f"{OUT}")
 print(f"  {len(PAGES)} diagrams, {OUT.stat().st_size // 1024} KB of inline SVG")
-print("  build:  npm run print -- docs/schema-diagrams.typ")
+print("  build:  npm run print:build -- docs/schema-diagrams.typ")

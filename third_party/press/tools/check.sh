@@ -2,8 +2,8 @@
 # check.sh — audit a built document for what typst lets through without a word: warnings that
 # exit 0, fonts that are not vendored, glyphs that vanish, ink too near the edge, text on text.
 #
-# Run from the consumer root by whatever runs the repo's builds, press.just's `check`
-# among them:
+# Run from the consumer root by build.sh --check, which any runner calls, and by stamp.sh after
+# every build:
 #
 #   sh <press_root>/tools/check.sh <doc> <pdf> <press_root> <typst flags...>
 #
@@ -11,8 +11,98 @@
 # press_root separately — the two are the same directory only when press is being
 # used on itself.
 #
-# The rationale for what each pass does, and the limits of each, is in press.just
-# above its `check` recipe. This file is the mechanism; that comment is the argument.
+# Two of these checks exist because there are two ways to lose a glyph, and
+# neither warns.
+#
+#   SUBSTITUTED — the codepoint is missing from every vendored face, so typst
+#   draws it from one of its OWN embedded fonts. Measured on press:
+#   ✓ ✗ ▸ come from NewCMMath, ⚠ ⚡ ☐ from DejaVuSansMono, ℹ from
+#   LibertinusSerif. The page looks almost right and the species is wrong.
+#
+#   VANISHED — no font anywhere has it, so it is dropped from the page AND from
+#   the extracted text. Measured: ⛔ and 📋 disappear outright. This is the worse
+#   half: a substitution ships the wrong glyph, a disappearance ships missing
+#   content, and a printed sheet cannot be diffed against anything.
+#
+# The WARNINGS check reads typst's own output. typst exits 0 on warnings and has no
+# deny-warnings flag, so a warning ships unless something reads it — markdown
+# `**bold**` silently renders as nothing, an unknown font family falls back. It
+# recompiles and fails on any warning, which is the only enforcement available.
+#
+# The FONT check catches substitution by listing embedded faces that are not
+# vendored here. The GLYPH check catches disappearance by rendering each
+# non-ASCII character from the source in ISOLATION and asking whether it survived.
+#
+# The glyph check probes rather than reading the document's own text layer, because
+# that layer lies. In `A ⛔ B 📋 C` with neither symbol drawable, only the FIRST
+# unmapped character is dropped from the extracted text; the rest remain in it
+# and read back as present. A whole-document scan therefore reports one missing
+# glyph when there are five. Isolating one candidate per probe makes each the
+# first, and the answer truthful.
+#
+# The vendored family list is derived by subtracting `typst fonts` without a
+# --font-path (typst's own embedded faces) from the same command with one, so
+# it stays correct when typst changes what it bundles.
+#
+# LIMITS, stated because a check trusted past its reach is worse than none:
+#   · `#sym.checkmark` and friends carry no source codepoint, so the glyph check
+#     cannot see them — the font check still catches the substitution they cause.
+#   · A probe asks whether a character survives at all — drawn by a vendored face
+#     or by one of typst's own embedded faces — not whether THIS document's face
+#     draws it, and it never looks at the document's page. So a character in a
+#     trailing comment is probed like any other, and reported only if nothing can
+#     draw it (full-line `//` comments are skipped). A glyph drawn from an embedded
+#     face, or present only in the mono face, is the font check's to report.
+#   · Space separators and format characters are not probed at all. Nothing is
+#     drawn for them, so "did it survive" has no answer, and pdftotext hands
+#     back a plain space for U+00A0 — which read as vanished and failed correct
+#     documents. A stray invisible character in source is a real fault; it is
+#     just not this pass's to report.
+#   · Needs poppler — pdffonts, pdftotext AND pdftoppm, all three — and poppler
+#     specifically for the first two: Xpdf and mupdf ship programs of those names
+#     that disagree about which glyphs a PDF contains, so check asserts the
+#     implementation rather than the name. pdftoppm carries no such assertion:
+#     Git for Windows bundles no pdftoppm at all, so on Windows it is an absence
+#     problem. Xpdf ships one too, and press has not been run against it.
+#     That is also why a build skips a pass whose tools are missing and says so,
+#     where check refuses: building must not require any of it.
+#     Set PRESS_PDFTOTEXT / PRESS_PDFFONTS to point at them directly where PATH
+#     cannot be made to resolve poppler first — on Windows it cannot, because
+#     Git's sh prepends its own bin directories at startup and the Xpdf copies
+#     bundled there win inside every tool. The assertion still applies to
+#     whatever the variables name.
+#   · The overlap check sees GLYPHS ONLY. Text printed over a coloured panel, or
+#     a rule struck through a line, is invisible to it — those are ink-on-ink,
+#     and what would distinguish them is not in the text layer. Nothing cheap
+#     covers that case; the printable-area check does not either, because ink in
+#     the middle of a page is not its question.
+#   · Rotated text is the overlap check's soft spot. Poppler segments rotated
+#     glyphs into fragments and reports them as separate lines, which reads as a
+#     small phantom overlap — worst measured 0.13pt against a smallest genuine
+#     collision of 2.72pt. The 0.5pt floor exists for that gap and nothing else,
+#     so a document leaning heavily on rotation deserves a look by eye.
+#   · The printable-area check additionally needs a Python and poppler's
+#     pdftoppm, and is skipped with a message rather than failing when no
+#     interpreter is found. PRESS_PYTHON and PRESS_PDFTOPPM name either
+#     directly. The interpreter is found by EXECUTING a candidate, not by
+#     resolving a name — Windows ships a zero-byte python3 alias that answers
+#     `command -v` and then prints a Store advert, and turning that alias off
+#     leaves a working `python` and no `python3`. A name-based guard failed
+#     both ways: it ran a stub that could not work, and skipped where a working
+#     interpreter was present under the other name.
+#
+# The PRINTABLE-AREA check verifies that no ink comes within 0.48in of a paper
+# edge — the 0.5in safe area the page presets are built around, less a rendering
+# tolerance.
+#
+# The OVERLAP check reports any line of text printed on top of another. It and
+# the printable-area check catch LAYOUT faults rather than font ones, and they
+# take opposite instruments for a reason worth stating: the printable-area check
+# renders the page, because "is there ink near the edge" needs no layering, and
+# it must see panels and rules as well as glyphs. The overlap check cannot render,
+# because layering is the whole question — two lines drawn on each other and one
+# line drawn once are the same pixels. It reads pdftotext's line geometry, where
+# that information survives.
 set -eu
 
 src=$1
@@ -26,18 +116,143 @@ shift 3
 # written, and stamp.sh hands over the files its compile read and what typst printed
 # (PRESS_BUILT_DEPS, PRESS_BUILT_LOG), so nothing compiles twice. A tool the audit lacks is
 # then one line saying the audit was skipped and why, not a failure: building never depends
-# on these tools, and check itself still refuses without them.
+# on these tools, and check itself still refuses without them. press's marks, which need only
+# typst, are read before the tools are asked for, so a build without them still counts the open
+# items and still fails while the measuring grid is on: skip ends with the status so far.
 optional=
 [ "${PRESS_AUDIT:-}" != optional ] || optional=1
 skip() {
     echo "press: $pdf is not audited: $1; run check for the details" >&2
-    exit 0
+    exit "$rc"
 }
+
+# The vendored families, from the font files' names; fonts/ also holds their licences.
+allow=$(for f in "$press_root"/fonts/*.[ot]tf; do basename "$f"; done \
+          | sed 's/-[A-Za-z]*\.[to]tf$//;s/\.[to]tf$//' | sort -u | paste -sd'|' -)
+rc=0
+# One temporary directory for every pass, made before any of them and removed however the
+# run ends. An interrupt exits, and the EXIT trap removes it: a trap on INT that only removed
+# it would let the script carry on without it, into a "does not compile" or a false MISSING.
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/press.XXXXXX")
+trap 'rm -rf "$tmp"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+# Recompile FIRST, and keep the compiler's own status.
+#
+# Every check below reads $pdf, so the recompile has to happen before any of them or
+# they audit whatever build last left there. Ordering it after the printable-area
+# check meant that one alone judged a different artifact than the font checks: a
+# source edited to paint ink 0.05in from the edge was reported clean, because the
+# margins were measured on the previous build and the fresh PDF was written after.
+# That is the check whose whole justification is that the fault is invisible until
+# it is on paper.
+#
+# And the status must come from typst, not from the grep reading its output. Piping
+# into grep hands $? to grep, so a source that did not compile at all left the old
+# PDF in place, produced error: lines that no warning: filter matched, and every
+# pass then passed the stale artifact — the build failing while the audit said clean.
+#
+# Through stamp.sh, as the build does: a bare typst compile here would overwrite the
+# stamped PDF with an unstamped one, and every check would wipe the edition off the page.
+# It also writes the files the compile read, for the glyph check at the end.
+#
+# After a build (PRESS_BUILT_DEPS), the build just did this, and its record is used.
+if [ -n "${PRESS_BUILT_DEPS:-}" ]; then
+    cp "$PRESS_BUILT_DEPS" "$tmp/deps"
+    out=$(cat "$PRESS_BUILT_LOG")
+else
+    out=$(PRESS_IN_CHECK=1 sh "$press_root/tools/stamp.sh" "$src" "$pdf" "$@" --deps "$tmp/deps" --deps-format zero 2>&1) || {
+        echo "press: $src does not compile —" >&2
+        printf '%s\n' "$out" | sed 's/^/  /' >&2
+        exit 1
+    }
+fi
+# The document's own sources, which the glyph check probes and which may accept findings:
+# every .typ the document is made of, not only $src, since text in a file it #includes or
+# #imports is on the page too. typst lists what the compile read. Two kinds of file are left
+# out, since their characters are their own business, not the page's:
+#
+#   · press's own: the lib.typ beside press.toml, which press reads on every import, and the
+#     files in the lib/ beside it — and only those, so a document kept in press's directory,
+#     such as its calibration sheet, is still scanned;
+#   · a Typst package's files: a package lists its typst.toml with them, so anything under
+#     a directory holding one is the package's.
+#
+# Files read as data (yaml, csv, ...) are not scanned.
+#
+# The paths are typst's own, separators turned to /. On Linux they are relative to the
+# root. typst on Windows writes a package's files relative with mixed separators, and the
+# document's own as \\?\C:\... verbatim paths, which reach grep as //?/C:/... and Git's sh
+# reads as they are. A package's files and its typst.toml come in the same form, so the
+# prefix that drops them lines up. Nothing compares a path with the root or the cwd.
+tr '\000\\' '\n/' < "$tmp/deps" | awk '
+    { f[++n] = $0 }
+    /\/typst\.toml$/ { p = $0; sub(/typst\.toml$/, "", p); pkg[p] = 1 }
+    /(^|\/)press\.toml$/ { p = $0; sub(/press\.toml$/, "", p); press[p] = 1 }
+    END {
+        for (i = 1; i <= n; i++) {
+            if (f[i] !~ /\.typ$/) continue
+            skip = 0
+            for (p in press) if (f[i] == p "lib.typ" || index(f[i], p "lib/") == 1) skip = 1
+            for (p in pkg) if (index(f[i], p) == 1) skip = 1
+            if (!skip) print f[i]
+        }
+    }' > "$tmp/sources"
+# At least $src itself; an empty list would skip the check and report the document clean.
+test -s "$tmp/sources" || { echo "press: typst listed no sources for $src" >&2; exit 1; }
+
+# PRESS'S MARKS. Two of press's parts leave a mark for the audit: open(), what only the
+# document's owner can supply, and form(probe:), the measuring grid. typst lists them, and only
+# where a source of the document's own calls one, as #open[...], open(...) or probe:, so no other
+# document is compiled again: typst eval, or typst query before 0.15, which has no eval. Neither
+# takes the --deps a build passes, so the query runs without it.
+#
+# Open items are counted, not failed: a draft carries them, and the count is what keeps one from
+# going out unnoticed. The measuring grid fails the audit while it is on: it is for reading where
+# a form's blanks are, and a page that still carries it is not finished.
+press_marks() {
+    n=$#
+    i=0
+    while [ "$i" -lt "$n" ]; do
+        a=$1; shift; i=$((i + 1))
+        case $a in
+            --deps | --deps-format) shift; i=$((i + 1)); continue ;;
+            --deps=* | --deps-format=*) continue ;;
+        esac
+        set -- "$@" "$a"
+    done
+    typst eval 'query(metadata).map(m => m.value).filter(v => type(v) == str and v.starts-with("press-"))' \
+        --in "$src" "$@" 2>/dev/null && return
+    typst query "$@" "$src" metadata --field value 2>/dev/null
+}
+want=$(while IFS= read -r f; do
+    if grep -q 'open[[(]' "$f"; then echo open; fi
+    if grep -q 'probe:' "$f"; then echo probe; fi
+done < "$tmp/sources")
+if [ -n "$want" ]; then
+    if marks=$(press_marks "$@"); then
+        n=$(printf '%s\n' "$marks" | grep -o '"press-open"' | wc -l | tr -d ' ')
+        case $n in
+            0) ;;
+            1) echo "press: $pdf has 1 open item, in red, for its owner to supply" >&2 ;;
+            *) echo "press: $pdf has $n open items, in red, for its owner to supply" >&2 ;;
+        esac
+        if printf '%s\n' "$marks" | grep -qF '"press-probe"'; then
+            echo "press: $pdf has the measuring grid on; take form()'s probe: off once its blanks are measured" >&2
+            rc=1
+        fi
+    else
+        case $want in *open*) echo "press: could not count the open items in $pdf" >&2 ;; esac
+        case $want in
+            *probe*) echo "press: could not tell whether $pdf has the measuring grid on" >&2; rc=1 ;;
+        esac
+    fi
+fi
 
 # The glyph check needs a grep that speaks PCRE, honours the (*UTF) verb, and knows
 # \p{...} properties. Assert it here rather than relying on the pipeline to complain:
 # $? in `a | b | sort` belongs to sort, so a grep that rejects any of the three leaves
-# the character list empty and the check skips itself while the recipe goes on to report
+# the character list empty and the check skips itself while check goes on to report
 # the document clean. Probing once, up front, is the difference between an unmet
 # dependency and a check that quietly does nothing.
 #
@@ -103,79 +318,6 @@ for spec in "PRESS_PDFTOTEXT $PDFTOTEXT" "PRESS_PDFFONTS $PDFFONTS"; do
              echo "       its own /mingw64/bin, with Xpdf's pdftotext, ahead of PATH: set $var there." >&2
              exit 1; }
 done
-# The vendored families, from the font files' names; fonts/ also holds their licences.
-allow=$(for f in "$press_root"/fonts/*.[ot]tf; do basename "$f"; done \
-          | sed 's/-[A-Za-z]*\.[to]tf$//;s/\.[to]tf$//' | sort -u | paste -sd'|' -)
-rc=0
-# One temporary directory for every pass, made before any of them and removed however the
-# run ends. An interrupt exits, and the EXIT trap removes it: a trap on INT that only removed
-# it would let the script carry on without it, into a "does not compile" or a false MISSING.
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/press.XXXXXX")
-trap 'rm -rf "$tmp"' EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
-# Recompile FIRST, and keep the compiler's own status.
-#
-# Every check below reads $pdf, so the recompile has to happen before any of them or
-# they audit whatever build last left there. Ordering it after the printable-area
-# check meant that one alone judged a different artifact than the font checks: a
-# source edited to paint ink 0.05in from the edge was reported clean, because the
-# margins were measured on the previous build and the fresh PDF was written after.
-# That is the check whose whole justification is that the fault is invisible until
-# it is on paper.
-#
-# And the status must come from typst, not from the grep reading its output. Piping
-# into grep hands $? to grep, so a source that did not compile at all left the old
-# PDF in place, produced error: lines that no warning: filter matched, and every
-# pass then passed the stale artifact — the build failing while the audit said clean.
-#
-# Through stamp.sh, as the build does: a bare typst compile here would overwrite the
-# stamped PDF with an unstamped one, and every check would wipe the edition off the page.
-# It also writes the files the compile read, for the glyph check at the end.
-#
-# After a build (PRESS_BUILT_DEPS), the build just did this, and its record is used.
-if [ -n "${PRESS_BUILT_DEPS:-}" ]; then
-    cp "$PRESS_BUILT_DEPS" "$tmp/deps"
-    out=$(cat "$PRESS_BUILT_LOG")
-else
-    out=$(PRESS_IN_CHECK=1 sh "$press_root/tools/stamp.sh" "$src" "$pdf" "$@" --deps "$tmp/deps" --deps-format zero 2>&1) || {
-        echo "press: $src does not compile —" >&2
-        printf '%s\n' "$out" | sed 's/^/  /' >&2
-        exit 1
-    }
-fi
-# The document's own sources, which the glyph check probes and which may accept findings:
-# every .typ the document is made of, not only $src, since text in a file it #includes or
-# #imports is on the page too. typst lists what the compile read. Two kinds of file are left
-# out, since their characters are their own business, not the page's:
-#
-#   · press's lib.typ, found as the lib.typ beside press.toml, which lib.typ reads on every
-#     import — and only that file, so a document kept in press's directory, such as its
-#     calibration sheet, is still scanned;
-#   · a Typst package's files: a package lists its typst.toml with them, so anything under
-#     a directory holding one is the package's.
-#
-# Files read as data (yaml, csv, ...) are not scanned.
-#
-# The paths are typst's own, separators turned to /. On Linux they are relative to the
-# root. typst on Windows writes a package's files relative with mixed separators, and the
-# document's own as \\?\C:\... verbatim paths, which reach grep as //?/C:/... and Git's sh
-# reads as they are. A package's files and its typst.toml come in the same form, so the
-# prefix that drops them lines up. Nothing compares a path with the root or the cwd.
-tr '\000\\' '\n/' < "$tmp/deps" | awk '
-    { f[++n] = $0 }
-    /\/typst\.toml$/ { p = $0; sub(/typst\.toml$/, "", p); pkg[p] = 1 }
-    /(^|\/)press\.toml$/ { p = $0; sub(/press\.toml$/, "", p); press[p "lib.typ"] = 1 }
-    END {
-        for (i = 1; i <= n; i++) {
-            if (f[i] !~ /\.typ$/ || f[i] in press) continue
-            inpkg = 0
-            for (p in pkg) if (index(f[i], p) == 1) inpkg = 1
-            if (!inpkg) print f[i]
-        }
-    }' > "$tmp/sources"
-# At least $src itself; an empty list would skip the check and report the document clean.
-test -s "$tmp/sources" || { echo "press: typst listed no sources for $src" >&2; exit 1; }
 
 # ACCEPTED FINDINGS. A document may accept a finding it keeps on purpose, a sent record that
 # will not be restyled, with a line in its own source naming the pass and why:
@@ -306,7 +448,12 @@ fi
 # reasoning: a box with poppler and no python still gets the font checks. It does
 # NOT share its instrument — see the module docstring for why the raster cannot
 # answer this and pdftotext can.
-if [ -n "$PY" ]; then
+if [ -n "$PY" ] && [ -n "$optional" ] && ! "$PY" -c 'import xml.parsers.expat' >/dev/null 2>&1; then
+    # A build whose python has no XML parser skips this pass and says so, as for pdftoppm above;
+    # check runs it, and the pass reports that it could not.
+    echo "press: skipping the line-overlap check ($PY has no XML parser)" >&2
+    skipped="$skipped text-on-text"
+elif [ -n "$PY" ]; then
     s=0
     PRESS_PDFTOTEXT="$PDFTOTEXT" "$PY" "$press_root/tools/line-overlap.py" "$page" "$pdf" || s=$?
     case $s in 0) ;; 1) found text-on-text ;; *) rc=1; skipped="$skipped text-on-text" ;; esac
