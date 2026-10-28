@@ -309,9 +309,9 @@ there is no typed address standing in for a place.
 ## Documents
 
 ```bash
-npm run print                                 every document under docs/, into print/
-npm run print -- docs/schema-reference.typ    one of them
-npm run print:check                           the audit, refusing without its tools
+npm run print                                       every document under docs/, into print/
+npm run print:build -- docs/schema-reference.typ    one of them
+npm run print:check                                 the audit, refusing without its tools
 ```
 
 Every build is audited for what `typst compile` reports as success: a font
@@ -329,6 +329,8 @@ not built again: press keeps a record of that build in
 The stamp — when a document's content last changed — is in UTC, so a page that
 prints it says the same wherever it was built.
 
+The scripts call press's own `all.sh` and `build.sh`, which are plain `sh`.
+
 `print/` is gitignored — it is derived.
 
 press is at `third_party/press/`, committed as its release installed it. A newer
@@ -340,7 +342,7 @@ release is the installer line in `third_party/press/README.md`, run from
 
 ```bash
 python3 docs/schema/make-printable.py
-npm run print -- docs/schema-reference.typ
+npm run print:build -- docs/schema-reference.typ
 ```
 
 The diagrams are the source; the reference derives from them, so the two cannot

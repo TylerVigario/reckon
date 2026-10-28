@@ -113,7 +113,11 @@ press's tools are plain `sh` scripts, called the same way from any runner:
 
 | tool | does |
 |---|---|
-| `sh third_party/press/tools/new.sh docs/guide` | scaffolds `docs/guide/main.typ` from the template, its import written for where press sits; add `letter` for the letter template |
+| `sh third_party/press/tools/new.sh docs/guide` | scaffolds `docs/guide/main.typ` from the template, its import written for where press sits; add `letter`, `recipe` or `resume` for those templates |
+| `sh third_party/press/tools/build.sh docs/guide.typ` | builds and audits each document named to `print/<same path>.pdf` and says in one line what it made: new, changed, unchanged or cached, pages, words, size and the stamp; given several, ends with the count. `--check` first runs the audit alone, refusing without its tools |
+| `sh third_party/press/tools/all.sh [dir...]` | builds every document under the directories named (default `docs/`), not the files they are made of and not press's own, then the count; fails if any failed. `--check` audits them instead |
+| `sh third_party/press/tools/watch.sh docs/guide.typ` | recompiles on every save to `print/<same path>.watch.pdf`, a preview beside the stamped PDF |
+| `sh third_party/press/tools/clean.sh` | deletes `print/` |
 | `sh third_party/press/tools/stamp.sh <doc> <pdf> <flags>` | builds, stamping the PDF with when its content last changed and keeping the old time when nothing on the page changed; makes the output directory; then audits it, where the audit's tools are installed |
 | `sh third_party/press/tools/check.sh <doc> <pdf> third_party/press <flags>` | the audit alone, which refuses to run without its tools: typst warnings, fonts that are not vendored, glyphs that vanished, ink too near the edge, text printed on text |
 
@@ -123,13 +127,16 @@ press's tools are plain `sh` scripts, called the same way from any runner:
 so a runner, CI and `all` see it and the page can still be looked at. Where the audit's tools
 are missing, the build says the audit was skipped and why, and succeeds: building never
 depends on them. `check.sh` is the same audit for when it must run, as in CI: without its tools
-it refuses.
+it refuses. The audit also says how many open items a document still carries, marked with
+`open()` for its owner to supply, and does not fail for them: a draft carries them. A form
+page with its measuring grid on, `form(probe:)`, does fail it: the grid is for measuring.
 
 **An unchanged document is not built again.** One file in press's folder, `.build-record`,
 records what each document's last build read — every file typst lists, the fonts, typst's
 version, press's tools, the flags and the zone — each with a checksum, and what its audit said.
-When all of it still matches, the build says unchanged at once, without compiling or auditing,
-and repeats what the audit said. Only a build whose audit ran in full and passed is recorded,
+When all of it still matches, the build says cached at once, without compiling or auditing,
+and repeats what the audit said. Unchanged is a different answer: the document was built again
+and came out the same bytes. Only a build whose audit ran in full and passed is recorded,
 so a failing document, or one built without the audit's tools, is built and audited every time.
 The kit's own `.gitignore` keeps the record out of git, an update replaces it with press's
 folder, and deleting it costs one full build per document, never a wrong answer.
@@ -138,6 +145,11 @@ folder, and deleting it costs one full build per document, never a wrong answer.
 marked with `scan(...)`. The audit then reads a copy with every scan hidden, so the scan's own
 fonts, text layer and edge-to-edge ink are not findings, and what the document sets over it is
 audited as usual. The copy costs a second compile, only for a document that reads an image.
+A form filled in is a `form()` page for each page of it, its answers placed with typst's own
+`place(dx:, dy:)` from the page's top-left corner and its boxes marked with `tick()`; its blank
+is a scan already. The point is an answer's own top-left, where its capitals begin, so an answer
+meant to stand on a blank's line goes above the line by its capitals' height, about seven
+tenths of its text size.
 
 **A finding a document keeps on purpose** — a sent record that will not be restyled — is
 accepted in the document's own file, naming the pass and why; a file it imports or includes
@@ -155,26 +167,36 @@ fails the audit whatever the document accepts.
 
 The stamp prints in **`PRESS_TZ`**, an IANA zone name set for every build
 (`PRESS_TZ=America/Los_Angeles`, or `UTC` for documents read across zones), so every machine
-prints the same time and an unchanged page stays unchanged wherever it is built.
+prints the same time and an unchanged page stays unchanged wherever it is built. A runner that
+cannot set a variable on its command line, npm in `cmd.exe` on Windows, passes it to the tool
+instead: `build.sh --tz America/Los_Angeles`, `all.sh --tz America/Los_Angeles`.
 
 ### From your runner
 
 **npm** — on Windows npm runs scripts with `cmd.exe`, where `mkdir -p` makes a folder named
-`-p`; let `stamp.sh` make the output directory instead:
+`-p`; press's tools make the output directory themselves:
 
 ```json
 "scripts": {
-  "docs": "sh third_party/press/tools/stamp.sh docs/guide.typ print/guide.pdf --root . --font-path third_party/press/fonts --ignore-system-fonts",
-  "docs:check": "sh third_party/press/tools/check.sh docs/guide.typ print/guide.pdf third_party/press --root . --font-path third_party/press/fonts --ignore-system-fonts"
+  "press": "sh third_party/press/tools/all.sh --tz America/Los_Angeles",
+  "press:build": "sh third_party/press/tools/build.sh --tz America/Los_Angeles",
+  "press:check": "sh third_party/press/tools/all.sh --check --tz America/Los_Angeles",
+  "press:watch": "sh third_party/press/tools/watch.sh"
 }
 ```
+
+`npm run press` builds every document under `docs/`, and `npm run press -- recipes` those under
+another directory; `npm run press:build -- docs/guide.typ` builds one, and
+`npm run press:watch -- docs/guide.typ` previews it.
 
 **make:**
 
 ```make
-FLAGS = --root . --font-path third_party/press/fonts --ignore-system-fonts
-print/%.pdf: docs/%.typ
-	sh third_party/press/tools/stamp.sh $< $@ $(FLAGS)
+.PHONY: all
+all:
+	sh third_party/press/tools/all.sh
+print/%.pdf: %.typ
+	sh third_party/press/tools/build.sh $<
 ```
 
 **just** — `press.just` is ready-made recipes for a repository that already uses just. One
@@ -192,16 +214,21 @@ just clean                       # delete print/
 ```
 
 Under `mod` it is `just press build …`, and `just press` lists the recipes; under `import`,
-`just --list` does. `all` builds documents, not their parts: a file named `_*.typ` is a part,
-and so is everything beside a `main.typ`, at any depth; it builds every one, then fails if any
-failed its audit. Export `PRESS_TZ` from the justfile.
+`just --list` does. Each recipe is one call to a tool in `tools/`, which any runner can call:
+`build` is `build.sh`, `check` is `build.sh --check`, `all` is `all.sh`, `watch` is `watch.sh`,
+`new` is `new.sh` and `clean` is `clean.sh`. `all` builds documents, not their parts: a file
+named `_*.typ` is a part, and so is everything beside a `main.typ`, at any depth; press's own
+folder is skipped, so `just all .` builds the repository's documents and not press's files. It
+builds every one, then fails if any failed its audit. Export `PRESS_TZ` from the justfile.
 
 ### Requirements
 
 - **typst 0.14 or newer.** An older one is refused with a message naming both versions.
 - **`sh`** for the tools. On Windows it comes with Git for Windows.
 - **The audit** needs poppler (`pdffonts`, `pdftotext`, `pdftoppm`), a Python, and a grep
-  with PCRE (GNU grep; on macOS, `brew install grep`); a build without them is not audited.
+  with PCRE (GNU grep; on macOS, `brew install grep`); a build without them is not audited,
+  though it still counts the open items and fails while a form's measuring grid is on, which
+  need only typst.
   Where `PATH` finds the wrong one, name it: `PRESS_PDFTOTEXT`, `PRESS_PDFFONTS`,
   `PRESS_PDFTOPPM`, `PRESS_PYTHON`, `PRESS_GREP` (`ggrep` on macOS). The audit refuses a
   `pdftotext` that is not poppler's.
@@ -222,29 +249,54 @@ failed its audit. Export `PRESS_TZ` from the justfile.
   poppler's `Library/bin` (under `%LOCALAPPDATA%/Microsoft/WinGet/Packages/`). Git bundles no
   `pdffonts` or `pdftoppm`; `PRESS_PDFFONTS` and `PRESS_PDFTOPPM` pin those the same way if you
   want all three fixed.
+- **Set them again after `winget upgrade` updates poppler.** The folder they name carries
+  poppler's version, `poppler-25.07.0`, and winget keeps no link to poppler that survives an
+  upgrade, so an upgrade leaves them naming a folder that is gone. Builds still succeed, now
+  saying each document "is not audited: poppler's … pdftotext.exe is not found", and `check`
+  refuses. Point the variables at the new version's `Library/bin`.
 
 ## Writing a document
 
 **press sets nothing until something asks.** Importing it changes no page. **Its templates are
 functions a document applies**: `#show: brief.with(title: [...], author: "...")` sets the page,
-the type, the show rules and the head from press's general-purpose default, and `letter` does
-the same for a letter. A document uses one as it is, or a repository copies one and changes its
-copy; press asks neither. `new.sh` starts a document that applies one, with placeholder text
-to replace.
+the type, the show rules and the header from press's general-purpose default, and `letter` does
+the same for a letter. A document uses one as it is. Or a repository keeps a template of its
+own that applies press's with what all its documents share, `docs/_template.typ`:
 
-**A document that composes its own page** takes the parts it wants and installs the show rules
-itself. One with commands in it wants the first two, and one with links the third:
-
-```typ
-#show raw: set text(font: face-mono, size: sz.micro)
-#show raw.where(block: true): code
-#show link: link-note
+```typst
+#import "/third_party/press/lib.typ": *
+#let house(title: none, body) = {
+  show: brief.with(title: title, author: "Valley Clinic")
+  set par(leading: 0.58em)
+  body
+}
 ```
 
-It **sets its body font**, `#set text(font: face-text, ...)` — without it the body renders in
-typst's own Libertinus Serif, without a word — and **names itself once**, with
-`#set document(title: [...], author: "...")`. A PDF viewer shows the title, and a page prints it
-from `document.title`. The templates do both.
+and each document applies that, `#import "_template.typ": *` and
+`#show: house.with(title: [Intake])`, so a fix to press's template still reaches every document;
+`all` takes `_template.typ` for a part and does not build it. Or a repository copies press's
+template and changes its copy. press prefers none of them. `new.sh` starts a document that applies
+one, with placeholder text to replace. **The words a part prints are its `words`**, a dictionary
+whose English defaults the part's signature shows in full: `continued(words: (page: [Página]))`,
+`enclosures(..items, words: (singular: [Anexo], plural: [Anexos]))`. A document passes every key
+the part prints, and a missing one is a compile error that names it. A template takes the header
+or footer it places, `letter.with(header: continued(words: (page: [Página])))`, because a page
+rule written after its head would start a new page.
+
+**A document that lays out its own page** applies `base`:
+`#show: base.with(title: [...], author: "...", preset: dense)` sets the page, names the document
+once, sets the body type, and installs the show rules for code and links, from press's
+defaults, and draws nothing. A set rule written after the show rule changes any of these for
+that document — `#set par(leading: 0.58em)` wins over `base`'s own — so a repository with
+spacing of its own writes only the lines that differ. `footer` is a page's footer,
+`#set page(footer: footer(status: [draft]))`: the title and status, then the stamp and page,
+so a page parted from the rest still says what it is and which edition.
+
+Without `base`, a document sets these itself: its body font, `#set text(font: face-text, ...)`
+(without it the body renders in typst's own Libertinus Serif, without a word); its name, with
+`#set document(title: [...], author: "...")`, which a PDF viewer shows and a page prints from
+`document.title`; and the show rules it needs, `raw` and `code` for commands and `link-note`
+for links.
 
 **A longer document** is a directory: `new.sh` makes `docs/handbook/main.typ`, and chapters go
 beside it, `#include`d from it. Give it the reading page, `brief.with(preset: reading)`, use
@@ -264,23 +316,43 @@ reference numbers together and `enclosures` lists what goes with the letter. To 
 pass its face (`face: face-sans`) and centre the letterhead (`centred: true`). A letter that
 composes its own page uses the same parts: `letterhead`, `dateline` and `continued()`.
 
-### The six conventions
+**A recipe** applies `recipe`: `new.sh recipes/black-beans recipe` starts a card.
+`#show: recipe.with(title:, yield:, method:, time:, intro:)` sets the card page and a header that
+says what the cook is in for, `serves 8 · stovetop · about 40 min`, with a line under it saying
+what the dish is. Page one is the whole cook: the ingredients in a `sheet`, the method in
+numbered `item`s, a costly step in `color: warn`. Whatever the card labels `<depth>` starts the
+reference on a page of its own, under a line saying page one is the whole job, and `writein()`
+leaves lines for what the cook changed.
 
-Tokens alone do not make a document readable. These do:
+**A résumé** applies `resume`: `new.sh docs/resume resume` starts one.
+`#show: resume.with(title:, author:, headline:, contact:)` sets one column on a full sheet, with
+no footer, under a head of the writer's name, the headline and the contact line. A section is a
+heading, `= Experience`, and a role is `entry(role, org, dates)`: one paragraph, so a parser reads
+the role, the organisation and the dates in that order, and a role that wraps carries its dates
+on its last line. `size:` sets the body, `sz.small` by default, and the head and headings follow it;
+`face:` and `centred:` match a letter's. A heading's gaps are set rules after the show rule:
+`#show heading: set block(above: 8pt)`.
+
+### brief's conventions
+
+`brief` and its starter, `template/main.typ`, are written to six conventions for a document
+someone acts on. They are brief's, not press's: the letter, recipe and résumé starters state
+their own, and a document of any other kind composes its pages as suits it.
 
 1. **Meat first.** Whatever the reader must act on goes at the top.
 2. **One idea per unit, opened by a bold lead.** The lead is the highlight, pre-made.
 3. **Units are self-contained.** Sections get read out of order and returned to weeks later.
-4. **Bands carry a role** — decide / design / reference — so skipping is deliberate.
+4. **A heading says what its section is for** — act on this, how it works, reference — so
+   skipping is deliberate.
 5. **Colour is state, never decoration, and it gets a legend.**
 6. **No length cap.** If a unit needs depth, give it depth or push it to a second layer — never
    delete it to fit a layout. If it does not fit, *the layout* changes.
 
-From 1 and 6: for a document someone acts on, **the act layer comes first, the depth layer
-after a `#pagebreak()`**, with an italic line saying nothing past it is needed to act. The
-split is by role, not page number. The conventions are for a page read by a person: a document
-whose first reader is a parser — an ATS résumé — stays single-column and takes press's tokens
-and fonts, not its layout.
+From 1 and 6: **the act layer comes first, the depth layer after it.** The document labels
+whatever opens the depth layer `<depth>`, typst's own label, and brief starts it on a page of its
+own under an italic line saying nothing past it is needed to act. A pointer into it is typst's
+own page reference, `#ref(<label>, form: "page")`, which prints "page 2" and links there. The
+split is by role, not page number.
 
 ### Vocabulary
 
@@ -288,35 +360,43 @@ Tone is a string: `"note"` (slate) · `"ok"` (green) · `"warn"` (amber) · `"ba
 
 | Call | For |
 |---|---|
-| `brief(title:, author:, meta:, status:, legend: auto, preset: card)` | Template: the general-purpose document's page, type, show rules, head and footer. `#show: brief.with(...)`. |
-| `letter(title:, author:, contact:, date:, face: face-text, centred: false)` | Template: a letter's page, letterhead and date, and the page-two header. `#show: letter.with(...)`. |
+| `base(title:, author:, preset: card)` | Template: the page, the document's name, the type and the show rules, with nothing drawn, for a document that lays out its own page. `#show: base.with(...)`. |
+| `brief(title:, author:, meta:, legend: none, footer: footer(), preset: card, caps: true, depth: [...])` | Template: the general-purpose document's page, type, show rules, header and footer. A section is a heading: `=` draws a band, `==` a labelled hairline, slate unless `section(color:)` says otherwise. Whatever the document labels `<depth>` starts its depth layer on a page of its own under `depth`, a line saying nothing past it is needed; none prints no line. `legend`, the note and then the chips for the states its pages carry, prints under the header and says what its colours mean: `legend: ([Colour is state.], chip([DONE], "ok"))`. `#show: brief.with(...)`. |
+| `letter(title:, author:, contact:, date:, face: face-text, centred: false, header: continued())` | Template: a letter's page, letterhead and date, and the page-two header. `#show: letter.with(...)`. |
+| `resume(title:, author:, headline:, contact:, face: face-text, centred: false, size: sz.small, accent: slate, caps: true, preset: (paper: "us-letter", margin: (x: 0.6in, y: 0.5in)))` | Template: a résumé's page, type and head, and its headings as ruled sections. `#show: resume.with(...)`. |
+| `recipe(title:, author:, yield:, method:, time:, intro:, preset: card, footer: footer(), caps: true, depth: [...])` | Template: a recipe card's page and header, its yield, method and time beside the dish, and its headings as brief draws them. Whatever the card labels `<depth>` starts its reference on a page of its own under `depth`. `#show: recipe.with(...)`. |
 | `unit(label, tone, lead, body, caps:, breakable: false)` | The workhorse. One idea: label, bold lead, body. |
 | `units(..items, pack: "stacks", gutter:, spacing:)` | A group of units. `"stacks"`: two columns balanced by measured height. `"grid"`: rows aligned, when the pairing means something. `"single"`: one column. |
-| `band-strong(title, role, color:, caps:)` | Section header carrying its role. |
-| `band(label, color: slate)` | Lighter section header. |
-| `titlebar(title, meta, color:, face:, size:)` | Document head with right-aligned meta. |
+| `header(meta: none, color:, face:, size:)` | A document's header: its title, the one the document names itself with, on the left, `meta` on the right, and a rule beneath. |
 | `eyebrow(body, color:, caps:)` | Small tracked-out uppercase label. |
+| `section(body, color: slate)` | A section whose headings show its state: inside it, a template's `=` band and `==` label take `color`, any colour, where every other heading stays slate. Wrap one heading, `#section(color: bad)[= Red-flag signs]`, or the whole section; a label on the heading stays, `<depth>` among them. `#show: section.with(color: steel)` colours a whole document's. |
 | `chip(label, tone)` | Inline state pill — build legends from these. |
 | `callout(body, tone: "note", label: none, size:)` | Aside that must not be missed. |
 | `panel(body, label: none, color: slate)` | Boxed block, no tone semantics. |
 | `code(body, breakable: false)` | Code-block treatment; the document installs it as a show rule. |
 | `link-note` | Show rule for links: coloured and underlined, address footnoted for paper. |
 | `item(n, title, body, color:, size:)` | Numbered step. |
-| `matrix(head, ..rows)` | Two-column comparison table. |
-| `sheet(cols, head, ..rows, size:)` | Wide data table — any column count, zebra rows, header repeats across pages. |
+| `sheet(cols, head, ..rows, size:, blank: 0)` | A table of any number of columns: zebra rows, and a header that repeats across pages. `blank` adds empty rows tall enough to write in. |
+| `writein(n, label: none, pitch: 8mm)` | Lines to write on by hand, each after its label: `writein(3, label: [date])`. Print only; typst writes no PDF form fields. |
+| `signature(name: auto, closing: none, signed: true, dated: true, words: (date: [Date]))` | Where a document is signed: the closing, kept on its page, then lines for an ink signature over the signer's name and a hand-written date, or with `signed: false` a typed sign-off. `name` is the document's author unless given; a document several people sign calls it once for each, one above the other. |
 | `flow(..steps)` | Left-to-right stage sequence. |
-| `decision(n, q, note, color: bad)` / `dbadge(n, color:)` | Open question needing an answer. |
-| `seedepth(what, at: none)` | Pointer to the depth layer. Given a label it looks up the page and links to it — never type a page number. |
+| `decision(n, q, note, color: bad)` | Open question needing an answer, under its number in a filled badge. |
 | `stamp(body)` | Closing line — provenance, or a last caution. |
-| `updated()` | When the content last changed, as the stamp records it. For the footer. |
+| `addendum(date, body, label: [Later], color: ink-faint, caps: true)` | A note set under an entry later, beside what it amends rather than over it: a revisit, a retelling, a correction. `color` draws its edge and label. Its label and date stay with its body across a page break. |
+| `open(body)` | What only the document's owner can supply, left to fill in, in red and bold. The audit says how many remain, without failing. |
+| `missing(body, color: ink-faint, style: "italic")` | A value the document does not have and no one will supply, `#missing[not recorded]`, printed where a blank would read as none. The audit does not count it: nothing is left to do. |
+| `updated(words: (updated: [updated], unstamped: [...]))` | When the content last changed, as the stamp records it. For the footer. |
+| `footer(status: none, edition: updated())` | A page's footer: the title and status, then `updated()` and the page of the total. `#set page(footer: footer())`, or a template's `footer: footer(status: [draft])`. |
 | `press-version` | The version of press a document was built with. Never typed by hand. |
 | `scan(body)` | Marks content the document did not set, a scanned or embedded page, for the audit to leave out; what is set over it is still audited. |
+| `form(blank, probe: none, body)` | One page of a flat PDF form, filled in: the page is the blank's own, its size and edge to edge, with none of the document's header, footer, background or foreground, and the blank a `scan()` under the answers. `#form(image("application.pdf", page: 2))[...]`; the document makes the image, so the path is its own. `probe: 18pt` draws a measuring grid over the page, a line every 18pt, every fourth one heavier, and where two heavy lines cross, that point's x and y in points, for reading where each blank is; the audit fails while it is on. |
+| `tick(x, y)` | A box marked with an X, centred on the point given. |
 | `letterhead(..contact, face: face-text)` | A letter's head: the writer (the document's author), a contact line, a rule. A link that shows its own address needs no footnote. |
 | `dateline(date)` | A letter's date, written once where it prints; `continued` reads it. |
-| `re(..refs, label: [Re:])` | A letter's subject line; each reference stays whole and copyable. |
-| `signature(closing: none, signed: true, dated: true)` | The closing, kept on its page, then lines for an ink signature over the writer's name and a hand-written date, or with `signed: false` a typed sign-off. |
-| `enclosures(..items)` | What goes with a letter, one item to a line. |
-| `continued()` | A header for page two onward of a letter: writer, date, page. `set page(header: continued())`. |
+| `re(..refs, words: (re: [Re:]))` | A letter's subject line; each reference stays whole and copyable. |
+| `enclosures(..items, words: (singular: [Enclosure], plural: [Enclosures]))` | What goes with a letter, one item to a line. |
+| `continued(words: (page: [Page]))` | A header for page two onward of a letter: writer, date, page. `set page(header: continued())`. |
+| `entry(role, org, dates, stacked: false)` | A résumé's role: role, organisation and dates in one paragraph, the dates at the right; `stacked` puts the organisation on its own line. It stays with what follows, so no page ends on a role. |
 
 **Tokens.** Colours `ink`, `ink-soft`, `ink-faint`, `rule-hair`, `rule-mid`, `paper-tint`,
 `slate`, `slate-tint`, `steel`, and `ok`/`warn`/`bad` each with a `-tint`. Faces `face-text`
@@ -334,14 +414,24 @@ build it in the document.
   **Read [`FONTS.md`](FONTS.md) before using any symbol.**
 - **Some symbols are in no vendored face.** `✓ ✗ ▸` render from typst's NewCMMath, `⚠ ⚡ ☐`
   from DejaVuSansMono, and **`⛔` and `📋` vanish** from the page. Build a probe and audit it.
-- **`unit`, `band-strong` and `eyebrow` uppercase their labels.** "pH" becomes "PH", "µS"
-  becomes "ΜS" (a capital Mu). Pass `caps: false` whenever case means something.
+- **`unit`, `eyebrow`, and brief's and recipe's headings uppercase their labels.** "pH" becomes
+  "PH", "µS" becomes "ΜS" (a capital Mu). Pass `caps: false`, to the template for its headings,
+  whenever case means something.
 - **A link in a heading is footnoted twice once there is an outline.** The contents repeat the
   heading and its footnote. Keep links out of headings.
 - **A table that crosses a page loses its header unless it uses `table.header`.** `sheet`
   does; a hand-rolled `table()` does not.
 - **Markdown habits break typst:** `**bold**` warns and vanishes (use one `*`), `+ thing` at a
   line start becomes a list, `/ thing` is a compile error. Reword rather than escape.
+- **A title given as a string keeps straight quotes.** typst curls quotes and apostrophes in
+  markup only, so `title: "God's Promises"` prints a straight apostrophe wherever the title
+  prints, in `header()` and in `footer()`. Give it as markup: `title: [God's Promises]`.
+- **A minus sign is not a hyphen.** typst prints U+2212, the typographic minus, for a hyphen
+  typed before a digit (`ls -1`, `-12.34567`) and for a negative number it shows, in content or
+  through `str()`. No keyboard has it, so a coordinate, a command or a code copied from the PDF
+  will not paste into a map or a shell. Raw text and a string shown as is (`#"-1"`) keep the
+  hyphen. For a number, `str(n).replace("\u{2212}", "-")` keeps `str()`'s format, where `repr()`
+  writes `-2.0` for −2 and `-1e-7` for −0.0000001.
 
 ## Printing
 
@@ -350,7 +440,7 @@ keep all ink at least 0.5in from every edge; a document that overrides the margi
 content absolutely can break that, and the audit measures it.
 
 `calibration.typ` prints the text inks at the four smallest sizes, the pale tints, the rule
-weights and both solid bands, where a printer gives out first. Build it like any document
+weights and a heading's solid band, where a printer gives out first. Build it like any document
 (`third_party/press/calibration.typ`), and print it on the paper and printer you actually use —
 once at normal quality and once in economy mode, duplexed on the long edge — to find where your
 hardware gives out before a real document does.

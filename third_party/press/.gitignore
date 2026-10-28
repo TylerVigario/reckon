@@ -8,6 +8,9 @@ __pycache__/
 # The stand-in scan .github/audit-cases.sh compiles for its scan cases, and removes after
 /.github/audit-cases/scan/scan.pdf
 
+# The stand-in blank .github/form-fill.sh compiles and fills in, and removes after
+/.github/form-fill/blank.pdf
+
 # The record stamp.sh keeps of what each document's last build read, and the copy it writes
 # before swapping it in. A cache: never committed. This file ships in the kit, so a repository
 # that commits press's folder ignores the record there without a line of its own.

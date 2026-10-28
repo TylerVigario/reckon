@@ -3,7 +3,7 @@
 // Print this TWICE on the paper you actually use — once at normal quality,
 // once in the printer's economy/draft mode — and compare the two by eye. It
 // prints the text inks at the four smallest sizes, the pale tints, the rule
-// weights and the solid bands, which is where a printer gives out first, so
+// weights and a heading's solid band, which is where a printer gives out first, so
 // whatever it degrades shows up here rather than in a document you needed.
 //
 // Duplex it, flipping on the long edge (the usual setting). Page 2 carries a
@@ -21,31 +21,17 @@
 
 #import "lib.typ": *
 
-#set document(title: [Print calibration], author: "press")
-#set page(..card, footer: context {
-  set text(size: sz.micro, fill: ink-faint)
-  grid(columns: (1fr, auto),
-    align(left)[press calibration · print at Actual size, duplex, both quality modes],
-    align(right)[#updated() · #counter(page).display("1 / 1", both: true)])
-})
-#set text(font: face-text, size: sz.small, fill: ink, lang: "en")
-#set par(leading: 0.52em, spacing: 0.55em)
-#show raw: set text(font: face-mono, size: sz.micro)
-#show link: link-note
+#show: brief.with(title: [Print calibration], author: "press",
+  meta: [press #press-version · US Letter · actual size],
+  footer: footer(status: [print at Actual size, duplex, both quality modes]))
 
-#grid(columns: (auto, 1fr), align: (left + bottom, right + bottom),
-  text(font: face-display, size: sz.title, weight: 700)[#context document.title],
-  text(size: sz.fine, fill: ink-soft)[press #press-version · US Letter · actual size])
-#v(-3pt)
-#line(length: 100%, stroke: 2pt + slate)
-#v(4pt)
 #text(size: sz.micro, fill: ink-soft)[
   Print once normal, once economy. Mark the first row you would not want to read at arm's
   length — that row is your floor, and any document that relies on it needs changing.
 ]
 #v(7pt)
 
-#band-strong([Ink ladder — the text inks at the smallest sizes], "read this first", color: bad)
+= Ink ladder — the text inks at the smallest sizes
 
 #let sample(colour) = {
   set text(fill: colour)
@@ -74,12 +60,12 @@
 #v(3pt)
 #text(size: sz.micro, fill: ink-soft)[
   `ink-faint` is the one to watch. It is the lightest ink in the set and it carries the
-  italic depth pointers, so it fails first in economy mode. If it survives here, nothing
-  else in the library is at risk.
+  footer and the italic closing line of `stamp`, so it fails first in economy mode. If it
+  survives here, nothing else in the library is at risk.
 ]
 #v(8pt)
 
-#band-strong([Tints, rules and solids — what dithering damages], "look for banding")
+= Tints, rules and solids — what dithering damages
 
 #let patch(label, fill-colour) = block(
   width: 100%, height: 30pt, fill: fill-colour, stroke: 0.4pt + rule-hair, radius: 1pt,
@@ -104,21 +90,20 @@
    #line(length: 100%, stroke: 0.6pt + rule-mid) #v(6pt)
    #text(size: sz.micro, fill: ink-soft)[slate 2pt] #v(3pt)
    #line(length: 100%, stroke: 2pt + slate)],
-  [#text(size: sz.micro, fill: ink-soft)[Solid bands — the ink-heavy element, and the one that
-     shows through on duplex.] #v(4pt)
-   #band-strong([Solid slate band], "role text sits here")
-   #band-strong([Solid red band], "act", color: bad)],
+  [#text(size: sz.micro, fill: ink-soft)[A heading's solid band — the ink-heavy element, and the
+     one that shows through on duplex.] #v(4pt)
+   #heading(outlined: false, bookmarked: false)[A section heading]],
 )
 #v(8pt)
 
-#band-strong([Duplex show-through window], "hold to the light", color: steel)
+= Duplex show-through window — hold it to the light
 
 #block(width: 100%, height: 76pt, stroke: (paint: rule-mid, dash: "dashed", thickness: 0.7pt),
   radius: 2pt, inset: 8pt)[
   #text(size: sz.micro, fill: ink-soft)[
     Page 2 carries a heavy solid field. Whatever you see inside this box is coming through the
     sheet from the other side. Judge it against the paper you actually stock — a heavier
-    sheet is the fix, not a lighter design, because the bands are what make a section
+    sheet is the fix, not a lighter design, because a heading's band is what makes a section
     skippable at a glance.
   ]
 ] <window>
