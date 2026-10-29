@@ -15,14 +15,21 @@ name: Release
 # An override still needs something to ship; with nothing bump-worthy there
 # is nothing to release whatever the step.
 #
+# A dry run rehearses a release: it decides the version, previews the
+# changelog and runs the gate, and writes nothing. No credential is minted,
+# so a change to this workflow can be tried before anything is published.
+#
 # THE ORDER IS THE POINT. Nothing may fail halfway and leave a halfway
 # state, so everything that can fail happens before anything that cannot be
 # taken back, and of the two writes the one that cannot be taken back at
 # all goes first:
 #
-#   decide    read-only. Works out the version, and refuses -- before any
-#             write -- a tag that already exists without its release.
-#   publish   gate, build, attest, then draft -> attach -> publish. The draft
+#   decide    read-only. Works out the version, refuses -- before any
+#             write -- a tag that already exists without its release, and
+#             previews the changelog in the run summary.
+#   gate      the gate every PR runs, on the commit the run was dispatched
+#             at. A dry run stops here.
+#   publish   build, attest, then draft -> attach -> publish. The draft
 #             and its asset are deletable, and are deleted if anything fails.
 #             Publication is the only step that can still refuse at the end
 #             (an immutable release reserves its tag name for ever, and says
@@ -47,10 +54,16 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: 'How big a step: auto lets the commits decide; patch, minor or major overrides them (rarely needed)'
+        description: 'The step from the last release: auto lets the commits decide; patch, minor or major overrides them'
         type: choice
         options: [auto, patch, minor, major]
         default: auto
+        required: true
+      dry-run:
+        description: 'Decide the version, preview the changelog and run the gate; write nothing'
+        type: boolean
+        default: false
+        required: false
 
 concurrency:
   group: release
@@ -151,22 +164,26 @@ jobs:
             echo "tag=$next"
           } >> "$GITHUB_OUTPUT"
 
-  publish:
+      - name: Preview the changelog
+        # The notes publish gives the release, made the same way, so a dry
+        # run shows what a release would say.
+        if: steps.decide.outputs.mode == 'publish'
+        env:
+          TAG: ${{ steps.decide.outputs.tag }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## $TAG"
+            echo
+            npx --yes git-cliff@2 --config cliff.toml --unreleased --tag "$TAG" --strip all
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # A job of its own so a dry run can run the gate and stop: every job after
+  # it writes.
+  gate:
     needs: decide
     if: needs.decide.outputs.mode == 'publish'
     runs-on: ubuntu-latest
-
-    # The App credential -- which publishes here and writes the receipt in
-    # record -- lives on this environment, not on the repository. A
-    # repository secret is reachable by every job that asks for it; an
-    # environment secret is reachable only by a job that declares the
-    # environment, and the declaration is where branch restrictions attach --
-    # this one is limited to protected branches, so a run from any other ref
-    # cannot mint the token at all.
-    #
-    # Publishing is the step that cannot be taken back, which is why it is the
-    # one worth separating from the build before it.
-    environment: release
 
     # The gate includes the guard suite, and the guard suite needs a cluster.
     # A release runs the same gate a pull request does, so a broken tree
@@ -188,6 +205,38 @@ jobs:
       PGHOST: localhost
       PGUSER: postgres
       PGPASSWORD: postgres
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The commit publish builds: what is gated is what is released.
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup
+
+      - name: Gate the tree
+        # The same gate every PR runs. A release is still a commit on
+        # main and does not get to skip it.
+        run: npm run ci
+
+  publish:
+    needs: [decide, gate]
+    if: needs.decide.outputs.mode == 'publish' && !inputs.dry-run
+    runs-on: ubuntu-latest
+
+    # The App credential -- which publishes here and writes the receipt in
+    # record -- lives on this environment, not on the repository. A
+    # repository secret is reachable by every job that asks for it; an
+    # environment secret is reachable only by a job that declares the
+    # environment, and the declaration is where branch restrictions attach --
+    # this one is limited to protected branches, so a run from any other ref
+    # cannot mint the token at all.
+    #
+    # Publishing is the step that cannot be taken back, which is why it is the
+    # one worth separating from the build before it.
+    environment: release
 
     permissions:
       contents: read
@@ -217,11 +266,6 @@ jobs:
       # keyed on the dependency set, and both manifests installed. One
       # definition, so a release builds on the toolchain the gate proved.
       - uses: ./.github/actions/setup
-
-      - name: Gate the tree
-        # The same gate every PR runs. A release is still a commit on
-        # main and does not get to skip it.
-        run: npm run ci
 
       - name: Regenerate the changelog
         # Into the runner's temp directory, NOT the tree. The build below
@@ -326,10 +370,11 @@ jobs:
   record:
     # The receipt: the version and the changelog, written to main once the
     # release exists. Runs after a publish, or alone when decide finds the
-    # release already published -- a re-dispatch after this job failed.
+    # release already published -- a re-dispatch after this job failed. Never
+    # on a dry run, which would otherwise reach it through that second case.
     needs: [decide, publish]
     if: >-
-      always() &&
+      always() && !inputs.dry-run &&
       (needs.publish.result == 'success' ||
        (needs.decide.outputs.mode == 'record' && needs.publish.result == 'skipped'))
     runs-on: ubuntu-latest
