@@ -49,7 +49,8 @@ name: Release
 # main refuses direct pushes, so the release App is a bypass actor on
 # main-protection for that reason and no other. Its permissions are the
 # blast radius: keep them at contents:write on this repository, with no
-# workflows scope.
+# workflows scope. Each token minted for it asks for contents:write and
+# nothing else, so a permission the App is given later never reaches here.
 on:
   workflow_dispatch:
     inputs:
@@ -248,10 +249,11 @@ jobs:
     steps:
       - name: Mint a token for the release App
         id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
         with:
-          app-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -384,10 +386,11 @@ jobs:
     steps:
       - name: Mint a token for the release App
         id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
         with:
-          app-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
