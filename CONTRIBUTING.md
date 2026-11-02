@@ -82,7 +82,7 @@ a production process writing invoices into it.
 
 **`npm ci` installs the git hooks**: `commit-msg`, without which a bad commit
 message is only caught when CI rejects the pull request title, and `pre-push`,
-which proves the guards before anything leaves.
+which runs `npm run ci` before anything leaves.
 
 The database commands connect the way `psql` does, so `PGHOST`, `PGUSER` and the
 rest apply. If your cluster wants a different user, become one:
@@ -100,7 +100,9 @@ npm run ci
 ```
 
 That is formatting, linting, typechecking, the unit tests at both ends of the
-date line, the guard suite and the build, in one command.
+date line, the migrations checked against the schema, the guard suite and the
+build, in one command. `pre-push` runs it, so a push it fails does not leave.
+`git push --no-verify` skips it, and CI runs every check regardless.
 
 What it does not run is the behaviour suite — the checks in `tests/`
 that sign in and drive the running application. Those need a database and a
