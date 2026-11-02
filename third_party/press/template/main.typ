@@ -8,8 +8,9 @@
 // copies it to docs/<name>/main.typ, with the import below rewritten to where press sits.
 // In press's own tree the import is relative, ../lib.typ, so the starter compiles there.
 //
-// What only you can supply, a name, a date, an address, is marked open(): it prints in red, and
-// every build says how many are left until each is replaced. The rest is an example to rewrite.
+// What only you can supply, a name, a date, an address, is marked unsourced(): it prints in
+// red, and every build says how many are left until each is replaced. The rest is an example to
+// rewrite.
 //
 // ---------------------------------------------------------------------------
 // The conventions this starter encodes, brief's own. They are what make a brief
@@ -36,10 +37,10 @@
 // The document's name, set once: a PDF viewer shows it in its title bar and lists the file by
 // it, and the header and footer print it from here.
 #show: brief.with(
-  title: open[Document title],
+  title: unsourced[Document title],
   author: "Your name",
-  meta: open[scope · date],
-  footer: footer(status: open[status]),
+  meta: unsourced[scope · date],
+  footer: footer(status: unsourced[status]),
   legend: ([Colour is state. Each heading says what its section is for.],
     chip([SETTLED], "ok"), chip([CONDITIONAL], "warn"), chip([DECIDE], "bad")),
 )

@@ -7,8 +7,8 @@
 #   sh <press_root>/tools/stamp.sh <doc> <pdf> <typst flags...>
 #
 # On success it prints one line, which build.sh hands to report.sh: what
-# happened -- new (no stamped PDF was there), changed, unchanged (built again, the same bytes)
-# or cached (the build record matched, so nothing was built) -- then the time the page now
+# happened -- new (no stamped PDF was there), changed, unchanged (built again, and the same
+# bytes or the same pages) or cached (the build record matched, so nothing was built) -- then the time the page now
 # carries. typst's own output goes to stderr.
 #
 # IT IS THE BUILD, not a wrapper around one: every runner calls it, and check.sh compiles
@@ -30,9 +30,18 @@
 # time, and a newer time would say "reprint" about an identical page. So the source is
 # first compiled AT the previous stamp: typst's output is deterministic for the same
 # inputs and --creation-timestamp, so a byte-identical PDF means nothing on the page
-# changed, and the old time stands. Only a
-# difference compiles again at the current time. A different typst, or new fonts, can
-# change the bytes of an unchanged page; that re-stamps it, which errs toward reprinting.
+# changed, and the old time stands. Only a difference compiles again at the current time.
+#
+# WHAT THE PAGE SHOWS, NOT THE BYTES. Different bytes do not mean a different page. A press
+# release that builds a part another way, a different typst, or a font file rewritten without
+# a glyph changing, each changes the bytes of every document they reach, and on paper nothing
+# moved. A new time there would tell the reader comparing two copies, which is what the stamp is
+# for, that the content changed when it did not. So where the bytes differ, the two PDFs are
+# read as they print: their words first, which an edit almost always changes and which are
+# cheap to read, then every page drawn at the audit's 150 dpi, one page at a time, and compared
+# pixel for pixel. The same on every page, the new build is kept at the old time. That needs
+# poppler's pdftoppm; without it, different bytes re-stamp the page as before, erring toward
+# reprinting, and building still never depends on the audit's tools.
 #
 # The previous stamp is read from the PDF itself: --creation-timestamp puts it in the Info
 # dictionary as plain text, /CreationDate(D:YYYYMMDDHHMMSSZ), in UTC. No side file to lose
@@ -116,6 +125,33 @@ trial=
 trap 'rm -rf "$work"; if [ -n "$trial" ]; then rm -f "$trial"; fi' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+# PRESS_PDFTOPPM and PRESS_PDFTOTEXT name poppler's binaries where PATH cannot, as for the audit.
+PDFTOPPM=${PRESS_PDFTOPPM:-pdftoppm}
+PDFTOTEXT=${PRESS_PDFTOTEXT:-pdftotext}
+# The page count from the PDF's page tree, which typst writes uncompressed, as report.sh reads it.
+pages_of() { tr '\r\n' '  ' < "$1" | grep -a -o '/Type */Pages */Count *[0-9]*' | sed 's/.*Count *//' | sort -n | tail -n 1; }
+# prints_same <a.pdf> <b.pdf>: every page of the two draws the same pixels. Fails where they
+# differ, and where it cannot tell: no pdftoppm, or a page count it cannot read. Each page's
+# raster is replaced by the next, so the space it takes stays one page's.
+prints_same() {
+    command -v "$PDFTOPPM" >/dev/null 2>&1 || return 1
+    n=$(pages_of "$1")
+    [ -n "$n" ] && [ "$n" = "$(pages_of "$2")" ] || return 1
+    # Any pdftotext will do here, poppler's or not: the same one reads both.
+    if command -v "$PDFTOTEXT" >/dev/null 2>&1 \
+            && "$PDFTOTEXT" -layout "$1" "$work/a.txt" 2>/dev/null \
+            && "$PDFTOTEXT" -layout "$2" "$work/b.txt" 2>/dev/null; then
+        cmp -s "$work/a.txt" "$work/b.txt" || return 1
+    fi
+    i=1
+    while [ "$i" -le "$n" ]; do
+        "$PDFTOPPM" -r 150 -f "$i" -l "$i" -singlefile "$1" "$work/a" 2>/dev/null \
+            && "$PDFTOPPM" -r 150 -f "$i" -l "$i" -singlefile "$2" "$work/b" 2>/dev/null \
+            && cmp -s "$work/a.ppm" "$work/b.ppm" || return 1
+        i=$((i + 1))
+    done
+}
 
 # THE BUILD RECORD. A PDF is unchanged only if nothing it was made from changed, and that is
 # known without compiling it. One file in press's own folder, .build-record, holds an entry per
@@ -246,6 +282,12 @@ if [ -n "$old" ]; then
     if out=$(at "$old" "$trial" "$@"); then
         if cmp -s "$trial" "$pdf"; then
             rm -f "$trial"
+            finish unchanged "$old" "$@"
+        fi
+        # Other bytes, the same pages: the new build is the PDF, at the old time.
+        if prints_same "$trial" "$pdf"; then
+            mv -f "$trial" "$pdf"
+            trial=
             finish unchanged "$old" "$@"
         fi
     else

@@ -187,20 +187,6 @@
 ]
 
 
-// What only the document's owner can supply, left to fill in: an account number, a figure, a date.
-// It prints in red and bold so it cannot go out unnoticed, and the audit counts how many remain
-// ("2 open items") without failing, since a draft carries them.
-//
-//   Account #open[number from the statement].
-#let open(body) = [#metadata("press-open")#text(fill: bad, weight: 700, body)]
-
-// A value the document does not have and no one will supply, printed where it would stand, since
-// a blank there reads as none. It is faint and italic, apart from the values around it, and the
-// audit does not count it: unlike open(), nothing is left to do.
-//
-//   Milkings per day: #missing[not recorded].
-#let missing(body, color: ink-faint, style: "italic") = text(fill: color, style: style, body)
-
 // A part's own words, as a document passes them in `words`: every key the part prints must be
 // there, so a misspelt or missing one is a compile error naming it, not English left behind.
 #let _words(part, words, ..keys) = {
@@ -210,6 +196,49 @@
       message: part + "(words:) takes " + keys.map(k => k + ":").join(", ") + "; " + k + ": is missing")
   }
   words
+}
+
+// A value the document prints without having read it from a source, marked by its `kind`, so that
+// on paper it never reads like the values around it that were:
+//
+//   "open"      what only the document's owner can supply, left to fill in: an account number, a
+//               figure, a date. Red and bold, so it cannot go out unnoticed.
+//   "missing"   what the document does not have and no one will supply, printed where it would
+//               stand, since a blank there reads as none. Faint and italic, apart from the values
+//               around it.
+//   "estimate"  a figure printed but guessed: a price estimated for a category, a size judged by
+//               eye. The figure, then a word that says so, both in amber and bold: the colour is
+//               lost on a grey printout, and the word is not.
+//
+// The kind is what the audit reads. It says how many open items remain ("2 open items") and how
+// many estimates a document prints, and fails for neither, since a draft carries them; a missing
+// value it leaves alone, as nothing is left to do. How each kind looks is only its default:
+// `color`, `weight` and `style` change it, and `words` the word an estimate prints.
+//
+//   Account #unsourced[number from the statement].
+//   Milkings per day: #unsourced(kind: "missing")[not recorded].
+//   Feed, per bag: #unsourced(kind: "estimate")[\$18.00].
+//
+// A document that marks one kind often names it once:
+//
+//   #let est = unsourced.with(kind: "estimate")
+#let _unsourced = (
+  open: (fill: bad, weight: 700),
+  missing: (fill: ink-faint, style: "italic"),
+  estimate: (fill: warn, weight: 700),
+)
+#let unsourced(
+  body, kind: "open", color: auto, weight: auto, style: auto, words: (estimate: [estimate]),
+) = {
+  // An unknown kind fails rather than falling through to one that looks deliberate.
+  assert(type(kind) == str and kind in _unsourced,
+    message: "unsourced(kind:) expects \"open\", \"missing\" or \"estimate\"; got " + repr(kind))
+  let word = _words("unsourced", words, "estimate").estimate
+  let look = _unsourced.at(kind)
+  for (key, value) in (fill: color, weight: weight, style: style) {
+    if value != auto { look.insert(key, value) }
+  }
+  [#metadata("press-" + kind)#text(..look, if kind == "estimate" [#body #word] else { body })]
 }
 
 // When the page's content last changed, as tools/stamp.sh stamps it.

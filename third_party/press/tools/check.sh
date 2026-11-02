@@ -201,15 +201,18 @@ tr '\000\\' '\n/' < "$tmp/deps" | awk '
 # At least $src itself; an empty list would skip the check and report the document clean.
 test -s "$tmp/sources" || { echo "press: typst listed no sources for $src" >&2; exit 1; }
 
-# PRESS'S MARKS. Two of press's parts leave a mark for the audit: open(), what only the
-# document's owner can supply, and form(probe:), the measuring grid. typst lists them, and only
-# where a source of the document's own calls one, as #open[...], open(...) or probe:, so no other
-# document is compiled again: typst eval, or typst query before 0.15, which has no eval. Neither
-# takes the --deps a build passes, so the query runs without it.
+# PRESS'S MARKS. Two of press's parts leave a mark for the audit: unsourced(), a value the
+# document prints without having read it from a source, marked with its kind, and form(probe:),
+# the measuring grid. typst lists them, and only where a source of the document's own names one,
+# as unsourced or probe:, so no other document is compiled again: typst eval, or typst query
+# before 0.15, which has no eval. Neither takes the --deps a build passes, so the query runs
+# without it. Any mention of unsourced asks, a shorthand's `unsourced.with(...)` among them: a
+# query too many costs a compile, and one too few would leave a document's open items uncounted.
 #
-# Open items are counted, not failed: a draft carries them, and the count is what keeps one from
-# going out unnoticed. The measuring grid fails the audit while it is on: it is for reading where
-# a form's blanks are, and a page that still carries it is not finished.
+# Open items and estimates are counted, not failed: a draft carries them, and the count is what
+# keeps one from going out unnoticed. A missing value is not counted: nothing is left to do. The
+# measuring grid fails the audit while it is on: it is for reading where a form's blanks are, and
+# a page that still carries it is not finished.
 press_marks() {
     n=$#
     i=0
@@ -226,7 +229,7 @@ press_marks() {
     typst query "$@" "$src" metadata --field value 2>/dev/null
 }
 want=$(while IFS= read -r f; do
-    if grep -q 'open[[(]' "$f"; then echo open; fi
+    if grep -q 'unsourced' "$f"; then echo unsourced; fi
     if grep -q 'probe:' "$f"; then echo probe; fi
 done < "$tmp/sources")
 if [ -n "$want" ]; then
@@ -234,15 +237,23 @@ if [ -n "$want" ]; then
         n=$(printf '%s\n' "$marks" | grep -o '"press-open"' | wc -l | tr -d ' ')
         case $n in
             0) ;;
-            1) echo "press: $pdf has 1 open item, in red, for its owner to supply" >&2 ;;
-            *) echo "press: $pdf has $n open items, in red, for its owner to supply" >&2 ;;
+            1) echo "press: $pdf has 1 open item for its owner to supply" >&2 ;;
+            *) echo "press: $pdf has $n open items for its owner to supply" >&2 ;;
+        esac
+        n=$(printf '%s\n' "$marks" | grep -o '"press-estimate"' | wc -l | tr -d ' ')
+        case $n in
+            0) ;;
+            1) echo "press: $pdf prints 1 estimate, a figure guessed, not read from a source" >&2 ;;
+            *) echo "press: $pdf prints $n estimates, figures guessed, not read from a source" >&2 ;;
         esac
         if printf '%s\n' "$marks" | grep -qF '"press-probe"'; then
             echo "press: $pdf has the measuring grid on; take form()'s probe: off once its blanks are measured" >&2
             rc=1
         fi
     else
-        case $want in *open*) echo "press: could not count the open items in $pdf" >&2 ;; esac
+        case $want in
+            *unsourced*) echo "press: could not count the open items and estimates in $pdf" >&2 ;;
+        esac
         case $want in
             *probe*) echo "press: could not tell whether $pdf has the measuring grid on" >&2; rc=1 ;;
         esac
