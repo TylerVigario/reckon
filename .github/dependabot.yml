@@ -41,8 +41,17 @@ updates:
     schedule:
       interval: weekly
     groups:
+      # CodeQL's init and analyze are one action at two paths, and analyze
+      # refuses to run after an init of another version. Pinned by SHA, each
+      # path is a dependency of its own, so by dependency name they arrive as
+      # two pull requests that each fail CI alone. This group comes first,
+      # since an update joins the first group it matches, and takes majors
+      # too, so a new major moves both paths in one pull request.
+      codeql-action:
+        patterns: ['github/codeql-action*']
       actions:
         patterns: ['*']
+        exclude-patterns: ['github/codeql-action*']
         update-types: [minor, patch]
         group-by: dependency-name
     commit-message:
