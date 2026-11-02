@@ -62,7 +62,7 @@ commit_preprocessors = [
 # out of the changelog they generate.
 #
 # `style` is skipped like the rest of that set. It is a valid type — one
-# of @vts/commitlint-config's starter set — it simply cannot reach the
+# of @tylervigario/commitlint-config's starter set — it simply cannot reach the
 # artifact, so it neither bumps nor appears.
 #
 # Case-insensitive, because the specification is and so is the commit
