@@ -8,8 +8,9 @@
 // copies it to docs/<name>/main.typ, with the import below rewritten to where press sits.
 // In press's own tree the import is relative, ../lib.typ, so the starter compiles there.
 //
-// What only you can supply, a name, a date, an address, is marked open(): it prints in red, and
-// every build says how many are left until each is replaced. The rest is an example to rewrite.
+// What only you can supply, a name, a date, an address, is marked unsourced(): it prints in
+// red, and every build says how many are left until each is replaced. The rest is an example to
+// rewrite.
 //
 // ---------------------------------------------------------------------------
 // What a letter here does:
@@ -31,25 +32,25 @@
 #import "../lib.typ": *
 
 #show: letter.with(
-  title: open[Letter to Recipient Name],
+  title: unsourced[Letter to Recipient Name],
   author: "Your Name",
   contact: (
-    open[123 Street Name, Town, ST 00000],
-    open[(555) 555-0100],
-    open(link("mailto:you@example.com")),
+    unsourced[123 Street Name, Town, ST 00000],
+    unsourced[(555) 555-0100],
+    unsourced(link("mailto:you@example.com")),
   ),
-  date: open[15 October 2026],
+  date: unsourced[15 October 2026],
 )
 
-#open[Recipient Name] \
-#open[Title] \
-#open[Organisation] \
-#open[Street Address] \
-#open[Town, ST 00000]
+#unsourced[Recipient Name] \
+#unsourced[Title] \
+#unsourced[Organisation] \
+#unsourced[Street Address] \
+#unsourced[Town, ST 00000]
 
-#re(open[Account 0000-0000], open[date of service 1 January 2026])
+#re(unsourced[Account 0000-0000], unsourced[date of service 1 January 2026])
 
-Dear #open[Recipient Name],
+Dear #unsourced[Recipient Name],
 
 The first paragraph says why you are writing and what you are asking for, so a reader who
 stops here still knows.

@@ -120,6 +120,7 @@ press's tools are plain `sh` scripts, called the same way from any runner:
 | `sh third_party/press/tools/clean.sh` | deletes `print/` |
 | `sh third_party/press/tools/stamp.sh <doc> <pdf> <flags>` | builds, stamping the PDF with when its content last changed and keeping the old time when nothing on the page changed; makes the output directory; then audits it, where the audit's tools are installed |
 | `sh third_party/press/tools/check.sh <doc> <pdf> third_party/press <flags>` | the audit alone, which refuses to run without its tools: typst warnings, fonts that are not vendored, glyphs that vanished, ink too near the edge, text printed on text |
+| `sh third_party/press/tools/install-typst.sh <dir>` | installs the typst press is built and audited with into `<dir>`, pinned by version and digest, on Linux x86_64 or aarch64: for a repository's CI (see In CI below) |
 
 `<flags>` are the three above: `--root . --font-path third_party/press/fonts --ignore-system-fonts`.
 
@@ -127,19 +128,24 @@ press's tools are plain `sh` scripts, called the same way from any runner:
 so a runner, CI and `all` see it and the page can still be looked at. Where the audit's tools
 are missing, the build says the audit was skipped and why, and succeeds: building never
 depends on them. `check.sh` is the same audit for when it must run, as in CI: without its tools
-it refuses. The audit also says how many open items a document still carries, marked with
-`open()` for its owner to supply, and does not fail for them: a draft carries them. A form
-page with its measuring grid on, `form(probe:)`, does fail it: the grid is for measuring.
+it refuses. The audit also says how many open items a document still carries for its owner
+to supply, and how many estimates it prints, each marked with `unsourced()`, and fails for
+neither: a draft carries them. A form page with its measuring grid on, `form(probe:)`, does
+fail it: the grid is for measuring.
 
 **An unchanged document is not built again.** One file in press's folder, `.build-record`,
 records what each document's last build read — every file typst lists, the fonts, typst's
 version, press's tools, the flags and the zone — each with a checksum, and what its audit said.
 When all of it still matches, the build says cached at once, without compiling or auditing,
 and repeats what the audit said. Unchanged is a different answer: the document was built again
-and came out the same bytes. Only a build whose audit ran in full and passed is recorded,
-so a failing document, or one built without the audit's tools, is built and audited every time.
-The kit's own `.gitignore` keeps the record out of git, an update replaces it with press's
-folder, and deleting it costs one full build per document, never a wrong answer.
+and came out the same bytes, or other bytes whose every page draws the same pixels, and it keeps
+its time. A press update that builds a part another way, a different typst, or a font file
+rewritten without a glyph changing, changes the bytes and not the page; telling the two apart
+takes poppler's `pdftoppm`, and without it other bytes count as changed. Only a build whose
+audit ran in full and passed is recorded, so a failing document, or one built without the
+audit's tools, is built and audited every time. The kit's own `.gitignore` keeps the record out
+of git, an update replaces it with press's folder, and deleting it costs one full build per
+document, never a wrong answer.
 
 **A page the document did not set** — a scanned form it fills in, an embedded PDF page — is
 marked with `scan(...)`. The audit then reads a copy with every scan hidden, so the scan's own
@@ -227,8 +233,8 @@ builds every one, then fails if any failed its audit. Export `PRESS_TZ` from the
 - **`sh`** for the tools. On Windows it comes with Git for Windows.
 - **The audit** needs poppler (`pdffonts`, `pdftotext`, `pdftoppm`), a Python, and a grep
   with PCRE (GNU grep; on macOS, `brew install grep`); a build without them is not audited,
-  though it still counts the open items and fails while a form's measuring grid is on, which
-  need only typst.
+  though it still counts the open items and estimates and fails while a form's measuring grid
+  is on, which need only typst.
   Where `PATH` finds the wrong one, name it: `PRESS_PDFTOTEXT`, `PRESS_PDFFONTS`,
   `PRESS_PDFTOPPM`, `PRESS_PYTHON`, `PRESS_GREP` (`ggrep` on macOS). The audit refuses a
   `pdftotext` that is not poppler's.
@@ -254,6 +260,25 @@ builds every one, then fails if any failed its audit. Export `PRESS_TZ` from the
   upgrade, so an upgrade leaves them naming a folder that is gone. Builds still succeed, now
   saying each document "is not audited: poppler's … pdftotext.exe is not found", and `check`
   refuses. Point the variables at the new version's `Library/bin`.
+
+### In CI
+
+A repository's CI installs typst with press's own tool, which holds press's pin of it: the
+version press is built and audited with, checked against its digest. The pin is in press's
+folder, so the repository keeps no copy to fall behind; moving to a press release moves its typst
+with it. poppler comes from the runner's packages; GitHub's Ubuntu runners already have Python 3
+and GNU grep. The audit runs as `check` there, which refuses without its tools rather than
+skipping it. On GitHub Actions, for a repository that builds with npm:
+
+```yaml
+- run: sh third_party/press/tools/install-typst.sh "$RUNNER_TEMP/bin"
+- run: echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+- run: sudo apt-get install -y poppler-utils
+- run: npm run press:check
+```
+
+`install-typst.sh` runs on Linux, x86_64 or aarch64, and refuses anywhere else; a workstation
+installs typst from its own packages.
 
 ## Writing a document
 
@@ -305,6 +330,31 @@ typst's headings and `#outline()`, and import press in every chapter that uses i
 `(..card, paper: "a4")`, given to `brief` as its `preset` or spread into `#set page(...)`: the
 preset margins are absolute, and the audit measures them on any page size. **Landscape** is
 `(..card, flipped: true)`.
+
+**A document built from data reads the data itself.** `json()`, `csv()`, `yaml()`, `toml()` and
+`xml()` read a file, by a path from the document or from the root, into typst values, and a string
+shown as a value, `#r.note` or a cell of a `sheet`, is set as text and never read as markup. So
+nothing in the data needs escaping: `//`, a hyphen before a digit, a line that starts with `=` or
+`-`, and every character typst's markup uses print as written.
+
+```typst
+#import "/third_party/press/lib.typ": *
+#show: brief.with(title: [Stock], author: "Sam Example")
+
+#let items = json("stock.json")
+#sheet((auto, auto, 1fr), ([Item], [Count], [Note]),
+  ..items.map(r => (r.item, r.count, r.note)).flatten())
+
+In all, #items.map(r => r.count).sum() items.
+```
+
+Counts, sums, filters, sorting and dates are typst's own: an array's `sum`, `filter` and
+`sorted`, `calc` and `datetime`. Logic that typst does not suit stays in a script, which writes
+what it works out as data, a JSON file the document reads, and never as markup: a script that
+writes `.typ` must escape every value it writes, and an escape that misses one case prints that
+value wrong, or drops the rest of its line. The build follows the data. typst lists every file a
+document reads, so a changed data file builds the document again and moves its stamp, with no
+script to run first, and an unchanged one leaves it cached.
 
 **A letter** applies `letter`: `new.sh docs/to-landlord letter` starts one.
 `#show: letter.with(title:, author:, contact:, date:)` **names the writer and the date once**,
@@ -370,21 +420,21 @@ Tone is a string: `"note"` (slate) · `"ok"` (green) · `"warn"` (amber) · `"ba
 | `header(meta: none, color:, face:, size:)` | A document's header: its title, the one the document names itself with, on the left, `meta` on the right, and a rule beneath. |
 | `eyebrow(body, color:, caps:)` | Small tracked-out uppercase label. |
 | `section(body, color: slate)` | A section whose headings show its state: inside it, a template's `=` band and `==` label take `color`, any colour, where every other heading stays slate. Wrap one heading, `#section(color: bad)[= Red-flag signs]`, or the whole section; a label on the heading stays, `<depth>` among them. `#show: section.with(color: steel)` colours a whole document's. |
-| `chip(label, tone)` | Inline state pill — build legends from these. |
+| `chip(label, tone, boxed: true, shape: auto)` | A state, shown by its tone's colour and a shape drawn before its label, so it reads on a grey printout too: a circle for ok, a triangle for warn, a square for bad, a diamond for note. Boxed, a pill for a legend; `boxed: false`, the shape and the label alone, bold in the tone's colour at the text's own size, for a value in a table whose every cell has a state: `chip([4], "ok", boxed: false)`. `shape` takes another of the four, or none. |
 | `callout(body, tone: "note", label: none, size:)` | Aside that must not be missed. |
 | `panel(body, label: none, color: slate)` | Boxed block, no tone semantics. |
 | `code(body, breakable: false)` | Code-block treatment; the document installs it as a show rule. |
 | `link-note` | Show rule for links: coloured and underlined, address footnoted for paper. |
 | `item(n, title, body, color:, size:)` | Numbered step. |
-| `sheet(cols, head, ..rows, size:, blank: 0)` | A table of any number of columns: zebra rows, and a header that repeats across pages. `blank` adds empty rows tall enough to write in. |
+| `sheet(cols, head, ..rows, size:, blank: 0, across: 1, gutter: 9pt)` | A table of any number of columns: zebra rows, and a header that repeats across pages. `blank` adds empty rows tall enough to write in. `across: 2` sets a long, narrow sheet in two columns, `gutter` apart, read down each column and then the next, with the header atop every column; where it ends, its last rows are shared between the columns by height, so the columns end level. |
 | `writein(n, label: none, pitch: 8mm)` | Lines to write on by hand, each after its label: `writein(3, label: [date])`. Print only; typst writes no PDF form fields. |
-| `signature(name: auto, closing: none, signed: true, dated: true, words: (date: [Date]))` | Where a document is signed: the closing, kept on its page, then lines for an ink signature over the signer's name and a hand-written date, or with `signed: false` a typed sign-off. `name` is the document's author unless given; a document several people sign calls it once for each, one above the other. |
+| `checkbox(checked: false, size: 0.7em, stroke: 0.6pt + ink, radius: 1pt)` | A box to tick by hand, sized to the text it sits in: inline, in a `sheet()` cell, or as a list's marker, `#set list(marker: checkbox())`, for a checklist. `checked: true` marks it with an X. The audit does not count an empty box. |
+| `signature(name: auto, closing: none, signed: true, dated: true, width: 2.6in, words: (date: [Date]))` | Where a document is signed: the closing, kept on its page, then lines for an ink signature over the signer's name and a hand-written date, or with `signed: false` a typed sign-off. `name` is the document's author unless given; a document several people sign calls it once for each. `width` is the ink line, and a relative width is of the room it has: `width: 100%` fills a grid's cell. `dated: "below"` puts the date line under the name instead of beside it, so two signers fit side by side: a two-column grid of `signature(width: 100%, dated: "below")`. |
 | `flow(..steps)` | Left-to-right stage sequence. |
 | `decision(n, q, note, color: bad)` | Open question needing an answer, under its number in a filled badge. |
 | `stamp(body)` | Closing line — provenance, or a last caution. |
 | `addendum(date, body, label: [Later], color: ink-faint, caps: true)` | A note set under an entry later, beside what it amends rather than over it: a revisit, a retelling, a correction. `color` draws its edge and label. Its label and date stay with its body across a page break. |
-| `open(body)` | What only the document's owner can supply, left to fill in, in red and bold. The audit says how many remain, without failing. |
-| `missing(body, color: ink-faint, style: "italic")` | A value the document does not have and no one will supply, `#missing[not recorded]`, printed where a blank would read as none. The audit does not count it: nothing is left to do. |
+| `unsourced(body, kind: "open", color: auto, weight: auto, style: auto, words: (estimate: [estimate]))` | A value the document prints without having read it from a source, marked by its kind. `"open"`: what only the owner can supply, left to fill in, in red and bold; the audit says how many remain. `"missing"`: what no one will supply, `#unsourced(kind: "missing")[not recorded]`, in faint italic where a blank would read as none; the audit does not count it. `"estimate"`: a figure printed but guessed, `#unsourced(kind: "estimate")[\$18.00]`, followed by the word estimate, in amber and bold; the audit says how many. The audit fails for none of them. `color`, `weight` and `style` change the kind's look; `#let est = unsourced.with(kind: "estimate")` names a kind used often. |
 | `updated(words: (updated: [updated], unstamped: [...]))` | When the content last changed, as the stamp records it. For the footer. |
 | `footer(status: none, edition: updated())` | A page's footer: the title and status, then `updated()` and the page of the total. `#set page(footer: footer())`, or a template's `footer: footer(status: [draft])`. |
 | `press-version` | The version of press a document was built with. Never typed by hand. |

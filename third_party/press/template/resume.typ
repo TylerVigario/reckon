@@ -8,8 +8,9 @@
 // copies it to docs/<name>/main.typ, with the import below rewritten to where press sits.
 // In press's own tree the import is relative, ../lib.typ, so the starter compiles there.
 //
-// What only you can supply, a name, a date, an address, is marked open(): it prints in red, and
-// every build says how many are left until each is replaced. The rest is an example to rewrite.
+// What only you can supply, a name, a date, an address, is marked unsourced(): it prints in
+// red, and every build says how many are left until each is replaced. The rest is an example to
+// rewrite.
 //
 // ---------------------------------------------------------------------------
 // What a résumé here does:
@@ -30,10 +31,10 @@
 #import "../lib.typ": *
 
 #show: resume.with(
-  title: open[Your Name — Résumé],
+  title: unsourced[Your Name — Résumé],
   author: "Your Name",
   headline: [What you do, in a few words],
-  contact: (open[Town, ST], open[555-0100], open(link("mailto:you@example.com"))),
+  contact: (unsourced[Town, ST], unsourced[555-0100], unsourced(link("mailto:you@example.com"))),
 )
 
 = Summary
