@@ -72,7 +72,8 @@
 	"overrides": {
 		"better-auth": {
 			"@sveltejs/kit": "$@sveltejs/kit"
-		}
+		},
+		"minimatch": "^11.0.4"
 	},
 	"imports": {
 		"#lib/*": "./src/lib/*"
