@@ -1,4 +1,4 @@
-# Branch naming, and the two gates worth paying for before a push.
+# Branch naming, then CI's commit stage.
 #
 # Reads stdin per the git pre-push protocol: one line per ref, as
 # `<local_ref> <local_sha> <remote_ref> <remote_sha>`. Only refs actually
@@ -32,6 +32,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   fi
 done
 
-# The schema is the thing this repository is most careful about, and the guard
-# suite is seconds. Discovering a broken guard in CI costs a round trip.
-npm run db:test
+# CI's commit stage: every check in .github/workflows/ci.yml that needs no
+# running server or browser, by the jobs' own commands, and the guard suite
+# beside them. A red check on a pull request should be news, not something this
+# machine could have found first.
+npm run ci

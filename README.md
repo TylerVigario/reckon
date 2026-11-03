@@ -45,6 +45,7 @@ reckon is a SvelteKit project with Drizzle, laid out as both lay one out.
 
 ```bash
 npm run db:test                              a scratch database, brought up to date, every guard proven, dropped
+npm run db:drift                             the migrations match the schema: generated into a copy, connecting to nothing
 npm run db:migrate -- <database>             bring a database up to date
 npm run db:seed -- <database>                the invented business the checks run against
 npm run db:generate -- --name what-changed   the migration for a change to the schema

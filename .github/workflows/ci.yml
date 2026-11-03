@@ -5,6 +5,16 @@ name: CI
 # assertion means adding its job and its required context; removing one wedges
 # the branch until the ruleset is edited too, which is what makes coverage hard
 # to lose quietly.
+#
+# THE COMMIT STAGE runs before a push as well. Every assertion here that needs
+# no running server, browser or outside service -- Format, Lint, Typecheck,
+# Unit, the migrations half of Schema and the build half of Build -- is in
+# package.json's `ci` as the same command its job runs, and .husky/pre-push runs
+# `ci`, as the release's gate does. What runs the built product -- Behaviour,
+# and the page Build serves -- stays here. `ci` runs the guard suite too,
+# against the machine's own Postgres, beyond that floor. A check added to a job
+# and not to `ci` leaves the hook passing having run less, and nothing says so,
+# so the two change in the same commit.
 
 on:
   pull_request:
@@ -57,16 +67,10 @@ jobs:
       - name: The migrations are the schema
         # The schema is TypeScript and the migrations are generated from it. A
         # change to one without the other is an app expecting columns no
-        # database has, found at runtime -- so generating here must find nothing
-        # to write. stdin is closed so a question drizzle-kit would ask fails
-        # rather than waits.
-        run: |
-          npx drizzle-kit generate --name drift < /dev/null
-          if [ -n "$(git status --porcelain drizzle)" ]; then
-            git status --porcelain drizzle
-            echo "::error::the schema changed without a migration -- run npm run db:generate"
-            exit 1
-          fi
+        # database has, found at runtime -- so generating must find nothing to
+        # write. It generates into a copy of drizzle/, so the same command runs
+        # before a push without touching the working tree.
+        run: npm run db:drift
       - name: Every guard, both ways
         # Builds a scratch database, brings it up to date as the server would,
         # proves every guard group, drops it. This asserts the schema applies
