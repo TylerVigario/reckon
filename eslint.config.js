@@ -112,11 +112,11 @@ export default defineConfig([
 			// it is told about, so a path that drifts can go unvisited while it
 			// reports "every route answered". This makes that drift a type error.
 			//
-			// Top.svelte is the one exception, disabled inline at two lines: a
-			// shared component never holds a route literal, so resolve() cannot
-			// pick an overload there. Its callers resolve instead, and its props
-			// are ResolvedPathname, which refuses anything that is not a real
-			// route.
+			// Top.svelte needs no exception, though a shared component never
+			// holds a route literal for resolve() to pick an overload from. Its
+			// callers resolve instead, and its props are ResolvedPathname. The
+			// rule reads a link's type: a value of exactly ResolvedPathname is
+			// accepted, and a plain string or a Pathname is still refused.
 			'svelte/no-navigation-without-resolve': 'error',
 
 			// An unused argument that exists to name a position is not a
