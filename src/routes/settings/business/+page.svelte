@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { zoneOptions } from '#lib/zone-options.ts';
-	import { localeOptions } from '#lib/locales.ts';
+	import { localeOptions, ownName } from '#lib/locales.ts';
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import Top from '#lib/Top.svelte';
@@ -227,7 +227,10 @@
 					label="Locale"
 					value={o?.locale ?? 'en-US'}
 					options={localeOptions(o?.locale ?? 'en-US')}
-					hint="How the business's dates and figures read, and each person's until they choose their own."
+					hint={(current) => {
+						const own = ownName(current);
+						return `${own ? `${own}. ` : ''}How the business's dates and figures read, and each person's until they choose their own.`;
+					}}
 				/>
 				<Setting
 					name="currency"
