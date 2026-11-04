@@ -4,9 +4,9 @@
 	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import { parsePersonField } from '#lib/people-fields.ts';
-	import { weekdayName, zoneName } from '#lib/format.ts';
+	import { clockSample, weekdayName, zoneName } from '#lib/format.ts';
 	import { zoneOptions } from '#lib/zone-options.ts';
-	import { localeName, localeOptions, pickLocale, weekStartOf } from '#lib/locales.ts';
+	import { localeName, localeOptions, localeTag, pickLocale, weekStartOf } from '#lib/locales.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -21,11 +21,13 @@
 	// Every figure on every page reads in these, so a change redraws them all.
 	const redraw = () => invalidateAll();
 
-	const clocks = [
-		{ value: '', label: 'As the locale has it' },
-		{ value: 'h12', label: '12-hour, as in 2:05 PM' },
-		{ value: 'h23', label: '24-hour, as in 14:05' }
-	];
+	// Each clock is offered with the time as it would then read, in the locale in
+	// force, so leaving it to the locale shows which clock that is.
+	const clocks = $derived([
+		{ value: '', label: `As the locale has it — ${clockSample(locale)}` },
+		{ value: 'h12', label: `12-hour, as in ${clockSample(localeTag(locale, 'h12'))}` },
+		{ value: 'h23', label: `24-hour, as in ${clockSample(localeTag(locale, 'h23'))}` }
+	]);
 	const weeks = $derived([
 		{ value: '', label: `As the locale has it — ${weekdayName(localeWeek)}` },
 		...[1, 2, 3, 4, 5, 6, 7].map((n) => ({ value: String(n), label: weekdayName(n) }))
