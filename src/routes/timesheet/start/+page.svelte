@@ -11,6 +11,11 @@
 
 	let { data }: PageProps = $props();
 
+	// Someone with Field enters only work they were on (#lib/access): their own,
+	// or a team's with them on it.
+	const field = untrack(() => data.user?.access === 'field');
+	const others = $derived(field ? data.people.filter((p) => p.id !== data.me) : data.people);
+
 	/**
 	 * Starts a timer. It does not ask how long anything took.
 	 *
@@ -49,6 +54,7 @@
 	const heads = $derived(crew === 'team' ? crewIds.length : 1);
 	const toggle = (id: string) =>
 		(crewIds = crewIds.includes(id) ? crewIds.filter((x) => x !== id) : [...crewIds, id]);
+	const me = $derived(data.people.find((p) => p.id === data.me));
 	let billable = $state(true);
 	let note = $state('');
 	let why = $state('');
@@ -134,27 +140,43 @@
 		<div class="fld">
 			<span class="lbl">Who is working</span>
 			<div class="seg">
-				{#each data.people as p (p.id)}
+				{#if field}
 					<button
 						type="button"
-						class:on={crew === 'one' && workedBy === p.id}
+						class:on={crew === 'one'}
 						onclick={() => {
 							crew = 'one';
-							workedBy = p.id;
-						}}>{p.name.split(' ')[0]}</button
+							workedBy = data.me;
+						}}>Just me</button
 					>
-				{/each}
+				{:else}
+					{#each data.people as p (p.id)}
+						<button
+							type="button"
+							class:on={crew === 'one' && workedBy === p.id}
+							onclick={() => {
+								crew = 'one';
+								workedBy = p.id;
+							}}>{p.name.split(' ')[0]}</button
+						>
+					{/each}
+				{/if}
 				<button type="button" class:on={crew === 'team'} onclick={() => (crew = 'team')}>
-					Team
+					{field ? 'A team' : 'Team'}
 				</button>
 			</div>
 		</div>
 
 		{#if crew === 'team'}
 			<div class="fld">
-				<span class="lbl">Who is on it</span>
+				<span class="lbl">{field ? 'Who is on it with you' : 'Who is on it'}</span>
 				<div class="seg">
-					{#each data.people as p (p.id)}
+					{#if field && me}
+						<button type="button" class="on" aria-pressed="true" disabled
+							>{me.name.split(' ')[0]} · you</button
+						>
+					{/if}
+					{#each others as p (p.id)}
 						<button
 							type="button"
 							class:on={crewIds.includes(p.id)}
@@ -163,7 +185,11 @@
 						>
 					{/each}
 				</div>
-				<small class="lt">Billed for {heads}, and each of them paid.</small>
+				<small class="lt"
+					>Billed for {heads}, and each of them paid.{field
+						? " Work you weren't on is entered by someone with Full."
+						: ''}</small
+				>
 			</div>
 		{/if}
 

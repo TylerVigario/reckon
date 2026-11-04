@@ -1,4 +1,4 @@
-import type { ProblemBody } from './problem.ts';
+import { PROBLEM_MEDIA_TYPE, type ProblemBody } from './problem.ts';
 import type { Conflict } from './line-conflict.ts';
 import type { TripDraft } from './trip/draft.ts';
 
@@ -340,8 +340,14 @@ async function postOne(
 		await done();
 		return 'sent';
 	}
-	// It is fine and something else is not: the session (401, 403), the moment
-	// (408, 429), or the server (5xx). Worth another go.
+	// A 403 this API explains is a refusal of what this person's access reaches
+	// (#lib/access), made again whenever it is sent. Kept, with its reason.
+	if (r.status === 403 && (r.headers.get('content-type') ?? '').startsWith(PROBLEM_MEDIA_TYPE)) {
+		await refuse(await reason(r));
+		return 'refused';
+	}
+	// It is fine and something else is not: the session (401, or a 403 the API
+	// did not explain), the moment (408, 429), or the server (5xx). Worth another go.
 	if ([401, 403, 408, 429].includes(r.status) || r.status >= 500) return 'again';
 	// Any other 4xx the server would refuse again. Kept, with its reason.
 	await refuse(await reason(r));

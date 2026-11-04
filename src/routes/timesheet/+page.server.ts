@@ -1,10 +1,11 @@
-import { desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '#lib/server/db/index.ts';
 import { personalToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { clientsAndSites, crewNames, theTeam, timedServices } from '#lib/server/choices.ts';
 import { pricesToday } from '#lib/server/prices.ts';
+import { fieldOnly, theirWork } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -14,18 +15,20 @@ import type { PageServerLoad } from './$types';
  * is what lets it survive a refresh on a jobsite with no reception -- the server
  * is told when the entry is posted, not while it is being timed. What this load
  * provides is the names and rates a timer needs in order to say what it is
- * timing, and everything already recorded today.
+ * timing, and everything already recorded today -- for someone with Field,
+ * what they worked (#lib/access).
  */
 export const load: PageServerLoad = async ({ locals }) => {
 	const day = personalToday();
 	const monthStart = `${day.slice(0, 8)}01`;
 	const u = alias(t.user, 'u');
+	const mine = fieldOnly(locals) ? theirWork(locals.user!.id) : undefined;
 
 	const [[month], entries, people, entities, services, prices] = await Promise.all([
 		db
 			.select({ seconds: sql<string>`coalesce(sum(${t.timeEntry.seconds}), 0)::text` })
 			.from(t.timeEntry)
-			.where(gte(t.timeEntry.workedOn, monthStart)),
+			.where(and(gte(t.timeEntry.workedOn, monthStart), mine)),
 		// Today's, newest first. A client's own name for the site, because that
 		// is what the person who worked there calls it.
 		db
@@ -54,7 +57,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			.leftJoin(t.entity, eq(t.entity.id, t.timeEntry.entityId))
 			.leftJoin(t.site, eq(t.site.id, t.timeEntry.siteId))
 			.leftJoin(t.invoiceLine, eq(t.invoiceLine.timeEntryId, t.timeEntry.id))
-			.where(eq(t.timeEntry.workedOn, day))
+			.where(and(eq(t.timeEntry.workedOn, day), mine))
 			.orderBy(desc(t.timeEntry.createdAt), desc(t.timeEntry.id)),
 		// What a timer needs to describe itself, and to price what it is timing.
 		theTeam(),

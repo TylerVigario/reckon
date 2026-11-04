@@ -7,6 +7,7 @@ import { BETTER_AUTH_SECRET, SECURE_COOKIES } from '$app/env/private';
 import { getRequestEvent } from '$app/server';
 import type { RequestEvent } from '@sveltejs/kit';
 import { db, schema } from './db/index.ts';
+import type { Access } from '#lib/access.ts';
 
 /**
  * Sign-in, by Better Auth over the app's own database.
@@ -85,6 +86,8 @@ function createAuth() {
 			additionalFields: {
 				roleId: { type: 'string', required: false, input: false },
 				active: { type: 'boolean', required: false, defaultValue: true, input: false },
+				// Set on People, by someone with Full (#lib/access).
+				access: { type: 'string', required: false, defaultValue: 'field', input: false },
 				// Set through /api/people, where each is checked: the zone against
 				// Postgres's zones, the locale against Intl's.
 				timezone: { type: 'string', required: false, input: false },
@@ -114,6 +117,8 @@ export type SessionUser = {
 	id: string;
 	name: string;
 	email: string;
+	/** What they can reach (#lib/access). */
+	access: Access;
 	/** Their own zone, or null until their browser has set it. */
 	timezone: string | null;
 	/** Their own locale, clock and first day of the week; null follows the business's. */

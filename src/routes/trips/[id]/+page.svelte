@@ -106,6 +106,7 @@
 	const how = $derived.by(() => {
 		const t = data.trip;
 		if (!t.owner) return "It is the business's, whoever drove it";
+		if (t.withheld) return 'What it pays them is theirs to see';
 		if (t.paid === null) return 'No vehicle rule reaches them';
 		if (!t.rule) return "By each leg's own rule";
 		const w = paysWhat(t.rule, { money, unitPrice });
@@ -240,23 +241,26 @@
 		<div class="sec">
 			<div class="sec-h"><h2>Paid for the vehicle</h2></div>
 			<div class="rows">
-				<div class="rec" class:warn={data.trip.paid === null}>
+				<div class="rec" class:warn={data.trip.paid === null && !data.trip.withheld}>
 					<div class="rec-m">
 						<div class="rec-t">{data.trip.owner ?? 'Nobody'}</div>
 						<div class="rec-s">{how}</div>
 					</div>
 					<div class="rec-n">
-						{#if data.trip.owner}
+						{#if data.trip.owner && !data.trip.withheld}
 							<span class="rec-v">{money(data.trip.paid)}</span>
 						{:else}
 							<span class="rec-v mut">—</span>
 						{/if}
 					</div>
 				</div>
-				<div class="rec tot">
-					<div class="rec-m"><div class="rec-t">Kept</div></div>
-					<div class="rec-n"><span class="rec-v">{money(data.trip.kept)}</span></div>
-				</div>
+				<!-- What the business kept is Full's to see (#lib/access). -->
+				{#if data.user?.access === 'full'}
+					<div class="rec tot">
+						<div class="rec-m"><div class="rec-t">Kept</div></div>
+						<div class="rec-n"><span class="rec-v">{money(data.trip.kept)}</span></div>
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -274,7 +278,7 @@
 		<p class="aside">Its miles are on an invoice, so it stays as it was billed.</p>
 	{:else if data.trip.paid_for}
 		<p class="aside">Its miles are in a payment for the vehicle, so it stays as it was paid.</p>
-	{:else}
+	{:else if data.trip.changeable}
 		{#if removing === 'idle'}
 			<div class="btnrow">
 				<a class="btn" href={resolve('/trips/[id]/change', { id: data.trip.id })}
@@ -302,6 +306,8 @@
 			</Ask>
 		{/if}
 		{#if problem}<p class="why bad">{problem}</p>{/if}
+	{:else}
+		<p class="aside">Someone else recorded it, so it is theirs to change.</p>
 	{/if}
 </div>
 

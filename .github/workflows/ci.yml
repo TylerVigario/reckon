@@ -185,6 +185,9 @@ jobs:
           npm run db:seed -- reckon_ci
           printf 'ci-only-password\nci-only-password\n' \
             | node scripts/user.mjs password avery@kestrel.example
+          # And someone with Field, for what that level reaches.
+          printf 'ci-only-password\nci-only-password\n' \
+            | node scripts/user.mjs password sam@kestrel.example
 
       - name: Start it
         run: |
@@ -204,6 +207,13 @@ jobs:
 
       - name: Every route answers, signed in
         run: node tests/smoke.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+
+      - name: Each access level reaches what it should, and Field sees its own
+        # Before the checks that write, on the seeded business: every route
+        # beyond Field is asked of someone with Field and refused.
+        run: |
+          node tests/access-check.mjs "http://127.0.0.1:$PORT" \
+            avery@kestrel.example ci-only-password sam@kestrel.example ci-only-password
 
       - name: Every screen renders, with nothing on the console
         # A page can answer 200 with its body already doomed: SvelteKit renders
@@ -289,8 +299,13 @@ jobs:
         run: node tests/pay-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: An invoice is sent with its link
-        # Last: it sends the draft lines-check made, which the checks before it add to.
+        # Last but one: it sends the draft lines-check made, which the checks before it add to.
         run: node tests/send-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+
+      - name: Someone with Field walks every screen they are offered, with nothing on the console
+        # Last: it signs the browser in as someone else. A link that leads them
+        # somewhere their access does not reach ends up at /refused, and fails.
+        run: node tests/console-check.mjs "http://127.0.0.1:$PORT" sam@kestrel.example ci-only-password
 
       - name: Stop it
         if: always()

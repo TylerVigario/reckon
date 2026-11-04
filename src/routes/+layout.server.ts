@@ -3,6 +3,7 @@ import { and, count, eq, gte, sql, sum } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { entity, invoice, operator, timeEntry } from '#lib/server/db/schema/index.ts';
 import { iconFromLogo } from '#lib/server/app-icon.ts';
+import { fieldOnly, theirWork } from '#lib/server/mine.ts';
 import type { LayoutServerLoad } from './$types';
 
 /**
@@ -61,7 +62,13 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 		db
 			.select({ seconds: sum(timeEntry.seconds).mapWith(Number) })
 			.from(timeEntry)
-			.where(and(gte(timeEntry.workedOn, sql`date_trunc('month', ${businessToday()}::date)::date`)))
+			.where(
+				and(
+					gte(timeEntry.workedOn, sql`date_trunc('month', ${businessToday()}::date)::date`),
+					// Someone with Field counts their own month (#lib/access).
+					fieldOnly(locals) ? theirWork(locals.user.id) : undefined
+				)
+			)
 	]);
 
 	return {

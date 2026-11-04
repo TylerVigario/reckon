@@ -165,11 +165,21 @@ It prompts for the password rather than taking an argument — a password in
 for that person, because a password change that leaves old sessions alive has
 changed nothing for whoever holds one.
 
+Each person has an access level, apart from the role they are paid in. **Full**
+reaches everything, and is the only level that bills or pays. **Field** reaches
+the work someone does and what they are paid for it: their own time and trips,
+team work they were on, lines added to a draft, the clients and sites they work
+at, and their own pay, to read. Someone added has Field unless `--full` is
+given; the first person has Full whatever is said, since the database keeps
+someone active on Full. After that, access is set on People and pay, by someone
+with Full.
+
 Twelve characters at least, checked on the first entry rather than after the
 second. On a development database, `--insecure` lifts that and says so:
 
 ```bash
-node scripts/user.mjs password avery@kestrel.example --insecure   # the seeded user
+node scripts/user.mjs password avery@kestrel.example --insecure   # the seeded owner, Full
+node scripts/user.mjs password sam@kestrel.example --insecure     # an employee, Field
 ```
 
 **`BETTER_AUTH_SECRET` must be set when the server runs**, 32 characters at

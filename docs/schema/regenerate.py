@@ -282,7 +282,8 @@ T["invoice_line"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the ph
     ("FK","agreement_period_id","uuid"),("FK","material_id","uuid · drawn from stock"),
     ("FK","moved_from_invoice_id","uuid · meant for, gone out"),
     ("","bought_from","text · from whom"),("FK","paid_by","uuid · null = the business"),
-    ("","receipt","bytea · photo or PDF"),("","receipt_type","text")]
+    ("","receipt","bytea · photo or PDF"),("","receipt_type","text"),
+    ("FK","created_by","uuid · who added it")]
 T["stock_draw"] = [("PK","invoice_line_id","uuid · with material_id"),
     ("PK","material_lot_id","uuid · with material_id"),
     ("FK","material_id","uuid · the line's, and the lot's"),
@@ -339,6 +340,7 @@ T["person_payment_item"] = [("PK","id","uuid"),("FK","payment_id","uuid"),
 T["user"] = [("PK","id","uuid"),("","name","text"),("UK","email","text · lowercase"),
     ("","email_verified","bool"),("","image","text"),
     ("FK","role_id","uuid · null = not paid"),("","active","bool"),
+    ("","access","full|field · what they reach"),
     ("","timezone","text · null = the business's"),("","locale","text · null = the business's"),
     ("","hour_cycle","h12|h23 · null = the locale's"),("","week_start","1–7 · null = the locale's"),
     ("","created_at","timestamptz"),("","updated_at","timestamptz")]
@@ -601,7 +603,7 @@ files.append(write("05-agreements.drawio", "Agreements", c, 1620, 1060))
 
 # 06 -- money out
 c = at("invoice",40,60) + at("invoice_line",440,60) + at("credit_note",880,60) \
-  + at("credit_application",880,300) + at("entity",40,430) + at("site",440,780) \
+  + at("credit_application",880,300) + at("entity",40,430) + at("site",440,800) \
   + at("stock_draw",880,860) + at("material_lot",1240,860)
 c += [edge("e60","invoice","invoice_line","is made of"),
       edge("e65","invoice_line","stock_draw","drew"),
@@ -647,7 +649,7 @@ c += [note("n6", "A tax override is stored per line, so one invoice can carry li
                  "client, and moved_from_invoice_id keeps which it was meant for. A change "
                  "made on a phone says which version it began from, and one made "
                  "meanwhile is merged with it field by field.", 880, 480, 640, 330)]
-files.append(write("06-money-out.drawio", "Money out", c, 1600, 1380))
+files.append(write("06-money-out.drawio", "Money out", c, 1600, 1400))
 
 # 07 -- money in
 c = at("payment",40,60) + at("payment_allocation",440,60) + at("refund",440,220) \
@@ -669,8 +671,8 @@ c += [note("n7", "Stripe pays one deposit covering several invoices, net of "
 files.append(write("07-money-in.drawio", "Money in", c, 1260, 620))
 
 # 08 -- operator and record
-c = at("operator",40,60) + at("user",480,60) + at("session",480,410) \
-  + at("account",480,650) + at("record_history",900,410) + at("account_map",900,60) \
+c = at("operator",40,60) + at("user",480,60) + at("session",480,430) \
+  + at("account",480,670) + at("record_history",900,410) + at("account_map",900,60) \
   + at("ledger_export",900,180) + at("integration",900,650) + at("verification",900,800)
 c += [edge("e80","operator","account_map","maps"),
       edge("e82","user","session","is signed in by",
@@ -679,9 +681,12 @@ c += [edge("e80","operator","account_map","maps"),
       edge("e83","user","account","signs in with",
            S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=0")),
       edge("e81","user","record_history","changed")]
-c += [note("n8", "Anyone who can sign in can see and change everything: "
-                 "user has no permission columns. role_id is not access: it is the "
-                 "capacity someone is paid in, which pay rules are written against.\n\n"
+c += [note("n8", "What someone can reach is user.access, apart from role_id, the "
+                 "capacity they are paid in, which pay rules are written against. Full "
+                 "is everything, and the only level that bills or pays; Field is their "
+                 "own work and what they are paid for it. Someone new starts with "
+                 "Field, and a trigger keeps someone active on Full. Which routes each "
+                 "level reaches is the app's, in src/lib/access.ts.\n\n"
                  "Each person keeps a time zone, a locale, a clock and a first day of the "
                  "week. Empty follows the business's -- its own timezone and locale -- or "
                  "what the locale says.\n\n"

@@ -4,6 +4,7 @@
 	import Day from '#lib/Day.svelte';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
+	import { opens } from '#lib/access.ts';
 
 	let { data }: PageProps = $props();
 
@@ -42,8 +43,11 @@
 	]}
 >
 	{#snippet actions()}
-		<a class="btn pri sm" href={resolve('/clients/[id]/sites/new', { id: data.client.slug })}>New</a
-		>
+		{#if opens(data.user?.access, '/clients/[id]/sites/new')}
+			<a class="btn pri sm" href={resolve('/clients/[id]/sites/new', { id: data.client.slug })}
+				>New</a
+			>
+		{/if}
 	{/snippet}
 </Top>
 

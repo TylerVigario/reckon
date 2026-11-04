@@ -324,6 +324,8 @@
 		billed: string | null;
 		paid: string | null;
 		kept: string | null;
+		/** Another person's vehicle pay, not told to someone with Field (#lib/access). */
+		withheld: boolean;
 	};
 	let worth = $state<Worth | null>(null);
 	let asked = 0;
@@ -584,8 +586,13 @@
 					</span>
 				{:else}
 					<small class="lt">
-						No vehicles yet. <a href={resolve('/settings/travel/vehicles/new')}>Add one</a> in Settings
-						→ Travel, and its miles pay its owner.
+						{#if data.field}
+							No vehicles yet. Someone with Full adds one in Settings → Travel, and its miles pay
+							its owner.
+						{:else}
+							No vehicles yet. <a href={resolve('/settings/travel/vehicles/new')}>Add one</a> in Settings
+							→ Travel, and its miles pay its owner.
+						{/if}
 					</small>
 				{/if}
 			</div>
@@ -810,12 +817,17 @@
 						<div class="rec-n"><span class="rec-v">{money(worth?.billed ?? null)}</span></div>
 					</div>
 					{#if vehicle}
-						<div class="rec" class:warn={vehicle.owner && worth && worth.paid === null}>
+						<div
+							class="rec"
+							class:warn={vehicle.owner && worth && worth.paid === null && !worth.withheld}
+						>
 							<div class="rec-m">
 								<div class="rec-t">{vehicle.owner ?? 'Nobody'}, for the {vehicle.name}</div>
 								<div class="rec-s">
 									{#if !vehicle.owner}
 										It is the business's, whoever drove it
+									{:else if worth?.withheld}
+										What it pays them is theirs to see
 									{:else if worth?.rule}
 										{@const r = paysWhat(worth.rule, { money, unitPrice })}
 										{r.v}
@@ -828,20 +840,23 @@
 								</div>
 							</div>
 							<div class="rec-n">
-								<span class="rec-v" class:mut={!vehicle.owner}
-									>{vehicle.owner ? money(worth?.paid ?? null) : '—'}</span
+								<span class="rec-v" class:mut={!vehicle.owner || worth?.withheld}
+									>{vehicle.owner && !worth?.withheld ? money(worth?.paid ?? null) : '—'}</span
 								>
 							</div>
 						</div>
 					{/if}
-					<div class="rec tot">
-						<div class="rec-m"><div class="rec-t">Kept</div></div>
-						<div class="rec-n">
-							<span class="rec-v"
-								>{money(vehicle ? (worth?.kept ?? null) : (worth?.billed ?? null))}</span
-							>
+					<!-- What the business keeps is Full's to see (#lib/access). -->
+					{#if !data.field}
+						<div class="rec tot">
+							<div class="rec-m"><div class="rec-t">Kept</div></div>
+							<div class="rec-n">
+								<span class="rec-v"
+									>{money(vehicle ? (worth?.kept ?? null) : (worth?.billed ?? null))}</span
+								>
+							</div>
 						</div>
-					</div>
+					{/if}
 				</div>
 				{#if noSignal && !worth}
 					<p class="aside">Worked out when there is a signal.</p>

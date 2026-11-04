@@ -1,6 +1,7 @@
 import { UUID } from '#lib/field-rules.ts';
 import { answer, changeLine, madeAt, removeLine } from '#lib/server/lines.ts';
 import { problem } from '#lib/server/problem.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { RequestHandler } from './$types';
 
 /** What a phone said it began from: a save of the line, and its fields then. */
@@ -27,6 +28,7 @@ function began(form: FormData) {
  * Add a line names them, a new receipt where there is one, and -- from a
  * phone -- the save it began from and its fields then, so a line changed
  * meanwhile is merged rather than overwritten. Form data, for the receipt.
+ * Someone with Field changes only a line they added (#lib/access).
  */
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	if (!UUID.test(params.id)) return problem('notFound', 404, 'No line with that id.');
@@ -47,6 +49,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 			fields,
 			receipt: file instanceof File ? file : null,
 			userId: locals.user!.id,
+			field: fieldOnly(locals),
 			...began(form),
 			madeAt: madeAt(typeof when === 'string' ? when : '')
 		})
@@ -64,6 +67,7 @@ export const DELETE: RequestHandler = async ({ params, url, locals }) => {
 		await removeLine({
 			lineId: params.id,
 			userId: locals.user!.id,
+			field: fieldOnly(locals),
 			version: v && /^\d+$/.test(v) ? Number(v) : undefined,
 			force: url.searchParams.get('force') === '1',
 			madeAt: madeAt(url.searchParams.get('made_at') ?? '')

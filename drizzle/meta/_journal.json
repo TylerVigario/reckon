@@ -218,6 +218,13 @@
       "when": 1793809685140,
       "tag": "0030_a_line_keeps_where_it_was_taxed",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793821105496,
+      "tag": "0031_each_person_has_full_or_field_access",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,7 @@ import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { rateIsStale } from '#lib/server/stale.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -12,9 +13,10 @@ import type { PageServerLoad } from './$types';
  *
  * A client is a business; a site is a place; a contact is a person. Two clients
  * can work at one address and each names it their own way, so the count beside
- * a client is that client's sites, not the address book's.
+ * a client is that client's sites, not the address book's. Someone with Field
+ * reads them to work at, without what each owes (#lib/access).
  */
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ locals }) => {
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
 	const owing = balances(rounding, places);
 	const e = t.entity;
@@ -58,7 +60,7 @@ export const load: PageServerLoad = async () => {
 	]);
 
 	return {
-		clients,
+		clients: fieldOnly(locals) ? clients.map((x) => ({ ...x, owed: null })) : clients,
 		counts: { contacts: String(contacts.n), unpriced: String(unpriced.n) }
 	};
 };

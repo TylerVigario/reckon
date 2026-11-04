@@ -24,8 +24,12 @@
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { opens } from '#lib/access.ts';
 
 	let { data }: PageProps = $props();
+
+	// Someone with Field adds lines and changes the ones they added (#lib/access).
+	const field = $derived(data.user?.access === 'field');
 
 	const i = $derived(data.invoice);
 	/** The kinds of line added by hand, which open on a screen of their own. */
@@ -151,7 +155,9 @@
 	// figures, which take in a line once it arrives.
 	const r = $derived(data.totals);
 	const netTaxable = $derived(
-		Decimal.from(r.taxable_measure).sub(r.resold).toFixed(currencyPlaces())
+		r.resold === null
+			? null
+			: Decimal.from(r.taxable_measure).sub(r.resold).toFixed(currencyPlaces())
 	);
 	const dueOnReturn = $derived(r.due_on_return);
 
@@ -210,7 +216,9 @@
 	{#snippet actions()}
 		{#if i.status === 'draft'}
 			<a class="btn sm" href={resolve('/invoices/[id]/add', { id: i.id })}>Add a line</a>
-			<a class="btn pri sm" href={resolve('/invoices/[id]/send', { id: i.id })}>Send</a>
+			{#if opens(data.user?.access, '/invoices/[id]/send')}
+				<a class="btn pri sm" href={resolve('/invoices/[id]/send', { id: i.id })}>Send</a>
+			{/if}
 		{/if}
 	{/snippet}
 </Top>
@@ -384,8 +392,9 @@
 						<div class="rec-m">
 							<div class="rec-t">{l.description}</div>
 							{#if l.detail}<div class="rec-s">{l.detail}{l.taxable ? ' · taxable' : ''}</div>{/if}
-							{#if l.receipt || l.moved_from || c}
+							{#if l.receipt || l.moved_from || c || (field && l.mine)}
 								<div class="rec-c">
+									{#if field && l.mine}<span class="chip">Added by you</span>{/if}
 									{#if l.receipt}<span class="chip">Receipt</span>{/if}
 									{#if l.moved_from}<span class="chip">Moved from {l.moved_from}</span>{/if}
 									{#if c?.refused?.conflict?.what === 'collided'}
@@ -483,7 +492,7 @@
 		</div>
 	</div>
 
-	{#if Number(r.taxable_measure) > 0}
+	{#if Number(r.taxable_measure) > 0 && r.due_on_return !== null}
 		<div class="sec">
 			<div class="sec-h"><h2>What this does to the return</h2></div>
 			<div class="rows">

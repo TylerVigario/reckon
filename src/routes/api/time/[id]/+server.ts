@@ -10,9 +10,10 @@ import {
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
 import { UUID } from '#lib/field-rules.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 
 /**
- * Removes a time entry.
+ * Removes a time entry: for someone with Field, one they entered (#lib/access).
  *
  * The database refuses one an invoice was built from -- invoice_line
  * .time_entry_id is ON DELETE RESTRICT -- and records what went, so the answer
@@ -23,13 +24,20 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (!UUID.test(params.id)) return problem('notFound', 404, 'No entry with that id.');
 
 	const [entry] = await db
-		.select({ id: timeEntry.id, invoice_id: invoiceLine.invoiceId, number: invoice.number })
+		.select({
+			id: timeEntry.id,
+			created_by: timeEntry.createdBy,
+			invoice_id: invoiceLine.invoiceId,
+			number: invoice.number
+		})
 		.from(timeEntry)
 		.leftJoin(invoiceLine, eq(invoiceLine.timeEntryId, timeEntry.id))
 		.leftJoin(invoice, eq(invoice.id, invoiceLine.invoiceId))
 		.where(eq(timeEntry.id, params.id));
 
 	if (!entry) return problem('notFound', 404, 'No entry with that id.');
+	if (fieldOnly(locals) && entry.created_by !== locals.user!.id)
+		return problem('notYours', 403, 'Whoever entered it, or someone with Full, removes it.');
 	if (entry.invoice_id)
 		return problem(
 			'conflict',

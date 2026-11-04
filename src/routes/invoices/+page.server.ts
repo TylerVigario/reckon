@@ -5,16 +5,18 @@ import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
- * Invoices: drafted, out, and recently settled.
+ * Invoices: drafted, out, and recently settled. Someone with Field sees the
+ * drafts, to add lines to, and nothing that has gone out (#lib/access).
  *
  * A total is the sum of its lines plus the tax each line carried when it was
  * billed -- never a live rate lookup. invoice_line stores the rate as applied,
  * so an invoice sent in June still says what June said.
  */
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ locals }) => {
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
 	const owing = balances(rounding, places);
 	const i = t.invoice;
@@ -69,6 +71,7 @@ export const load: PageServerLoad = async () => {
 		  left join kinds k on k.invoice_id = ${i.id}
 		  left join settled s on s.invoice_id = ${i.id}
 		 where ${i.status} <> 'void'
+		   and (${!fieldOnly(locals)} or ${i.status} = 'draft')
 		 order by ${i.createdAt} desc`);
 
 	const drafts = rows.filter((r) => r.status === 'draft');

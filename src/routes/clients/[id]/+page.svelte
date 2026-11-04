@@ -11,6 +11,8 @@
 	let { data }: PageProps = $props();
 
 	const c = $derived(data.client);
+	// Someone with Field reads where a client is, and nothing they owe (#lib/access).
+	const field = $derived(data.user?.access === 'field');
 	// One version for the row, shared by every field on it: a save by any
 	// field moves it, and the next field to save sends the new one.
 	//
@@ -65,100 +67,103 @@
 <Top title={c.name} {sub} back={resolve('/clients')} backLabel="Entities" />
 
 <div class="pad">
-	<div class="tiles">
-		<div class="tile">
-			<span class="k">Owed</span>
-			<span class="v">{money(c.owed)}</span>
-			<span class="s">{c.out} {Number(c.out) === 1 ? 'invoice' : 'invoices'} out</span>
+	<!-- What a client owes, has agreed to and is billed by are Full's (#lib/access). -->
+	{#if !field}
+		<div class="tiles">
+			<div class="tile">
+				<span class="k">Owed</span>
+				<span class="v">{money(c.owed)}</span>
+				<span class="s">{c.out} {Number(c.out) === 1 ? 'invoice' : 'invoices'} out</span>
+			</div>
+			{#each data.agreements as ag (ag.id)}
+				<a class="tile link" href={resolve('/catalogue/agreements/[id]', { id: ag.id })}>
+					<span class="k">{ag.site ? `Retainer · ${ag.site}` : 'Retainer'}</span>
+					<span class="v sm">{money(ag.price)}</span>
+					<span class="s">
+						{[
+							`per ${ag.interval === 'monthly' ? 'month' : ag.interval}`,
+							`this month ${[ag.given ? 'given freely' : null, ag.covers ?? 'covers no service']
+								.filter(Boolean)
+								.join(', ')}`
+						].join(' · ')}
+					</span>
+				</a>
+			{:else}
+				<a class="tile link" href="{resolve('/catalogue/agreements/new')}?client={c.slug}">
+					<span class="k">Retainer</span>
+					<span class="v sm">None</span>
+					<span class="s">Make an agreement ›</span>
+				</a>
+			{/each}
 		</div>
-		{#each data.agreements as ag (ag.id)}
-			<a class="tile link" href={resolve('/catalogue/agreements/[id]', { id: ag.id })}>
-				<span class="k">{ag.site ? `Retainer · ${ag.site}` : 'Retainer'}</span>
-				<span class="v sm">{money(ag.price)}</span>
-				<span class="s">
-					{[
-						`per ${ag.interval === 'monthly' ? 'month' : ag.interval}`,
-						`this month ${[ag.given ? 'given freely' : null, ag.covers ?? 'covers no service']
-							.filter(Boolean)
-							.join(', ')}`
-					].join(' · ')}
-				</span>
-			</a>
-		{:else}
-			<a class="tile link" href="{resolve('/catalogue/agreements/new')}?client={c.slug}">
-				<span class="k">Retainer</span>
-				<span class="v sm">None</span>
-				<span class="s">Make an agreement ›</span>
-			</a>
-		{/each}
-	</div>
 
-	<div class="sec">
-		<div class="sec-h"><h2>Billing</h2></div>
-		<div class="rows inset">
-			<Setting
-				name="slug"
-				label="In the URL"
-				value={c.slug}
-				endpoint={api}
-				{version}
-				onversion={(v) => (version = v)}
-				validate={parseClientField}
-				hint="Renaming the client leaves this alone, so a link somebody kept keeps working"
-				onsaved={(slug) => goto(resolve('/clients/[id]', { id: slug }), { replaceState: true })}
-				required
-			/>
-			<Setting
-				name="terms_days"
-				label="Terms"
-				value={c.terms ?? ''}
-				endpoint={api}
-				{version}
-				onversion={(v) => (version = v)}
-				validate={parseClientField}
-				inputmode="numeric"
-				hint="Days from the invoice date to when it is due. Empty uses the house default."
-			/>
-			<Setting
-				name="payment_method"
-				label="Pays by"
-				value={c.payment_method ?? ''}
-				endpoint={api}
-				{version}
-				onversion={(v) => (version = v)}
-				validate={parseClientField}
-				options={[
-					{ value: '', label: 'Not recorded' },
-					{ value: 'cheque', label: 'Cheque' },
-					{ value: 'card', label: 'Card' },
-					{ value: 'transfer', label: 'Transfer' },
-					{ value: 'cash', label: 'Cash' },
-					{ value: 'other', label: 'Something else' }
-				]}
-				hint="How they usually settle, not how any one invoice was paid"
-			/>
-		</div>
-		<div class="rows">
-			<div class="rec">
-				<div class="rec-m">
-					<div class="rec-t">Invoices go to</div>
-					<div class="rec-s">
-						{c.contact ?? 'Nobody named — an invoice has no one to send it to'}
+		<div class="sec">
+			<div class="sec-h"><h2>Billing</h2></div>
+			<div class="rows inset">
+				<Setting
+					name="slug"
+					label="In the URL"
+					value={c.slug}
+					endpoint={api}
+					{version}
+					onversion={(v) => (version = v)}
+					validate={parseClientField}
+					hint="Renaming the client leaves this alone, so a link somebody kept keeps working"
+					onsaved={(slug) => goto(resolve('/clients/[id]', { id: slug }), { replaceState: true })}
+					required
+				/>
+				<Setting
+					name="terms_days"
+					label="Terms"
+					value={c.terms ?? ''}
+					endpoint={api}
+					{version}
+					onversion={(v) => (version = v)}
+					validate={parseClientField}
+					inputmode="numeric"
+					hint="Days from the invoice date to when it is due. Empty uses the house default."
+				/>
+				<Setting
+					name="payment_method"
+					label="Pays by"
+					value={c.payment_method ?? ''}
+					endpoint={api}
+					{version}
+					onversion={(v) => (version = v)}
+					validate={parseClientField}
+					options={[
+						{ value: '', label: 'Not recorded' },
+						{ value: 'cheque', label: 'Cheque' },
+						{ value: 'card', label: 'Card' },
+						{ value: 'transfer', label: 'Transfer' },
+						{ value: 'cash', label: 'Cash' },
+						{ value: 'other', label: 'Something else' }
+					]}
+					hint="How they usually settle, not how any one invoice was paid"
+				/>
+			</div>
+			<div class="rows">
+				<div class="rec">
+					<div class="rec-m">
+						<div class="rec-t">Invoices go to</div>
+						<div class="rec-s">
+							{c.contact ?? 'Nobody named — an invoice has no one to send it to'}
+						</div>
+					</div>
+					<div class="rec-n">
+						<span class="rec-v mut">{c.contact ? '' : '—'}</span>
 					</div>
 				</div>
-				<div class="rec-n">
-					<span class="rec-v mut">{c.contact ? '' : '—'}</span>
+				<div class="rec">
+					<div class="rec-m">
+						<div class="rec-t">Unapplied credit</div>
+						<div class="rec-s">Theirs to spend against the next invoice</div>
+					</div>
+					<div class="rec-n"><span class="rec-v mut">{money(c.credit)}</span></div>
 				</div>
-			</div>
-			<div class="rec">
-				<div class="rec-m">
-					<div class="rec-t">Unapplied credit</div>
-					<div class="rec-s">Theirs to spend against the next invoice</div>
-				</div>
-				<div class="rec-n"><span class="rec-v mut">{money(c.credit)}</span></div>
 			</div>
 		</div>
-	</div>
+	{/if}
 
 	<div class="sec">
 		<div class="sec-h"><h2>Where</h2></div>
@@ -222,31 +227,33 @@
 				</div>
 			{/each}
 		</div>
-		<div class="rows inset">
-			<Setting
-				name="tax_exempt"
-				label="Exempt from sales tax"
-				value={c.tax_exempt ? 'true' : 'false'}
-				endpoint={api}
-				{version}
-				onversion={(v) => (version = v)}
-				validate={parseClientField}
-				options={[
-					{ value: 'false', label: 'No, taxed as usual' },
-					{ value: 'true', label: 'Yes, with a certificate on file' }
-				]}
-			/>
-			<Setting
-				name="exemption_certificate"
-				label="Certificate"
-				value={c.certificate ?? ''}
-				endpoint={api}
-				{version}
-				onversion={(v) => (version = v)}
-				validate={parseClientField}
-				hint="CDTFA needs this to support an untaxed sale"
-			/>
-		</div>
+		{#if !field}
+			<div class="rows inset">
+				<Setting
+					name="tax_exempt"
+					label="Exempt from sales tax"
+					value={c.tax_exempt ? 'true' : 'false'}
+					endpoint={api}
+					{version}
+					onversion={(v) => (version = v)}
+					validate={parseClientField}
+					options={[
+						{ value: 'false', label: 'No, taxed as usual' },
+						{ value: 'true', label: 'Yes, with a certificate on file' }
+					]}
+				/>
+				<Setting
+					name="exemption_certificate"
+					label="Certificate"
+					value={c.certificate ?? ''}
+					endpoint={api}
+					{version}
+					onversion={(v) => (version = v)}
+					validate={parseClientField}
+					hint="CDTFA needs this to support an untaxed sale"
+				/>
+			</div>
+		{/if}
 	</div>
 
 	{#if data.recent.length}

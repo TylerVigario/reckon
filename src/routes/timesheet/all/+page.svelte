@@ -21,7 +21,12 @@
 	);
 </script>
 
-<Top title="All entries" {sub} back={resolve('/timesheet')} backLabel="Time" />
+<Top
+	title={data.user?.access === 'field' ? 'All yours' : 'All entries'}
+	{sub}
+	back={resolve('/timesheet')}
+	backLabel="Time"
+/>
 
 <div class="pad">
 	{#each data.weeks as w (w.week)}
