@@ -33,14 +33,8 @@
 			-apple-system,
 			'Segoe UI',
 			sans-serif;
-		background: #eff1f4;
-		color: #14181f;
-	}
-	@media (prefers-color-scheme: dark) {
-		:global(body) {
-			background: #14171c;
-			color: #e8ebf0;
-		}
+		background: light-dark(#eff1f4, #14171c);
+		color: light-dark(#14181f, #e8ebf0);
 	}
 	main {
 		min-height: 100dvh;

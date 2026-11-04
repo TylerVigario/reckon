@@ -18,6 +18,7 @@ import { readLocaleFrom } from '#lib/format.ts';
 import { readCurrencyFrom } from '#lib/currency.ts';
 import { localeTag, weekStartOf, type HourCycle } from '#lib/locales.ts';
 import { CLIENT_PAGE } from '#lib/client-link.ts';
+import { THEME_COOKIE, themeFrom } from '#lib/device-fields.ts';
 
 /**
  * Made when the server starts rather than at its first request, so a
@@ -110,6 +111,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.locale = localeTag(locale, me?.hourCycle ?? null);
 	event.locals.weekStart = me?.weekStart ?? weekStartOf(locale);
 	event.locals.currency = business.currency;
+	// Light or dark is the device's, in a cookie on it (#lib/device-fields),
+	// signed in or not: the sign-in page is drawn in it too.
+	event.locals.theme = themeFrom(event.cookies.get(THEME_COOKIE));
 
 	const path = event.url.pathname;
 	if (!event.locals.user && !OPEN.has(path) && !CLIENT_PAGE.test(path)) {
@@ -120,7 +124,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 		redirect(303, `/login?next=${encodeURIComponent(event.url.pathname + event.url.search)}`);
 	}
 
-	const response = await resolve(event);
+	// The theme goes on <html> before the page leaves, so the first paint is in
+	// it. Empty, it matches neither theme's rule and the device's own decides.
+	const response = await resolve(event, {
+		transformPageChunk: ({ html }) => html.replace('%theme%', event.locals.theme ?? '')
+	});
 
 	/**
 	 * The headers that cost nothing and are only ever missing by omission.

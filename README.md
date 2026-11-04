@@ -381,6 +381,12 @@ beside their time zone; until they do, they follow the business's locale (Settin
 the business's, whoever reads it. A date written in numbers alone is
 year-month-day, whatever the locale.
 
+**Light or dark is the device's.** reckon follows the device's own setting until
+someone sets Light or Dark in their profile, under On this device. What that
+overrides is the device's, so the choice stays on the device too: a cookie in that
+browser, reaching no other, which the server reads to draw the first paint in it,
+signed in or not.
+
 adapter-node emits a standalone server. How it is then run — the service
 manager, the reverse proxy, the certificates — is the host's business, past
 what [Serving it](#serving-it) asks of them, and is not described here: a
