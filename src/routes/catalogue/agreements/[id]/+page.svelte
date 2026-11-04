@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import Ask from '#lib/Ask.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import CoverageForm from '#lib/agreement/CoverageForm.svelte';
 	import { dated, hours, span } from '#lib/format.ts';
@@ -55,7 +56,11 @@
 
 	let editing = $state<null | { preset: Cover | null }>(null);
 	let problem = $state('');
-	let asking = $state<'idle' | 'delete' | 'end' | 'working'>('idle');
+	let asking = $state<'idle' | 'delete' | 'end' | 'carry' | 'working'>('idle');
+	// Stopping covering a service asks first: its unbilled work under this
+	// agreement is billed by the hour instead, and its terms are not kept.
+	let uncovering = $state<Cover | null>(null);
+	let stopping = $state(false);
 	let endOn = $state('');
 
 	async function refresh() {
@@ -130,7 +135,7 @@
 			<button
 				type="button"
 				class="btn sm pri"
-				onclick={() => setEnd('')}
+				onclick={() => (asking = 'carry')}
 				disabled={asking !== 'idle'}>Carry on</button
 			>
 		{:else}
@@ -149,35 +154,73 @@
 
 <div class="pad">
 	{#if asking === 'delete' || (asking === 'working' && data.periods.length === 0)}
-		<div class="confirm">
+		<Ask
+			tone="danger"
+			keep="Keep it"
+			go="Delete it for good"
+			going="Deleting…"
+			working={asking === 'working'}
+			onkeep={() => (asking = 'idle')}
+			ongo={remove}
+		>
 			<p>
 				Delete this agreement for {a.site ? `${a.client} at ${a.site}` : a.client}, and what it
 				covers? Nothing has been charged under it. This cannot be undone.
 			</p>
-			<div class="btnrow">
-				<button type="button" class="btn" onclick={() => (asking = 'idle')}>Keep it</button>
-				<button
-					type="button"
-					class="btn danger solid"
-					onclick={remove}
-					disabled={asking === 'working'}
-					>{asking === 'working' ? 'Deleting…' : 'Delete it for good'}</button
-				>
-			</div>
-		</div>
+		</Ask>
 	{:else if asking === 'end'}
-		<div class="confirm plain">
+		<Ask
+			keep="Keep it running"
+			go="End it then"
+			ready={!!endOn}
+			onkeep={() => (asking = 'idle')}
+			ongo={() => setEnd(endOn)}
+		>
 			<div class="fld">
 				<label for="a-end">Its last day</label>
 				<input id="a-end" class="inp" type="date" min={a.starts_on} bind:value={endOn} />
 			</div>
-			<div class="btnrow">
-				<button type="button" class="btn" onclick={() => (asking = 'idle')}>Keep it running</button>
-				<button type="button" class="btn pri" onclick={() => setEnd(endOn)} disabled={!endOn}
-					>End it then</button
-				>
-			</div>
-		</div>
+		</Ask>
+	{:else if asking === 'carry' || (asking === 'working' && a.ends_on)}
+		<Ask
+			keep="Keep its last day"
+			go="Carry it on"
+			going="Carrying it on…"
+			working={asking === 'working'}
+			onkeep={() => (asking = 'idle')}
+			ongo={() => setEnd('')}
+		>
+			<p>
+				Carry it on past {dated(a.ends_on)}? Work after that day is covered by it again rather than
+				billed by the hour. Ending it again means choosing the day again.
+			</p>
+		</Ask>
+	{:else if uncovering}
+		<Ask
+			tone="danger"
+			keep="Keep covering it"
+			go="Stop covering it"
+			going="Stopping…"
+			working={stopping}
+			onkeep={() => (uncovering = null)}
+			ongo={async () => {
+				if (!uncovering) return;
+				stopping = true;
+				await uncover(uncovering.service_id);
+				stopping = false;
+				uncovering = null;
+			}}
+		>
+			<p>
+				Stop covering {uncovering.service}? Its work under this agreement that is not yet billed,
+				{hours(uncovering.used, 'allotted')} this month and any from before, is billed by the hour instead,
+				and no longer pays as covered time.
+			</p>
+			<p>
+				Its terms, {allotment(uncovering).toLowerCase()}, are not kept: covering it again means
+				entering them again.
+			</p>
+		</Ask>
 	{/if}
 	{#if problem}<p class="problem">{problem}</p>{/if}
 
@@ -223,7 +266,7 @@
 									<button type="button" class="btn sm gho" onclick={() => (editing = { preset: c })}
 										>Change</button
 									>
-									<button type="button" class="btn sm gho" onclick={() => uncover(c.service_id)}
+									<button type="button" class="btn sm gho" onclick={() => (uncovering = c)}
 										>Stop covering</button
 									>
 								</div>
@@ -386,32 +429,6 @@
 	.problem {
 		color: var(--crit);
 		margin: 0 0 12px;
-	}
-	.btn.danger {
-		color: var(--crit);
-		border-color: var(--crit);
-	}
-	.btn.danger.solid {
-		background: var(--crit);
-		color: var(--surface);
-	}
-	/* The second tap of a delete, or the day it ends, where the first was made. */
-	.confirm {
-		background: var(--surface);
-		border: 1px solid var(--crit);
-		border-radius: var(--r);
-		padding: 14px;
-		margin-bottom: 16px;
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-	}
-	.confirm.plain {
-		border-color: var(--line);
-	}
-	.confirm p {
-		margin: 0;
-		font-size: 14px;
 	}
 	.addrow {
 		display: flex;

@@ -184,6 +184,17 @@ check(
 );
 await set('#p-note', 'Paid by pay-check');
 await tap('Record the payment');
+await settle(500);
+const asking = await page();
+check(
+	/^\/reports\/pay\/[0-9a-f-]{36}$/.test(
+		/** @type {string} */ (await evaluate('location.pathname'))
+	) &&
+		asking.includes(`Record ${thisPayment} paid to Sam Ortega`) &&
+		asking.includes('A payment stands once recorded'),
+	'recording asks first, saying what it pays and that it stands, and records nothing yet'
+);
+await tap('Record it');
 await settle(2500);
 const paidPath = /** @type {string} */ (await evaluate('location.pathname'));
 const paid = await page();
@@ -235,6 +246,8 @@ await set('#c-amount', '1.00');
 await set('#c-why', 'Paid a dollar short');
 await settle(300);
 await tap('Record the payment');
+await settle(500);
+await tap('Record it');
 await settle(2500);
 const fixed = await page();
 check(

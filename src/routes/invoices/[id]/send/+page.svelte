@@ -154,7 +154,7 @@
 			class="btn blk"
 			type="button"
 			disabled={sending || held > 0 || !online || i.lines === 0}
-			onclick={() => send('copy')}>Copy the link</button
+			onclick={() => send('copy')}>Send — copy the link</button
 		>
 		<p class="aside">
 			Sharing opens your phone's share sheet: Messages, Mail. Once it is sent the invoice cannot

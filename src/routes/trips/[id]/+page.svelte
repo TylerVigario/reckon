@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import Ask from '#lib/Ask.svelte';
 	import { dated, miles, quantity } from '#lib/format.ts';
 	import { readProblem } from '#lib/json.ts';
 	import { goto } from '$app/navigation';
@@ -72,10 +73,26 @@
 			() => {}
 		);
 	});
+	// Removing asks first: it cannot be undone, and it takes with it what the
+	// trip would bill the client and what it owes the vehicle's owner.
+	let removing = $state<'idle' | 'asking' | 'working'>('idle');
+	const goesWith = $derived(
+		[
+			Decimal.from(data.trip.billed).isZero()
+				? null
+				: `${money(data.trip.billed)} not yet billed to the client`,
+			data.trip.owner && data.trip.paid && !Decimal.from(data.trip.paid).isZero()
+				? `${money(data.trip.paid)} owed to ${data.trip.owner} for the vehicle`
+				: null
+		].filter(Boolean)
+	);
+
 	async function remove() {
 		problem = '';
+		removing = 'working';
 		const r = await fetch(`/api/trips/${data.trip.id}`, { method: 'DELETE' }).catch(() => null);
 		if (!r?.ok) {
+			removing = 'idle';
 			problem = r
 				? ((await readProblem(r)).detail ?? 'Not removed.')
 				: 'Not removed — no connection.';
@@ -258,10 +275,32 @@
 	{:else if data.trip.paid_for}
 		<p class="aside">Its miles are in a payment for the vehicle, so it stays as it was paid.</p>
 	{:else}
-		<div class="btnrow">
-			<a class="btn" href={resolve('/trips/[id]/change', { id: data.trip.id })}>Change this trip</a>
-			<button type="button" class="btn gho" onclick={remove}>Remove this trip</button>
-		</div>
+		{#if removing === 'idle'}
+			<div class="btnrow">
+				<a class="btn" href={resolve('/trips/[id]/change', { id: data.trip.id })}
+					>Change this trip</a
+				>
+				<button type="button" class="btn gho" onclick={() => (removing = 'asking')}
+					>Remove this trip</button
+				>
+			</div>
+		{:else}
+			<Ask
+				tone="danger"
+				keep="Keep it"
+				go="Remove it for good"
+				going="Removing…"
+				working={removing === 'working'}
+				onkeep={() => (removing = 'idle')}
+				ongo={remove}
+			>
+				<p>
+					Remove this trip, {miles(data.trip.miles)} driven on {dated(data.trip.travelled_on)}, with
+					its stops and legs?{goesWith.length ? ` It takes with it ${goesWith.join(' and ')}.` : ''}
+					This cannot be undone.
+				</p>
+			</Ask>
+		{/if}
 		{#if problem}<p class="why bad">{problem}</p>{/if}
 	{/if}
 </div>

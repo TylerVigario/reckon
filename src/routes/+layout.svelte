@@ -663,6 +663,16 @@
 		background: transparent;
 		color: var(--ink-2);
 	}
+	/* What cannot be taken back: outlined where it is offered, solid where it
+	   is confirmed (#lib/Ask). */
+	:global(.btn.danger) {
+		color: var(--crit);
+		border-color: var(--crit);
+	}
+	:global(.btn.danger.solid) {
+		background: var(--crit);
+		color: var(--surface);
+	}
 	:global(.btn.sm) {
 		min-height: 34px;
 		padding: 5px 11px;
