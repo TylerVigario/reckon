@@ -4,6 +4,7 @@
 	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import { parsePersonField } from '#lib/people-fields.ts';
+	import { parseDeviceField } from '#lib/device-fields.ts';
 	import { clockSample, weekdayName, zoneName } from '#lib/format.ts';
 	import { zoneOptions } from '#lib/zone-options.ts';
 	import { localeName, localeOptions, localeTag, pickLocale, weekStartOf } from '#lib/locales.ts';
@@ -31,6 +32,29 @@
 	const weeks = $derived([
 		{ value: '', label: `As the locale has it — ${weekdayName(localeWeek)}` },
 		...[1, 2, 3, 4, 5, 6, 7].map((n) => ({ value: String(n), label: weekdayName(n) }))
+	]);
+
+	// What this device's own setting gives, so leaving the theme to it says which
+	// that is. Only the browser can tell, and it says again when the device
+	// changes, as one that goes dark at sunset does.
+	let deviceDark = $state<boolean | null>(null);
+	onMount(() => {
+		const dark = matchMedia('(prefers-color-scheme: dark)');
+		deviceDark = dark.matches;
+		const changed = (e: MediaQueryListEvent) => (deviceDark = e.matches);
+		dark.addEventListener('change', changed);
+		return () => dark.removeEventListener('change', changed);
+	});
+	const themes = $derived([
+		{
+			value: '',
+			label:
+				deviceDark === null
+					? 'As the device has it'
+					: `As the device has it — ${deviceDark ? 'Dark' : 'Light'}`
+		},
+		{ value: 'light', label: 'Light' },
+		{ value: 'dark', label: 'Dark' }
 	]);
 
 	// THE BROWSER AS A STARTING POINT. Somebody who has not chosen a locale is
@@ -117,6 +141,22 @@
 					: 'Set from your browser when you first sign in.'}
 				{endpoint}
 				validate={parsePersonField}
+				onsaved={redraw}
+			/>
+		</div>
+	</div>
+
+	<div class="sec">
+		<div class="sec-h"><h2>On this device</h2></div>
+		<div class="rows inset">
+			<Setting
+				name="theme"
+				label="Theme"
+				value={data.theme ?? ''}
+				options={themes}
+				hint="This device only. Each device you sign in on keeps its own."
+				endpoint="/api/device"
+				validate={parseDeviceField}
 				onsaved={redraw}
 			/>
 		</div>

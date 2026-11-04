@@ -1551,6 +1551,58 @@ const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
 	}
 }
 
+// Light or dark is the device's (#lib/device-fields): a cookie on it, which the
+// server writes onto <html> before the page leaves, signed in or not.
+{
+	/** @param {string} theme */
+	const set = (theme) =>
+		fetch(`${base}/api/device`, {
+			method: 'PATCH',
+			headers: H,
+			body: JSON.stringify({ fields: { theme } })
+		});
+	/** The theme a page was drawn in, as the cookies given leave it. */
+	const drawnIn = async (/** @type {string} */ path, /** @type {string} */ jar) =>
+		/<html[^>]*\sdata-theme="([^"]*)"/.exec(
+			await (await fetch(base + path, { headers: { cookie: jar } })).text()
+		)?.[1] ?? null;
+	const sent = (/** @type {Response} */ r) =>
+		(r.headers.getSetCookie?.() ?? []).find((c) => c.startsWith('theme=')) ?? '';
+	/** @param {boolean} ok @param {string} label @param {string} detail */
+	const record = (ok, label, detail) => {
+		if (ok) passed++;
+		else failures.push(`${label}: ${detail}`);
+		console.log(`  ${ok ? '✓' : '✗'} ${label}`);
+	};
+
+	const dark = await set('dark');
+	const kept = sent(dark);
+	record(
+		dark.status === 200 && /httponly/i.test(kept) && /max-age=[1-9]/i.test(kept),
+		'a theme is kept in a cookie on the device, for the server alone',
+		`${dark.status} ${kept}`
+	);
+	const theme = kept.split(';')[0];
+	const signedIn = await drawnIn('/profile', `${cookie}; ${theme}`);
+	const signedOut = await drawnIn('/login', theme);
+	const without = await drawnIn('/profile', cookie);
+	record(
+		signedIn === 'dark' && signedOut === 'dark' && without === '',
+		"a page is drawn in the device's theme from the first paint, signed in or not",
+		`profile ${signedIn}, sign-in ${signedOut}, without the cookie ${without}`
+	);
+
+	const sepia = await set('sepia');
+	record(sepia.status === 400, 'a theme that is not light or dark is refused', `${sepia.status}`);
+
+	const back = await set('');
+	record(
+		back.status === 200 && /max-age=0/i.test(sent(back)),
+		'left to the device, the cookie is taken away',
+		`${back.status} ${sent(back)}`
+	);
+}
+
 console.log('');
 if (failures.length) {
 	console.error(`${failures.length} write path(s) failed, ${passed} passed:`);

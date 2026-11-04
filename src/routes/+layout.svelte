@@ -25,6 +25,13 @@
 	);
 	const tabIcon = $derived(data.operator?.has_logo ? '/operator/logo' : '/icons/reckon.svg');
 
+	// The server drew the first paint in this device's theme (hooks.server.ts).
+	// Set again in the profile, the page redraws without coming back from the
+	// server whole, so <html> is moved to match here.
+	$effect(() => {
+		document.documentElement.dataset.theme = data.theme ?? '';
+	});
+
 	// The service worker keeps Today, the Time screens and the drafts for when
 	// there is no signal (src/service-worker). Signed in and online, it is asked
 	// to fetch them now, so a phone that has never opened one can still open it
@@ -285,28 +292,28 @@
 	}
 
 	:global(:root) {
-		--paper: #eef1f5;
-		--surface: #fff;
-		--surface-2: #f4f6fa;
-		--sunken: #e6eaf1;
-		--line: #d4dae4;
-		--line-soft: #e4e8ef;
-		--ink: #141a2b;
-		--ink-2: #4a5468;
-		--ink-3: #7b8698;
-		--brand: #4f6d8a;
-		--brand-deep: #3b546e;
-		--display-ink: #273142;
-		--accent: #1d6f9c;
-		--accent-ink: #fff;
-		--accent-wash: #e2eef6;
-		--accent-line: #a9cde3;
-		--good: #2e7554;
-		--good-wash: #dcede3;
-		--warn: #8a6614;
-		--warn-wash: #f5e9cc;
-		--crit: #a2382f;
-		--crit-wash: #f7dedb;
+		--paper: light-dark(#eef1f5, #0d1219);
+		--surface: light-dark(#fff, #161d29);
+		--surface-2: light-dark(#f4f6fa, #1c2431);
+		--sunken: light-dark(#e6eaf1, #111823);
+		--line: light-dark(#d4dae4, #2c3646);
+		--line-soft: light-dark(#e4e8ef, #222b39);
+		--ink: light-dark(#141a2b, #e4e9f2);
+		--ink-2: light-dark(#4a5468, #9daabd);
+		--ink-3: light-dark(#7b8698, #6f7c90);
+		--brand: light-dark(#4f6d8a, #8ea4bd);
+		--brand-deep: light-dark(#3b546e, #4f6d8a);
+		--display-ink: light-dark(#273142, #e4e9f2);
+		--accent: light-dark(#1d6f9c, #5aaed6);
+		--accent-ink: light-dark(#fff, #06202e);
+		--accent-wash: light-dark(#e2eef6, #13303f);
+		--accent-line: light-dark(#a9cde3, #2c5f7d);
+		--good: light-dark(#2e7554, #63c294);
+		--good-wash: light-dark(#dcede3, #143326);
+		--warn: light-dark(#8a6614, #d9a93f);
+		--warn-wash: light-dark(#f5e9cc, #3a2e0f);
+		--crit: light-dark(#a2382f, #e0796d);
+		--crit-wash: light-dark(#f7dedb, #3d1b17);
 		--f-display: 'VTS Display', 'Montserrat', system-ui, sans-serif;
 		--f-text: 'VTS Text', 'Open Sans', system-ui, sans-serif;
 		--f-mono: 'VTS Mono', 'Liberation Mono', ui-monospace, monospace;
@@ -318,6 +325,10 @@
 		   a narrow figure leaves a desert down both sides of a wide
 		   monitor. */
 		--col: 1200px;
+		/* Each colour is light-dark(light, dark), and color-scheme picks which: the
+		   device's own, unless this device is set to one (#lib/device-fields), which
+		   the server writes onto <html> as data-theme. Form controls and scrollbars
+		   follow it too. */
 		color-scheme: light dark;
 
 		/* Second names for the same colours, still used by some pages. */
@@ -327,31 +338,11 @@
 		--ink-faint: var(--ink-3);
 		--radius: var(--r);
 	}
-	@media (prefers-color-scheme: dark) {
-		:global(:root) {
-			--paper: #0d1219;
-			--surface: #161d29;
-			--surface-2: #1c2431;
-			--sunken: #111823;
-			--line: #2c3646;
-			--line-soft: #222b39;
-			--ink: #e4e9f2;
-			--ink-2: #9daabd;
-			--ink-3: #6f7c90;
-			--brand: #8ea4bd;
-			--brand-deep: #4f6d8a;
-			--display-ink: #e4e9f2;
-			--accent: #5aaed6;
-			--accent-ink: #06202e;
-			--accent-wash: #13303f;
-			--accent-line: #2c5f7d;
-			--good: #63c294;
-			--good-wash: #143326;
-			--warn: #d9a93f;
-			--warn-wash: #3a2e0f;
-			--crit: #e0796d;
-			--crit-wash: #3d1b17;
-		}
+	:global(:root[data-theme='light']) {
+		color-scheme: light;
+	}
+	:global(:root[data-theme='dark']) {
+		color-scheme: dark;
 	}
 
 	/* app.html's wrapper. A rule rather than its own style attribute, which the

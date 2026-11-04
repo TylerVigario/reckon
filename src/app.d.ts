@@ -1,4 +1,5 @@
 import type { SessionUser } from '#lib/server/auth.ts';
+import type { Theme } from '#lib/device-fields.ts';
 
 declare global {
 	namespace App {
@@ -24,6 +25,8 @@ declare global {
 			weekStart: number;
 			/** The business's currency, which sets every amount's places (#lib/currency). */
 			currency: string;
+			/** Light or dark as this device is set, or null for its own (#lib/device-fields). */
+			theme: Theme | null;
 		}
 	}
 }

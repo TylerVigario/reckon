@@ -69,6 +69,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 		user: locals.user,
 		zone: locals.zone,
 		locale: locals.locale,
+		theme: locals.theme,
 		counts: { drafts: drafts.n, entities: entities.n, monthSeconds: month.seconds ?? 0 }
 	};
 };
