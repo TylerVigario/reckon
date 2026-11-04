@@ -7,7 +7,14 @@
 	import { parseDeviceField } from '#lib/device-fields.ts';
 	import { clockSample, weekdayName, zoneName } from '#lib/format.ts';
 	import { zoneOptions } from '#lib/zone-options.ts';
-	import { localeName, localeOptions, localeTag, pickLocale, weekStartOf } from '#lib/locales.ts';
+	import {
+		localeName,
+		localeOptions,
+		localeTag,
+		ownName,
+		pickLocale,
+		weekStartOf
+	} from '#lib/locales.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -99,9 +106,15 @@
 				label="Locale"
 				value={me.locale ?? ''}
 				options={localeOptions(me.locale, "The business's")}
-				hint={me.locale === null
-					? `Following the business's: ${localeName(data.businessLocale)}. The language dates are written in, the order of day and month, and the separators in figures.`
-					: 'The language dates are written in, the order of day and month, and the separators in figures.'}
+				hint={(current) => {
+					const own = ownName(current || data.businessLocale);
+					const named = current
+						? own
+							? `${own}. `
+							: ''
+						: `Following the business's: ${localeName(data.businessLocale)}${own ? `, ${own}` : ''}. `;
+					return `${named}The language dates are written in, the order of day and month, and the separators in figures.`;
+				}}
 				{endpoint}
 				validate={parsePersonField}
 				onsaved={redraw}

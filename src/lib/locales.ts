@@ -100,10 +100,26 @@ function nameIn(lang: string, tag: string): string {
 	}
 }
 
-/** "English (United Kingdom)"; "German (Germany) — Deutsch (Deutschland)". */
+/**
+ * "German (Switzerland)": a locale's name in the language the screens are in,
+ * which is English while reckon is in one language. A list in a form is all in
+ * the page's language (W3C, "Using select to link to localized content"); it
+ * is a switcher between translations of the app that names each language in
+ * itself.
+ */
 export function localeName(tag: string): string {
-	const [english, own] = [nameIn('en', tag), nameIn(tag, tag)];
-	return own === english ? english : `${english} — ${own}`;
+	return nameIn('en', tag);
+}
+
+/**
+ * "Deutsch (Schweiz)": a locale's name in its own language, or null where that
+ * is the English one. It is said under the field rather than in the list:
+ * beside the English name it ran past a phone's dropdown for most of those
+ * offered, and the list is found by its English names anyway.
+ */
+export function ownName(tag: string): string | null {
+	const own = nameIn(tag, tag);
+	return own === nameIn('en', tag) ? null : own;
 }
 
 let listed: { value: string; label: string }[] | null = null;
