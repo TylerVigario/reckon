@@ -83,9 +83,13 @@ const problemOf = async (/** @type {Response} */ r) =>
 	(r.headers.get('content-type') ?? '').startsWith('application/problem+json')
 		? /** @type {{ type?: string; errors?: Record<string, string> }} */ (await r.json())
 		: null;
-/** Every id in what a page links to under `under`, as each person was shown it. */
+/**
+ * Every id in what a page links to under `under`, as each person was shown it.
+ * A link is written relative to the page it is on -- "./trips/...",
+ * "../trips/..." -- so it is found by where it ends, not where it starts.
+ */
 const linked = (/** @type {string} */ html, /** @type {string} */ under) =>
-	new Set([...html.matchAll(new RegExp(`href="${under}/([0-9a-f-]{36})"`, 'g'))].map((m) => m[1]));
+	new Set([...html.matchAll(new RegExp(`${under}/([0-9a-f-]{36})"`, 'g'))].map((m) => m[1]));
 const uuid = () => crypto.randomUUID();
 
 // ------------------------------------------------------------ the table ----
@@ -175,7 +179,7 @@ const [fullMore, fieldMore, fullPay] = await Promise.all([
 // Who is who, by name, as the pay report lists them.
 /** @type {Record<string, string>} */
 const idOf = {};
-for (const chunk of fullPay.split('href="/reports/pay/').slice(1)) {
+for (const chunk of fullPay.split('/reports/pay/').slice(1)) {
 	const name = /class="rec-t">\s*([^<&]+)/.exec(chunk)?.[1]?.trim();
 	if (name && /^[0-9a-f-]{36}"/.test(chunk)) idOf[name] = chunk.slice(0, 36);
 }
@@ -252,9 +256,9 @@ check(!linked(fullMore, '/reports/pay').size, 'Full reaches pay through the repo
 // A client, without what it owes.
 {
 	const clients = await page(asFull, '/clients');
-	const slug = /href="\/clients\/([a-z0-9-]+)"/.exec(
-		clients.replace(/href="\/clients\/contacts"/g, '')
-	)?.[1];
+	const slug = [...clients.matchAll(/\/clients\/([a-z0-9-]+)"/g)]
+		.map((m) => m[1])
+		.find((x) => x !== 'contacts' && x !== 'new');
 	const [toFull, toField] = await Promise.all([
 		page(asFull, `/clients/${slug}`),
 		page(asField, `/clients/${slug}`)
