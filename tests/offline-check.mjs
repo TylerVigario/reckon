@@ -145,6 +145,8 @@ const check = (/** @type {boolean} */ pass, /** @type {string} */ what) =>
 	pass ? ok(what) : failures.push(what);
 
 const heading = () => evaluate(`document.querySelector('h1')?.textContent?.trim() ?? ''`);
+/** The line under the title: whose a draft is. */
+const subtitle = () => evaluate(`document.querySelector('.top .sub')?.textContent?.trim() ?? ''`);
 const kept = () =>
 	evaluate(`(async () => {
 		const name = (await caches.keys()).find((k) => k.startsWith('pages-'));
@@ -544,7 +546,7 @@ if (phase === 'offline') {
 	);
 	await settle(2000);
 	check(
-		(await heading()).startsWith('Add a line') && (await heading()).includes(STARTED_FOR),
+		(await heading()).startsWith('Add a line') && (await subtitle()).includes(STARTED_FOR),
 		'Add a line opens for it with no server'
 	);
 	await click('Paid for them');
@@ -907,7 +909,7 @@ if (phase === 'back') {
 		drafts === 0 &&
 			/^\/invoices\/[0-9a-f-]{36}$/.test(await evaluate('location.pathname')) &&
 			(await heading()).startsWith('Draft INV-') &&
-			(await heading()).includes(STARTED_FOR) &&
+			(await subtitle()).includes(STARTED_FOR) &&
 			arrived.includes('Paid for them · Valley Rentals') &&
 			!arrived.includes('On this phone'),
 		'the draft started on the phone arrives numbered with its hire, and its screen gives way to it'
