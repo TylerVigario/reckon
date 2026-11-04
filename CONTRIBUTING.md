@@ -84,6 +84,12 @@ a production process writing invoices into it.
 message is only caught when CI rejects the pull request title, and `pre-push`,
 which runs `npm run ci` before anything leaves.
 
+**No dependency runs an install script.** esbuild's is the only one in the tree,
+and `allowScripts` in `package.json` denies it. It swaps esbuild's launcher for
+the binary, a speed-up for the `esbuild` command, which nothing here runs, and
+esbuild works without it. npm names any dependency that brings a new one: read
+what it does, then `npm approve-scripts` or `npm deny-scripts` it.
+
 The database commands connect the way `psql` does, so `PGHOST`, `PGUSER` and the
 rest apply. If your cluster wants a different user, become one:
 `sudo -u postgres npm run db:migrate -- …`. The server brings its own database up
