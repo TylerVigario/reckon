@@ -37,8 +37,8 @@ reckon is a SvelteKit project with Drizzle, laid out as both lay one out.
 | `scripts/`                      | the commands: adding people, refreshing tax rates, migrating, proving the guards, printing, making a release    |
 | `docs/schema/*.drawio`          | the data model: an overview and eight clusters                                                                  |
 | `docs/schema/regenerate.py`     | lays the diagrams out from one definition of the tables; overwrites hand edits                                  |
-| `docs/schema/make-printable.py` | derives the printed reference from the diagrams                                                                 |
-| `docs/schema-reference.typ`     | generated — do not hand-edit                                                                                    |
+| `docs/schema/make-printable.py` | reads the printed reference's tables and notes out of the diagrams, as data                                     |
+| `docs/schema-reference.typ`     | the printed reference, which reads that data from `docs/schema/reference.json`                                  |
 | `third_party/press/`            | press, the Typst library, fonts and tools the documents are set in, installed from its release                  |
 
 ## The database
@@ -347,7 +347,9 @@ npm run print:build -- docs/schema-reference.typ
 ```
 
 The diagrams are the source; the reference derives from them, so the two cannot
-drift.
+drift. The script writes what it reads out of them as data,
+`docs/schema/reference.json`, and the reference reads that: nothing it prints is
+read as markup, and a changed `reference.json` builds the reference again.
 
 ## The stack
 

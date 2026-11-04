@@ -1,21 +1,28 @@
 #!/usr/bin/env python3
-"""Emit a printable schema reference from the .drawio files themselves.
+"""Read the schema reference's tables and notes out of the .drawio files.
 
 The diagrams are the source. This reads them -- table names, every column, and
-the notes pinned beside each cluster -- and writes Typst that press renders.
-Nothing is transcribed, so the printable cannot drift from the drawings.
+the notes pinned beside each cluster -- and writes what it found as data,
+docs/schema/reference.json, which docs/schema-reference.typ reads. Nothing is
+transcribed, so the printable cannot drift from the drawings.
+
+It writes data and never Typst. A value set from data is text, whatever
+characters it holds; written into markup, every one of them would need
+escaping, and an escape that missed one would print it wrong or lose the rest
+of its line. The build follows the data: a changed reference.json builds the
+reference again.
 
 Usage:
     python3 docs/schema/make-printable.py
     npm run print:build -- docs/schema-reference.typ
 """
 
+import json
 import pathlib
-import re
 import xml.etree.ElementTree as ET
 
 HERE = pathlib.Path(__file__).resolve().parent
-OUT = HERE.parent / "schema-reference.typ"
+OUT = HERE / "reference.json"
 
 CLUSTERS = [
     ("02-who-and-where.drawio",       "Who and where"),
@@ -60,14 +67,7 @@ def read(path):
     return tables, notes
 
 
-def esc(s):
-    for a, b in (("\\", "\\\\"), ("$", "\\$"), ("#", "\\#"), ("*", "\\*"),
-                 ("_", "\\_"), ("@", "\\@"), ("<", "\\<"), (">", "\\>")):
-        s = s.replace(a, b)
-    return s
-
-
-parts = []
+sections = []
 for filename, title in CLUSTERS:
     tables, notes = read(HERE / filename)
     fresh = [(n, r) for n, r in tables if n not in seen]
@@ -75,104 +75,30 @@ for filename, title in CLUSTERS:
         seen.add(n)
     if not fresh:
         continue
+    sections.append({
+        "title": title,
+        "tables": [{"name": name, "rows": [list(r) for r in rows]} for name, rows in fresh],
+        # A note's paragraphs, each its own callout.
+        "notes": [p.strip() for n in notes for p in n.split("\n\n") if p.strip()],
+    })
 
-    parts.append(f"#colbreak(weak: true)\n== {title}\n")
-    for name, rows in fresh:
-        body = "\n".join(f"    [{'*'+esc(k)+'*' if k else ''}], [{esc(c)}], [{esc(t)}],"
-                         for k, c, t in rows)
-        parts.append(
-            "#block(breakable: false)[\n"
-            f'  #text(font: face-mono, size: sz.fine, weight: "bold")[{esc(name)}]\n'
-            "  #v(3pt)\n  #sheet(\n    (auto, auto, 1fr),\n"
-            "    ([], [Column], [Type]),\n    size: sz.micro,\n"
-            + body + "\n  )\n]\n#v(7pt)\n")
-
-    for n in notes:
-        for para in [p.strip() for p in n.split("\n\n") if p.strip()]:
-            parts.append(f'#callout(tone: "note")[{esc(para)}]\n#v(4pt)\n')
-    parts.append("#v(6pt)\n")
-
-HEAD = r'''// The reckon schema, as a printed reference.
-//
-// GENERATED from the .drawio files by docs/schema/make-printable.py. Change a
-// diagram and regenerate; do not hand-edit this file.
-//
-// It carries what a diagram cannot: every column of every table, in one
-// sequence, readable beside a keyboard. The notes beside each cluster say why
-// a table is the shape it is.
-
-#import "/third_party/press/lib.typ": *
-
-#show: brief.with(
-  title: [reckon schema reference],
-  meta: [The schema, as a printed reference],
-  preset: dense,
-  footer: footer(status: [generated from the .drawio files]),
-)
-#set text(size: sz.fine)
-#set par(leading: 0.55em, spacing: 0.6em, justify: false)
-#show raw: set text(size: sz.micro)
-
-#text(size: sz.small)[
-  @@N_TABLES@@ tables across @@N_CLUSTERS@@ clusters. The @@N_FILES@@ `.drawio` files in
-  `docs/schema/` carry the relationships; the schema's comments carry the reasoning.
-  A table drawn in more than one cluster is listed once, under the first.
-]
-
-#v(10pt)
-'''
-
-TAIL = r'''
-#pagebreak()
-
-== What the database refuses
-
-#text(size: sz.fine)[
-  Where the database can hold a rule rather than trusting the application to
-  remember it, it does. Each of these is a constraint or a trigger in the
-  schema, not a check the application has to remember.
-]
-#v(5pt)
-
-#sheet(
-  (1fr, auto),
-  ([Refused], [Why]),
-  size: sz.micro,
-  [The same time entry twice], [`client_uuid` is made on the phone and unique],
-  [Billable work with nobody to bill], [an entity is required once `billable`],
-  [Tax exempt with no certificate], [CDTFA needs it to support the sale],
-  [A rate override with no reason], [an unexplained rate is not auditable],
-  [Tax on a line marked untaxable], [],
-  [A line claiming two sources], [provenance is one FK, or none],
-  [The same trip leg billed twice], [],
-  [Editing, deleting, adding or moving lines on a sent invoice], [corrections are credit notes],
-  [Changing a sent invoice's due date], [only its status may move],
-  [Putting a sent invoice back to draft], [it would open every field again],
-  [Deleting a sent invoice], [it is voided instead],
-  [Voiding without a reason], [],
-  [More stock left than ever arrived], [`qty_remaining <= qty_received`],
-  [Drawing more than is on the shelf], [a draw comes off its lot, which cannot go below nothing],
-  [A line drawing another material's stock], [a draw names the material of its line and its lot],
-  [Changing what a sent invoice drew from stock], [it is settled with its lines],
-  [A payout whose net ignores the fee], [`net = gross - fees`],
-  [Two prices for one service, client and day], [one price per day],
-)
-
-#v(12pt)
-#stamp[Generated from `docs/schema/`. Change a diagram and regenerate.]
-'''
-
-
-
-WORDS = {2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six", 7: "Seven", 8: "Eight",
-         9: "Nine", 10: "Ten", 32: "Thirty-two", 34: "Thirty-four", 35: "Thirty-five",
-         36: "Thirty-six", 37: "Thirty-seven", 38: "Thirty-eight", 39: "Thirty-nine", 40: "Forty"}
+# Typst does not spell numbers, so the counts the reference opens with are
+# written out here.
+WORDS = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight",
+         9: "nine", 10: "ten", 32: "thirty-two", 34: "thirty-four", 35: "thirty-five",
+         36: "thirty-six", 37: "thirty-seven", 38: "thirty-eight", 39: "thirty-nine",
+         40: "forty"}
 word = lambda n: WORDS.get(n, str(n))
-head = (HEAD.replace("@@N_TABLES@@", word(len(seen)))
-            .replace("@@N_CLUSTERS@@", word(len(CLUSTERS)).lower())
-            .replace("@@N_FILES@@", word(len(list(HERE.glob("*.drawio")))).lower()))
 
-OUT.write_text(head + "#columns(2, gutter: 16pt)[\n" + "\n".join(parts) + "\n]\n" + TAIL)
+OUT.write_text(json.dumps({
+    "counted": {
+        # It opens a sentence.
+        "tables": word(len(seen)).capitalize(),
+        "clusters": word(len(CLUSTERS)),
+        "files": word(len(list(HERE.glob("*.drawio")))),
+    },
+    "sections": sections,
+}, ensure_ascii=False, indent=1) + "\n")
 print(f"{OUT}")
 print(f"  {len(seen)} tables from {len(CLUSTERS)} clusters")
 print("  build:  npm run print:build -- docs/schema-reference.typ")
