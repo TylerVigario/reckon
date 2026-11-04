@@ -109,13 +109,7 @@ await send('Emulation.setDeviceMetricsOverride', {
 	mobile: false
 });
 
-// Whoever this browser holds is signed out first, so the walk is as the person
-// named: run after another check, it finds that check's session.
 await go('/login');
-if (!(await evaluate(`!!document.querySelector('input[name="password"]')`))) {
-	await evaluate(`fetch('/logout', { method: 'POST' }).then(() => true)`);
-	await go('/login');
-}
 await evaluate(`(() => {
   document.querySelector('input[name=email]').value = ${JSON.stringify(email)};
   document.querySelector('input[name=password]').value = ${JSON.stringify(password)};
@@ -165,6 +159,8 @@ while (queue.length) {
 
 	for (const href of links) {
 		const clean = href.split('#')[0];
+		// A receipt is a file a screen links to, not a screen.
+		if (clean.endsWith('/receipt')) continue;
 		if (clean.startsWith('/') && !seen.has(clean) && !queue.includes(clean)) queue.push(clean);
 	}
 }
