@@ -75,24 +75,11 @@ export type ScheduleA = {
  * sale of a fixture. So every line is grouped by the area of the SITE on the
  * line, never by anything on the client.
  *
- * An address CDTFA has not been asked about lately is listed by name. The rate
- * on file is not wrong, but it is not known to be right either, and a district
- * added or ended in between would have been charged wrongly ever since.
- */
-/**
- * Schedule A: the measure and the deduction, by the CDTFA area the work
- * happened in.
- *
- * BY JURISDICTION, NOT BY DISTRICT. The rate API answers with one combined
- * rate per address and the area's name -- it does not decompose into the
- * districts making it up. Breaking out further would mean keeping a local
- * table of districts -- a second copy of CDTFA's data, and a copy nobody
- * refreshes is a rate that goes stale.
- *
- * DISTRICT TAX FOLLOWS THE JOBSITE, not the billing address -- Reg 1826 puts
- * the place of use of materials at the jobsite, and the jobsite is the place of
- * sale of a fixture. So every line is grouped by the area of the SITE on the
- * line, never by anything on the client.
+ * AS IT WAS BILLED. Each line is grouped by the area it kept from its site, at
+ * the rate it was taxed at (0030), never by the site as it is now: a rate
+ * refreshed or an address chosen again after a period was filed leaves the
+ * period as it was, and a site no longer in use keeps its sales in it. An area
+ * whose rate changed within the period is two rows, one to each rate.
  *
  * An address CDTFA has not been asked about lately is listed by name. The rate
  * on file is not wrong, but it is not known to be right either, and a district
@@ -106,38 +93,31 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 	const { site, invoice, invoiceLine, entity } = t;
 
 	const { rows: districts } = await db.execute<DistrictRow>(sql`
-		with billed as (
-			select ${invoiceLine.siteId} as site_id, ${invoiceLine.amount} as amount,
-			       ${invoiceLine.exTaxCost} as ex_tax_cost
-			  from ${invoiceLine}
-			  join ${invoice} on ${invoice.id} = ${invoiceLine.invoiceId}
-			 where ${invoice.status} = 'sent'
-			   and ${invoice.issuedOn} between ${p.start} and ${p.end}
-			   and ${invoiceLine.taxable}
-		)
-		select ${site.taxJurisdiction} as area,
-		       max(${site.taxRatePct})::text as rate_pct,
-		       max(${site.stateRatePct})::text as state_rate_pct,
-		       max(${site.districtRatePct})::text as district_rate_pct,
-		       round(coalesce(sum(b.amount), 0), ${places}::int)::text as measure,
+		select ${invoiceLine.taxJurisdiction} as area,
+		       ${invoiceLine.taxRatePct}::text as rate_pct,
+		       max(${invoiceLine.stateRatePct})::text as state_rate_pct,
+		       max(${invoiceLine.districtRatePct})::text as district_rate_pct,
+		       round(sum(${invoiceLine.amount}), ${places}::int)::text as measure,
 		       -- Reg 1701: tax already paid on goods that were resold comes off
 		       -- the measure, and only if the operator has made that election.
-		       round(case when ${claims} then coalesce(sum(b.ex_tax_cost), 0)
+		       round(case when ${claims} then coalesce(sum(${invoiceLine.exTaxCost}), 0)
 		                  else 0 end, ${places}::int)::text as deduction,
-		       round(coalesce(sum(b.amount), 0)
-		             - case when ${claims} then coalesce(sum(b.ex_tax_cost), 0)
+		       round(sum(${invoiceLine.amount})
+		             - case when ${claims} then coalesce(sum(${invoiceLine.exTaxCost}), 0)
 		                    else 0 end, ${places}::int)::text as net,
-		       round((coalesce(sum(b.amount), 0)
-		              - case when ${claims} then coalesce(sum(b.ex_tax_cost), 0)
+		       round((sum(${invoiceLine.amount})
+		              - case when ${claims} then coalesce(sum(${invoiceLine.exTaxCost}), 0)
 		                     else 0 end)
-		             * coalesce(max(${site.taxRatePct}), 0) / 100, ${places}::int)::text as tax,
-		       count(b.*)::int as lines,
-		       count(distinct ${site.id})::int as sites
-		  from ${site}
-		  left join billed b on b.site_id = ${site.id}
-		 where ${site.active}
-		 group by ${site.taxJurisdiction}
-		 order by 1`);
+		             * ${invoiceLine.taxRatePct} / 100, ${places}::int)::text as tax,
+		       count(*)::int as lines,
+		       count(distinct ${invoiceLine.siteId})::int as sites
+		  from ${invoiceLine}
+		  join ${invoice} on ${invoice.id} = ${invoiceLine.invoiceId}
+		 where ${invoice.status} = 'sent'
+		   and ${invoice.issuedOn} between ${p.start} and ${p.end}
+		   and ${invoiceLine.taxJurisdiction} is not null
+		 group by ${invoiceLine.taxJurisdiction}, ${invoiceLine.taxRatePct}
+		 order by 1, ${invoiceLine.taxRatePct}`);
 
 	const { rows: stale } = await db.execute<{
 		site: string;

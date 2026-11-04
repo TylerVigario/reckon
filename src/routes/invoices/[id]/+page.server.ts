@@ -159,10 +159,12 @@ export const load: PageServerLoad = async ({ params, url }) => {
 				places,
 				sql`from ${il} where ${il.invoiceId} = ${params.id} and ${il.taxable}`
 			)}::text as due_on_return,
-		  max(${si.taxJurisdiction}) as district,
+		  -- Where it was taxed, as each line kept it when it was priced (0030),
+		  -- not as its site says now.
+		  max(${il.taxJurisdiction}) as district,
 		  max(${il.taxRatePct})::text as rate_pct,
-		  max(${si.stateRatePct})::text as state_rate_pct,
-		  max(${si.districtRatePct})::text as district_rate_pct,
+		  max(${il.stateRatePct})::text as state_rate_pct,
+		  max(${il.districtRatePct})::text as district_rate_pct,
 		  -- What is actually in each half, so the page can name them instead of
 		  -- assuming labour is never taxed and goods always are.
 		  coalesce(array_remove(array_agg(distinct ${il.kind}) filter (where not ${il.taxable}), null), '{}') as untaxed_kinds,
@@ -170,7 +172,6 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		  from ${il}
 		  cross join (select coalesce(bool_or(${t.operator.claimsTaxPaidPurchasesResold}), false) as claims
 		                from ${t.operator}) o
-		  left join ${si} on ${si.id} = ${il.siteId}
 		 where ${il.invoiceId} = ${params.id}`
 			)
 			.then((r) => r.rows),

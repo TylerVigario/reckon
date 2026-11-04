@@ -30,7 +30,6 @@ export const load: PageServerLoad = async () => {
 	const i = t.invoice;
 	const e = t.entity;
 	const il = t.invoiceLine;
-	const si = t.site;
 	const ec = t.entityContact;
 	const c = t.contact;
 	const te = t.timeEntry;
@@ -88,13 +87,14 @@ export const load: PageServerLoad = async () => {
 		),
 		-- The rate charged comes from where the work happened, so the name of
 		-- the place that levies it is what identifies it on the row. The state's
-		-- share is on every invoice and names nothing.
+		-- share is on every invoice and names nothing. Both as the lines kept
+		-- them when they were priced (0030), which is what the invoice charges.
 		where_taxed as (
 			select ${il.invoiceId} as invoice_id,
-			       max(${si.taxRatePct})::text as rate_pct,
-			       min(${si.taxJurisdiction}) as area
+			       max(${il.taxRatePct})::text as rate_pct,
+			       min(${il.taxJurisdiction}) as area
 			  from ${il}
-			  join ${si} on ${si.id} = ${il.siteId}
+			 where ${il.taxJurisdiction} is not null
 			 group by 1
 		),
 		-- How long the oldest thing on it has been waiting. Time has a worked-on

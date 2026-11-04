@@ -2301,4 +2301,83 @@ SELECT must_fail($$
    WHERE id = '77777777-0000-4000-8000-0000000000e1'
 $$, 'a sent invoice''s link taken away');
 
+\echo ''
+\echo '=== 49. a taxed line keeps where it was taxed, and what its rate was made of ==='
+
+INSERT INTO invoice (id, number, entity_id, created_by) VALUES
+  ('77777777-0000-4000-8000-0000000000f1','INV-0490',
+   '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            taxable, tax_rate_pct, tax_source, site_id)
+  VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
+          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333')
+$$, 'a line taxed at a site, not saying where');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction)
+  VALUES ('77777777-0000-4000-8000-0000000000f1',1,'service','Labour',2,95,190.00,
+          false, 0, 'none', '33333333-3333-3333-3333-333333333333', 'YUBA CITY')
+$$, 'an untaxed line saying where it was taxed');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction,
+                            state_rate_pct, district_rate_pct)
+  VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
+          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 7.2500, 0.5000)
+$$, 'shares that do not make the rate');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, state_rate_pct)
+  VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
+          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 7.2500)
+$$, 'the state''s share without the districts''');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            taxable, tax_rate_pct, tax_source, tax_override_reason, site_id,
+                            tax_jurisdiction, state_rate_pct, district_rate_pct)
+  VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
+          true, 8.2500, 'override', 'Marysville jobsite, location not yet on file', '33333333-3333-3333-3333-333333333333',
+          'YUBA CITY', 7.2500, 1.0000)
+$$, 'shares of a rate that was not the site''s');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            taxable, tax_rate_pct, tax_source, tax_override_reason, site_id,
+                            tax_jurisdiction)
+  VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
+          true, 8.2500, 'override', 'Marysville jobsite, location not yet on file', '33333333-3333-3333-3333-333333333333',
+          'YUBA CITY')
+$$, 'a rate set by hand at a site, saying where');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction,
+                            state_rate_pct, district_rate_pct)
+  VALUES ('77777777-0000-4000-8000-0000000000f1',2,'material','Patch cable',4,6.25,25.00,
+          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 7.2500, 0.0000)
+$$, 'a line taxed at its site''s rate, saying where and what the rate was made of');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction)
+  VALUES ('77777777-0000-4000-8000-0000000000f1',3,'material','Patch cable',4,6.25,25.00,
+          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY')
+$$, 'a line sent before the shares were kept, saying where alone');
+
+UPDATE invoice SET status = 'sent', issued_on = '2026-10-08', due_on = '2026-11-07', sent_at = now(),
+       public_token = 'the-link-to-inv-0490-sent-today'
+ WHERE id = '77777777-0000-4000-8000-0000000000f1';
+
+SELECT must_fail($$
+  UPDATE invoice_line SET tax_jurisdiction = 'SUTTER COUNTY', district_rate_pct = 0.2500,
+                          state_rate_pct = 7.0000
+   WHERE invoice_id = '77777777-0000-4000-8000-0000000000f1' AND seq = 2
+$$, 'where a sent line was taxed, changed');
+
 \echo 'All guards hold.'

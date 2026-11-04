@@ -273,6 +273,9 @@ T["invoice_line"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the ph
     ("","unit_price","numeric · as billed"),
     ("FK","site_id","uuid"),("","taxable","bool"),
     ("","tax_rate_pct","numeric · as applied"),("","tax_source","none|site|override|exempt"),
+    ("","tax_jurisdiction","text · CDTFA's area, as taxed"),
+    ("","state_rate_pct","numeric · the state's share"),
+    ("","district_rate_pct","numeric · the districts'"),
     ("","tax_override_reason","text"),("","ex_tax_cost","numeric · snapshot"),
     ("","tax_paid","numeric · snapshot"),("","amount","numeric"),
     ("FK","time_entry_id","uuid"),("FK","trip_leg_id","uuid"),
@@ -598,7 +601,7 @@ files.append(write("05-agreements.drawio", "Agreements", c, 1620, 1060))
 
 # 06 -- money out
 c = at("invoice",40,60) + at("invoice_line",440,60) + at("credit_note",880,60) \
-  + at("credit_application",880,300) + at("entity",40,430) + at("site",440,700) \
+  + at("credit_application",880,300) + at("entity",40,430) + at("site",440,780) \
   + at("stock_draw",880,860) + at("material_lot",1240,860)
 c += [edge("e60","invoice","invoice_line","is made of"),
       edge("e65","invoice_line","stock_draw","drew"),
@@ -630,7 +633,10 @@ c += [note("n6", "A tax override is stored per line, so one invoice can carry li
                  "operator.stock_costing says, and keeps the cost it was drawn at.\n\n"
                  "unit is what qty counts, frozen at issue like tax_rate_pct, so a line "
                  "keeps its unit if the service is later changed. Null when "
-                 "the quantity counts nothing, as on a flat charge or an adjustment.\n\n"
+                 "the quantity counts nothing, as on a flat charge or an adjustment. "
+                 "A taxed line at a site keeps that site’s CDTFA area the same way, and "
+                 "the state’s and districts’ shares where its rate is the site’s, so "
+                 "Schedule A reads a period as it was billed.\n\n"
                  "What is bought for a job, or paid on the client's behalf, is a line of "
                  "its own kind: from whom, who paid -- a person, who is owed it back, or "
                  "the business -- and its receipt.\n\n"
@@ -641,7 +647,7 @@ c += [note("n6", "A tax override is stored per line, so one invoice can carry li
                  "client, and moved_from_invoice_id keeps which it was meant for. A change "
                  "made on a phone says which version it began from, and one made "
                  "meanwhile is merged with it field by field.", 880, 480, 640, 330)]
-files.append(write("06-money-out.drawio", "Money out", c, 1600, 1300))
+files.append(write("06-money-out.drawio", "Money out", c, 1600, 1380))
 
 # 07 -- money in
 c = at("payment",40,60) + at("payment_allocation",440,60) + at("refund",440,220) \

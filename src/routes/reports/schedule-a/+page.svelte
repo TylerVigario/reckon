@@ -51,25 +51,13 @@
 		district_rate_pct: string | null;
 	}) => `${pct(d.rate_pct)} — ${rateParts(d.state_rate_pct, d.district_rate_pct)}`;
 
-	const basis = (d: {
-		lines: number;
-		measure: string;
-		deduction: string;
-		rate_pct: string | null;
-		state_rate_pct: string | null;
-		district_rate_pct: string | null;
-		sites: number;
-	}) => {
-		const where = `${d.sites} ${d.sites === 1 ? 'site' : 'sites'}`;
-		return d.lines
-			? [
-					`Measure ${money(d.measure)}`,
-					Number(d.deduction) > 0 ? `less deduction ${money(d.deduction)}` : null
-				]
-					.filter(Boolean)
-					.join(' ') + ` · ${where}`
-			: `No goods this period · ${where}`;
-	};
+	const basis = (d: { measure: string; deduction: string; sites: number }) =>
+		[
+			`Measure ${money(d.measure)}`,
+			Number(d.deduction) > 0 ? `less deduction ${money(d.deduction)}` : null
+		]
+			.filter(Boolean)
+			.join(' ') + ` · ${d.sites} ${d.sites === 1 ? 'site' : 'sites'}`;
 </script>
 
 <Top
@@ -172,15 +160,17 @@
 						<div class="rec-s">{basis(d)}</div>
 					</div>
 					<div class="rec-n">
-						<span class="rec-v" class:mut={!d.lines}>{money(d.tax)}</span>
-						{#if d.lines}<span class="rec-x">net {money(d.net)}</span>{/if}
+						<span class="rec-v">{money(d.tax)}</span>
+						<span class="rec-x">net {money(d.net)}</span>
 					</div>
 				</div>
 			{:else}
 				<div class="rec">
 					<div class="rec-m">
 						<div class="rec-t"><span class="lt">No districts</span></div>
-						<div class="rec-s">No site draws a levy, so there is nothing to allocate</div>
+						<div class="rec-s">
+							Nothing sent this year was taxed, so there is nothing to allocate
+						</div>
 					</div>
 				</div>
 			{/each}
