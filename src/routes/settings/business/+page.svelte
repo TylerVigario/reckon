@@ -4,6 +4,7 @@
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import Top from '#lib/Top.svelte';
+	import Ask from '#lib/Ask.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import AddressField from '#lib/AddressField.svelte';
 	import type { PageProps } from './$types';
@@ -12,6 +13,12 @@
 	import { resolve } from '$app/paths';
 
 	let { data, form }: PageProps = $props();
+
+	// Removing the logo asks first: the file is not kept, and it goes from every
+	// invoice page a client opens, sent ones too.
+	let askingLogo = $state(false);
+	let logoForm = $state<HTMLFormElement>();
+	let clearLogo = $state<HTMLButtonElement>();
 	const o = $derived(data.operator);
 
 	const tidy = (v: unknown) => {
@@ -102,7 +109,14 @@
 	<div class="sec">
 		<div class="sec-h"><h2>Mark</h2></div>
 		<div class="rows inset">
-			<form class="logo" method="POST" action="?/logo" enctype="multipart/form-data" use:enhance>
+			<form
+				class="logo"
+				method="POST"
+				action="?/logo"
+				enctype="multipart/form-data"
+				use:enhance
+				bind:this={logoForm}
+			>
 				{#if o?.has_logo}
 					<img src="/operator/logo" alt={o.trading_name} />
 				{:else}
@@ -117,12 +131,37 @@
 					name="logo"
 					accept="image/png,image/jpeg,image/svg+xml,image/webp"
 				/>
-				<div class="btnrow">
-					<button class="btn" type="submit">Upload</button>
-					{#if o?.has_logo}
-						<button class="btn gho" type="submit" formaction="?/clearLogo">Remove</button>
-					{/if}
-				</div>
+				{#if askingLogo && o?.has_logo}
+					<Ask
+						tone="danger"
+						keep="Keep it"
+						go="Remove it"
+						onkeep={() => (askingLogo = false)}
+						ongo={() => {
+							logoForm?.requestSubmit(clearLogo);
+							askingLogo = false;
+						}}
+					>
+						<p>
+							Remove the logo? It goes from the app's icon and from the page of every invoice a
+							client opens, the ones already sent too. The file is not kept: to have it back, it is
+							uploaded again.
+						</p>
+					</Ask>
+				{:else}
+					<div class="btnrow">
+						<button class="btn" type="submit">Upload</button>
+						{#if o?.has_logo}
+							<button class="btn gho" type="button" onclick={() => (askingLogo = true)}
+								>Remove</button
+							>
+						{/if}
+					</div>
+				{/if}
+				<!-- What the question's Remove submits: the form, to its own action. -->
+				<button type="submit" formaction="?/clearLogo" hidden bind:this={clearLogo}
+					>Remove the logo</button
+				>
 				<small>PNG, JPEG, SVG or WebP, under 512 KB.</small>
 			</form>
 		</div>

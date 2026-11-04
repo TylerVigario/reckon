@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import Ask from '#lib/Ask.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import { parseVehicleChange } from '#lib/vehicle-fields.ts';
 	import { vehicleWords } from '#lib/pay-words.ts';
@@ -34,10 +35,16 @@
 		await refreshAll();
 	}
 
+	// Removing one nothing was driven in asks first, as every delete does: it
+	// cannot be undone, and adding it again makes another vehicle.
+	let removing = $state<'idle' | 'asking' | 'working'>('idle');
+
 	async function remove() {
 		problem = '';
+		removing = 'working';
 		const r = await fetch(`/api/vehicles/${v.id}`, { method: 'DELETE' }).catch(() => null);
 		if (!r?.ok) {
+			removing = 'idle';
 			problem = r
 				? ((await readProblem(r)).detail ?? 'Not removed.')
 				: 'Not removed — no connection.';
@@ -92,16 +99,32 @@
 		</p>
 	</div>
 
-	<div class="btnrow">
-		{#if v.retired_on}
-			<button type="button" class="btn" onclick={() => retire(false)}>Back in use</button>
-		{:else}
-			<button type="button" class="btn" onclick={() => retire(true)}>Retire it</button>
-		{/if}
-		{#if v.trips === 0}
-			<button type="button" class="btn gho" onclick={remove}>Remove it</button>
-		{/if}
-	</div>
+	{#if removing === 'idle'}
+		<div class="btnrow">
+			{#if v.retired_on}
+				<button type="button" class="btn" onclick={() => retire(false)}>Back in use</button>
+			{:else}
+				<button type="button" class="btn" onclick={() => retire(true)}>Retire it</button>
+			{/if}
+			{#if v.trips === 0}
+				<button type="button" class="btn gho" onclick={() => (removing = 'asking')}
+					>Remove it</button
+				>
+			{/if}
+		</div>
+	{:else}
+		<Ask
+			tone="danger"
+			keep="Keep it"
+			go="Remove it for good"
+			going="Removing…"
+			working={removing === 'working'}
+			onkeep={() => (removing = 'idle')}
+			ongo={remove}
+		>
+			<p>Remove {v.name}? Nothing has been driven in it. This cannot be undone.</p>
+		</Ask>
+	{/if}
 	{#if problem}<p class="why bad">{problem}</p>{/if}
 </div>
 

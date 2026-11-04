@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import Ask from '#lib/Ask.svelte';
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -68,11 +69,18 @@
 	const partsSaid = (ps: { paid_as: PaidAs; total: string }[]) =>
 		ps.map((x) => `${money(x.total)} ${PAID_AS_WORDS[x.paid_as].money}`).join(', ');
 
-	async function record() {
+	// A payment stands once recorded (0026), so the button asks first, and only
+	// of a payment that could be recorded: what it lacks is said before that.
+	let confirming = $state(false);
+	function ask() {
 		why = '';
 		if (!picked.length && !correcting) return (why = 'Tick what it covers.');
 		if (correcting && (!correctTo || !correctOf || !correction || !correctWhy.trim()))
 			return (why = 'A correction needs the payment it corrects, which part, an amount and why.');
+		confirming = true;
+	}
+
+	async function record() {
 		saving = true;
 		const r = await fetch('/api/pay', {
 			method: 'POST',
@@ -96,6 +104,7 @@
 			})
 		}).catch(() => null);
 		saving = false;
+		if (!r?.ok) confirming = false;
 		if (!r) return (why = 'Not recorded — no connection.');
 		if (!r.ok) {
 			const p = await readProblem(r);
@@ -296,9 +305,28 @@
 			/>
 		</div>
 		{#if why}<p class="why bad">{why}</p>{/if}
-		<button class="btn pri blk" type="button" onclick={record} disabled={saving}
-			>Record the payment</button
-		>
+		{#if confirming}
+			<Ask
+				keep="Not yet"
+				go="Record it"
+				going="Recording…"
+				working={saving}
+				onkeep={() => (confirming = false)}
+				ongo={record}
+			>
+				<p>
+					Record {money(total.toString())} paid to {data.person.name} on {dated(paidOn)}?{totalSaid
+						? ` ${totalSaid}.`
+						: ''}
+				</p>
+				<p>
+					A payment stands once recorded. What it covers can no longer be changed or removed, and a
+					mistake is put right by a correction on a later payment.
+				</p>
+			</Ask>
+		{:else}
+			<button class="btn pri blk" type="button" onclick={ask}>Record the payment</button>
+		{/if}
 		<p class="aside">
 			reckon records the payment; it does not send money. Each item keeps what it pays now, the rule
 			that set it and what it was paid as, so a later change to a rule or a role moves only what is

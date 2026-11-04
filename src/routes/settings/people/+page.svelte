@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import Ask from '#lib/Ask.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import { parsePersonField, parseRoleField, PAYS_AS, ROLE_FIELDS } from '#lib/people-fields.ts';
 	import { paysAsLabel } from '#lib/pay-words.ts';
@@ -54,9 +55,17 @@
 		await refreshAll();
 	}
 
+	// Deleting a role nobody holds and no rule names asks first, as every
+	// delete does: it cannot be undone.
+	let deletingRole = $state<string | null>(null);
+	let roleWorking = $state(false);
+
 	async function removeRole(id: string) {
 		problem = '';
+		roleWorking = true;
 		const r = await fetch(`/api/roles/${id}`, { method: 'DELETE' }).catch(() => null);
+		roleWorking = false;
+		deletingRole = null;
 		if (!r?.ok) {
 			problem = r
 				? ((await readProblem(r)).detail ?? 'Not deleted.')
@@ -126,9 +135,26 @@
 							onsaved={() => refreshAll()}
 						/>
 						{#if !r.holders && !r.rules}
-							<button type="button" class="btn sm gho del" onclick={() => removeRole(r.id)}
-								>Delete {r.name}</button
-							>
+							{#if deletingRole === r.id}
+								<Ask
+									tone="danger"
+									keep="Keep it"
+									go="Delete it for good"
+									going="Deleting…"
+									working={roleWorking}
+									onkeep={() => (deletingRole = null)}
+									ongo={() => removeRole(r.id)}
+								>
+									<p>
+										Delete the role {r.name}? Nobody holds it and no pay rule names it. This cannot
+										be undone.
+									</p>
+								</Ask>
+							{:else}
+								<button type="button" class="btn sm gho del" onclick={() => (deletingRole = r.id)}
+									>Delete {r.name}</button
+								>
+							{/if}
 						{/if}
 					</div>
 				{/each}

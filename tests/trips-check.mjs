@@ -288,6 +288,13 @@ check(
 	'the stop is kept with both, and who asked once there'
 );
 await tap('Remove this trip');
+await settle(500);
+check(
+	/^\/trips\/[0-9a-f-]{36}$/.test(/** @type {string} */ (await evaluate('location.pathname'))) &&
+		(await page()).includes('This cannot be undone'),
+	'removing a trip asks first, and removes nothing yet'
+);
+await tap('Remove it for good');
 await settle(2000);
 check((await evaluate('location.pathname')) === '/trips', 'a trip recorded wrongly is taken back');
 

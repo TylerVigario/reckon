@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import Ask from '#lib/Ask.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import { parseAll } from '#lib/field-rules.ts';
 	import { parseUnitField, placesWord, PLACES, UNIT_FIELDS } from '#lib/unit-fields.ts';
@@ -45,9 +46,17 @@
 		await refreshAll();
 	}
 
+	// Deleting a unit no material is counted in asks first, as every delete
+	// does: it cannot be undone.
+	let deleting = $state<string | null>(null);
+	let working = $state(false);
+
 	async function remove(id: string) {
 		problem = '';
+		working = true;
 		const r = await fetch(`/api/units/${id}`, { method: 'DELETE' }).catch(() => null);
+		working = false;
+		deleting = null;
 		if (!r?.ok) {
 			problem = r
 				? ((await readProblem(r)).detail ?? 'Not deleted.')
@@ -101,9 +110,25 @@
 						onsaved={() => refreshAll()}
 					/>
 					{#if !u.materials}
-						<button type="button" class="btn sm gho" onclick={() => remove(u.id)}
-							>Delete {u.name}</button
-						>
+						{#if deleting === u.id}
+							<Ask
+								tone="danger"
+								keep="Keep it"
+								go="Delete it for good"
+								going="Deleting…"
+								{working}
+								onkeep={() => (deleting = null)}
+								ongo={() => remove(u.id)}
+							>
+								<p>
+									Delete the unit {u.name}? No material is counted in it. This cannot be undone.
+								</p>
+							</Ask>
+						{:else}
+							<button type="button" class="btn sm gho" onclick={() => (deleting = u.id)}
+								>Delete {u.name}</button
+							>
+						{/if}
 					{/if}
 				</div>
 			{/each}

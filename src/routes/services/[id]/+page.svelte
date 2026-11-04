@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import Ask from '#lib/Ask.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import PriceForm from '#lib/service/PriceForm.svelte';
 	import RuleForm from '#lib/service/RuleForm.svelte';
@@ -64,6 +65,20 @@
 		await refreshAll();
 	}
 
+	// A row that started today has already priced or paid today's work, and
+	// taking it back re-figures that work, so it asks. A scheduled one has
+	// touched nothing yet, and goes at one tap.
+	let taking = $state<null | { kind: 'prices' | 'rules'; id: string; what: string }>(null);
+	let takingBack = $state(false);
+	function offerToTakeBack(
+		kind: 'prices' | 'rules',
+		r: { id: string; state: string },
+		what: string
+	) {
+		if (r.state === 'scheduled') void takeBack(kind, r.id);
+		else taking = { kind, id: r.id, what };
+	}
+
 	async function takeBack(kind: 'prices' | 'rules', id: string) {
 		problem = '';
 		const r = await fetch(`${endpoint}/${kind}/${id}`, { method: 'DELETE' }).catch(() => null);
@@ -85,6 +100,9 @@
 	// out at the top of the page, and only the second sends anything.
 	let deleting = $state<'idle' | 'asking' | 'working'>('idle');
 	let offering = $state(false);
+	// Retiring asks too: it is undone as easily, but it reaches past the
+	// service, into the timer, the agreements and the trips that bill by it.
+	let retiring = $state(false);
 	const unused = $derived(
 		data.used.entries === 0 && data.used.legs === 0 && data.used.agreements === 0
 	);
@@ -172,8 +190,11 @@
 				disabled={deleting !== 'idle'}>Delete</button
 			>
 		{:else if s.active}
-			<button type="button" class="btn sm" onclick={() => setOffered(false)} disabled={offering}
-				>Retire</button
+			<button
+				type="button"
+				class="btn sm"
+				onclick={() => (retiring = true)}
+				disabled={offering || retiring}>Retire</button
 			>
 		{:else}
 			<button type="button" class="btn sm pri" onclick={() => setOffered(true)} disabled={offering}
@@ -185,19 +206,66 @@
 
 <div class="pad">
 	{#if deleting !== 'idle'}
-		<div class="confirm">
+		<Ask
+			tone="danger"
+			keep="Keep it"
+			go="Delete it for good"
+			going="Deleting…"
+			working={deleting === 'working'}
+			onkeep={() => (deleting = 'idle')}
+			ongo={remove}
+		>
 			<p>Delete {s.name}, with its prices and pay rules? This cannot be undone.</p>
-			<div class="btnrow">
-				<button type="button" class="btn" onclick={() => (deleting = 'idle')}>Keep it</button>
-				<button
-					type="button"
-					class="btn danger solid"
-					onclick={remove}
-					disabled={deleting === 'working'}
-					>{deleting === 'working' ? 'Deleting…' : 'Delete it for good'}</button
-				>
-			</div>
-		</div>
+		</Ask>
+	{:else if retiring}
+		<Ask
+			keep="Keep offering it"
+			go="Retire it"
+			going="Retiring…"
+			working={offering}
+			onkeep={() => (retiring = false)}
+			ongo={async () => {
+				await setOffered(false);
+				retiring = false;
+			}}
+		>
+			<p>
+				Retire {s.name}? It can no longer be chosen for new work or covered by an agreement{s.time_tracked
+					? ', and it leaves the timer'
+					: ''}. What it has billed keeps its name{usedBy ? `: ${usedBy}` : ''}.
+			</p>
+			{#if s.unit === 'mile'}
+				<p>
+					While it is retired, a trip that bills its miles as {s.name} is refused, including one still
+					waiting to send from someone's phone.
+				</p>
+			{/if}
+			<p>Offer it again to put it back as it was.</p>
+		</Ask>
+	{:else if taking}
+		<Ask
+			tone="danger"
+			keep="Keep it"
+			go="Take it back"
+			going="Taking it back…"
+			working={takingBack}
+			onkeep={() => (taking = null)}
+			ongo={async () => {
+				if (!taking) return;
+				takingBack = true;
+				await takeBack(taking.kind, taking.id);
+				takingBack = false;
+				taking = null;
+			}}
+		>
+			<p>
+				Take back {taking.what}, in force since today? Today's work not yet {taking.kind ===
+				'prices'
+					? 'billed goes back to the price'
+					: 'paid goes back to the rule'} before it, if there was one. It is not kept anywhere: to have
+				it again, it is entered again.
+			</p>
+		</Ask>
 	{/if}
 	{#if !s.active}
 		<p class="retired">
@@ -261,7 +329,9 @@
 										<button
 											type="button"
 											class="btn sm gho"
-											onclick={() => takeBack('prices', p.id)}>Take back</button
+											onclick={() =>
+												offerToTakeBack('prices', p, `${unitPrice(p.rate)}${perShort}`)}
+											>Take back</button
 										>
 									{/if}
 								</div>
@@ -337,8 +407,10 @@
 										>
 									{/if}
 									{#if takeable(r)}
-										<button type="button" class="btn sm gho" onclick={() => takeBack('rules', r.id)}
-											>Take back</button
+										<button
+											type="button"
+											class="btn sm gho"
+											onclick={() => offerToTakeBack('rules', r, 'this pay rule')}>Take back</button
 										>
 									{/if}
 								</div>
@@ -486,33 +558,10 @@
 		color: var(--crit);
 		margin: 0 0 12px;
 	}
-	.btn.danger {
-		color: var(--crit);
-		border-color: var(--crit);
-	}
-	.btn.danger.solid {
-		background: var(--crit);
-		color: var(--surface);
-	}
-	/* The second tap of a delete, where the first one was made. */
-	.confirm {
-		background: var(--surface);
-		border: 1px solid var(--crit);
-		border-radius: var(--r);
-		padding: 14px;
-		margin-bottom: 16px;
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-	}
-	.confirm p,
 	.retired {
-		margin: 0;
+		margin: 0 0 16px;
 		font-size: 14px;
-	}
-	.retired {
 		color: var(--ink-3);
-		margin-bottom: 16px;
 	}
 	/* The way in to a form, at the foot of the list it adds to. */
 	.addrow {

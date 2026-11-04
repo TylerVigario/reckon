@@ -168,7 +168,7 @@ check(
 	`Send opens the draft's Send screen: what it asks, when it is dated and due (${sendPath})`
 );
 
-await tap('Copy the link');
+await tap('Send — copy the link');
 await settle(3000);
 const sentPath = /** @type {string} */ (await evaluate('location.pathname'));
 const sent = await page();
