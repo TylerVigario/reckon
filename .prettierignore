@@ -9,6 +9,9 @@ dist-release
 # Drizzle Kit writes these, and its folder is its own.
 drizzle
 
+# docs/schema/make-printable.py writes it, from the diagrams.
+docs/schema/reference.json
+
 # git-cliff writes the changelog.
 CHANGELOG.md
 
