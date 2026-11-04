@@ -68,8 +68,7 @@ const numbers = (options: Intl.NumberFormatOptions) => {
 		() => new Intl.NumberFormat(locale, options)
 	);
 };
-const dates = (options: Intl.DateTimeFormatOptions) => {
-	const locale = localeOf();
+const dates = (options: Intl.DateTimeFormatOptions, locale = localeOf()) => {
 	return once(
 		`d ${locale} ${JSON.stringify(options)}`,
 		() => new Intl.DateTimeFormat(locale, options)
@@ -374,6 +373,15 @@ export function zoneName(zone: string): string {
 /** "9:21 AM", "09:21" -- a moment, on the person's clock, as their locale and clock write it. */
 export function clock(at: number | string | Date, zone: string): string {
 	return dates({ timeZone: zone, timeStyle: 'short' }).format(new Date(at));
+}
+
+/**
+ * "2:05 PM", "14:05", "14 h 05" -- five past two in the afternoon, as clock()
+ * writes it under the tag given rather than the reader's: the example a choice
+ * of clock is offered with, which shows what that choice would print.
+ */
+export function clockSample(tag: string): string {
+	return dates({ timeZone: 'UTC', timeStyle: 'short' }, tag).format(Date.UTC(2026, 0, 5, 14, 5));
 }
 
 /** "17 Sept 2026" -- the date of a moment, on the person's clock. */

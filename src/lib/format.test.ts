@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
 	clock,
+	clockSample,
 	dated,
 	datedAt,
 	day,
@@ -310,6 +311,24 @@ describe('zoneName', () => {
 	it('names a zone the way people say it, and gives back one it cannot name', () => {
 		expect(zoneName('America/Los_Angeles')).toBe('Pacific Time');
 		expect(zoneName('Not/AZone')).toBe('Not/AZone');
+	});
+});
+
+describe('clockSample', () => {
+	it('writes the time as each locale and clock would', () => {
+		expect(clockSample('en-US')).toBe('2:05 PM');
+		expect(clockSample('en-US-u-hc-h23')).toBe('14:05');
+		expect(clockSample('en-GB-u-hc-h12')).toBe('2:05 pm');
+		expect(clockSample('en-CA')).toBe('2:05 p.m.');
+		expect(clockSample('fr-CA')).toBe('14 h 05');
+		expect(clockSample('da-DK')).toBe('14.05');
+	});
+
+	describe('read by someone in another locale', () => {
+		inLocale('de-DE');
+		it('is written in the tag it is given, not theirs', () => {
+			expect(clockSample('en-US')).toBe('2:05 PM');
+		});
 	});
 });
 
