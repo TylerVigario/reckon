@@ -3,7 +3,7 @@
 	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import { parseSiteField } from '#lib/site-fields.ts';
-	import { hours, pct, rateParts } from '#lib/format.ts';
+	import { hours, miles, pct, rateParts } from '#lib/format.ts';
 	import Day from '#lib/Day.svelte';
 	import type { PageProps } from './$types';
 	import { readJson, readProblem } from '#lib/json.ts';
@@ -13,6 +13,11 @@
 
 	let { data }: PageProps = $props();
 	const s = $derived(data.site);
+	// Someone with Field reads a site to work at, and changes nothing (#lib/access).
+	const field = $derived(data.user?.access === 'field');
+	// How far it is, as the site says it: typed over Google's.
+	const roundTrip = $derived(s.typed_round_trip_miles ?? s.google_round_trip_miles);
+	const driveMinutes = $derived(s.typed_drive_minutes ?? s.google_drive_minutes);
 	// One version for the row, shared by every field on it: a save by any
 	// field moves it, and the next field to save sends the new one.
 	//
@@ -164,95 +169,118 @@
 		</div>
 	</div>
 
-	<div class="sec">
-		<div class="sec-h">
-			<h2>Where it is</h2>
-			<span class="sp"></span>
-			<span class="chip">Changing this re-asks CDTFA</span>
-		</div>
-		<div class="rows inset">
-			<Setting
-				name="label"
-				label="What this client calls it"
-				value={s.label}
-				endpoint={api}
-				{version}
-				onversion={(v) => (version = v)}
-				validate={parseSiteField}
-				required
-			/>
-			<Setting
-				name="slug"
-				label="In the URL"
-				value={s.slug}
-				endpoint={api}
-				{version}
-				onversion={(v) => (version = v)}
-				validate={parseSiteField}
-				hint="Renaming the site above leaves this alone, so a link somebody kept keeps working"
-				onsaved={(slug) =>
-					goto(resolve('/clients/[id]/sites/[site]', { id: s.client_slug, site: slug }), {
-						replaceState: true
-					})}
-				required
-			/>
-			{#key addressLine + (s.google_place_id ?? '')}
-				<div class="fld">
-					<label for="address-input">Address</label>
-					<AddressField
-						label=""
-						value={addressLine}
-						placeId={s.google_place_id}
-						onchosen={moveTo}
-					/>
-					{#if moving === 'saving'}
-						<small>Asking CDTFA, and Google how far it is…</small>
-					{:else if moving === 'bad'}
-						<small class="why">{movingWhy}</small>
-					{:else if unmeasured}
-						<small class="why">{unmeasured}</small>
-					{/if}
+	{#if field}
+		<div class="sec">
+			<div class="sec-h"><h2>Where it is</h2></div>
+			<div class="rows">
+				<div class="rec">
+					<div class="rec-m">
+						<div class="rec-t">{addressLine || 'No address on file'}</div>
+						{#if roundTrip || driveMinutes !== null}
+							<div class="rec-s">
+								{[
+									roundTrip ? `${miles(roundTrip, 'distance')} there and back` : null,
+									driveMinutes !== null ? `${driveMinutes} min each way` : null
+								]
+									.filter(Boolean)
+									.join(' · ')}
+							</div>
+						{/if}
+					</div>
 				</div>
-				<Setting
-					name="typed_round_trip_miles"
-					label="Round trip"
-					value={s.typed_round_trip_miles ?? ''}
-					placeholder={s.google_round_trip_miles ?? ''}
-					endpoint={api}
-					{version}
-					onversion={(v) => (version = v)}
-					validate={parseSiteField}
-					inputmode="decimal"
-					hint={(typed) =>
-						said(
-							typed,
-							s.google_round_trip_miles,
-							"Google's route from the business and back",
-							'Miles from the business and back'
-						)}
-				/>
-				<Setting
-					name="typed_drive_minutes"
-					label="Drive time"
-					value={s.typed_drive_minutes ?? ''}
-					placeholder={s.google_drive_minutes === null ? '' : String(s.google_drive_minutes)}
-					endpoint={api}
-					{version}
-					onversion={(v) => (version = v)}
-					validate={parseSiteField}
-					inputmode="numeric"
-					hint={(typed) =>
-						said(typed, s.google_drive_minutes, "Google's route, one way", 'Minutes, one way')}
-				/>
-			{/key}
+			</div>
 		</div>
-	</div>
+	{:else}
+		<div class="sec">
+			<div class="sec-h">
+				<h2>Where it is</h2>
+				<span class="sp"></span>
+				<span class="chip">Changing this re-asks CDTFA</span>
+			</div>
+			<div class="rows inset">
+				<Setting
+					name="label"
+					label="What this client calls it"
+					value={s.label}
+					endpoint={api}
+					{version}
+					onversion={(v) => (version = v)}
+					validate={parseSiteField}
+					required
+				/>
+				<Setting
+					name="slug"
+					label="In the URL"
+					value={s.slug}
+					endpoint={api}
+					{version}
+					onversion={(v) => (version = v)}
+					validate={parseSiteField}
+					hint="Renaming the site above leaves this alone, so a link somebody kept keeps working"
+					onsaved={(slug) =>
+						goto(resolve('/clients/[id]/sites/[site]', { id: s.client_slug, site: slug }), {
+							replaceState: true
+						})}
+					required
+				/>
+				{#key addressLine + (s.google_place_id ?? '')}
+					<div class="fld">
+						<label for="address-input">Address</label>
+						<AddressField
+							label=""
+							value={addressLine}
+							placeId={s.google_place_id}
+							onchosen={moveTo}
+						/>
+						{#if moving === 'saving'}
+							<small>Asking CDTFA, and Google how far it is…</small>
+						{:else if moving === 'bad'}
+							<small class="why">{movingWhy}</small>
+						{:else if unmeasured}
+							<small class="why">{unmeasured}</small>
+						{/if}
+					</div>
+					<Setting
+						name="typed_round_trip_miles"
+						label="Round trip"
+						value={s.typed_round_trip_miles ?? ''}
+						placeholder={s.google_round_trip_miles ?? ''}
+						endpoint={api}
+						{version}
+						onversion={(v) => (version = v)}
+						validate={parseSiteField}
+						inputmode="decimal"
+						hint={(typed) =>
+							said(
+								typed,
+								s.google_round_trip_miles,
+								"Google's route from the business and back",
+								'Miles from the business and back'
+							)}
+					/>
+					<Setting
+						name="typed_drive_minutes"
+						label="Drive time"
+						value={s.typed_drive_minutes ?? ''}
+						placeholder={s.google_drive_minutes === null ? '' : String(s.google_drive_minutes)}
+						endpoint={api}
+						{version}
+						onversion={(v) => (version = v)}
+						validate={parseSiteField}
+						inputmode="numeric"
+						hint={(typed) =>
+							said(typed, s.google_drive_minutes, "Google's route, one way", 'Minutes, one way')}
+					/>
+				{/key}
+			</div>
+		</div>
+	{/if}
 
 	<div class="sec">
 		<div class="sec-h">
 			<h2>Who to ask for</h2>
 			<span class="sp"></span>
-			{#if !adding}
+			{#if !adding && !field}
 				<button class="btn sm" onclick={() => (adding = true)}>Add</button>
 			{/if}
 		</div>
@@ -267,12 +295,14 @@
 							{[p.email, p.phone].filter(Boolean).join(' · ') || 'no details on file'}
 						</div>
 					</div>
-					<div class="rec-n acts">
-						{#if !p.is_primary}
-							<button class="btn sm" onclick={() => makeFirst(p.id)}>First</button>
-						{/if}
-						<button class="btn sm" onclick={() => detach(p.id)}>Remove</button>
-					</div>
+					{#if !field}
+						<div class="rec-n acts">
+							{#if !p.is_primary}
+								<button class="btn sm" onclick={() => makeFirst(p.id)}>First</button>
+							{/if}
+							<button class="btn sm" onclick={() => detach(p.id)}>Remove</button>
+						</div>
+					{/if}
 				</div>
 			{:else}
 				<div class="rec warn">

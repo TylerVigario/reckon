@@ -5,14 +5,16 @@ import * as t from '#lib/server/db/schema/index.ts';
 import { formFieldsOf, formTerms, materials } from '#lib/server/lines.ts';
 import { shelves } from '#lib/server/stock.ts';
 import { UUID } from '#lib/field-rules.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
  * Change a line added by hand: the Add a line form, filled in with the line as
  * it is (#lib/server/lines changeLine). A line on an invoice that has gone out,
- * or one a draft was built from, is shown and not changed.
+ * or one a draft was built from, is shown and not changed -- as is one someone
+ * with Field did not add (#lib/access).
  */
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.line)) error(404, 'no such line');
 	const il = t.invoiceLine;
 	const [line] = await db
@@ -34,7 +36,8 @@ export const load: PageServerLoad = async ({ params }) => {
 			number: t.invoice.number,
 			status: t.invoice.status,
 			entity_id: t.invoice.entityId,
-			who: t.entity.name
+			who: t.entity.name,
+			created_by: il.createdBy
 		})
 		.from(il)
 		.innerJoin(t.invoice, eq(t.invoice.id, il.invoiceId))
@@ -42,7 +45,11 @@ export const load: PageServerLoad = async ({ params }) => {
 		.where(and(eq(il.id, params.line), eq(il.invoiceId, params.id)));
 	if (!line) error(404, 'no such line');
 	const kind = line.kind;
-	if (line.status !== 'draft' || (kind !== 'material' && kind !== 'bought' && kind !== 'paid_for'))
+	if (
+		line.status !== 'draft' ||
+		(kind !== 'material' && kind !== 'bought' && kind !== 'paid_for') ||
+		(fieldOnly(locals) && line.created_by !== locals.user!.id)
+	)
 		redirect(303, `/invoices/${line.invoice_id}/lines/${line.id}`);
 
 	const [sites, terms] = await Promise.all([

@@ -849,6 +849,11 @@
       ],
       [
        "",
+       "access",
+       "full|field · what they reach"
+      ],
+      [
+       "",
        "timezone",
        "text · null = the business's"
       ],
@@ -1477,6 +1482,11 @@
        "",
        "receipt_type",
        "text"
+      ],
+      [
+       "FK",
+       "created_by",
+       "uuid · who added it"
       ]
      ]
     },
@@ -2203,7 +2213,7 @@
     }
    ],
    "notes": [
-    "Anyone who can sign in can see and change everything: user has no permission columns. role_id is not access: it is the capacity someone is paid in, which pay rules are written against.  Each person keeps a time zone, a locale, a clock and a first day of the week. Empty follows the business's -- its own timezone and locale -- or what the locale says.  user, session, account and verification are Better Auth's, in its shape. A password is an account whose provider_id is credential, and what it holds is an argon2id hash. There is no sign-up: people are added from the command line.  A session is a row, not a stateless token: one server, one database, and every page reads it anyway, so a stateless token would save no round trip and cost revocation. The cookie is the token signed with the server's secret, so a copy of this table lets nobody in without the secret as well.  Which migrations a database has seen is Drizzle's record, in drizzle.__drizzle_migrations, so bringing it up to date again applies only what is new.  Everything that identifies the business is the operator's to supply: logo is nullable and the interface renders trading_name in its place.  An included-hours figure is a client's, on their agreement, and what is paid to whoever answers is a dated pay_rule.  record_history is append-only and exists to explain a figure, not to police one. An invoice line is followed from its birth: what it was when added, each field changed, and what it was when taken off. A receipt is described rather than copied while its row holds it, and kept whole once the history is the only place it is: replaced, or taken off with its line. made_at is when a change was made on a phone, beside changed_at, when it arrived."
+    "What someone can reach is user.access, apart from role_id, the capacity they are paid in, which pay rules are written against. Full is everything, and the only level that bills or pays; Field is their own work and what they are paid for it. Someone new starts with Field, and a trigger keeps someone active on Full. Which routes each level reaches is the app's, in src/lib/access.ts.  Each person keeps a time zone, a locale, a clock and a first day of the week. Empty follows the business's -- its own timezone and locale -- or what the locale says.  user, session, account and verification are Better Auth's, in its shape. A password is an account whose provider_id is credential, and what it holds is an argon2id hash. There is no sign-up: people are added from the command line.  A session is a row, not a stateless token: one server, one database, and every page reads it anyway, so a stateless token would save no round trip and cost revocation. The cookie is the token signed with the server's secret, so a copy of this table lets nobody in without the secret as well.  Which migrations a database has seen is Drizzle's record, in drizzle.__drizzle_migrations, so bringing it up to date again applies only what is new.  Everything that identifies the business is the operator's to supply: logo is nullable and the interface renders trading_name in its place.  An included-hours figure is a client's, on their agreement, and what is paid to whoever answers is a dated pay_rule.  record_history is append-only and exists to explain a figure, not to police one. An invoice line is followed from its birth: what it was when added, each field changed, and what it was when taken off. A receipt is described rather than copied while its row holds it, and kept whole once the history is the only place it is: replaced, or taken off with its line. made_at is when a change was made on a phone, beside changed_at, when it arrived."
    ]
   },
   {

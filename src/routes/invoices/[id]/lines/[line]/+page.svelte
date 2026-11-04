@@ -19,8 +19,11 @@
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
+	import { opens } from '#lib/access.ts';
 
 	let { data }: PageProps = $props();
+	// Its history is Full's to read (#lib/access).
+	const history = $derived(opens(data.user?.access, '/invoices/[id]/lines/[line]/history'));
 	const l = $derived(data.line);
 	const draft = $derived(l.status === 'draft');
 	const byHand = $derived(['material', 'bought', 'paid_for'].includes(l.kind));
@@ -214,7 +217,7 @@
 
 <Top title={l.description} {sub} {back} backLabel={l.number}>
 	{#snippet actions()}
-		{#if draft && byHand && !conflict}
+		{#if draft && byHand && !conflict && data.changeable}
 			<a
 				class="btn sm"
 				href={resolve('/invoices/[id]/lines/[line]/change', { id: l.invoice_id, line: l.id })}
@@ -299,18 +302,20 @@
 				</div>
 			</div>
 		{/each}
-		<div class="rows">
-			<a
-				class="rec link"
-				href={resolve('/invoices/[id]/lines/[line]/history', { id: l.invoice_id, line: l.id })}
-			>
-				<div class="rec-m">
-					<div class="rec-t">The whole history</div>
-					<div class="rec-s">Every value this line has held, and who set it</div>
-				</div>
-				<span class="arw" aria-hidden="true">›</span>
-			</a>
-		</div>
+		{#if history}
+			<div class="rows">
+				<a
+					class="rec link"
+					href={resolve('/invoices/[id]/lines/[line]/history', { id: l.invoice_id, line: l.id })}
+				>
+					<div class="rec-m">
+						<div class="rec-t">The whole history</div>
+						<div class="rec-s">Every value this line has held, and who set it</div>
+					</div>
+					<span class="arw" aria-hidden="true">›</span>
+				</a>
+			</div>
+		{/if}
 		<div class="btnrow">
 			<button class="btn pri blk" disabled={deciding} onclick={keepPicks}>Keep these</button>
 			<a class="btn blk" href={back}>Later</a>
@@ -418,26 +423,33 @@
 		</div>
 	</div>
 
-	<div class="rows">
-		<a
-			class="rec link"
-			href={resolve('/invoices/[id]/lines/[line]/history', { id: l.invoice_id, line: l.id })}
-		>
-			<div class="rec-m">
-				<div class="rec-t">History</div>
-				<div class="rec-s">
-					{data.added
-						? `Added by ${data.added.who ?? 'someone'}, ${when(data.added.at)}`
-						: 'Added before lines kept their history'}{data.changes
-						? ` · changed ${data.changes === 1 ? 'once' : `${data.changes} times`} since`
-						: ''}
-				</div>
+	{#snippet whoAdded()}
+		<div class="rec-m">
+			<div class="rec-t">History</div>
+			<div class="rec-s">
+				{data.added
+					? `Added by ${data.added.who ?? 'someone'}, ${when(data.added.at)}`
+					: 'Added before lines kept their history'}{data.changes
+					? ` · changed ${data.changes === 1 ? 'once' : `${data.changes} times`} since`
+					: ''}
 			</div>
-			<span class="arw" aria-hidden="true">›</span>
-		</a>
+		</div>
+	{/snippet}
+	<div class="rows">
+		{#if history}
+			<a
+				class="rec link"
+				href={resolve('/invoices/[id]/lines/[line]/history', { id: l.invoice_id, line: l.id })}
+			>
+				{@render whoAdded()}
+				<span class="arw" aria-hidden="true">›</span>
+			</a>
+		{:else}
+			<div class="rec">{@render whoAdded()}</div>
+		{/if}
 	</div>
 
-	{#if draft && byHand && !conflict && mine?.change.act !== 'remove'}
+	{#if draft && byHand && !conflict && mine?.change.act !== 'remove' && data.changeable}
 		<button class="btn gho blk off" onclick={takeOff}>
 			{confirming ? 'Tap again to take it off' : 'Take it off the draft'}
 		</button>

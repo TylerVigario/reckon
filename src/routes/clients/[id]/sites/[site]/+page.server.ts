@@ -5,6 +5,7 @@ import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { rateIsStale } from '#lib/server/stale.ts';
 import { findClient, findSite } from '#lib/server/find.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -13,9 +14,10 @@ import type { PageServerLoad } from './$types';
  *
  * A site is the thing a jobsite rate, a mileage figure and a contact all hang
  * off, and every one of those is
- * edited here -- except the rate, which is CDTFA's and has no field.
+ * edited here -- except the rate, which is CDTFA's and has no field. Someone
+ * with Field reads it, to work at, and changes nothing (#lib/access).
  */
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
 	const client = await findClient(params.id);
 	const found = await findSite(client.id, params.site);
 
@@ -116,5 +118,5 @@ export const load: PageServerLoad = async ({ params }) => {
 			.where(eq(t.timeEntry.siteId, found.id))
 	]);
 
-	return { site, people, elsewhere, checks, worked };
+	return { site, people, elsewhere: fieldOnly(locals) ? [] : elsewhere, checks, worked };
 };

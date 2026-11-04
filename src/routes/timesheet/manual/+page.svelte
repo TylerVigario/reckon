@@ -14,6 +14,11 @@
 
 	let { data }: PageProps = $props();
 
+	// Someone with Field enters only work they were on (#lib/access): their own,
+	// or a team's with them on it.
+	const field = untrack(() => data.user?.access === 'field');
+	const others = $derived(field ? data.people.filter((p) => p.id !== data.me) : data.people);
+
 	type Site = { id: string; label: string; rate_pct: string | null };
 	type Ent = { id: string; name: string; sites: Site[] };
 
@@ -42,6 +47,7 @@
 	const heads = $derived(crew === 'team' ? crewIds.length : 1);
 	const toggle = (id: string) =>
 		(crewIds = crewIds.includes(id) ? crewIds.filter((x) => x !== id) : [...crewIds, id]);
+	const me = $derived(data.people.find((p) => p.id === data.me));
 	// WHEN: a day, and a start, a length and an end, any two of which give the
 	// third (#lib/work-times), worked out here as they are typed, offline. Not
 	// every entry is today's -- an evening spent writing up Tuesday is the
@@ -259,27 +265,43 @@
 		<div class="fld">
 			<span class="lbl">Who worked it</span>
 			<div class="seg">
-				{#each data.people as p (p.id)}
+				{#if field}
 					<button
 						type="button"
-						class:on={crew === 'one' && workedBy === p.id}
+						class:on={crew === 'one'}
 						onclick={() => {
 							crew = 'one';
-							workedBy = p.id;
-						}}>{p.name.split(' ')[0]}</button
+							workedBy = data.me;
+						}}>Just me</button
 					>
-				{/each}
+				{:else}
+					{#each data.people as p (p.id)}
+						<button
+							type="button"
+							class:on={crew === 'one' && workedBy === p.id}
+							onclick={() => {
+								crew = 'one';
+								workedBy = p.id;
+							}}>{p.name.split(' ')[0]}</button
+						>
+					{/each}
+				{/if}
 				<button type="button" class:on={crew === 'team'} onclick={() => (crew = 'team')}
-					>Team</button
+					>{field ? 'A team' : 'Team'}</button
 				>
 			</div>
 		</div>
 
 		{#if crew === 'team'}
 			<div class="fld">
-				<span class="lbl">Who was on it</span>
+				<span class="lbl">{field ? 'Who was on it with you' : 'Who was on it'}</span>
 				<div class="seg">
-					{#each data.people as p (p.id)}
+					{#if field && me}
+						<button type="button" class="on" aria-pressed="true" disabled
+							>{me.name.split(' ')[0]} · you</button
+						>
+					{/if}
+					{#each others as p (p.id)}
 						<button
 							type="button"
 							class:on={crewIds.includes(p.id)}
@@ -288,7 +310,11 @@
 						>
 					{/each}
 				</div>
-				<small class="lt">Billed for {heads}, and each of them paid.</small>
+				<small class="lt"
+					>Billed for {heads}, and each of them paid.{field
+						? " Work you weren't on is entered by someone with Full."
+						: ''}</small
+				>
 			</div>
 		{/if}
 

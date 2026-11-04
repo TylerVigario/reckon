@@ -44,7 +44,7 @@ export type Added =
 	| { ok: true; id: string }
 	| {
 			ok: false;
-			status: 400 | 404 | 409;
+			status: 400 | 403 | 404 | 409;
 			detail: string;
 			errors?: Errors;
 			/** What a change made on a phone ran into (#lib/line-conflict). */
@@ -64,6 +64,16 @@ class Refused extends Error {
 		super('refused');
 	}
 }
+
+/**
+ * Someone with Field changes, takes off or puts back only a line they added
+ * (#lib/access); whoever added it, or someone with Full, does the rest.
+ */
+const notTheirs: Added = {
+	ok: false,
+	status: 403,
+	detail: 'Whoever added it, or someone with Full, changes it.'
+};
 
 /** Refused, with a sentence for the person and, where there is one, the box it is about. */
 const no = (errors: Errors): Added => {
@@ -158,6 +168,7 @@ const GONE: Record<string, [field: string, why: string]> = {
 export function answer(r: Added) {
 	if (r.ok) return Response.json({ id: r.id }, { status: 200 });
 	if (r.status === 404) return problem('notFound', 404, r.detail);
+	if (r.status === 403) return problem('notYours', 403, r.detail);
 	if (r.status === 409)
 		return problem(
 			'conflict',
@@ -527,6 +538,7 @@ async function fromTheShelf(
 					.values({
 						...(input.id ? { id: input.id } : {}),
 						clientUuid: input.clientUuid,
+						createdBy: input.userId,
 						invoiceId: to.id,
 						movedFromInvoiceId: to.movedFrom,
 						seq: await nextSeq(tx, to.id),
@@ -612,6 +624,7 @@ async function boughtOrPaidFor(
 					.values({
 						...(input.id ? { id: input.id } : {}),
 						clientUuid: input.clientUuid,
+						createdBy: input.userId,
 						invoiceId: to.id,
 						movedFromInvoiceId: to.movedFrom,
 						seq: await nextSeq(tx, to.id),
@@ -667,12 +680,15 @@ export async function changeLine(
 		base?: Record<string, string>;
 		/** When the change was made, on a phone with no signal. */
 		madeAt?: string | null;
+		/** Whoever is changing it has Field, and changes only a line they added. */
+		field?: boolean;
 	},
 	attempt = 0
 ): Promise<Added> {
 	const [line] = await db
 		.select({
 			...LINE_AS_FORM,
+			created_by: t.invoiceLine.createdBy,
 			invoice_id: t.invoiceLine.invoiceId,
 			number: t.invoice.number,
 			status: t.invoice.status,
@@ -706,6 +722,7 @@ export async function changeLine(
 		detail: `${line.number} has gone out, so its lines are as they were sent.`
 	});
 	if (line.status !== 'draft') return goneOut();
+	if (input.field && line.created_by !== input.userId) return notTheirs;
 	if (line.kind !== 'material' && line.kind !== 'bought' && line.kind !== 'paid_for')
 		return no({ kind: 'Only a line added by hand can be changed here.' });
 
@@ -945,10 +962,13 @@ export async function removeLine(input: {
 	version?: number;
 	force?: boolean;
 	madeAt?: string | null;
+	/** Whoever is taking it off has Field, and takes off only a line they added. */
+	field?: boolean;
 }): Promise<Added> {
 	const [line] = await db
 		.select({
 			id: t.invoiceLine.id,
+			created_by: t.invoiceLine.createdBy,
 			version: t.invoiceLine.version,
 			invoice_id: t.invoiceLine.invoiceId,
 			number: t.invoice.number
@@ -957,6 +977,7 @@ export async function removeLine(input: {
 		.innerJoin(t.invoice, eq(t.invoice.id, t.invoiceLine.invoiceId))
 		.where(eq(t.invoiceLine.id, input.lineId));
 	if (!line) return { ok: true, id: input.lineId };
+	if (input.field && line.created_by !== input.userId) return notTheirs;
 	if (input.version !== undefined && !input.force && line.version !== input.version) {
 		const h = t.recordHistory;
 		const [last] = await db
@@ -1014,6 +1035,8 @@ export async function restoreLine(input: {
 	receipt: File | null;
 	userId: string;
 	madeAt?: string | null;
+	/** Whoever is putting it back has Field, and puts back only a line they added. */
+	field?: boolean;
 }): Promise<Added> {
 	const [back] = await db
 		.select({ id: t.invoiceLine.id })
@@ -1028,6 +1051,7 @@ export async function restoreLine(input: {
 	} catch {
 		/* nothing to put back from */
 	}
+	if (input.field && str(was.created_by) !== input.userId) return notTheirs;
 	const hex = str(was.receipt);
 	const kept =
 		hex.startsWith('\\x') && was.receipt_type

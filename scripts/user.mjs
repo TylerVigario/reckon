@@ -3,7 +3,7 @@
  * The people who sign in.
  *
  *   node scripts/user.mjs list
- *   node scripts/user.mjs add avery@example.com "Avery Quinn" [--role Partner]
+ *   node scripts/user.mjs add avery@example.com "Avery Quinn" [--role Partner] [--full]
  *   node scripts/user.mjs password avery@example.com [--insecure]
  *
  * There is no sign-up: everyone who signs in is added here, and an open
@@ -11,6 +11,11 @@
  * feature. `add` makes the person and asks for their password straight away;
  * `password` sets a new one. A password is prompted for rather than passed as
  * an argument, so it never reaches shell history or the process list.
+ *
+ * Someone added has Field access -- the work they do, and what they are paid
+ * for it -- unless --full gives them everything. The first person has Full
+ * whatever is said, since someone has to: the database refuses to leave nobody
+ * active on Full, and only someone with Full changes anyone's access.
  *
  * The rule is checked on the first entry, before the second is asked for: typing
  * a password twice only to be told the first was too short is two wasted
@@ -29,15 +34,18 @@ import { stdin, stdout } from 'node:process';
 
 const USAGE = `usage:
   node scripts/user.mjs list
-  node scripts/user.mjs add <email> <name> [--role <role>] [--insecure]
+  node scripts/user.mjs add <email> <name> [--role <role>] [--full] [--insecure]
   node scripts/user.mjs password <email> [--insecure]`;
 
 const [command, ...rest] = process.argv.slice(2);
 const insecure = rest.includes('--insecure');
+const full = rest.includes('--full');
 const roleAt = rest.indexOf('--role');
 const roleName = roleAt === -1 ? null : rest[roleAt + 1];
 const words = rest.filter((a, i) => !a.startsWith('--') && (roleAt === -1 || i !== roleAt + 1));
-const unknown = rest.filter((a) => a.startsWith('--') && a !== '--insecure' && a !== '--role');
+const unknown = rest.filter(
+	(a) => a.startsWith('--') && a !== '--insecure' && a !== '--role' && a !== '--full'
+);
 const wanted = { list: 0, add: 2, password: 1 }[command ?? ''];
 if (
 	wanted === undefined ||
@@ -233,7 +241,7 @@ async function setPassword(user) {
 
 if (command === 'list') {
 	const people = await q(`
-		select u.email, u.name, r.name as role, u.active,
+		select u.email, u.name, r.name as role, u.access, u.active,
 		       exists (select 1 from account a
 		                where a.user_id = u.id and a.provider_id = 'credential'
 		                  and a.password is not null) as can_sign_in,
@@ -249,6 +257,7 @@ if (command === 'list') {
 				p.email,
 				p.name,
 				p.role ?? 'no role',
+				p.access === 'full' ? 'Full' : 'Field',
 				p.active ? 'active' : 'inactive',
 				p.can_sign_in ? 'has a password' : 'NO PASSWORD',
 				`${p.sessions} session(s)`
@@ -272,13 +281,19 @@ if (command === 'list') {
 		await stop(
 			`${email} is already somebody. To change their password: node scripts/user.mjs password ${email}`
 		);
+	// The first person has Full whether or not it was asked for.
+	const [someone] = await q(`select 1 from "user" where active and access = 'full' limit 1`);
+	const access = full || !someone ? 'full' : 'field';
 	const [user] = await q(
-		'insert into "user" (name, email, role_id) values ($1, $2, $3) returning id, name',
-		[name, email, role?.id ?? null]
+		'insert into "user" (name, email, role_id, access) values ($1, $2, $3, $4) returning id, name',
+		[name, email, role?.id ?? null, access]
 	);
 	await setPassword(user);
 	console.log(
-		`Added ${user.name}${role ? ` as ${role.name}` : ', with no role -- they sign in and are not paid'}.`
+		`Added ${user.name}${role ? ` as ${role.name}` : ', with no role -- they sign in and are not paid'}, ` +
+			(access === 'full'
+				? `with Full access${full ? '' : ', as the first'}.`
+				: 'with Field access: their own work, and what they are paid for it.')
 	);
 } else {
 	const [user] = await q('select id, name from "user" where email = lower($1)', [words[0].trim()]);

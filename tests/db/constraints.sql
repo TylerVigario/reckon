@@ -34,9 +34,9 @@ END $$;
 
 -- ------------------------------------------------------------- fixtures --
 
-INSERT INTO "user" (id, name, email) VALUES
-  ('a0a0a0a0-0000-4000-8000-0000000000a1','Avery','avery@example.com'),
-  ('a0a0a0a0-0000-4000-8000-0000000000a2','Sam','sam@example.com');
+INSERT INTO "user" (id, name, email, access) VALUES
+  ('a0a0a0a0-0000-4000-8000-0000000000a1','Avery','avery@example.com','full'),
+  ('a0a0a0a0-0000-4000-8000-0000000000a2','Sam','sam@example.com','field');
 
 -- An invented business. Every site that carries a rate is at a public
 -- building, with the rate, split and area code CDTFA gives for it; the few
@@ -2379,5 +2379,46 @@ SELECT must_fail($$
                           state_rate_pct = 7.0000
    WHERE invoice_id = '77777777-0000-4000-8000-0000000000f1' AND seq = 2
 $$, 'where a sent line was taxed, changed');
+
+\echo ''
+\echo '=== 50. each person has Full or Field access, and someone active keeps Full ==='
+
+SELECT must_fail($$
+  UPDATE "user" SET access = 'admin' WHERE id = 'a0a0a0a0-0000-4000-8000-0000000000a2'
+$$, 'an access level that is not Full or Field');
+
+SELECT must_fail($$
+  UPDATE "user" SET access = 'field' WHERE id = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+$$, 'the only one on Full moved to Field');
+
+SELECT must_fail($$
+  UPDATE "user" SET active = false WHERE id = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+$$, 'the only one on Full made inactive');
+
+SELECT must_pass($$
+  INSERT INTO "user" (id, name, email, access)
+  VALUES ('a1000000-0000-4000-8000-000000000050','Second','second@example.com','full')
+$$, 'a second person with Full');
+
+SELECT must_pass($$
+  UPDATE "user" SET access = 'field' WHERE id = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+$$, 'one of two on Full moved to Field');
+
+SELECT must_fail($$
+  DELETE FROM "user" WHERE id = 'a1000000-0000-4000-8000-000000000050'
+$$, 'the only one left on Full removed');
+
+SELECT must_pass($$
+  UPDATE "user" SET access = 'full' WHERE id = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+$$, 'Full given back');
+
+SELECT must_pass($$
+  DELETE FROM "user" WHERE id = 'a1000000-0000-4000-8000-000000000050'
+$$, 'one of two on Full removed');
+
+SELECT must_pass($$
+  UPDATE "user" SET active = false WHERE id = 'a0a0a0a0-0000-4000-8000-0000000000a2'
+$$, 'someone on Field made inactive');
+UPDATE "user" SET active = true WHERE id = 'a0a0a0a0-0000-4000-8000-0000000000a2';
 
 \echo 'All guards hold.'

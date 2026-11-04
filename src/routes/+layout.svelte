@@ -10,6 +10,7 @@
 	import TabIcon, { type Tab } from '#lib/TabIcon.svelte';
 	import { hoursBadge, zoneName } from '#lib/format.ts';
 	import { CLIENT_PAGE } from '#lib/client-link.ts';
+	import { opens } from '#lib/access.ts';
 
 	let { data, children }: LayoutProps = $props();
 
@@ -142,6 +143,11 @@
 		{ href: '/settings', label: 'Settings', count: () => null }
 	] satisfies { href: RouteId; label: string; count: () => string | number | null | undefined }[];
 
+	// Each section is offered only where it opens for this person (#lib/access);
+	// someone with Field has their own pay in place of the reports.
+	const access = $derived(data.user?.access ?? null);
+	const railShown = $derived(rail.filter((r) => opens(access, r.href)));
+
 	const counts = $derived(data.counts ?? {});
 	const hours = (s: number | undefined) => (s === undefined ? null : hoursBadge(s));
 
@@ -162,7 +168,12 @@
 	// neither of their tabs.
 	const UNDER_TODAY = ['/unbilled'];
 	const here = $derived((href: string) => {
-		if (href === '/more') return UNDER_MORE.some((p) => page.url.pathname.startsWith(p));
+		if (href === '/more')
+			return (
+				UNDER_MORE.some((p) => page.url.pathname.startsWith(p)) ||
+				// Their own pay is reached from More.
+				(access === 'field' && page.url.pathname.startsWith('/reports/pay'))
+			);
 		if (href === '/')
 			return page.url.pathname === '/' || UNDER_TODAY.some((p) => page.url.pathname.startsWith(p));
 		return page.url.pathname.startsWith(href);
@@ -198,12 +209,19 @@
 				<span>{name}</span>
 			</div>
 			<nav class="rail-nav" aria-label="Sections">
-				{#each rail as r (r.href)}
+				{#each railShown as r (r.href)}
 					{@const n = r.count()}
 					<a href={resolve(r.href)} aria-current={here(r.href) ? 'page' : undefined}>
 						{r.label}{#if n !== null && n !== undefined}<span class="cnt">{n}</span>{/if}
 					</a>
 				{/each}
+				{#if access === 'field' && data.user}
+					<a
+						href={resolve('/reports/pay/[person]', { person: data.user.id })}
+						aria-current={page.url.pathname.startsWith('/reports/pay') ? 'page' : undefined}
+						>Your pay</a
+					>
+				{/if}
 			</nav>
 			<form class="rail-foot" method="POST" action="/logout">
 				<a

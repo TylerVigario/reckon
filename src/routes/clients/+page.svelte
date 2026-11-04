@@ -6,7 +6,7 @@
 
 	let { data }: PageProps = $props();
 
-	const n = (v: string) => Number(v);
+	const n = (v: string | null) => Number(v ?? 0);
 </script>
 
 <Top

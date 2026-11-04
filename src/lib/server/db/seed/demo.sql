@@ -26,15 +26,17 @@ VALUES ('Kestrel Field Services','KFS', true, 'America/Los_Angeles', 'us_ca',
 
 -- Avery owns it and works in it. Sam is employed, and Jordan is a contractor
 -- who takes some of the field work. One person in each of the three roles the
--- schema starts every operator with. None of them can sign in until given a
--- password: node scripts/user.mjs password avery@kestrel.example
-INSERT INTO "user" (id, name, email, active, role_id) VALUES
+-- schema starts every operator with. Avery has Full access, and Sam and
+-- Jordan Field: their own work, and what they are paid for it. None of them
+-- can sign in until given a password:
+-- node scripts/user.mjs password avery@kestrel.example
+INSERT INTO "user" (id, name, email, active, role_id, access) VALUES
   ('c41b2fab-5b71-4954-bb86-1bc803daf7ee','Avery Lind','avery@kestrel.example', true,
-   (SELECT id FROM role WHERE name = 'Partner')),
+   (SELECT id FROM role WHERE name = 'Partner'), 'full'),
   ('c54bf38d-b83d-422f-af31-14a2a01aee5e','Sam Ortega','sam@kestrel.example', true,
-   (SELECT id FROM role WHERE name = 'Employee')),
+   (SELECT id FROM role WHERE name = 'Employee'), 'field'),
   ('d1496a1c-9d8d-42ac-bf41-d059ed2a634c','Jordan Pike','jordan@kestrel.example', true,
-   (SELECT id FROM role WHERE name = 'Contractor'));
+   (SELECT id FROM role WHERE name = 'Contractor'), 'field');
 
 -- ------------------------------------------------------------ what it sells --
 
@@ -372,18 +374,18 @@ INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_pr
 
 -- Goods lines name the site whose rate taxes them, with where that rate is
 -- levied and what it is made of, and the material each is, with what it cost
--- before tax and the tax already paid on it. What each took off its lot is a
--- draw, which takes it off the shelf.
+-- before tax and the tax already paid on it, and who added it. What each took
+-- off its lot is a draw, which takes it off the shelf.
 INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
                           taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction,
                           state_rate_pct, district_rate_pct, material_id,
-                          ex_tax_cost, tax_paid) VALUES
+                          ex_tax_cost, tax_paid, created_by) VALUES
   ('a0ca5d14-192f-43eb-9652-48e6fe145e67','2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a',1,'material','Access point · Wi-Fi 6 · Ceiling',
    2,'each',132.16,264.32,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','AUBURN',7.2500,0.0000,
-   '427ec8a1-9038-4fca-9323-ca62625622a3', 224.00, 16.24),
+   '427ec8a1-9038-4fca-9323-ca62625622a3', 224.00, 16.24, 'c41b2fab-5b71-4954-bb86-1bc803daf7ee'),
   ('46c02ef2-14c7-4043-9321-34a0ecd99100','2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a',2,'material','Raceway · Surface · 3/4 in',
    40,'foot',1.06,42.40,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','AUBURN',7.2500,0.0000,
-   'b144a78b-750a-4bd2-a84e-7d1551328565', 34.00, 2.464);
+   'b144a78b-750a-4bd2-a84e-7d1551328565', 34.00, 2.464, 'c41b2fab-5b71-4954-bb86-1bc803daf7ee');
 
 INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty) VALUES
   ('a0ca5d14-192f-43eb-9652-48e6fe145e67','c0ac1e19-b1d7-4e4c-9805-95e66944db65','427ec8a1-9038-4fca-9323-ca62625622a3', 2),

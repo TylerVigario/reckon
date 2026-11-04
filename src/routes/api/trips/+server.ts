@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { refuse } from '#lib/server/field-errors.ts';
@@ -8,19 +8,25 @@ import { readBody } from '#lib/json.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { db } from '#lib/server/db/index.ts';
 import { problem } from '#lib/server/problem.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { RequestHandler } from './$types';
 
 /**
  * The trip recorded with this id, once it has arrived: how a phone that queued
  * one finds where it went (#lib/queue).
  */
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, locals }) => {
 	const uuid = url.searchParams.get('client_uuid') ?? '';
 	if (!UUID.test(uuid)) return problem('malformed', 400, 'Expected ?client_uuid=.');
 	const [found] = await db
 		.select({ id: t.trip.id })
 		.from(t.trip)
-		.where(eq(t.trip.clientUuid, uuid.toLowerCase()));
+		.where(
+			and(
+				eq(t.trip.clientUuid, uuid.toLowerCase()),
+				fieldOnly(locals) ? eq(t.trip.createdBy, locals.user!.id) : undefined
+			)
+		);
 	return found
 		? Response.json({ id: found.id })
 		: problem('notFound', 404, 'No trip has arrived with that id.');
@@ -29,12 +35,15 @@ export const GET: RequestHandler = async ({ url }) => {
 /**
  * Records a trip: its stops, who each was for, and its legs, each given to
  * whoever caused it by #lib/trip-legs -- worked out here from what was sent,
- * not taken from the page. A trip sent twice with one id is one trip.
+ * not taken from the page. A trip sent twice with one id is one trip. Someone
+ * with Field records only a trip they drove (#lib/access).
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const read = readTrip(await readBody(request));
 	if (!read.ok) return refuse(read.errors);
 	const trip = read.trip;
+	if (fieldOnly(locals) && trip.drivenBy !== locals.user!.id)
+		return refuse({ driven_by: "A trip you drove. Someone with Full records anyone else's." });
 	const worked = await legsFor(trip);
 	if ('refused' in worked) return worked.refused;
 

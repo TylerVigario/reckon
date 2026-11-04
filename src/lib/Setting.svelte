@@ -26,6 +26,7 @@
 		placeholder = '',
 		hint = '',
 		options = null,
+		seg = false,
 		inputmode = undefined,
 		required = false,
 		swatch = false,
@@ -44,6 +45,12 @@
 		/** Under the box; or worked out from what the box holds, as it is typed. */
 		hint?: string | ((current: string) => string);
 		options?: { value: string; label: string }[] | null;
+		/**
+		 * The options as a row of buttons, where a list would hide the
+		 * alternatives: two or three of them, each a word. A tap commits, as a
+		 * pick from a list does.
+		 */
+		seg?: boolean;
 		inputmode?: 'numeric' | 'decimal' | undefined;
 		required?: boolean;
 		swatch?: boolean;
@@ -183,14 +190,34 @@
 </script>
 
 <div class="fld" class:bad={status === 'bad'}>
-	<label for={id}>
+	<label for={id} id="{id}-label">
 		{label}
 		<span class="state" aria-live="polite">
 			{#if status === 'saving'}Saving…{:else if status === 'ok'}Saved{/if}
 		</span>
 	</label>
 
-	{#if options}
+	{#if options && seg}
+		<div
+			class="seg"
+			{id}
+			role="group"
+			aria-labelledby="{id}-label"
+			aria-describedby={status === 'bad' ? `${id}-why` : undefined}
+		>
+			{#each options as o (o.value)}
+				<button
+					type="button"
+					class:on={current === o.value}
+					aria-pressed={current === o.value}
+					onclick={() => {
+						current = o.value;
+						void commit();
+					}}>{o.label}</button
+				>
+			{/each}
+		</div>
+	{:else if options}
 		<select
 			class="inp"
 			{id}

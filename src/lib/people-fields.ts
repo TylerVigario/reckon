@@ -7,6 +7,9 @@
  * What its pay is comes from a fixed list (0027), since that, not the name,
  * decides where the pay is reported. No role at all means they sign in and are
  * not paid for work.
+ *
+ * And what a person can reach, apart from what they are paid as: Full or Field
+ * (#lib/access).
  */
 import {
 	anId,
@@ -21,6 +24,7 @@ import {
 	type Parsed
 } from './field-rules.ts';
 import { pickLocale } from './locales.ts';
+import { ACCESS } from './access.ts';
 
 /** As the schema has them (#lib/server/db/schema/people), and PAID_AS_WORDS says them. */
 export const PAYS_AS = ['guaranteed_payment', 'wages', 'fee'] as const;
@@ -54,6 +58,7 @@ const aLocale = (v: string): Parsed => {
 export const PERSON_FIELDS = {
 	// Empty is no role: signs in, is not paid.
 	role_id: optional(anId),
+	access: required('Full or Field.', oneOf(ACCESS)),
 	// The rest are the person's own, set in their profile. Empty follows the
 	// business's zone and locale, and the locale's clock and first day of the week.
 	timezone: optional(cap(64, aZone)),

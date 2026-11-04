@@ -10,15 +10,16 @@ import { mileServices } from './trip-worth.ts';
  * What a trip needs to be written down or changed: who drove, in what, where,
  * and each drive's miles as far as they are known -- the site's round trip
  * from the base, or the same drive as it was last driven -- before anyone types
- * them. `me` is whoever is recording it.
+ * them. `me` is whoever is recording it; with Field, the only one who can have
+ * driven it (#lib/access).
  */
-export async function tripChoices(me: string) {
+export async function tripChoices(me: string, field: boolean) {
 	const [people, vehicles, lastDriven, entities, sites, known, services, operator] =
 		await Promise.all([
 			db
 				.select({ id: t.user.id, name: t.user.name })
 				.from(t.user)
-				.where(eq(t.user.active, true))
+				.where(and(eq(t.user.active, true), field ? eq(t.user.id, me) : undefined))
 				.orderBy(asc(t.user.name)),
 			db
 				.select({
@@ -66,6 +67,7 @@ export async function tripChoices(me: string) {
 	return {
 		today: personalToday(),
 		me,
+		field,
 		people,
 		vehicles,
 		last: Object.fromEntries(lastDriven.map((l) => [l.driver, l.vehicle])),

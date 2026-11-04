@@ -1,6 +1,7 @@
-import { and, eq, notExists, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, notExists, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { db } from '#lib/server/db/index.ts';
-import { businessToday, personalDay, businessDay } from '#lib/server/calendar.ts';
+import { businessToday, personalDay, businessDay, personalToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { sum } from '#lib/decimal.ts';
 import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
@@ -9,10 +10,17 @@ import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { count, dated } from '#lib/format.ts';
 import { ageOf, type Age } from '#lib/ageing.ts';
+import { crewNames } from '#lib/server/choices.ts';
+import { fieldOnly, theirWork } from '#lib/server/mine.ts';
+import { owed, paymentsTo } from '#lib/server/pay.ts';
 import type { PageServerLoad } from './$types';
 
 /**
  * Today: what is owed, what is ready, and what needs a decision.
+ *
+ * Someone with Field sees their own day instead (#lib/access): their time this
+ * month, what they are owed, their work today, and the drafts to add to --
+ * nothing of what the business is owed, holds or has not billed.
  *
  * Figures are computed in Postgres, or by the valuation in exact decimals.
  * Money is NUMERIC and stays a string all the way to the page -- adding cents
@@ -31,6 +39,101 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const il = t.invoiceLine;
 	const e = t.entity;
 	const s = t.site;
+
+	// The newest drafts, for either day.
+	const recentDrafts = () =>
+		db
+			.execute<{
+				id: string;
+				number: string;
+				who: string;
+				lines: string;
+				gross: string;
+			}>(
+				sql`
+		select ${i.id} as id, ${i.number} as number, ${e.name} as who,
+		       (select count(*) from ${il} where ${il.invoiceId} = ${i.id})::text as lines,
+		       b.gross::text as gross
+		  from ${i}
+		  join ${e} on ${e.id} = ${i.entityId}
+		  join ${owing} b on b.invoice_id = ${i.id}
+		 where ${i.status} = 'draft'
+		 order by ${i.createdAt} desc
+		 limit 3`
+			)
+			.then((r) => r.rows);
+
+	// Names for whatever the browser has a timer running against. The timer
+	// itself is local -- it survives a refresh because it is written down in the
+	// browser, not because the server was told -- so only the labels come from
+	// here.
+	const timerNames = async () => {
+		const [entities, services] = await Promise.all([
+			db
+				.select({ id: t.entity.id, name: t.entity.name })
+				.from(t.entity)
+				.where(eq(t.entity.active, true)),
+			db
+				.select({ id: t.service.id, name: t.service.name })
+				.from(t.service)
+				.where(eq(t.service.active, true))
+		]);
+		return {
+			entity: Object.fromEntries(entities.map((x) => [x.id, x.name])),
+			service: Object.fromEntries(services.map((x) => [x.id, x.name]))
+		};
+	};
+
+	if (fieldOnly(locals)) {
+		const me = locals.user!.id;
+		const day = personalToday();
+		const u = alias(t.user, 'u');
+		const [drafts, names, [month], work, items, payments] = await Promise.all([
+			recentDrafts(),
+			timerNames(),
+			db
+				.select({ seconds: sql<string>`coalesce(sum(${t.timeEntry.seconds}), 0)::text` })
+				.from(t.timeEntry)
+				.where(and(gte(t.timeEntry.workedOn, `${day.slice(0, 8)}01`), theirWork(me))),
+			db
+				.select({
+					id: t.timeEntry.id,
+					seconds: t.timeEntry.seconds,
+					crew: t.timeEntry.crew,
+					worked_by: u.name,
+					crew_names: crewNames(sql`${t.timeEntry.id}`),
+					entity: t.entity.name,
+					site: t.site.display,
+					service: t.service.name
+				})
+				.from(t.timeEntry)
+				.leftJoin(u, eq(u.id, t.timeEntry.workedBy))
+				.innerJoin(t.service, eq(t.service.id, t.timeEntry.serviceId))
+				.leftJoin(t.entity, eq(t.entity.id, t.timeEntry.entityId))
+				.leftJoin(t.site, eq(t.site.id, t.timeEntry.siteId))
+				.where(and(eq(t.timeEntry.workedOn, day), theirWork(me)))
+				.orderBy(desc(t.timeEntry.createdAt), desc(t.timeEntry.id)),
+			owed([me]).then((m) => m.get(me) ?? []),
+			paymentsTo(me)
+		]);
+		return {
+			today,
+			totals: null,
+			decisions: [],
+			drafts,
+			ageing: [],
+			names,
+			me,
+			mine: {
+				monthSeconds: Number(month.seconds),
+				owed: sum(items.map((x) => x.amount)).toFixed(places),
+				// Work no rule pays yet is owed at no figure, so the total is not all of it.
+				unpriced: items.some((x) => x.amount === null),
+				last_paid: payments[0]?.paid_on ?? null,
+				work
+			}
+		};
+	}
 
 	const {
 		rows: [totals]
@@ -120,22 +223,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 				}
 	);
 
-	const { rows: drafts } = await db.execute<{
-		id: string;
-		number: string;
-		who: string;
-		lines: string;
-		gross: string;
-	}>(sql`
-		select ${i.id} as id, ${i.number} as number, ${e.name} as who,
-		       (select count(*) from ${il} where ${il.invoiceId} = ${i.id})::text as lines,
-		       b.gross::text as gross
-		  from ${i}
-		  join ${e} on ${e.id} = ${i.entityId}
-		  join ${owing} b on b.invoice_id = ${i.id}
-		 where ${i.status} = 'draft'
-		 order by ${i.createdAt} desc
-		 limit 3`);
+	const drafts = await recentDrafts();
 
 	// Work done and not yet put on an invoice, by how long it has waited.
 	// Worth what the valuation says it bills: the price in force on the day it
@@ -178,31 +266,14 @@ export const load: PageServerLoad = async ({ locals }) => {
 		oldest: String(b.oldest)
 	}));
 
-	// Names for whatever the browser has a timer running against. The timer
-	// itself is local -- it survives a refresh because it is written down in the
-	// browser, not because the server was told -- so only the labels come from
-	// here.
-	const [entities, services] = await Promise.all([
-		db
-			.select({ id: t.entity.id, name: t.entity.name })
-			.from(t.entity)
-			.where(eq(t.entity.active, true)),
-		db
-			.select({ id: t.service.id, name: t.service.name })
-			.from(t.service)
-			.where(eq(t.service.active, true))
-	]);
-
 	return {
 		today,
 		totals,
 		decisions,
 		drafts,
 		ageing,
-		names: {
-			entity: Object.fromEntries(entities.map((x) => [x.id, x.name])),
-			service: Object.fromEntries(services.map((x) => [x.id, x.name]))
-		},
-		me: locals.user!.id
+		names: await timerNames(),
+		me: locals.user!.id,
+		mine: null
 	};
 };

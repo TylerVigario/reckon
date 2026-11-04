@@ -8,6 +8,7 @@ import { townsOf } from '#lib/server/trips.ts';
 import { loadCatalogue, valueLegs } from '#lib/server/valuation/load.ts';
 import { jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -16,9 +17,10 @@ import type { PageServerLoad } from './$types';
  * A trip is one drive, and its legs are its miles, each handed to the client
  * that caused it -- which is what stops two nearby sites being charged a full
  * round trip each (on the seeded trip, 70 miles for 57 driven). "Every mile
- * assigned" means no leg is left without a client.
+ * assigned" means no leg is left without a client. Someone with Field sees the
+ * trips they drove (#lib/access).
  */
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
 	const asked = url.searchParams.get('month') ?? '';
 	const day = businessToday();
 	const from = /^\d{4}-(0[1-9]|1[0-2])$/.test(asked) ? `${asked}-01` : `${day.slice(0, 8)}01`;
@@ -49,7 +51,13 @@ export const load: PageServerLoad = async ({ url }) => {
 		.from(tr)
 		.leftJoin(u, eq(u.id, tr.drivenBy))
 		.leftJoin(t.vehicle, eq(t.vehicle.id, tr.vehicleId))
-		.where(and(gte(tr.travelledOn, from), lt(tr.travelledOn, to)))
+		.where(
+			and(
+				gte(tr.travelledOn, from),
+				lt(tr.travelledOn, to),
+				fieldOnly(locals) ? eq(tr.drivenBy, locals.user!.id) : undefined
+			)
+		)
 		.orderBy(desc(tr.travelledOn), desc(tr.id));
 
 	const legs = found.length

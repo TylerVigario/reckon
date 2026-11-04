@@ -11,6 +11,7 @@ import { lineTaxSql } from '#lib/server/tax-rules.ts';
 import { day, monthName, names } from '#lib/format.ts';
 import { crewNames } from '#lib/server/choices.ts';
 import { clientLink } from '#lib/client-link.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -19,8 +20,12 @@ import type { PageServerLoad } from './$types';
  * Every figure comes off the lines as they were billed -- invoice_line stores
  * the rate that was applied and where it came from, so an invoice sent in June
  * still says what June said, whatever the rate table says today.
+ *
+ * Someone with Field opens a draft, to add lines to (#lib/access): nothing that
+ * has gone out, nothing of what it does to the return -- what the goods cost
+ * is the business's -- and no history of lines taken off.
  */
-export const load: PageServerLoad = async ({ params, url }) => {
+export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
 	const owing = balances(rounding, places);
 	if (!UUID.test(params.id)) error(404, 'no such invoice');
@@ -60,7 +65,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		.from(i)
 		.innerJoin(e, eq(e.id, i.entityId))
 		.where(eq(i.id, params.id));
-	if (!invoice) error(404, 'no such invoice');
+	const field = fieldOnly(locals);
+	if (!invoice || (field && invoice.status !== 'draft')) error(404, 'no such invoice');
 
 	const src = alias(t.invoice, 'src');
 	const dst = alias(t.invoice, 'dst');
@@ -104,7 +110,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 				where_from: sql<string>`coalesce(${si.display}, '')`,
 				bought_from: il.boughtFrom,
 				paid_by: payer.name,
-				receipt: sql<boolean>`${il.receipt} is not null`
+				receipt: sql<boolean>`${il.receipt} is not null`,
+				created_by: il.createdBy
 			})
 			.from(il)
 			.leftJoin(te, eq(te.id, il.timeEntryId))
@@ -222,6 +229,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		invoice: { ...shown, link: token ? clientLink(url.origin, token) : null },
 		lines: lines.map(
 			({
+				created_by,
 				worker,
 				team,
 				worked_on,
@@ -233,6 +241,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 				...l
 			}) => ({
 				...l,
+				// Whether the person asking added it: with Field, the lines they can change.
+				mine: created_by === locals.user!.id,
 				// The first source the line has, said with #lib/format: who worked it --
 				// one person, or a team's crew -- and when. What was bought or paid for
 				// says from whom, and who paid; what was drawn from stock, whom it came
@@ -258,10 +268,10 @@ export const load: PageServerLoad = async ({ params, url }) => {
 										: null
 			})
 		),
-		totals,
+		totals: field ? { ...totals, resold: null, due_on_return: null } : totals,
 		movedIn,
 		movedOut,
-		takenOff,
+		takenOff: field ? [] : takenOff,
 		// For a draft opened on a phone, whose lines on the phone join the total
 		// by the same rounding the server's own lines had.
 		rounding,

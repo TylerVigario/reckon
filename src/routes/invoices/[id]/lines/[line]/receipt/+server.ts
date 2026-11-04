@@ -3,20 +3,28 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { RequestHandler } from './$types';
 
 /**
  * A line's receipt, straight out of the row that holds it. A photo shows in the
  * browser; a PDF is handed over as a file, to open in the phone's own viewer
- * rather than run in this site's -- as a lot's receipt is.
+ * rather than run in this site's -- as a lot's receipt is. Someone with Field
+ * opens one on a draft (#lib/access).
  */
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async ({ params, locals }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.line)) error(404, 'no such receipt');
 	const [row] = await db
-		.select({ receipt: t.invoiceLine.receipt, type: t.invoiceLine.receiptType })
+		.select({
+			receipt: t.invoiceLine.receipt,
+			type: t.invoiceLine.receiptType,
+			status: t.invoice.status
+		})
 		.from(t.invoiceLine)
+		.innerJoin(t.invoice, eq(t.invoice.id, t.invoiceLine.invoiceId))
 		.where(and(eq(t.invoiceLine.id, params.line), eq(t.invoiceLine.invoiceId, params.id)));
-	if (!row?.receipt || !row.type) error(404, 'no receipt');
+	if (!row?.receipt || !row.type || (fieldOnly(locals) && row.status !== 'draft'))
+		error(404, 'no receipt');
 	const pdf = row.type === 'application/pdf';
 	return new Response(new Uint8Array(row.receipt), {
 		headers: {

@@ -1,4 +1,4 @@
-import { PROBLEM, type ProblemBody, type ProblemKind } from '#lib/problem.ts';
+import { PROBLEM, PROBLEM_MEDIA_TYPE, type ProblemBody, type ProblemKind } from '#lib/problem.ts';
 
 /**
  * A problem document as an HTTP response. The shape it builds, and the kinds
@@ -30,7 +30,7 @@ export function problem(
 		headers: {
 			// Not application/json: the media type is how a client knows this
 			// describes a problem rather than being the thing it asked for.
-			'content-type': 'application/problem+json',
+			'content-type': PROBLEM_MEDIA_TYPE,
 			...(extra?.headers ?? {})
 		}
 	});

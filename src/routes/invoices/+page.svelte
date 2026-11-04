@@ -7,13 +7,20 @@
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
+	import { opens } from '#lib/access.ts';
 
 	let { data }: PageProps = $props();
 
 	const months = (d: number) => (d >= 60 ? count(Math.round(d / 30), 'month') : count(d, 'day'));
 
 	const who = $derived(data.operator?.short_name || 'you');
-	const sub = $derived(`${money(data.totals.owed)} out · ${money(data.totals.drafted)} in draft`);
+	// Someone with Field adds lines to drafts, and starts and sends none (#lib/access).
+	const field = $derived(data.user?.access === 'field');
+	const sub = $derived(
+		field
+			? `${data.drafts.length} ${data.drafts.length === 1 ? 'draft' : 'drafts'} to add to`
+			: `${money(data.totals.owed)} out · ${money(data.totals.drafted)} in draft`
+	);
 
 	// What is on this phone, waiting to send: drafts started here, lines by the
 	// draft they are for -- its id, or the uuid it was started with on a phone
@@ -39,36 +46,40 @@
 
 <Top title="Invoices" {sub}>
 	{#snippet actions()}
-		<a class="btn sm" href={resolve('/invoices/new')}>New draft</a>
+		{#if !field}<a class="btn sm" href={resolve('/invoices/new')}>New draft</a>{/if}
 	{/snippet}
 </Top>
 
 <OfflineBanner asOf={data.as_of} {waiting} />
 
 <div class="pad">
-	<div class="tiles">
-		<div class="tile">
-			<span class="k">Owed</span>
-			<span class="v">{money(data.totals.owed)}</span>
-			<span class="s">{data.out.length} out</span>
+	{#if !field}
+		<div class="tiles">
+			<div class="tile">
+				<span class="k">Owed</span>
+				<span class="v">{money(data.totals.owed)}</span>
+				<span class="s">{data.out.length} out</span>
+			</div>
+			<div class="tile">
+				<span class="k">Overdue</span>
+				<span class="v sm" class:crit={data.totals.overdueCount > 0}>
+					{money(data.totals.overdue)}
+				</span>
+				<span class="s">
+					{data.totals.overdueCount}
+					{data.totals.overdueCount === 1 ? 'invoice' : 'invoices'}
+				</span>
+			</div>
 		</div>
-		<div class="tile">
-			<span class="k">Overdue</span>
-			<span class="v sm" class:crit={data.totals.overdueCount > 0}>
-				{money(data.totals.overdue)}
-			</span>
-			<span class="s">
-				{data.totals.overdueCount}
-				{data.totals.overdueCount === 1 ? 'invoice' : 'invoices'}
-			</span>
-		</div>
-	</div>
+	{/if}
 
 	{#if data.drafts.length || started.length}
 		<div class="sec">
 			<div class="sec-h">
 				<h2>Drafts</h2>
-				<a class="seeall" href={resolve('/invoices/ready')}>All {data.drafts.length}</a>
+				{#if opens(data.user?.access, '/invoices/ready')}
+					<a class="seeall" href={resolve('/invoices/ready')}>All {data.drafts.length}</a>
+				{/if}
 			</div>
 			<div class="rows">
 				{#each started as q (q.draft.client_uuid)}
@@ -167,7 +178,12 @@
 		</div>
 	{/if}
 
-	{#if data.drafts.length === 0 && data.out.length === 0 && data.paid.length === 0}
+	{#if field}
+		<p class="none">
+			Add what was used on the job to its client's draft. Someone with Full starts a draft and sends
+			it, and once it has gone out it leaves this list.
+		</p>
+	{:else if data.drafts.length === 0 && data.out.length === 0 && data.paid.length === 0}
 		<p class="none">No invoices yet.</p>
 	{/if}
 </div>

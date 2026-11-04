@@ -12,6 +12,7 @@ import { knownZone } from '#lib/server/zones.ts';
 import { readBody } from '#lib/json.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { theTeam } from '#lib/server/choices.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 
 /** What the body carries, for a database complaint to be laid against. */
 const FIELDS = [
@@ -158,6 +159,16 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		}
 	} else if (body.crew_ids !== undefined && body.crew_ids !== null)
 		return refuse('crew_ids', "Leave this empty for one person's entry.");
+
+	// Someone with Field enters only work they were on (#lib/access): their own,
+	// or a team's that names them.
+	if (fieldOnly(locals)) {
+		const me = locals.user!.id;
+		if (crew === 'one' && worked_by !== me)
+			return refuse('worked_by', "Your own work. Someone with Full enters anyone else's.");
+		if (crew === 'team' && !crew_ids.includes(me))
+			return refuse('crew_ids', 'A team you were on. Someone with Full enters any other.');
+	}
 
 	// A boolean, not a truthy value: a queue that sends "billable": "false" is
 	// told so, rather than having a non-empty string read as yes.

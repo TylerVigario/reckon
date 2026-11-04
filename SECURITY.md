@@ -54,6 +54,13 @@ oversights:
   one that runs nothing and is sandboxed, so an uploaded SVG logo opened
   directly cannot act as the site. The redirect and the 401 that turn a
   signed-out request away carry none, having nothing in them to run.
+- **What each person reaches is checked on the server, and refused by
+  default.** Every route names the level it needs in `src/lib/access.ts`, and a
+  route missing from it does not typecheck; `hooks.server.ts` turns away
+  anything beyond someone's level before the route runs. Where someone with
+  Field reaches a route, it shows them their own work and changes only what they
+  made, and nobody else's pay figure. Who has which level is changed only by
+  someone with Full, and the database keeps someone active on Full.
 - **It is meant to sit behind a reverse proxy**, bound to loopback with
   `HOST=127.0.0.1`, and nothing assumes the proxy is the only protection —
   the application authenticates for itself.

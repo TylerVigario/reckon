@@ -1,4 +1,5 @@
-// People, the capacity they are paid in, and how they sign in.
+// People, the capacity they are paid in, what they can reach, and how they
+// sign in.
 //
 // user, session, account and verification are Better Auth's, in the shape its
 // Drizzle adapter reads: it finds them by these names and these fields. They
@@ -25,6 +26,7 @@ import {
 	uuid
 } from 'drizzle-orm/pg-core';
 import { createdAt, id, lowercaseEmail, oneOf, tstz, updatedAt } from './columns.ts';
+import { ACCESS } from '../../../access.ts';
 
 /**
  * What a role's pay is, which decides where it is reported: a partner's
@@ -83,6 +85,12 @@ export const user = pgTable(
 		/** Whether they count: an inactive person is not offered to work, nor ticked on a team. */
 		active: boolean().default(true).notNull(),
 		/**
+		 * What they can reach, apart from what they are paid as (0031): Full or
+		 * Field, and which routes each reaches is #lib/access. Someone new starts
+		 * with Field, and the database keeps one active person on Full.
+		 */
+		access: text({ enum: ACCESS }).default('field').notNull(),
+		/**
 		 * The zone this person keeps their days in, as Postgres names it. Their
 		 * own timesheet, the day a new entry starts on, and every moment shown to
 		 * them are on this clock (#lib/server/calendar). Set from their browser
@@ -107,6 +115,7 @@ export const user = pgTable(
 		unique('user_email_key').on(t.email),
 		lowercaseEmail('user_email_lowercase', t.email),
 		oneOf('user_hour_cycle_check', t.hourCycle, HOUR_CYCLES),
+		oneOf('user_access_check', t.access, ACCESS),
 		check('user_week_start_check', sql`${t.weekStart} between 1 and 7`),
 		foreignKey({
 			name: 'user_role_id_fkey',

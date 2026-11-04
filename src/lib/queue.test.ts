@@ -93,6 +93,23 @@ describe('flush', () => {
 		expect((await q.held()).waiting).toBe(6);
 	});
 
+	it('keeps an entry beyond what its sender may do, with why, and stops sending it', async () => {
+		await q.enqueue(entry('theirs'));
+		vi.stubGlobal('fetch', () =>
+			answer(403, {
+				type: '/problems/not-yours',
+				title: 'Only its owner can change this',
+				status: 403,
+				detail: 'Whoever added it, or someone with Full, changes it.'
+			})
+		);
+		expect(await q.flush()).toEqual({ sent: 0, refused: 1 });
+		expect((await q.held()).refused[0].refused).toEqual({
+			status: 403,
+			detail: 'Whoever added it, or someone with Full, changes it.'
+		});
+	});
+
 	it('keeps everything when there is no connection', async () => {
 		await q.enqueue(entry('first'));
 		await q.enqueue(entry('second'));

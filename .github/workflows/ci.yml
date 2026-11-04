@@ -185,6 +185,9 @@ jobs:
           npm run db:seed -- reckon_ci
           printf 'ci-only-password\nci-only-password\n' \
             | node scripts/user.mjs password avery@kestrel.example
+          # And someone with Field, for what that level reaches.
+          printf 'ci-only-password\nci-only-password\n' \
+            | node scripts/user.mjs password sam@kestrel.example
 
       - name: Start it
         run: |
@@ -205,6 +208,13 @@ jobs:
       - name: Every route answers, signed in
         run: node tests/smoke.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
+      - name: Each access level reaches what it should, and Field sees its own
+        # Before the checks that write, on the seeded business: every route
+        # beyond Field is asked of someone with Field and refused.
+        run: |
+          node tests/access-check.mjs "http://127.0.0.1:$PORT" \
+            avery@kestrel.example ci-only-password sam@kestrel.example ci-only-password
+
       - name: Every screen renders, with nothing on the console
         # A page can answer 200 with its body already doomed: SvelteKit renders
         # on the client, so a component that throws leaves the URL changed, the
@@ -219,6 +229,7 @@ jobs:
           google-chrome --headless --disable-gpu --no-sandbox \
             --remote-debugging-port=9222 --user-data-dir=/tmp/chrome about:blank \
             > /tmp/chrome.log 2>&1 &
+          echo $! > /tmp/chrome.pid
           for _ in $(seq 1 60); do
             curl -sf -o /dev/null http://127.0.0.1:9222/json && break
             sleep 1
@@ -289,8 +300,30 @@ jobs:
         run: node tests/pay-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: An invoice is sent with its link
-        # Last: it sends the draft lines-check made, which the checks before it add to.
+        # Last but one: it sends the draft lines-check made, which the checks before it add to.
         run: node tests/send-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+
+      - name: Someone with Field walks every screen they are offered, with nothing on the console
+        # In a browser of their own, as their own phone would be: the one the
+        # checks above used holds Avery's session and what those checks queued.
+        # A link that leads them somewhere their access does not reach ends up
+        # at /refused, and fails.
+        run: |
+          kill "$(cat /tmp/chrome.pid)" 2>/dev/null || true
+          sleep 1
+          google-chrome --headless --disable-gpu --no-sandbox \
+            --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-field about:blank \
+            > /tmp/chrome-field.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://127.0.0.1:9222/json && break
+            sleep 1
+          done
+          if ! curl -sf -o /dev/null http://127.0.0.1:9222/json; then
+            echo "::error::Chrome did not start within a minute"
+            cat /tmp/chrome-field.log
+            exit 1
+          fi
+          node tests/console-check.mjs "http://127.0.0.1:$PORT" sam@kestrel.example ci-only-password
 
       - name: Stop it
         if: always()

@@ -57,6 +57,13 @@ migrations, beginning with `drizzle/0001_integrity.sql`.
 **After the first release, a migration is added and never edited.** Other
 people's databases already ran the old one.
 
+**Every route says who reaches it.** `src/lib/access.ts` names the level each
+route needs — open, Field or Full — and `hooks.server.ts` refuses anything
+beyond someone's level before the route runs. A route added without a line
+there does not typecheck. A route Field reaches is scoped where it runs as well,
+to that person's own work, so a new one says in its load or handler what
+someone with Field sees of it.
+
 ## Getting it running
 
 ```bash

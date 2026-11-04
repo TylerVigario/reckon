@@ -6,10 +6,12 @@ import { businessToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
 import { crewNames } from '#lib/server/choices.ts';
+import { fieldOnly, theirWork } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
- * Every entry in a month, by the week it was worked.
+ * Every entry in a month, by the week it was worked: for someone with Field,
+ * every one they worked (#lib/access).
  *
  * Each is priced the way an invoice line will be: the most specific price row
  * that had taken effect on the day the work happened, never today's. A rate
@@ -45,7 +47,13 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			.leftJoin(t.entity, eq(t.entity.id, t.timeEntry.entityId))
 			.leftJoin(t.site, eq(t.site.id, t.timeEntry.siteId))
 			.leftJoin(t.invoiceLine, eq(t.invoiceLine.timeEntryId, t.timeEntry.id))
-			.where(and(gte(t.timeEntry.workedOn, from), lt(t.timeEntry.workedOn, to)))
+			.where(
+				and(
+					gte(t.timeEntry.workedOn, from),
+					lt(t.timeEntry.workedOn, to),
+					fieldOnly(locals) ? theirWork(locals.user!.id) : undefined
+				)
+			)
 			.orderBy(desc(t.timeEntry.workedOn), desc(t.timeEntry.createdAt), desc(t.timeEntry.id)),
 		db.select({ ageingAlertDays: t.operator.ageingAlertDays }).from(t.operator)
 	]);

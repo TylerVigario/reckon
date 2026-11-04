@@ -194,7 +194,13 @@ export const invoiceLine = pgTable(
 		paidBy: uuid(),
 		/** The receipt, as the phone shrank it, and its type. */
 		receipt: bytea(),
-		receiptType: text()
+		receiptType: text(),
+		/**
+		 * Who added it (0031): someone with Field changes only the lines they
+		 * added. Null on one added before lines kept their history (0021), which
+		 * only someone with Full changes.
+		 */
+		createdBy: uuid()
 	},
 	(t) => [
 		unique('invoice_line_invoice_id_seq_key').on(t.invoiceId, t.seq),
@@ -242,6 +248,11 @@ export const invoiceLine = pgTable(
 		foreignKey({
 			name: 'invoice_line_paid_by_fkey',
 			columns: [t.paidBy],
+			foreignColumns: [user.id]
+		}).onDelete('restrict'),
+		foreignKey({
+			name: 'invoice_line_created_by_fkey',
+			columns: [t.createdBy],
 			foreignColumns: [user.id]
 		}).onDelete('restrict'),
 		check(

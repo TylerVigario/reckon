@@ -14,6 +14,14 @@
 
 	const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+	// What someone can reach, apart from what they are paid as (#lib/access).
+	const ACCESS_OPTIONS = [
+		{ value: 'full', label: 'Full' },
+		{ value: 'field', label: 'Field' }
+	];
+	// Someone active keeps Full; the database refuses otherwise, and this says so first.
+	const onFull = $derived(data.people.filter((p) => p.active && p.access === 'full').length);
+
 	const roleOptions = $derived([
 		...data.roles.map((r) => ({ value: r.id, label: r.name })),
 		{ value: '', label: 'Not paid — signs in only' }
@@ -78,7 +86,7 @@
 
 <Top
 	title="People and pay"
-	sub="Who is paid, and under which rules"
+	sub="Who is paid, under which rules, and what they can reach"
 	back={resolve('/settings')}
 	backLabel="Settings"
 />
@@ -89,23 +97,39 @@
 			<div class="sec-h"><h2>People</h2></div>
 			<div class="rows inset">
 				{#each data.people as p (p.id)}
-					<Setting
-						name="role_id"
-						key={p.id}
-						label={p.name}
-						value={p.role_id ?? ''}
-						options={roleOptions}
-						hint={[
-							p.email,
-							p.own_rules ? `${count(p.own_rules, 'rule')} of their own` : null,
-							p.active ? null : 'no longer signs in'
-						]
-							.filter(Boolean)
-							.join(' · ')}
-						endpoint="/api/people/{p.id}"
-						validate={parsePersonField}
-						onsaved={() => refreshAll()}
-					/>
+					<div class="person">
+						<Setting
+							name="role_id"
+							key={p.id}
+							label={p.name}
+							value={p.role_id ?? ''}
+							options={roleOptions}
+							hint={[
+								p.email,
+								p.own_rules ? `${count(p.own_rules, 'rule')} of their own` : null,
+								p.active ? null : 'no longer signs in'
+							]
+								.filter(Boolean)
+								.join(' · ')}
+							endpoint="/api/people/{p.id}"
+							validate={parsePersonField}
+							onsaved={() => refreshAll()}
+						/>
+						<Setting
+							name="access"
+							key={p.id}
+							label="Access"
+							value={p.access}
+							options={ACCESS_OPTIONS}
+							seg
+							hint={p.active && p.access === 'full' && onFull === 1
+								? 'The only one with Full. It stays Full until someone else has it.'
+								: ''}
+							endpoint="/api/people/{p.id}"
+							validate={parsePersonField}
+							onsaved={() => refreshAll()}
+						/>
+					</div>
 				{/each}
 			</div>
 		</div>
@@ -193,6 +217,39 @@
 	<div class="rows notes">
 		<div class="rec">
 			<div class="rec-m">
+				<div class="rec-t">
+					Full <span class="lt">· everything, and the only level that bills or pays</span>
+				</div>
+				<div class="rec-s">
+					Anyone's time and trips; clients and sites, and changing them; invoices, from drafts to
+					payments; agreements, prices and the catalogue; everyone's pay, and paying people;
+					reports, people, access, settings and tax.
+				</div>
+			</div>
+		</div>
+		<div class="rec">
+			<div class="rec-m">
+				<div class="rec-t">
+					Field <span class="lt">· the work they do, and what they are paid for it</span>
+				</div>
+				<div class="rec-s">
+					Their own time and trips, and team work they were on; clients and sites, to work at; lines
+					added to a draft, and changing the ones they added; their own pay, to read.
+				</div>
+			</div>
+		</div>
+		<div class="rec">
+			<div class="rec-m">
+				<div class="rec-t"><span class="lt">Access is apart from pay</span></div>
+				<div class="rec-s">
+					A role says how someone is paid, and access what they can reach: an employee can have
+					Full, and a partner Field. Someone new starts with Field, and someone active always keeps
+					Full.
+				</div>
+			</div>
+		</div>
+		<div class="rec">
+			<div class="rec-m">
 				<div class="rec-t"><span class="lt">Roles are the business's own list</span></div>
 				<div class="rec-s">
 					A service's pay rules are written against them, or against one person. The narrowest rule
@@ -224,6 +281,15 @@
 </div>
 
 <style>
+	.person {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.person + .person {
+		padding-top: 14px;
+		border-top: 1px solid var(--line);
+	}
 	.role {
 		display: flex;
 		flex-direction: column;

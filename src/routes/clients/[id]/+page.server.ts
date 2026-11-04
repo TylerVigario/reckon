@@ -10,6 +10,7 @@ import { findClient } from '#lib/server/find.ts';
 import { loadAgreements, usedThisMonth } from '#lib/server/valuation/load.ts';
 import { hoursOf } from '#lib/server/valuation/misc.ts';
 import { rateIsStale } from '#lib/server/stale.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -18,8 +19,11 @@ import type { PageServerLoad } from './$types';
  * The tax rate shown is the rate at their site, not a property of the client.
  * A client is not a place -- two clients can work at one address, and one
  * client can work in two districts.
+ *
+ * Someone with Field reads where a client is, to work there, and nothing of
+ * what they owe, have agreed to or been invoiced (#lib/access).
  */
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
 	const owing = balances(rounding, places);
 	const { id } = await findClient(params.id);
@@ -161,6 +165,14 @@ export const load: PageServerLoad = async ({ params }) => {
 		return parts.length ? parts.map((p) => `${p.name} ${p.text}`).join(', ') : null;
 	};
 
+	if (fieldOnly(locals))
+		return {
+			client: { ...client, owed: null, out: null, credit: null },
+			sites,
+			levies,
+			agreements: [],
+			recent: []
+		};
 	return {
 		client,
 		sites,

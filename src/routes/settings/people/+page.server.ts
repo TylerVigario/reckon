@@ -4,7 +4,8 @@ import { payRule, role, user } from '#lib/server/db/schema/index.ts';
 import type { PageServerLoad } from './$types';
 
 /**
- * Who works here, the capacity each is paid in, and what each role's pay is.
+ * Who works here, the capacity each is paid in, what each can reach, and what
+ * each role's pay is.
  *
  * What a person is paid is not here: it is a service's pay rules, written
  * against a role or against one person, and shown with the service they pay
@@ -27,6 +28,7 @@ export const load: PageServerLoad = async () => {
 				email: user.email,
 				active: user.active,
 				role_id: user.roleId,
+				access: user.access,
 				role: role.name,
 				own_rules: counted(
 					db.select({ n: count() }).from(payRule).where(eq(payRule.userId, user.id))

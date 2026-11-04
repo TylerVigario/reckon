@@ -167,8 +167,11 @@
 
 	const startedAt = (t: Running) => clockAt(t.started_at, personalZone());
 
+	// Someone with Field sees only what they worked (#lib/access), and is told so.
+	const field = $derived(data.user?.access === 'field');
 	const sub = $derived(
 		[
+			field ? 'Your work' : null,
 			notSaved.length ? `${notSaved.length} not saved` : null,
 			queued ? `${queued} queued` : null,
 			`${secondsAsHours(data.monthSeconds, 'whole')} this month`
@@ -300,7 +303,7 @@
 	<div class="sec">
 		<div class="sec-h">
 			<h2>Today</h2>
-			<a class="seeall" href={resolve('/timesheet/all')}>All entries</a>
+			<a class="seeall" href={resolve('/timesheet/all')}>{field ? 'All yours' : 'All entries'}</a>
 		</div>
 		<div class="rows">
 			{#each timers as t (t.id)}

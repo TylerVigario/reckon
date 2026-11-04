@@ -24,6 +24,9 @@
  * for.
  */
 
+/** What a problem document is sent as, and how a client tells one from what it asked for. */
+export const PROBLEM_MEDIA_TYPE = 'application/problem+json';
+
 /** The kinds of problem this API has. A type is only worth having if it is stable. */
 export const PROBLEM = {
 	invalidField: {
@@ -49,6 +52,10 @@ export const PROBLEM = {
 	notYours: {
 		type: '/problems/not-yours',
 		title: 'Only its owner can change this'
+	},
+	beyondAccess: {
+		type: '/problems/beyond-access',
+		title: "Beyond what this person's access reaches"
 	}
 } as const;
 

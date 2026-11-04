@@ -3,6 +3,7 @@
 	import Top from '#lib/Top.svelte';
 	import { resolve } from '$app/paths';
 	import type { RouteId } from '$app/types';
+	import { opens } from '#lib/access.ts';
 
 	const op = $derived(page.data.operator);
 	const name = $derived(op?.trading_name ?? 'reckon');
@@ -30,9 +31,24 @@
 			sub: 'Your time zone, and how dates and figures read for you'
 		}
 	] satisfies { href: RouteId; title: string; sub: string }[];
+
+	// Each row only where it opens for this person (#lib/access). Someone with
+	// Field has their own pay here, in place of the reports; the entities read
+	// as where the work happens, since what each owes is not theirs to see.
+	const access = $derived(page.data.user?.access ?? null);
+	const field = $derived(access === 'field');
+	const shown = $derived(
+		menu
+			.filter((m) => opens(access, m.href))
+			.map((m) =>
+				field && m.href === '/clients'
+					? { ...m, sub: 'Who the work is for, and where it happens' }
+					: m
+			)
+	);
 </script>
 
-<Top title="More" sub="Catalogue, entities, reports" />
+<Top title="More" sub={field ? 'Entities, your pay' : 'Catalogue, entities, reports'} />
 
 <div class="pad">
 	<div class="brandhd">
@@ -46,7 +62,7 @@
 
 	<div class="sec">
 		<div class="rows">
-			{#each menu as m (m.href)}
+			{#each shown as m (m.href)}
 				<a class="rec link" href={resolve(m.href)}>
 					<div class="rec-m">
 						<div class="rec-t">{m.title}</div>
@@ -54,12 +70,24 @@
 					</div>
 					<span class="arw" aria-hidden="true">›</span>
 				</a>
+				{#if field && m.href === '/clients' && page.data.user}
+					<a
+						class="rec link"
+						href={resolve('/reports/pay/[person]', { person: page.data.user.id })}
+					>
+						<div class="rec-m">
+							<div class="rec-t">Your pay</div>
+							<div class="rec-s">What you are owed, and what you have been paid</div>
+						</div>
+						<span class="arw" aria-hidden="true">›</span>
+					</a>
+				{/if}
 			{/each}
 		</div>
 	</div>
 
 	<form class="out" method="POST" action="/logout">
-		<span>Signed in as {page.data.user?.name}</span>
+		<span>Signed in as {page.data.user?.name}{field ? ' · Field' : ''}</span>
 		<button type="submit">Sign out</button>
 	</form>
 </div>

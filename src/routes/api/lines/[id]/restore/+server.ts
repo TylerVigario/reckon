@@ -1,6 +1,7 @@
 import { UUID } from '#lib/field-rules.ts';
 import { answer, madeAt, restoreLine } from '#lib/server/lines.ts';
 import { problem } from '#lib/server/problem.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { RequestHandler } from './$types';
 
 /**
@@ -27,6 +28,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			fields,
 			receipt: file instanceof File ? file : null,
 			userId: locals.user!.id,
+			field: fieldOnly(locals),
 			madeAt: madeAt(typeof when === 'string' ? when : '')
 		})
 	);

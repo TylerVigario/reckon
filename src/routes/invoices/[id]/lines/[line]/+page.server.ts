@@ -6,15 +6,17 @@ import * as t from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { formFieldsOf } from '#lib/server/lines.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
  * One line, opened from its draft: what it was bought from, paid to or drawn
  * from stock as, its receipt, what it bills, and its history -- as the mock's
  * line screen has them. A line added by hand can be changed or taken off here
- * while its draft is a draft.
+ * while its draft is a draft. Someone with Field opens a line on a draft, and
+ * changes one they added (#lib/access).
  */
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.line)) error(404, 'no such line');
 	const il = t.invoiceLine;
 	const payer = alias(t.user, 'payer');
@@ -45,7 +47,8 @@ export const load: PageServerLoad = async ({ params }) => {
 			invoice_id: t.invoice.id,
 			number: t.invoice.number,
 			status: t.invoice.status,
-			who: t.entity.name
+			who: t.entity.name,
+			created_by: il.createdBy
 		})
 		.from(il)
 		.innerJoin(t.invoice, eq(t.invoice.id, il.invoiceId))
@@ -55,7 +58,10 @@ export const load: PageServerLoad = async ({ params }) => {
 		.leftJoin(t.material, eq(t.material.id, il.materialId))
 		.leftJoin(src, eq(src.id, il.movedFromInvoiceId))
 		.where(and(eq(il.id, params.line), eq(il.invoiceId, params.id)));
-	if (!line) error(404, 'no such line');
+	const field = fieldOnly(locals);
+	if (!line || (field && line.status !== 'draft')) error(404, 'no such line');
+	// Whether this person can change it: with Field, only a line they added.
+	const changeable = !field || line.created_by === locals.user!.id;
 
 	const h = t.recordHistory;
 	const [added, saves, [op], sites, people, places] = await Promise.all([
@@ -85,6 +91,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	]);
 	return {
 		line,
+		changeable,
 		// As the form puts them: what a change made here begins from.
 		fields: formFieldsOf({ ...line, paid_by: line.paid_by_id }, places),
 		added: added[0] ?? null,

@@ -10,6 +10,7 @@ import { billedAmount, jobRate, priceOn } from '#lib/server/valuation/pricing.ts
 import { ruleOn } from '#lib/server/valuation/pay.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
 import { UUID } from '#lib/field-rules.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -18,8 +19,12 @@ import type { PageServerLoad } from './$types';
  * The second tile is the point of the screen: what these legs bill, against
  * what a full round trip each would have billed. On the seeded trip that is
  * the difference between 57 miles and 70.
+ *
+ * Someone with Field sees a trip they drove (#lib/access), and what its vehicle
+ * paid only where the vehicle is theirs: another's pay is theirs to see. What
+ * the business kept is not shown them.
  */
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
 	if (!UUID.test(params.id)) error(404, 'no such trip');
 
 	const tr = t.trip;
@@ -48,14 +53,18 @@ export const load: PageServerLoad = async ({ params }) => {
 			vehicle: v.name,
 			vehicle_retired_on: v.retiredOn,
 			owner_id: v.ownerId,
-			owner: owner.name
+			owner: owner.name,
+			driven_by: tr.drivenBy,
+			created_by: tr.createdBy
 		})
 		.from(tr)
 		.leftJoin(u, eq(u.id, tr.drivenBy))
 		.leftJoin(v, eq(v.id, tr.vehicleId))
 		.leftJoin(owner, eq(owner.id, v.ownerId))
 		.where(eq(tr.id, params.id));
-	if (!found) error(404, 'no such trip');
+	const field = fieldOnly(locals);
+	const me = locals.user!.id;
+	if (!found || (field && found.driven_by !== me)) error(404, 'no such trip');
 
 	const [stops, rows] = await Promise.all([
 		// Each stop, and who it was for there (0025): two clients at one address
@@ -155,14 +164,20 @@ export const load: PageServerLoad = async ({ params }) => {
 			? { pays_for: used[0].paysFor, method: used[0].method, amount: used[0].amount }
 			: null;
 
+	// Another person's vehicle pay is theirs, not Field's to see.
+	const withheld = field && found.owner_id !== null && found.owner_id !== me;
+	const { driven_by: _driver, created_by, ...shown } = found;
 	const trip = {
-		...found,
+		...shown,
 		miles: sum(rows.map((l) => l.miles)).toFixed(2),
 		billed: billed.toFixed(places),
 		round_trips: roundTrips.length ? sum(roundTrips).toFixed(places) : null,
-		paid: paid?.toFixed(places) ?? null,
-		kept: paid ? billed.sub(paid).toFixed(places) : null,
-		rule
+		paid: withheld ? null : (paid?.toFixed(places) ?? null),
+		kept: field ? null : paid ? billed.sub(paid).toFixed(places) : null,
+		rule: withheld ? null : rule,
+		withheld,
+		// Whether this person can change it: Field, only one they recorded.
+		changeable: !field || created_by === me
 	};
 	const legs = rows.map((l) => ({
 		id: l.id,

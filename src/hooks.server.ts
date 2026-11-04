@@ -17,7 +17,8 @@ import { businessDefaults } from '#lib/server/business.ts';
 import { readLocaleFrom } from '#lib/format.ts';
 import { readCurrencyFrom } from '#lib/currency.ts';
 import { localeTag, weekStartOf, type HourCycle } from '#lib/locales.ts';
-import { CLIENT_PAGE } from '#lib/client-link.ts';
+import { REACH, reaches } from '#lib/access.ts';
+import { problem } from '#lib/server/problem.ts';
 import { THEME_COOKIE, themeFrom } from '#lib/device-fields.ts';
 
 /**
@@ -61,22 +62,15 @@ export const init: ServerInit = async () => {
 };
 
 /**
- * Reachable without signing in. Everything else is not.
+ * One place decides whether a request is allowed: #lib/access says who reaches
+ * each route, and a route missing from it does not typecheck. Per-route checks
+ * are how a route ends up with none.
  *
- * The manifest, the logo and the operator's stylesheet are here because the
- * sign-in page uses them, and a browser fetches the first two without the
- * session cookie anyway -- to install the app, and to draw its icon. None of
- * them says more than the sign-in page already does: the business's name,
- * colour and mark.
- */
-const OPEN = new Set(['/login', '/manifest.webmanifest', '/operator/logo', '/operator/theme.css']);
-// And the client's link to a sent invoice (#lib/client-link): one page, opened
-// by a token nobody can guess, showing that invoice and nothing else.
-
-/**
- * One place decides whether a request is allowed. Per-route checks are how a
- * route ends up with none: this one is wrong by omission only if a route is
- * added to OPEN on purpose.
+ * Open without signing in: the sign-in page and what it uses -- the manifest,
+ * the logo and the operator's stylesheet, which a browser fetches without the
+ * session cookie anyway, to install the app and draw its icon, and none of
+ * which says more than the sign-in page already does -- and the client's link
+ * to a sent invoice (#lib/client-link).
  */
 export const handle: Handle = async ({ event, resolve }) => {
 	// A person made inactive is signed out wherever they are, at their next
@@ -88,6 +82,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 					id: found.user.id,
 					name: found.user.name,
 					email: found.user.email,
+					// Anything but Full is Field: a level the app does not know reaches
+					// the least.
+					access: found.user.access === 'full' ? 'full' : 'field',
 					timezone: found.user.timezone ?? null,
 					locale: found.user.locale ?? null,
 					hourCycle: (found.user.hourCycle as HourCycle | null | undefined) ?? null,
@@ -115,13 +112,24 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// signed in or not: the sign-in page is drawn in it too.
 	event.locals.theme = themeFrom(event.cookies.get(THEME_COOKIE));
 
+	// A path that is no route needs signing in, and is then not found.
 	const path = event.url.pathname;
-	if (!event.locals.user && !OPEN.has(path) && !CLIENT_PAGE.test(path)) {
+	const need = event.route.id ? REACH[event.route.id] : 'field';
+	if (!event.locals.user && need !== 'open') {
 		// The capture queue keeps 5xx and drops 4xx, and 401 is neither: the
 		// entry is fine, the session is not. It answers 401 so the queue can
 		// tell the difference, and queue.ts keeps it.
 		if (path.startsWith('/api/')) error(401, 'sign in first');
 		redirect(303, `/login?next=${encodeURIComponent(event.url.pathname + event.url.search)}`);
+	}
+	// Refused before the route runs, so nothing of it is read or written. An
+	// endpoint says so as every refusal does, for the queue to keep and show; a
+	// screen is turned away to the one that says why, inside the app, as the
+	// sign-in page is reached -- an error thrown here would be drawn outside it.
+	if (event.locals.user && !reaches(event.locals.user.access, need)) {
+		if (path.startsWith('/api/'))
+			return secured(event.url, problem('beyondAccess', 403, 'That needs Full access.'));
+		redirect(303, '/refused');
 	}
 
 	// The theme goes on <html> before the page leaves, so the first paint is in
@@ -130,16 +138,22 @@ export const handle: Handle = async ({ event, resolve }) => {
 		transformPageChunk: ({ html }) => html.replace('%theme%', event.locals.theme ?? '')
 	});
 
-	/**
-	 * The headers that cost nothing and are only ever missing by omission.
-	 *
-	 * The CSP itself is declared in vite.config.ts, because SvelteKit has to
-	 * hash its own inline bootstrap and only it knows what that is. These are
-	 * the rest, and they are set here rather than left to a reverse proxy: this
-	 * app is handed to a host as a standalone server, and a header that depends
-	 * on somebody else's nginx is a header that is absent the first time it is
-	 * run anywhere new.
-	 */
+	return secured(event.url, response);
+};
+
+/**
+ * The headers that cost nothing and are only ever missing by omission, on
+ * whatever is answered -- a refusal made in handle as much as what a route
+ * answers.
+ *
+ * The CSP itself is declared in vite.config.ts, because SvelteKit has to
+ * hash its own inline bootstrap and only it knows what that is. These are
+ * the rest, and they are set here rather than left to a reverse proxy: this
+ * app is handed to a host as a standalone server, and a header that depends
+ * on somebody else's nginx is a header that is absent the first time it is
+ * run anywhere new.
+ */
+function secured(url: URL, response: Response): Response {
 	response.headers.set('X-Content-Type-Options', 'nosniff');
 	// same-origin, not no-referrer: an internal link keeps its referrer, and
 	// nothing leaves this origin anyway.
@@ -171,9 +185,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// Only over TLS, and only in production: sent over plain http it is
 	// ignored, and set in development it would pin localhost to https in the
 	// browser for two years.
-	if (event.url.protocol === 'https:') {
+	if (url.protocol === 'https:') {
 		response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
 	}
 
 	return response;
-};
+}
