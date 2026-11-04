@@ -9,8 +9,9 @@
  * A draft is started for a client, which takes the next invoice number. 10 ft
  * of raceway drawn from the 60 ft on the shelf, at the average of $0.85 a foot
  * and the demo's 25% markup; jacks bought at Valley Hardware for 33.33 with
- * 2.67 tax, passed on as they cost; both taxed at the site's 8%; and a 35.00
- * permit paid for them, untaxed. What a line will bill shows as it is typed, a
+ * 2.67 tax, passed on as they cost; both taxed at the site's 8%, which the
+ * draft says is Woodland's and what it is made of; and a 35.00 permit paid for
+ * them, untaxed. What a line will bill shows as it is typed, a
  * draw larger than the shelf is refused before it is sent, the receipt is read
  * back from its line, and the raceway's shelf is 10 ft shorter. Then the jacks
  * are changed, and their history says what moved; the raceway is changed to
@@ -291,6 +292,12 @@ check(
 );
 // 33.33 and 10.63 taxed at 8% is 3.5168: $3.52.
 check(page.includes('$82.48'), 'the draft comes to $82.48: $10.63, $33.33, $35.00 and $3.52 tax');
+// Where they were taxed, as the lines kept it from the site with its rate.
+const where = 'WOODLAND 8.000% (7.250% state + 0.750% district)';
+check(
+	page.includes(where),
+	`the draft says where its goods were taxed, and what the rate is made of${page.includes(where) ? '' : ` (${page.slice(0, 600)})`}`
+);
 /** The draft's line that says `name`: its own screen, where its receipt is. */
 const lineOf = (/** @type {string} */ name) =>
 	run((/** @type {string} */ text) => {

@@ -149,6 +149,21 @@ export const invoiceLine = pgTable(
 		taxable: boolean().default(false).notNull(),
 		taxRatePct: decimal(7, 4).default('0').notNull(),
 		taxSource: text({ enum: TAX_SOURCES }).default('none').notNull(),
+		/**
+		 * Where a taxed line was taxed: CDTFA's area for its site, read from the
+		 * site with the rate (0030). A sent line keeps it, so a return reads a
+		 * period as it was billed after the site's rate is refreshed or its
+		 * address chosen again. Null on a line taxed nowhere, or at no site.
+		 */
+		taxJurisdiction: text(),
+		/**
+		 * What the rate was made of -- the state's share and the districts' --
+		 * where it was the site's rate, read with it. Null on any other line,
+		 * and on one sent before they were kept whose rate no answer of CDTFA's
+		 * matched.
+		 */
+		stateRatePct: decimal(7, 4),
+		districtRatePct: decimal(7, 4),
 		taxOverrideReason: text(),
 		exTaxCost: decimal(12, 4),
 		taxPaid: decimal(12, 4),
@@ -258,7 +273,21 @@ export const invoiceLine = pgTable(
 			'override_needs_a_reason',
 			sql`(${t.taxSource} <> 'override') OR (${t.taxOverrideReason} IS NOT NULL)`
 		),
-		check('untaxed_lines_carry_no_rate', sql`${t.taxable} OR (${t.taxRatePct} = 0)`)
+		check('untaxed_lines_carry_no_rate', sql`${t.taxable} OR (${t.taxRatePct} = 0)`),
+		// Where a line was taxed is said of a taxed line at a site, and of nothing else.
+		check(
+			'taxed_lines_say_where',
+			sql`(${t.taxable} AND (${t.siteId} IS NOT NULL)) = (${t.taxJurisdiction} IS NOT NULL)`
+		),
+		// The shares come together, from the site whose rate the line was taxed
+		// at, and make that rate. A line sent before they were kept can lack
+		// both (0030).
+		check(
+			'rate_shares_make_the_rate',
+			sql`((${t.stateRatePct} IS NULL) AND (${t.districtRatePct} IS NULL)) OR ((${t.taxSource} = 'site') AND (${t.stateRatePct} IS NOT NULL) AND (${t.districtRatePct} IS NOT NULL) AND ((${t.stateRatePct} + ${t.districtRatePct}) = ${t.taxRatePct}))`
+		),
+		nonNegative('invoice_line_state_rate_pct_check', t.stateRatePct),
+		nonNegative('invoice_line_district_rate_pct_check', t.districtRatePct)
 	]
 );
 

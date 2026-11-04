@@ -370,16 +370,20 @@ INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_pr
   ('6f444d02-b482-4506-98fe-ee23f45d26c5',1,'service','Field service',1.5,'hour',95.00,142.50,false,0,NULL,NULL),
   ('6f444d02-b482-4506-98fe-ee23f45d26c5',2,'service','Travel',18.0,'mile',0.66,11.88,false,0,NULL,NULL);
 
--- Goods lines name the site whose rate taxes them and the material each is,
--- with what it cost before tax and the tax already paid on it. What each took
--- off its lot is a draw, which takes it off the shelf.
+-- Goods lines name the site whose rate taxes them, with where that rate is
+-- levied and what it is made of, and the material each is, with what it cost
+-- before tax and the tax already paid on it. What each took off its lot is a
+-- draw, which takes it off the shelf.
 INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
-                          taxable, tax_rate_pct, tax_source, site_id, material_id,
+                          taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction,
+                          state_rate_pct, district_rate_pct, material_id,
                           ex_tax_cost, tax_paid) VALUES
   ('a0ca5d14-192f-43eb-9652-48e6fe145e67','2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a',1,'material','Access point · Wi-Fi 6 · Ceiling',
-   2,'each',132.16,264.32,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','427ec8a1-9038-4fca-9323-ca62625622a3', 224.00, 16.24),
+   2,'each',132.16,264.32,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','AUBURN',7.2500,0.0000,
+   '427ec8a1-9038-4fca-9323-ca62625622a3', 224.00, 16.24),
   ('46c02ef2-14c7-4043-9321-34a0ecd99100','2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a',2,'material','Raceway · Surface · 3/4 in',
-   40,'foot',1.06,42.40,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','b144a78b-750a-4bd2-a84e-7d1551328565', 34.00, 2.464);
+   40,'foot',1.06,42.40,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','AUBURN',7.2500,0.0000,
+   'b144a78b-750a-4bd2-a84e-7d1551328565', 34.00, 2.464);
 
 INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty) VALUES
   ('a0ca5d14-192f-43eb-9652-48e6fe145e67','c0ac1e19-b1d7-4e4c-9805-95e66944db65','427ec8a1-9038-4fca-9323-ca62625622a3', 2),

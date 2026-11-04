@@ -333,14 +333,39 @@ async function refused(e: unknown, clientUuid: string, number: string): Promise<
 	throw e;
 }
 
-/** The client's site a line names, for its rate, or why it cannot be named. */
+/**
+ * The client's site a line names, for its rate and where the rate is levied,
+ * or why it cannot be named.
+ */
 async function siteOf(draft: { entity_id: string; who: string }, siteId: string | null) {
 	if (!siteId) return { site: null, why: null };
 	const [site] = await db
-		.select({ rate: t.site.taxRatePct })
+		.select({
+			rate: t.site.taxRatePct,
+			jurisdiction: t.site.taxJurisdiction,
+			state: t.site.stateRatePct,
+			district: t.site.districtRatePct
+		})
 		.from(t.site)
 		.where(and(eq(t.site.id, siteId), eq(t.site.entityId, draft.entity_id)));
 	return site ? { site, why: null } : { site: null, why: `Not one of ${draft.who}'s sites.` };
+}
+
+/**
+ * Where a taxed line was taxed, and what the rate was made of where it is the
+ * site's, from the same read of the site as the rate (0030).
+ */
+function taxedWhere(
+	line: { taxable: boolean; taxSource: string },
+	site: { jurisdiction: string; state: string; district: string } | null
+) {
+	const at = line.taxable && site !== null;
+	const own = at && line.taxSource === 'site';
+	return {
+		taxJurisdiction: at ? site.jurisdiction : null,
+		stateRatePct: own ? site.state : null,
+		districtRatePct: own ? site.district : null
+	};
 }
 
 /** A receipt sent with a line: a photo or a PDF, and no bigger than the column holds. */
@@ -514,6 +539,7 @@ async function fromTheShelf(
 						taxable: line.taxable,
 						taxRatePct: line.taxRatePct,
 						taxSource: line.taxSource,
+						...taxedWhere(line, site),
 						exTaxCost: line.exTaxCost,
 						taxPaid: line.taxPaid,
 						siteId,
@@ -598,6 +624,7 @@ async function boughtOrPaidFor(
 						taxable: line.taxable,
 						taxRatePct: line.taxRatePct,
 						taxSource: line.taxSource,
+						...taxedWhere(line, site),
 						exTaxCost: line.exTaxCost,
 						taxPaid: line.taxPaid,
 						siteId,
@@ -833,6 +860,7 @@ export async function changeLine(
 							taxable: priced.taxable,
 							taxRatePct: priced.taxRatePct,
 							taxSource: priced.taxSource,
+							...taxedWhere(priced, site),
 							exTaxCost: priced.exTaxCost,
 							taxPaid: priced.taxPaid,
 							siteId
@@ -880,6 +908,7 @@ export async function changeLine(
 						taxable: priced.taxable,
 						taxRatePct: priced.taxRatePct,
 						taxSource: priced.taxSource,
+						...taxedWhere(priced, site),
 						exTaxCost: priced.exTaxCost,
 						taxPaid: priced.taxPaid,
 						siteId,
