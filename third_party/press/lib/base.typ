@@ -16,10 +16,18 @@
   set document(title: title, author: author)
   set page(..preset)
   set text(font: face-text, size: sz.small, fill: ink, lang: "en")
-  set par(leading: 0.52em, spacing: 0.55em)
-  set list(indent: 0.65em, body-indent: 0.34em, spacing: 0.32em)
-  show raw: set text(font: face-mono, size: sz.fine)
+  // Paragraphs further apart than a list's items, and items than lines, so each reads as one:
+  // a paragraph ends where its gap shows, and the one after a list is not its last item's.
+  set par(leading: 0.52em, spacing: 0.8em)
+  // A list's items are further apart than the lines within one, so a wrapped item reads as one.
+  set list(indent: 0.65em, body-indent: 0.34em, spacing: 0.65em)
+  set enum(spacing: 0.65em)
+  // Code is set a step below the text around it, as sz.fine is to sz.small; typst's own rule for
+  // raw sets it at 0.8em first, which this is relative to.
+  show raw: set text(font: face-mono, size: sz.fine / sz.small / 0.8 * 1em)
   show raw.where(block: true): code
   show link: link-note
+  // The title is counted here when nothing in the document prints it.
+  _title-start()
   body
 }

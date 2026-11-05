@@ -82,8 +82,9 @@
 #     collision of 2.72pt. The 0.5pt floor exists for that gap and nothing else,
 #     so a document leaning heavily on rotation deserves a look by eye.
 #   · The printable-area check additionally needs a Python and poppler's
-#     pdftoppm, and is skipped with a message rather than failing when no
-#     interpreter is found. PRESS_PYTHON and PRESS_PDFTOPPM name either
+#     pdftoppm, and the line-overlap check a Python. check refuses without a
+#     working interpreter, as it does without poppler; a build skips both passes
+#     and says so. PRESS_PYTHON and PRESS_PDFTOPPM name either
 #     directly. The interpreter is found by EXECUTING a candidate, not by
 #     resolving a name — Windows ships a zero-byte python3 alias that answers
 #     `command -v` and then prints a Store advert, and turning that alias off
@@ -378,11 +379,11 @@ found() {
     case " $accepted " in *" $1 "*) ;; *) rc=1 ;; esac
 }
 
-# SCANS (lib.typ's scan()). A document that reads an image file may have marked some of it as a
-# scan, content it did not set. The passes that read the page — fonts, ink near the edge, text
+# SCANS (scan(), in lib/parts.typ). A document that reads an image file may have marked some of it
+# as a scan, content it did not set. The passes that read the page — fonts, ink near the edge, text
 # on text — then read a copy compiled with every scan hidden, its space kept and its stamp the
-# same, so the page lays out exactly as the document's does, without the scans. A document
-# that reads no image is read as it is, with no second compile.
+# same, so the page lays out exactly as the document's does, without the scans. A document that
+# reads no image is read as it is, with no second compile.
 page=$pdf
 if tr '\000' '\n' < "$tmp/deps" | grep -qiE '\.(pdf|png|jpe?g|gif|svg|webp)$'; then
     if PRESS_IN_CHECK=1 PRESS_STAMP_AS="$pdf" sh "$press_root/tools/stamp.sh" "$src" "$tmp/scans-hidden.pdf" \
@@ -392,9 +393,9 @@ if tr '\000' '\n' < "$tmp/deps" | grep -qiE '\.(pdf|png|jpe?g|gif|svg|webp)$'; t
 fi
 # The PRINTABLE-AREA check. A document can overflow the unprintable band
 # silently: typst has no concept of it, so the failure appears on paper and
-# nowhere else. Skipped rather than fatal where no interpreter is present,
-# because font checking is worth having on its own and press must stay usable on
-# a box that has poppler but no python at all.
+# nowhere else. A build skips it where no interpreter is present, because font
+# checking is worth having on its own and building must stay usable on a box
+# that has poppler but no python at all. check refuses there, below.
 #
 # `command -v python3` was the guard and it FAILED BOTH WAYS on Windows.
 #
@@ -418,8 +419,8 @@ fi
 #
 # An override that is set but cannot run says so rather than falling through in
 # silence -- that is a typo the operator wants to hear about -- but it still falls
-# back, because this pass is skippable and a bad override should not take out the
-# font checks with it.
+# back, because python3 or python on PATH runs the passes as well, and in a build
+# a bad override should not take out the font checks with it.
 PY=
 if [ -n "${PRESS_PYTHON:-}" ]; then
     if "$PRESS_PYTHON" -c 'pass' >/dev/null 2>&1; then
@@ -433,6 +434,13 @@ if [ -z "$PY" ]; then
     for cand in python3 python; do
         if "$cand" -c 'pass' >/dev/null 2>&1; then PY=$cand; break; fi
     done
+fi
+# check refuses without one, as it refuses without poppler: it would skip the two passes that
+# need it and report the document clean, the verdict check is run to be sure of.
+if [ -z "$PY" ] && [ -z "$optional" ]; then
+    echo "press: check needs a python for the printable-area and line-overlap checks; none runs" >&2
+    echo "       set PRESS_PYTHON to one if it is not on PATH as python3 or python" >&2
+    exit 1
 fi
 if [ -n "$PY" ] && [ -n "$optional" ] && ! command -v "${PRESS_PDFTOPPM:-pdftoppm}" >/dev/null 2>&1; then
     # A build without pdftoppm skips this pass and says so; check reports it as the pass fails.
@@ -456,7 +464,8 @@ fi
 # repeatedly, which is what this removes.
 #
 # Shares the printable-area check's interpreter and skip behaviour, and the same
-# reasoning: a box with poppler and no python still gets the font checks. It does
+# reasoning: a build on a box with poppler and no python still gets the font
+# checks, and check refuses there. It does
 # NOT share its instrument — see the module docstring for why the raster cannot
 # answer this and pdftotext can.
 if [ -n "$PY" ] && [ -n "$optional" ] && ! "$PY" -c 'import xml.parsers.expat' >/dev/null 2>&1; then

@@ -41,8 +41,9 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 # --fail so an HTML error page is an error rather than an archive that fails to extract with a
-# message about xz.
-curl --fail --silent --show-error --location \
+# message about xz. --retry so a timeout or a 500, 502, 503 or 504 from GitHub's release
+# downloads is tried again before it fails the job, after waits of 1, 2, 4, 8 and 16 seconds.
+curl --fail --silent --show-error --location --retry 5 \
     "https://github.com/typst/typst/releases/download/v$TYPST_VERSION/$name.tar.xz" \
     --output "$tmp/typst.tar.xz"
 # Verified BEFORE extraction. A digest checked after unpacking has already let the archive

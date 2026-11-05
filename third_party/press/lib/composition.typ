@@ -3,7 +3,6 @@
 #import "tokens.typ": *
 #import "parts.typ": *
 
-// ----------------------------------------------------------- composition ---
 // Generic by nature — a labelled bounded block, a state chip, a question awaiting its answer.
 
 // The workhorse. A bounded unit of exactly one idea: a label to navigate by, a
@@ -13,35 +12,20 @@
 // `caps` forwards to the label's `eyebrow` — see the note on it in parts.typ. This is the
 // most-used call in the vocabulary, so it is where the uppercasing does the most
 // damage: `unit([pH], "warn")` renders "PH" with nothing to indicate it happened. A unit
-// `breakable: true` lets break keeps its label with the lead, as a callout does.
-#let unit(label, tone, lead, body, caps: true, breakable: false) = {
+// `breakable: true` lets break keeps its label with the lead, as a callout does. Its tone's shape
+// goes before its label, as a callout's does, and `shape` changes it.
+#let unit(label, tone, lead, body, caps: true, breakable: false, shape: auto) = {
   let pair = tones.at(tone)
-  block(width: 100%, breakable: breakable, stroke: (left: 2.5pt + pair.at(0)),
+  context block(width: 100%, breakable: breakable, stroke: (left: 2.5pt + pair.at(0)),
         fill: paper-tint, inset: (x: 8pt, y: 6.5pt))[
-    #text(size: sz.fine, block(sticky: true, eyebrow(label, color: pair.at(0), caps: caps)))
+    #let spacing = par.spacing
+    #set par(spacing: _part-gap)
+    #text(size: sz.fine, block(sticky: true,
+      [#_shaped("unit", tone, shape)#eyebrow(label, color: pair.at(0), caps: caps)]))
     #v(2.5pt)
     #text(size: sz.fine, weight: 700)[#lead]
-    #if body != none [ #v(2.5pt) #text(size: sz.fine)[#body] ]
+    #if body != none [ #v(2.5pt) #text(size: sz.fine, _body(spacing, body)) ]
   ]
-}
-
-// The shape each tone draws beside a state, so the state reads without its colour. Printed in
-// grey, ok and warn come out nearly the same, about 96 and 102 of 255 in Rec. 601 luma, and on
-// paper colour alone carries nothing that a monochrome printer or a reader's eyes may lose.
-#let _tone-shapes = (note: "diamond", ok: "circle", warn: "triangle", bad: "square")
-
-// A shape filled with `color`, about as tall as a capital, centred on the capitals of the text it
-// sits in, as checkbox() centres on the lowercase. Each is drawn to look the same size as the
-// others, so a square is a little smaller than a circle and a triangle a little wider.
-#let _shape(name, color) = context {
-  let cap = measure(text(top-edge: "cap-height", bottom-edge: "baseline")[X]).height
-  let s = 0.85 * cap
-  let drawn = if name == "circle" { circle(radius: s / 2, fill: color) }
-    else if name == "square" { square(size: 0.88 * s, fill: color) }
-    else if name == "triangle" { polygon(fill: color, (0pt, s), (0.6 * s, 0pt), (1.2 * s, s)) }
-    else { polygon(fill: color, (0.6 * s, 0pt), (1.2 * s, 0.6 * s), (0.6 * s, 1.2 * s), (0pt, 0.6 * s)) }
-  let h = measure(drawn).height
-  box(baseline: h / 2 - cap / 2, drawn)
 }
 
 // A state, shown by its tone's colour and its shape: the circle is ok, the triangle warn, the
@@ -54,11 +38,7 @@
 // it out.
 #let chip(label, tone, boxed: true, shape: auto) = {
   let pair = tones.at(tone)
-  let shape = if shape == auto { _tone-shapes.at(tone) } else { shape }
-  assert(shape == none or shape in _tone-shapes.values(),
-    message: "chip(shape:) expects \"circle\", \"triangle\", \"square\", \"diamond\" or none; got "
-      + repr(shape))
-  let shown = if shape == none { label } else [#_shape(shape, pair.at(0))#h(0.3em)#label]
+  let shown = [#_shaped("chip", tone, shape, gap: 0.3em)#label]
   if boxed {
     box(fill: pair.at(1), stroke: 0.5pt + pair.at(0), inset: (x: 4pt, y: 2pt), radius: 1pt,
         text(size: sz.micro, weight: 700, fill: pair.at(0), shown))
@@ -69,16 +49,18 @@
 
 // A question with its note, under its number in a filled badge — for anything the reader must
 // answer.
-#let decision(n, q, note, color: bad) = block(
+#let decision(n, q, note, color: bad) = context block(
   width: 100%, breakable: false, inset: (bottom: 5.5pt),
 )[
+  #let spacing = par.spacing
+  #set par(spacing: _part-gap)
   #grid(columns: (auto, 1fr), gutter: 6pt, align: (left + top, left + top),
     box(fill: color, radius: 50%, inset: (x: 4.5pt, y: 3pt),
       text(size: sz.fine, weight: 700, fill: white)[#n]),
     [
       #text(size: sz.fine, weight: 700)[#q]
       #v(1.5pt)
-      #text(size: sz.fine, fill: ink-soft)[#note]
+      #text(size: sz.fine, fill: ink-soft, _body(spacing, note))
     ])
 ]
 
@@ -91,10 +73,11 @@
 #let _text-top() = {
   let m = page.margin
   let top = if type(m) == dictionary { m.at("top", default: auto) } else { m }
-  if top == auto { 2.5 / 21 * calc.min(page.width, page.height) }
-  else if type(top) == ratio { top * page.height }
-  else if type(top) == relative { top.ratio * page.height + top.length.to-absolute() }
-  else { top.to-absolute() }
+  if top == auto { 2.5 / 21 * calc.min(page.width, page.height) } else {
+    // A length, a ratio or both, as one relative length.
+    let top = 0% + top
+    top.ratio * page.height + top.length.to-absolute()
+  }
 }
 
 // The line a pen writes on, under a signature, a date or a note.
@@ -128,8 +111,14 @@
     message: "sheet(across:) takes a number of columns, 1 or more; got " + repr(across))
   let inset = (x: 5pt, y: 4pt)
   let n = if type(cols) == int { cols } else { cols.len() }
+  // A cell's code is set at the sheet's size, as its words are.
+  let at-size(c, ..style) = {
+    show raw: set text(size: size)
+    set par(spacing: _part-gap)
+    text(size: size, ..style, c)
+  }
   let cells = (
-    ..rows.pos().map(c => text(size: size)[#c]),
+    ..rows.pos().map(c => at-size[#c]),
     ..range(blank * n).map(_ => box(height: _pen - 2 * inset.y)),
   )
   // The sheet, or the part of it a column holds: `before` rows come ahead of these, so the
@@ -140,7 +129,7 @@
     inset: inset,
     fill: (_, y) => if y == 0 { slate-tint }
       else if calc.odd(y + before) { paper-tint } else { none },
-    table.header(..head.map(h => text(size: size, weight: 700)[#h])),
+    table.header(..head.map(h => at-size(weight: 700)[#h])),
     ..cells,
   )
   if across == 1 or cells.len() == 0 { return part(cells) }
@@ -237,13 +226,14 @@
 }
 
 // A box to tick by hand, sized in em so it follows the text it sits in: inline, in a sheet()
-// cell, or as a list's marker, where the list gives a checklist its hanging indent.
+// cell, or as a list's marker, where the list gives a checklist its hanging indent. As a marker it
+// is wider than a bullet, so the list sets its text further from it, `body-indent: 0.6em`.
 // It is centred on the face's x-height, measured, so it sits with the lowercase beside it in any
 // face. press draws it because ☐ is in no vendored face. `checked: true` marks it with an X, as
 // tick() does, for a copy filled in ahead of time. The audit does not count an empty box, unlike
 // an open item: on paper, an empty box is what the reader is there to fill.
 //
-//   #set list(marker: checkbox())
+//   #set list(marker: checkbox(), body-indent: 0.6em)
 //   - Shut the water off at the street.
 #let checkbox(checked: false, size: 0.7em, stroke: 0.6pt + ink, radius: 1pt) = context {
   let x = measure(text(top-edge: "x-height", bottom-edge: "baseline")[x]).height
@@ -284,6 +274,7 @@
   assert(type(width) in (length, ratio, relative),
     message: "signature(width:) takes a length or a relative width: width: 2.9in, width: 100%")
   let name = if name == auto { _writer(what: "signature(), given no name,") } else { name }
+  set par(spacing: _part-gap)
   if closing != none { closing }
   if not signed {
     if closing != none { parbreak() }
@@ -330,12 +321,9 @@
   assert(pack in ("stacks", "grid", "single"),
          message: "units(pack:) expects \"stacks\", \"grid\" or \"single\"; got \"" + pack + "\"")
   let us = items.pos()
-  let stack(col) = {
-    for (i, u) in col.enumerate() {
-      u
-      if i + 1 < col.len() { v(spacing) }
-    }
-  }
+  // One column of units, `spacing` apart. Its gutter is the gap, as it is under "grid": units set
+  // one after another as blocks would take the paragraph gap around each as well.
+  let stack(col) = grid(columns: (1fr,), row-gutter: spacing, ..col)
 
   if us.len() == 0 { return }
   if pack == "single" { return stack(us) }
@@ -350,9 +338,16 @@
     let right = ()
     let hl = 0pt
     let hr = 0pt
+    // A column is as tall as its units and the gaps between them.
     for u in us {
       let h = measure(box(width: w, u)).height
-      if hl <= hr { left.push(u); hl += h } else { right.push(u); hr += h }
+      if hl <= hr {
+        hl += h + if left.len() > 0 { spacing } else { 0pt }
+        left.push(u)
+      } else {
+        hr += h + if right.len() > 0 { spacing } else { 0pt }
+        right.push(u)
+      }
     }
     grid(columns: (1fr, 1fr), gutter: gutter, align: top,
          stack(left), stack(right))

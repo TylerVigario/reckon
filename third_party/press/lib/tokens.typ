@@ -13,8 +13,6 @@
 // typst's own, and `import *` would shadow it.
 #let press-version = _manifest.version
 
-// ---------------------------------------------------------------- tokens ---
-
 // Ink & rules
 //
 // Contrast on white, measured, because a page must read on PAPER too, and a
@@ -24,15 +22,13 @@
 //
 //   ink        17.85:1   body
 //   ink-soft    8.33:1   secondary
-//   ink-faint   6.40:1   tertiary  — started at 3.04, below the 4.5:1 body floor;
-//                                    5.51 still read as unpleasant on paper, so it
-//                                    was lifted again against a printed sheet
+//   ink-faint   6.40:1   tertiary
 //
-// ink-faint was the reported failure: the lightest ink, at the smallest size,
-// in italic, doing real work (stamp()'s closing line, and the footer). Three
-// legibility costs stacked on the same run. It is now above the body floor with
-// room to spare, and the hierarchy still reads because the gaps between the
-// three stayed wide.
+// ink-faint is the lightest ink, at the smallest size, in italic, doing real
+// work (stamp()'s closing line, and the footer): three legibility costs stacked
+// on the same run. So it sits above the 4.5:1 body floor with room to spare,
+// chosen against a printed sheet, and the hierarchy still reads because the
+// gaps between the three stay wide.
 #let ink = rgb("#0f172a")
 #let ink-soft = rgb("#454f5b")
 #let ink-faint = rgb("#55606d")
@@ -53,7 +49,7 @@
 #let bad = rgb("#a3271d")
 #let bad-tint = rgb("#f7e6e4")
 
-// Faces — constants, never strings at the call site (see header).
+// Faces — constants, never strings at the call site (lib.typ's header says why).
 //
 // Each is a STACK: the head is the intended face, the tail is a vendored
 // fallback for glyphs the head does not carry. The tail is not cosmetic. Typst
@@ -73,22 +69,22 @@
 
 // Type scale — pick a step rather than inventing a size inline.
 //
-// Sized for PAPER, not for a screen you can zoom. The first print of a real
-// document came back "text is too small": the previous scale started at 7.6pt
-// and put body at 9.6pt, which reads fine at 150% on a monitor and is mean at
-// arm's length on a sheet. Every step moved up roughly 13%, keeping the ratios.
+// Sized for PAPER, not for a screen you can zoom: type that reads fine at 150% on
+// a monitor is mean at arm's length on a sheet, so body is 11pt and the smallest
+// step 8.6pt.
 //
-// A document that no longer fits after this should change its layout or its page
-// preset — it must not drop back down the scale. Type too small to read
-// comfortably is not a document that fits; it is one that failed in a way that
-// only shows up on paper.
+// A document that does not fit should change its layout or its page preset — it
+// must not set its type smaller to fit. Type too small to read comfortably is
+// not a document that fits; it is one that failed in a way that only shows up
+// on paper.
 #let sz = (
   micro: 8.6pt, fine: 9.4pt, small: 10.2pt, body: 11pt,
   lead: 12.5pt, head: 14.5pt, title: 21pt, hero: 28pt,
 )
 
-// Page geometry presets. Spread at the call site — `#set page(..dense)` —
-// so the page is visibly set where it is composed.
+// Page geometry presets. A template takes one as its `preset`, `brief.with(preset: dense)`, and
+// a document that lays out its own page spreads one, `#set page(..dense)`, so the page is
+// visibly set where it is composed.
 //
 // Sized so that PRINTING AT 100% IS SAFE. The page is exactly US Letter, so
 // "actual size" needs no scaling — but consumer printers cannot print to the

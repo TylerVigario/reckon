@@ -343,13 +343,15 @@ nothing in the data needs escaping: `//`, a hyphen before a digit, a line that s
 
 #let items = json("stock.json")
 #sheet((auto, auto, 1fr), ([Item], [Count], [Note]),
-  ..items.map(r => (r.item, r.count, r.note)).flatten())
+  ..items.map(r => (r.item, num(r.count), r.note)).flatten())
 
-In all, #items.map(r => r.count).sum() items.
+In all, #num(items.map(r => r.count).sum(default: 0)) items.
 ```
 
 Counts, sums, filters, sorting and dates are typst's own: an array's `sum`, `filter` and
-`sorted`, `calc` and `datetime`. Logic that typst does not suit stays in a script, which writes
+`sorted`, `calc` and `datetime`. A sum takes a default, `sum(default: 0)`, since data can have no
+rows, a month with no entries, and `sum()` of none stops the build; `num()` groups a count by
+thousands. Logic that typst does not suit stays in a script, which writes
 what it works out as data, a JSON file the document reads, and never as markup: a script that
 writes `.typ` must escape every value it writes, and an escape that misses one case prints that
 value wrong, or drops the rest of its line. The build follows the data. typst lists every file a
@@ -379,7 +381,8 @@ leaves lines for what the cook changed.
 no footer, under a head of the writer's name, the headline and the contact line. A section is a
 heading, `= Experience`, and a role is `entry(role, org, dates)`: one paragraph, so a parser reads
 the role, the organisation and the dates in that order, and a role that wraps carries its dates
-on its last line. `size:` sets the body, `sz.small` by default, and the head and headings follow it;
+on its last line. `size:` sets the body, `sz.small` by default, and the headline, the contact line
+and the headings follow it, while the name stays at `sz.title`;
 `face:` and `centred:` match a letter's. A heading's gaps are set rules after the show rule:
 `#show heading: set block(above: 8pt)`.
 
@@ -407,36 +410,39 @@ split is by role, not page number.
 ### Vocabulary
 
 Tone is a string: `"note"` (slate) · `"ok"` (green) · `"warn"` (amber) · `"bad"` (red).
+`tones` maps each to its colour and tint, for a part a document draws itself: `tones.at("ok")`
+is `(ok, ok-tint)`.
 
 | Call | For |
 |---|---|
 | `base(title:, author:, preset: card)` | Template: the page, the document's name, the type and the show rules, with nothing drawn, for a document that lays out its own page. `#show: base.with(...)`. |
 | `brief(title:, author:, meta:, legend: none, footer: footer(), preset: card, caps: true, depth: [...])` | Template: the general-purpose document's page, type, show rules, header and footer. A section is a heading: `=` draws a band, `==` a labelled hairline, slate unless `section(color:)` says otherwise. Whatever the document labels `<depth>` starts its depth layer on a page of its own under `depth`, a line saying nothing past it is needed; none prints no line. `legend`, the note and then the chips for the states its pages carry, prints under the header and says what its colours mean: `legend: ([Colour is state.], chip([DONE], "ok"))`. `#show: brief.with(...)`. |
-| `letter(title:, author:, contact:, date:, face: face-text, centred: false, header: continued())` | Template: a letter's page, letterhead and date, and the page-two header. `#show: letter.with(...)`. |
-| `resume(title:, author:, headline:, contact:, face: face-text, centred: false, size: sz.small, accent: slate, caps: true, preset: (paper: "us-letter", margin: (x: 0.6in, y: 0.5in)))` | Template: a résumé's page, type and head, and its headings as ruled sections. `#show: resume.with(...)`. |
-| `recipe(title:, author:, yield:, method:, time:, intro:, preset: card, footer: footer(), caps: true, depth: [...])` | Template: a recipe card's page and header, its yield, method and time beside the dish, and its headings as brief draws them. Whatever the card labels `<depth>` starts its reference on a page of its own under `depth`. `#show: recipe.with(...)`. |
-| `unit(label, tone, lead, body, caps:, breakable: false)` | The workhorse. One idea: label, bold lead, body. |
+| `letter(title:, author:, contact:, date:, face: face-text, centred: false, header: continued())` | Template: a letter's page, letterhead and date, and the page-two header. Code is set as brief sets it, in press's mono face. `#show: letter.with(...)`. |
+| `resume(title:, author:, headline:, contact:, face: face-text, centred: false, size: sz.small, accent: slate, caps: true, preset: (paper: "us-letter", margin: (x: 0.6in, y: 0.5in)))` | Template: a résumé's page, type and head, and its headings as ruled sections. Code is set as brief sets it, in press's mono face. `#show: resume.with(...)`. |
+| `recipe(title:, author:, yield:, method:, time:, intro:, preset: card, footer: footer(), caps: true, depth: [...])` | Template: a recipe card's page and header, its yield, method and time beside the dish, and its headings as brief draws them. Whatever the card labels `<depth>` starts its reference on a page of its own under `depth`. Code is set as brief sets it, in press's mono face. `#show: recipe.with(...)`. |
+| `unit(label, tone, lead, body, caps:, breakable: false, shape: auto)` | The workhorse. One idea: label, bold lead, body. Its tone's shape goes before its label, as a chip's does, so its state reads on a grey printout; `shape` takes another of the four, or none. |
 | `units(..items, pack: "stacks", gutter:, spacing:)` | A group of units. `"stacks"`: two columns balanced by measured height. `"grid"`: rows aligned, when the pairing means something. `"single"`: one column. |
 | `header(meta: none, color:, face:, size:)` | A document's header: its title, the one the document names itself with, on the left, `meta` on the right, and a rule beneath. |
-| `eyebrow(body, color:, caps:)` | Small tracked-out uppercase label. |
-| `section(body, color: slate)` | A section whose headings show its state: inside it, a template's `=` band and `==` label take `color`, any colour, where every other heading stays slate. Wrap one heading, `#section(color: bad)[= Red-flag signs]`, or the whole section; a label on the heading stays, `<depth>` among them. `#show: section.with(color: steel)` colours a whole document's. |
+| `eyebrow(body, color:, caps:, size: sz.fine)` | Small tracked-out uppercase label. |
+| `section(body, color: slate)` | A section whose headings show its state: inside it, a template's `=` band and `==` label take `color`, any colour, where every other heading stays slate, and where it is ok, warn or bad they draw that state's shape too. Wrap one heading, `#section(color: bad)[= Red-flag signs]`, or the whole section; a label on the heading stays, `<depth>` among them. `#show: section.with(color: steel)` colours a whole document's. |
 | `chip(label, tone, boxed: true, shape: auto)` | A state, shown by its tone's colour and a shape drawn before its label, so it reads on a grey printout too: a circle for ok, a triangle for warn, a square for bad, a diamond for note. Boxed, a pill for a legend; `boxed: false`, the shape and the label alone, bold in the tone's colour at the text's own size, for a value in a table whose every cell has a state: `chip([4], "ok", boxed: false)`. `shape` takes another of the four, or none. |
-| `callout(body, tone: "note", label: none, size:)` | Aside that must not be missed. |
-| `panel(body, label: none, color: slate)` | Boxed block, no tone semantics. |
+| `callout(body, tone: "note", label: none, size:, shape: auto, caps: true)` | Aside that must not be missed. Its tone's shape goes before its label, or before its body where it has none; `shape` takes another of the four, or none. |
+| `panel(body, label: none, color: slate, caps: true)` | Boxed block, no tone semantics. |
 | `code(body, breakable: false)` | Code-block treatment; the document installs it as a show rule. |
 | `link-note` | Show rule for links: coloured and underlined, address footnoted for paper. |
 | `item(n, title, body, color:, size:)` | Numbered step. |
-| `sheet(cols, head, ..rows, size:, blank: 0, across: 1, gutter: 9pt)` | A table of any number of columns: zebra rows, and a header that repeats across pages. `blank` adds empty rows tall enough to write in. `across: 2` sets a long, narrow sheet in two columns, `gutter` apart, read down each column and then the next, with the header atop every column; where it ends, its last rows are shared between the columns by height, so the columns end level. |
+| `sheet(cols, head, ..rows, size:, blank: 0, across: 1, gutter: 9pt)` | A table of any number of columns: zebra rows, and a header that repeats across pages. Its cells are set at `size`, code included. `blank` adds empty rows tall enough to write in. `across: 2` sets a long, narrow sheet in two columns, `gutter` apart, read down each column and then the next, with the header atop every column; where it ends, its last rows are shared between the columns by height, so the columns end level. |
 | `writein(n, label: none, pitch: 8mm)` | Lines to write on by hand, each after its label: `writein(3, label: [date])`. Print only; typst writes no PDF form fields. |
-| `checkbox(checked: false, size: 0.7em, stroke: 0.6pt + ink, radius: 1pt)` | A box to tick by hand, sized to the text it sits in: inline, in a `sheet()` cell, or as a list's marker, `#set list(marker: checkbox())`, for a checklist. `checked: true` marks it with an X. The audit does not count an empty box. |
+| `checkbox(checked: false, size: 0.7em, stroke: 0.6pt + ink, radius: 1pt)` | A box to tick by hand, sized to the text it sits in: inline, in a `sheet()` cell, or as a list's marker, `#set list(marker: checkbox(), body-indent: 0.6em)`, for a checklist. `checked: true` marks it with an X. The audit does not count an empty box. |
 | `signature(name: auto, closing: none, signed: true, dated: true, width: 2.6in, words: (date: [Date]))` | Where a document is signed: the closing, kept on its page, then lines for an ink signature over the signer's name and a hand-written date, or with `signed: false` a typed sign-off. `name` is the document's author unless given; a document several people sign calls it once for each. `width` is the ink line, and a relative width is of the room it has: `width: 100%` fills a grid's cell. `dated: "below"` puts the date line under the name instead of beside it, so two signers fit side by side: a two-column grid of `signature(width: 100%, dated: "below")`. |
 | `flow(..steps)` | Left-to-right stage sequence. |
 | `decision(n, q, note, color: bad)` | Open question needing an answer, under its number in a filled badge. |
-| `stamp(body)` | Closing line — provenance, or a last caution. |
-| `addendum(date, body, label: [Later], color: ink-faint, caps: true)` | A note set under an entry later, beside what it amends rather than over it: a revisit, a retelling, a correction. `color` draws its edge and label. Its label and date stay with its body across a page break. |
+| `stamp(body)` | Closing line — provenance, or a last caution. Its hairline stays with its words across a page break. |
+| `addendum(date, body, label: [Later], color: ink-faint, caps: true)` | A note set under an entry later, beside what it amends rather than over it: a revisit, a retelling, a correction. `color` draws its edge and label. Its label and date stay with its body across a page break, and its label is no larger than the text around it, as in a sheet's cell. |
 | `unsourced(body, kind: "open", color: auto, weight: auto, style: auto, words: (estimate: [estimate]))` | A value the document prints without having read it from a source, marked by its kind. `"open"`: what only the owner can supply, left to fill in, in red and bold; the audit says how many remain. `"missing"`: what no one will supply, `#unsourced(kind: "missing")[not recorded]`, in faint italic where a blank would read as none; the audit does not count it. `"estimate"`: a figure printed but guessed, `#unsourced(kind: "estimate")[\$18.00]`, followed by the word estimate, in amber and bold; the audit says how many. The audit fails for none of them. `color`, `weight` and `style` change the kind's look; `#let est = unsourced.with(kind: "estimate")` names a kind used often. |
+| `num(n, words: (thousands: [,]))` | A number with its whole part grouped by thousands, from four digits, so a count or an amount read from data is not misread at a glance: `num(3465)` prints 3,465, and `num(decimal("1234567.50"))` 1,234,567.50. Its decimals and its sign stay as typst prints them. It takes an int, a float or a decimal, so a figure read as text is converted first, `num(int(row.cows))`. A sum of money is a decimal, `num(decimal(row.amount))`: typst prints a float in its shortest form, so 12480.50 read as a float prints 12,480.5, and a sum of floats can print 0.30000000000000004. In TOML or JSON, where a number with cents is a float, write the sum as a string. `words: (thousands: [ ])` groups it with a space. |
 | `updated(words: (updated: [updated], unstamped: [...]))` | When the content last changed, as the stamp records it. For the footer. |
-| `footer(status: none, edition: updated())` | A page's footer: the title and status, then `updated()` and the page of the total. `#set page(footer: footer())`, or a template's `footer: footer(status: [draft])`. |
+| `footer(status: none, edition: updated())` | A page's footer: the title and status, then `updated()` and the page of the total. `#set page(footer: footer())`, or a template's `footer: footer(status: [draft])`. A title marked with `unsourced()` is counted once, though every page prints it, and a template counts it where nothing prints it, as a letter's; a head of the document's own that prints the title does it with typst's `title()`, so it is counted there. |
 | `press-version` | The version of press a document was built with. Never typed by hand. |
 | `scan(body)` | Marks content the document did not set, a scanned or embedded page, for the audit to leave out; what is set over it is still audited. |
 | `form(blank, probe: none, body)` | One page of a flat PDF form, filled in: the page is the blank's own, its size and edge to edge, with none of the document's header, footer, background or foreground, and the blank a `scan()` under the answers. `#form(image("application.pdf", page: 2))[...]`; the document makes the image, so the path is its own. `probe: 18pt` draws a measuring grid over the page, a line every 18pt, every fourth one heavier, and where two heavy lines cross, that point's x and y in points, for reading where each blank is; the audit fails while it is on. |
@@ -460,13 +466,14 @@ build it in the document.
 
 - **Fonts fail in three ways, and only one warns.** A missing *family* warns and still ships;
   a missing *weight or style* substitutes the nearest face silently; a missing *glyph* is drawn
-  from typst's own fonts silently (`→` is absent from Open Sans). Only the audit catches them.
+  from typst's own fonts silently (`✓` is in none of press's faces, and comes from typst's
+  NewCMMath). Only the audit catches them.
   **Read [`FONTS.md`](FONTS.md) before using any symbol.**
 - **Some symbols are in no vendored face.** `✓ ✗ ▸` render from typst's NewCMMath, `⚠ ⚡ ☐`
   from DejaVuSansMono, and **`⛔` and `📋` vanish** from the page. Build a probe and audit it.
-- **`unit`, `eyebrow`, and brief's and recipe's headings uppercase their labels.** "pH" becomes
-  "PH", "µS" becomes "ΜS" (a capital Mu). Pass `caps: false`, to the template for its headings,
-  whenever case means something.
+- **`unit`, `callout`, `panel`, `addendum`, `eyebrow`, and brief's, recipe's and résumé's
+  headings uppercase their labels.** "pH" becomes "PH", "µS" becomes "ΜS" (a capital Mu). Pass
+  `caps: false` to the part, or to the template for its headings, whenever case means something.
 - **A link in a heading is footnoted twice once there is an outline.** The contents repeat the
   heading and its footnote. Keep links out of headings.
 - **A table that crosses a page loses its header unless it uses `table.header`.** `sheet`

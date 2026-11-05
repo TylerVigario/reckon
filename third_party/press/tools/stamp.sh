@@ -22,7 +22,7 @@
 # audited again (PRESS_IN_CHECK).
 #
 # WHY A STAMP. A printed sheet goes stale without saying so. The stamp is passed in as
-# sys.inputs.press-updated, and a document shows it with lib.typ's updated() — in
+# sys.inputs.press-updated, and a document shows it with updated(), in lib/parts.typ — in
 # its footer, so every page carries it. Comparing the shelf copy with the latest build
 # then answers "reprint?" at a glance.
 #
@@ -204,6 +204,7 @@ key() {
     echo "env ${TYPST_ROOT-}|${TYPST_FONT_PATHS-}|${TYPST_IGNORE_SYSTEM_FONTS-}"
     # shellcheck disable=SC2086  # $dig is a command and its arguments
     $dig "$here/stamp.sh" "$here/check.sh" "$here/ink-margin.py" "$here/line-overlap.py" | sed 's/^/tool /'
+    # shellcheck disable=SC2086  # $dig is a command and its arguments
     fontdirs "$@" | while IFS= read -r d; do
         [ -d "$d" ] && find "$d" -type f \( -name '*.[ot]tf' -o -name '*.tt[c]' -o -name '*.ot[c]' \)
     done | LC_ALL=C sort | tr '\n' '\000' | xargs -0 $dig 2>/dev/null | sed 's/^/font /'
