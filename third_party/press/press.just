@@ -25,7 +25,7 @@
 # direction for cross-platform recipes (casey/just#531) is to select on shell
 # *availability* rather than on OS, which makes OS attributes the workaround
 # rather than the destination. On Windows `sh` comes from Git for Windows,
-# which is already a prerequisite for cloning this repo at all.
+# which press's tools need already, as the README's "On Windows" says.
 #
 # WHAT `build` DOES that a bare `typst compile` will not, in tools/build.sh and the tools it calls:
 #   · derives the output path, so print/ mirrors the source tree by rule

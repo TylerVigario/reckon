@@ -5,7 +5,6 @@
 #import "tokens.typ": *
 #import "parts.typ": *
 
-// --------------------------------------------------------------- résumés ---
 // A résumé is read first by an applicant-tracking parser, which takes its text in the order the
 // page gives it, and then by a person. So it keeps to one column: a section is a heading, and a
 // role is one paragraph, read in the order it is printed.
@@ -17,7 +16,8 @@
 // entry stays with what follows it.
 //
 //   #entry([Network technician], [Valley Broadband], [2021 – present])
-#let entry(role, org, dates, stacked: false) = block(width: 100%, above: 1em, sticky: true, {
+#let entry(role, org, dates, stacked: false) = block(width: 100%, above: 1em, below: _part-gap,
+  sticky: true, {
   // The dates, pushed right. Joined to an empty box, so dates that do not fit on the line go to
   // the next one whole and still at the right: a line drops space that starts it, not a box.
   let when = [#box(width: 0pt)#sym.wj#h(1fr)#sym.wj#box(text(fill: ink-soft, dates))]
@@ -33,11 +33,11 @@
 // document's author, with the headline and a line of contact details under it; `centred` centres
 // it, and a letter that goes with it passes centred: true and the same face. A section is a
 // heading, `= Experience`, in the accent and ruled beneath, and a role is an entry(). `size` is
-// the body text, and the head and headings are sized from it. `caps: false` keeps the headings'
-// case, which upper() would change. A set rule after the show rule changes a heading's gaps:
-// `#show heading: set block(above: 8pt)` for the space above, `below:` for the space under the
-// rule, and `inset: (bottom: 2pt)` for the space between the title and its rule. `contact` is a
-// list of items, or one item alone.
+// the body text, and the headline, the contact line and the headings are sized from it; the name
+// is sz.title whatever it is. `caps: false` keeps the headings' case, which upper() would change.
+// A set rule after the show rule changes a heading's gaps: `#show heading: set block(above: 8pt)`
+// for the space above, `below:` for the space under the rule, and `inset: (bottom: 2pt)` for the
+// space between the title and its rule. `contact` is a list of items, or one item alone.
 //
 //   #show: resume.with(title: [Your Name — Résumé], author: "Your Name",
 //     headline: [Network and systems], contact: ([Town, ST], link("mailto:you@example.com")))
@@ -49,8 +49,16 @@
   set document(title: title, author: author)
   set page(..preset)
   set text(font: face, size: size, fill: ink, lang: "en")
-  set par(leading: 0.52em, spacing: 0.55em)
-  set list(indent: 0.65em, body-indent: 0.34em, spacing: 0.32em)
+  // Paragraphs further apart than a list's items, and items than lines, so each reads as one:
+  // a paragraph ends where its gap shows, and the one after a list is not its last item's.
+  set par(leading: 0.52em, spacing: 0.8em)
+  // A list's items are further apart than the lines within one, so a wrapped item reads as one.
+  set list(indent: 0.65em, body-indent: 0.34em, spacing: 0.65em)
+  set enum(spacing: 0.65em)
+  // Code is set a step below the text around it, as sz.fine is to sz.small; typst's own rule for
+  // raw sets it at 0.8em first, which this is relative to.
+  show raw: set text(font: face-mono, size: sz.fine / sz.small / 0.8 * 1em)
+  show raw.where(block: true): code
   show link: link-note
   let contact = if type(contact) == array { contact } else { (contact,) }
   show heading: set block(above: 1.1em, below: 0.6em, inset: (bottom: 0.3em),
@@ -67,6 +75,8 @@
       (text(size: 0.95 * size, fill: ink-soft, contact.join(text(fill: ink-faint)[ #sym.dot.c ])),)
     },
   ))
+  // The title is counted here when nothing in the document prints it.
+  _title-start()
   if centred { align(center, head) } else { head }
   body
 }

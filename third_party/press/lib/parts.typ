@@ -3,21 +3,21 @@
 
 #import "tokens.typ": *
 
-// ----------------------------------------------------------------- parts ---
-
 // `caps` is opt-out because upper() CORRUPTS case-carrying strings, and silently:
 // "pH" becomes "PH", "iOS" becomes "IOS", and "µS" becomes "ΜS" — micro-sign
 // turned into capital Mu, a different character entirely. Pass `caps: false`
 // whenever the case of the label means something.
-#let eyebrow(body, color: slate, caps: true) = text(
-  size: sz.fine, weight: 700, tracking: 1.2pt, fill: color,
+#let eyebrow(body, color: slate, caps: true, size: sz.fine) = text(
+  size: size, weight: 700, tracking: 1.2pt, fill: color,
   if caps { upper(body) } else { body },
 )
 
 // A section whose headings show its state: inside it, a template's `=` band and `==` label take
-// `color`, any colour, where every other heading stays slate. Wrap the one heading or the whole
-// section. A label on the heading, `<depth>` among them, stays where it is; a section inside
-// another takes its own colour; `#show: section.with(color: steel)` colours a whole document's.
+// `color`, any colour, where every other heading stays slate. Where it is ok, warn or bad, they
+// draw that state's shape too, as a chip does, so the state reads on a grey printout. Wrap the
+// one heading or the whole section. A label on the heading, `<depth>` among them, stays where it
+// is; a section inside another takes its own colour; `#show: section.with(color: steel)` colours
+// a whole document's.
 //
 //   #section(color: bad)[= Red-flag signs]
 #let _section-colors = state("press-section-colors", ())
@@ -29,54 +29,144 @@
 // The colour of a heading where it stands, which a template's heading rules read in context.
 #let _section-color() = _section-colors.get().at(-1, default: slate)
 
+// The gap between a part's pieces: its label, title or lead and its body. Each part sets it for
+// itself, so a part keeps the layout it was drawn for whatever gap a template sets between a
+// document's paragraphs; the body's own paragraphs and lists keep the document's, as _body sets.
+#let _part-gap = 0.55em
+
+// A part's body, its paragraphs and lists spaced as the document spaces them: `spacing` is the
+// document's paragraph spacing, read before the part sets its own. The part's own gap stays around
+// the body, so a body of one paragraph sits as it did, and the part's other pieces with it.
+#let _body(spacing, body) = block(spacing: _part-gap, { set par(spacing: spacing); body })
+
+// press's marks in a title, unsourced()'s, and the title without them. footer() prints the title
+// on every page, and a mark printed with it each time would count one item once a page.
+#let _is-mark(it) = (type(it) == content and it.func() == metadata and type(it.value) == str
+  and it.value.starts-with("press-"))
+#let _marks(it) = {
+  if type(it) != content { () } else if _is-mark(it) { (it,) }
+  else if it.has("children") { it.children.map(_marks).flatten() } else { () }
+}
+#let _unmarked(it) = {
+  if type(it) != content { it } else if _is-mark(it) { none }
+  else if it.has("children") { it.children.map(_unmarked).join() } else { it }
+}
+
+// A title marked with unsourced() is counted once, wherever it prints, and where it prints
+// nowhere, as a letter's: typst's title() with the document's own title counts it, printing it;
+// else header(); else the footer() on the first page that has one; else the start of the
+// document, which every template marks. The others print it without its marks.
+#let _titled() = query(title).any(t => t.body == auto or t.body == document.title)
+
+// The start of a template's document, where the title is counted when nothing prints it.
+#let _title-start() = context if (not _titled() and query(<press-header>).len() == 0
+  and query(<press-footer>).len() == 0) {
+  _marks(document.title).join()
+}
+
 // A document's header: its title on the left, `meta` on the right, and a rule beneath. The title
 // is the one the document names itself with, set document(title:) or a template's title, so it
 // is named once, as footer() names it.
 //
 //   #header(meta: [Site A · October 2026])
-#let header(meta: none, color: slate, face: face-display, size: sz.title) = context {
+#let header(meta: none, color: slate, face: face-display, size: sz.title) = context block(width: 100%, {
+  // Its rule sits under the title by the part's own gap, whatever a template sets between
+  // paragraphs.
+  set par(spacing: _part-gap)
+  // Tells footer() and the document's start the title's marks are counted here.
+  [#metadata(none)<press-header>]
+  if not _titled() { _marks(document.title).join() }
   grid(
     columns: (auto, 1fr),
     align: (left + bottom, right + bottom),
-    text(font: face, size: size, weight: 700, fill: ink, document.title),
+    text(font: face, size: size, weight: 700, fill: ink, _unmarked(document.title)),
     text(size: sz.fine, fill: ink-soft, meta),
   )
   v(-3pt)
   line(length: 100%, stroke: 2pt + color)
-}
+})
 
 #let tones = (
   note: (slate, slate-tint), ok: (ok, ok-tint),
   warn: (warn, warn-tint), bad: (bad, bad-tint),
 )
 
+// The shape each tone draws beside a state, so the state reads without its colour. Printed in
+// grey, ok and warn come out nearly the same, about 96 and 102 of 255 in Rec. 601 luma, and on
+// paper colour alone carries nothing that a monochrome printer or a reader's eyes may lose.
+#let _tone-shapes = (note: "diamond", ok: "circle", warn: "triangle", bad: "square")
+
+// The shape a template's headings draw where the section's colour is a state's, ok, warn or bad,
+// and none for any other: slate is every heading's colour, so note's diamond would mark them all.
+#let _section-shape() = {
+  let c = _section-color()
+  let tone = tones.keys().find(t => t != "note" and tones.at(t).at(0) == c)
+  if tone == none { none } else { _tone-shapes.at(tone) }
+}
+
+// A shape filled with `color`, about as tall as a capital, centred on the capitals of the text it
+// sits in, as checkbox() centres on the lowercase. Each is drawn to look the same size as the
+// others, so a square is a little smaller than a circle and a triangle a little wider.
+#let _shape(name, color) = context {
+  let cap = measure(text(top-edge: "cap-height", bottom-edge: "baseline")[X]).height
+  let s = 0.85 * cap
+  let drawn = if name == "circle" { circle(radius: s / 2, fill: color) }
+    else if name == "square" { square(size: 0.88 * s, fill: color) }
+    else if name == "triangle" { polygon(fill: color, (0pt, s), (0.6 * s, 0pt), (1.2 * s, s)) }
+    else { polygon(fill: color, (0.6 * s, 0pt), (1.2 * s, 0.6 * s), (0.6 * s, 1.2 * s), (0pt, 0.6 * s)) }
+  let h = measure(drawn).height
+  box(baseline: h / 2 - cap / 2, drawn)
+}
+
+// A state's shape and a space, set before a part's label in the tone's colour: the tone's own
+// shape where `shape` is auto, another of the four by name, or nothing where it is none.
+#let _shaped(part, tone, shape, gap: 0.35em) = {
+  let shape = if shape == auto { _tone-shapes.at(tone) } else { shape }
+  assert(shape == none or shape in _tone-shapes.values(),
+    message: part + "(shape:) expects \"circle\", \"triangle\", \"square\", \"diamond\" or "
+      + "none; got " + repr(shape))
+  if shape != none [#_shape(shape, tones.at(tone).at(0))#h(gap)]
+}
+
 // Tinted callout with a weighted left edge. Its label is kept with the body under it, so a page
 // never ends on the label alone. The label's block is set at the label's own size, as a line of
-// it would be, so the space under it is measured in that size and not the callout's.
-#let callout(body, tone: "note", label: none, size: sz.small) = {
+// it would be, so the space under it is measured in that size and not the callout's. Its tone's
+// shape goes before its label, or before its body where it has none, so its state reads on a
+// grey printout as a chip's does; `shape` changes it, as chip(shape:) does. `caps: false` keeps
+// its label's case.
+#let callout(body, tone: "note", label: none, size: sz.small, shape: auto, caps: true) = {
   let pair = tones.at(tone)
-  block(
+  let mark = _shaped("callout", tone, shape)
+  context block(
     width: 100%, fill: pair.at(1), stroke: (left: 3pt + pair.at(0)),
     inset: (x: 10pt, y: 8pt),
   )[
-    #if label != none [#text(size: sz.fine, block(sticky: true, eyebrow(label, color: pair.at(0)))) #v(3pt)]
-    #text(size: size)[#body]
+    #let spacing = par.spacing
+    #set par(spacing: _part-gap)
+    #if label != none [#text(size: sz.fine, block(sticky: true,
+      [#mark#eyebrow(label, color: pair.at(0), caps: caps)])) #v(3pt)]
+    #text(size: size, _body(spacing, [#if label == none { mark }#body]))
   ]
 }
 
 // Bordered panel — for grids where a tint would shout. Its label is kept with the body, as a
-// callout's is.
-#let panel(body, label: none, color: slate) = block(
+// callout's is, and `caps: false` keeps its case.
+#let panel(body, label: none, color: slate, caps: true) = context block(
   width: 100%, stroke: 0.6pt + rule-mid, inset: 10pt, radius: 1pt,
 )[
-  #if label != none [#text(size: sz.fine, block(sticky: true, eyebrow(label, color: color))) #v(4pt)]
-  #body
+  #let spacing = par.spacing
+  #set par(spacing: _part-gap)
+  #if label != none [#text(size: sz.fine, block(sticky: true, eyebrow(label, color: color, caps: caps))) #v(4pt)]
+  #_body(spacing, body)
 ]
 
-// Code block treatment. The document installs it; press never does:
+// Code block treatment. Every template installs it, and a document without one installs it:
 //
-//   #show raw: set text(font: face-mono, size: sz.fine)
+//   #show raw: set text(font: face-mono, size: sz.fine / sz.small / 0.8 * 1em)
 //   #show raw.where(block: true): code
+//
+// The first sets code a step below the text around it, sz.fine in body text: typst's own rule
+// for raw sets it at 0.8em, and an em in a rule for raw is that 0.8em.
 //
 // Shading and a border, commands as plain lines, nothing per line. That is what
 // documentation actually does — Google's developer style guide, MDN and GitLab
@@ -118,8 +208,8 @@
   )
 }
 
-// Links that work on a screen and on paper, in the one PDF. A document installs it, as it
-// installs `code`:
+// Links that work on a screen and on paper, in the one PDF. Every template installs it, as it
+// installs `code`, and a document without one installs it:
 //
 //   #show link: link-note
 //
@@ -147,14 +237,16 @@
 }
 
 // Numbered entry: marker, title, explanation.
-#let item(n, title, body, color: slate, size: sz.small) = block(
+#let item(n, title, body, color: slate, size: sz.small) = context block(
   width: 100%, breakable: false, inset: (bottom: 6pt),
 )[
+  #let spacing = par.spacing
+  #set par(spacing: _part-gap)
   #text(size: size, weight: 700, fill: color)[#n]
   #h(5pt)
   #text(size: size, weight: 700)[#title]
   #v(2pt)
-  #text(size: size)[#body]
+  #text(size: size, _body(spacing, body))
 ]
 
 // a → b → c, for pipelines.
@@ -167,23 +259,32 @@
 ]
 
 #let stamp(body) = {
-  v(4pt)
-  line(length: 100%, stroke: 0.5pt + rule-hair)
-  v(2pt)
+  // The hairline is a sticky block, which typst keeps with the words after it, so a page never
+  // ends on the rule alone. The gap under it is the part's own, as inside every other part.
+  block(sticky: true, below: _part-gap, {
+    v(4pt)
+    line(length: 100%, stroke: 0.5pt + rule-hair)
+    v(2pt)
+  })
   text(size: sz.micro, fill: ink-faint, style: "italic")[#body]
 }
 
 // A note set under an entry later, beside what it amends rather than over it: a revisit, a
 // retelling, a correction to a record that keeps what was first written. Its label and date stay
 // on the page with its body, so a page never ends on them alone. `label` says what kind of note
-// it is, `color` draws its edge and label, and `caps: false` keeps its case.
+// it is, `color` draws its edge and label, and `caps: false` keeps its case. Its label is
+// sz.fine, or the size of the text around it where that is smaller, as in a sheet's cell, so it
+// never outweighs the entry it is under.
 //
 //   #addendum([2026-10-15 21:11], label: [Retold])[What was told the second time.]
-#let addendum(date, body, label: [Later], color: ink-faint, caps: true) = block(
+#let addendum(date, body, label: [Later], color: ink-faint, caps: true) = context block(
   width: 100%, above: 0.9em, inset: (left: 0.8em), stroke: (left: 0.6pt + color),
 )[
-  #block(sticky: true, below: 0.75em, eyebrow([#label · #date], color: color, caps: caps))
-  #text(fill: ink-soft, body)
+  #let spacing = par.spacing
+  #set par(spacing: _part-gap)
+  #block(sticky: true, below: 0.75em, context eyebrow([#label · #date], color: color, caps: caps,
+    size: calc.min(sz.fine, text.size)))
+  #text(fill: ink-soft, _body(spacing, body))
 ]
 
 
@@ -241,6 +342,36 @@
   [#metadata("press-" + kind)#text(..look, if kind == "estimate" [#body #word] else { body })]
 }
 
+// A number with its whole part grouped by thousands, from four digits, so a figure read at a
+// glance is not misread: 3465 prints 3,465, and decimal("1234567.50") prints 1,234,567.50. Its
+// decimals stay as typst prints them, and so does its sign, typst's minus. It takes an int, a
+// float or a decimal; a figure read from data as text is converted first, `num(int(row.cows))`.
+// A sum of money is a decimal, `num(decimal(row.amount))`: typst prints a float in its shortest
+// form, so 12480.50 read as a float prints 12,480.5, and a sum of floats can print
+// 0.30000000000000004, where a decimal keeps its places through arithmetic. In TOML or JSON,
+// where a number with cents is a float, write the sum as a string. `words: (thousands: [ ])`
+// groups it with a space instead.
+//
+//   #sheet((1fr, auto), ([Dairy], [Cows]), [North], num(3465), [South], num(12480))
+#let num(n, words: (thousands: [,])) = {
+  assert(type(n) in (int, float, decimal),
+    message: "num() takes an int, a float or a decimal; got " + repr(n))
+  let sep = _words("num", words, "thousands").thousands
+  let s = str(n)
+  let sign = if s.starts-with("\u{2212}") { "\u{2212}" } else { "" }
+  let (whole, ..decimals) = s.slice(sign.len()).split(".")
+  assert(whole.match(regex("^[0-9]+$")) != none,
+    message: "num() groups the digits typst prints, and it prints " + s)
+  let digits = whole.clusters()
+  let groups = ()
+  let end = digits.len()
+  while end > 0 {
+    groups.insert(0, digits.slice(calc.max(0, end - 3), end).join())
+    end -= 3
+  }
+  [#sign#groups.join(sep)#if decimals.len() > 0 [.#decimals.join()]]
+}
+
 // When the page's content last changed, as tools/stamp.sh stamps it.
 // A rebuild that changes nothing on the page keeps the old time, so a newer time than the
 // copy on the shelf means reprint, and the same time means that copy is current. Put it in
@@ -257,13 +388,22 @@
 // document's title, and its status where it has one, on the left; updated() and the page of the
 // total on the right. The title is the one the document names itself with, set document(title:)
 // or a template's title, as header() names it. `edition` is what it says of the edition: none
-// leaves it out, and updated(words: …) says it in other words.
+// leaves it out, and updated(words: …) says it in other words. A title marked with unsourced()
+// counts once: typst's title() with the document's own title counts it, or header(), or with
+// neither, the footer on the first page that has one.
 //
 //   #set page(..dense, footer: footer(status: [draft]))
 #let footer(status: none, edition: updated()) = context {
   set text(size: sz.micro, fill: ink-faint)
+  // Tells the document's start, and the footers after this one, the title's marks are counted.
+  [#metadata(none)<press-footer>]
+  let footers = query(<press-footer>)
+  if (footers.len() > 0 and footers.first().location().page() == here().page()
+      and query(<press-header>).len() == 0 and not _titled()) {
+    _marks(document.title).join()
+  }
   grid(columns: (1fr, auto),
-    align(left)[#document.title#if status != none [ · #status]],
+    align(left)[#_unmarked(document.title)#if status != none [ · #status]],
     align(right)[#if edition != none [#edition · ]#counter(page).display("1 / 1", both: true)])
 }
 

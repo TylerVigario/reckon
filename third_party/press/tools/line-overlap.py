@@ -154,7 +154,7 @@ def collisions(rows):
 
 def main():
     # A second argument names the PDF in findings, when the one read is a copy of it: check reads
-    # a copy with every scan hidden (lib.typ's scan()), and reports against the document's PDF.
+    # a copy with its scans hidden (lib/parts.typ's scan()), and reports against the document's PDF.
     pdf = sys.argv[1]
     name = sys.argv[2] if len(sys.argv) > 2 else pdf
     rc = 0

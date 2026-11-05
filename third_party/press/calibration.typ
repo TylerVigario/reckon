@@ -13,11 +13,10 @@
 //
 // Build it like any document. From a repo that holds press at third_party/press:
 //
-//   sh third_party/press/tools/stamp.sh \
-//       third_party/press/calibration.typ print/calibration.pdf \
-//       --root . --font-path third_party/press/fonts --ignore-system-fonts
+//   sh third_party/press/tools/build.sh third_party/press/calibration.typ
 //
-// and in press itself, `just build calibration.typ`.
+// which writes print/third_party/press/calibration.pdf, and in press itself, `just build
+// calibration.typ`.
 
 #import "lib.typ": *
 

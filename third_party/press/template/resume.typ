@@ -22,7 +22,8 @@
 //      headline says what you do, and the contact line how to reach you.
 //   3. EACH ROLE LEADS WITH WHAT CAME OF IT. A bullet says what you did and the result,
 //      the strongest first.
-//   4. ITS TYPE IS ONE SIZE. `size:` sets the body, and the head and headings follow it.
+//   4. ITS TYPE IS ONE SIZE. `size:` sets the body, and the headline, the contact line and the
+//      headings follow it; the name keeps its own size.
 //
 // Delete the sections a résumé does not use. To send a letter with it, pass the letter the
 // same face (face: face-sans, here and there), and centre both heads (centred: true).

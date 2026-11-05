@@ -4,10 +4,9 @@
 
 #import "tokens.typ": *
 #import "parts.typ": *
-#import "composition.typ": *
 
-// --------------------------------------------------------------- letters ---
-// A letter's own parts, which template/letter.typ composes and a letter takes as it needs.
+// A letter's own parts: letter() sets the letterhead, the date and continued(), and a letter takes
+// the rest as it needs.
 // The writer is the document's author, set once with `set document(author: "…")`, and the date
 // is written once, with dateline(), where the letter prints it; no part takes either again. The
 // date is never the build stamp: a letter is dated the day it goes out, and its reader is
@@ -87,8 +86,18 @@
   set page(..reading, header: header)
   set text(font: face, size: sz.body, fill: ink, lang: "en")
   set par(leading: 0.6em, spacing: 1.05em)
+  // A list's items are further apart than the lines within one, so a wrapped item reads as one,
+  // and nearer than paragraphs, so the paragraph after a list is not its last item.
+  set list(spacing: 0.8em)
+  set enum(spacing: 0.8em)
+  // Code is set a step below the text around it, as sz.fine is to sz.small; typst's own rule for
+  // raw sets it at 0.8em first, which this is relative to.
+  show raw: set text(font: face-mono, size: sz.fine / sz.small / 0.8 * 1em)
+  show raw.where(block: true): code
   show link: link-note
 
+  // The title is counted here when nothing in the document prints it.
+  _title-start()
   let head = letterhead(..if type(contact) == array { contact } else { (contact,) }, face: face)
   if centred { align(center, head) } else { head }
   if date != none { dateline(date); parbreak() }
