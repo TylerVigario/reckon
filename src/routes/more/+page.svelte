@@ -19,6 +19,11 @@
 			sub: 'Services, materials and recurring agreements'
 		},
 		{ href: '/clients', title: 'Entities', sub: 'Who you invoice, and where the work happens' },
+		{
+			href: '/team',
+			title: 'Team',
+			sub: 'Who signs in, what they reach, and the roles they are paid as'
+		},
 		{ href: '/reports', title: 'Reports', sub: 'Schedule A, pay and the retainer meter' },
 		{
 			href: '/settings',
@@ -48,7 +53,7 @@
 	);
 </script>
 
-<Top title="More" sub={field ? 'Entities, your pay' : 'Catalogue, entities, reports'} />
+<Top title="More" sub={field ? 'Entities, your pay' : 'Catalogue, entities, team, reports'} />
 
 <div class="pad">
 	<div class="brandhd">

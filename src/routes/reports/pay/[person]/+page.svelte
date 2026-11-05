@@ -286,9 +286,8 @@
 							<div class="rec-m">
 								<div class="rec-s">
 									{data.person.role
-										? `${data.person.role} does not say what it is paid as.`
-										: 'They hold no role, so nothing says what their work is paid as.'}
-									Say it in Settings, under People and pay, and this can be paid.
+										? `${data.person.role} does not say what it is paid as. Say it on Team, under Roles, and this can be paid.`
+										: 'They hold no role, so nothing says what their work is paid as. Give them one on Team, and this can be paid.'}
 								</div>
 							</div>
 						</div>

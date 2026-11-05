@@ -13,6 +13,22 @@ import type { RouteId } from '$app/types';
 export const ACCESS = ['full', 'field'] as const;
 export type Access = (typeof ACCESS)[number];
 
+/** Each level as a person is told it: in brief, and in full where it is chosen. */
+export const ACCESS_WORDS: Record<Access, { label: string; reach: string; detail: string }> = {
+	full: {
+		label: 'Full',
+		reach: 'Everything, and the only level that bills or pays',
+		detail:
+			'Anyone’s time and trips; clients and sites, and changing them; invoices, from drafts to payments; agreements, prices and the catalogue; everyone’s pay, and paying people; reports, the team, settings and tax.'
+	},
+	field: {
+		label: 'Field',
+		reach: 'Their own work, and what they are paid for it',
+		detail:
+			'Their own time and trips, and team work they were on; clients and sites, to work at; lines added to a draft, and changing the ones they added; their own pay, to read.'
+	}
+};
+
 /** Who a route is for: anyone, signed in or not, or someone with this level or more. */
 export type Reach = 'open' | Access;
 
@@ -133,11 +149,13 @@ export const REACH = {
 	'/reports/retainers': 'full',
 	'/reports/schedule-a': 'full',
 	'/api/pay': 'full',
+	'/team': 'full',
+	'/team/[id]': 'full',
+	'/team/roles': 'full',
 	'/settings': 'full',
 	'/settings/business': 'full',
 	'/settings/integrations': 'full',
 	'/settings/invoicing': 'full',
-	'/settings/people': 'full',
 	'/settings/tax': 'full',
 	'/settings/travel': 'full',
 	'/settings/travel/vehicles/[id]': 'full',

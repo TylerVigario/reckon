@@ -1,0 +1,352 @@
+/* Primer's shapes (primer.style, MIT), in reckon's own colours and type.
+   Primer is the design reckon is built to, and screens move to it one at a
+   time: a screen drawn to it puts .primer on its content, and every rule here
+   sits under that class, so a screen not yet moved is untouched.
+
+   A box is a bordered card whose header row has the muted background and
+   whose rows are split by the muted border, as Primer's BorderBox is. A label
+   is a sentence-case pill, its border and text in the colour of the state. A
+   form control has its label above the field and its caption or error below.
+   Controls are 44px on a touch screen, as Apple's guidelines ask, where
+   Primer's are 32px: reckon is used standing on a job. */
+
+.primer {
+	font-size: 14px;
+}
+
+.primer .box {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	overflow: hidden;
+}
+.primer .box-h {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	min-height: 48px;
+	box-sizing: border-box;
+	padding: 8px 16px;
+	background: var(--surface-2);
+	border-bottom: 1px solid var(--line);
+}
+.primer .box-t {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+}
+.primer .box-row {
+	padding: 12px 16px;
+}
+.primer .box-row + .box-row {
+	border-top: 1px solid var(--line-soft);
+}
+.primer a.box-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	color: inherit;
+	text-decoration: none;
+}
+.primer a.box-row:hover {
+	background: var(--surface-2);
+}
+.primer a.box-row:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: -2px;
+}
+
+.primer .lab {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	min-height: 22px;
+	box-sizing: border-box;
+	padding: 0 8px;
+	font-size: 12px;
+	line-height: 1;
+	white-space: nowrap;
+	color: var(--ink-2);
+	border: 1px solid var(--line);
+	border-radius: 999px;
+}
+.primer .lab.good {
+	color: var(--good);
+	border-color: var(--good);
+}
+.primer .lab.warn {
+	color: var(--warn);
+	border-color: var(--warn);
+}
+.primer .lab.crit {
+	color: var(--crit);
+	border-color: var(--crit);
+}
+
+.primer .count {
+	display: inline-block;
+	min-width: 20px;
+	box-sizing: border-box;
+	padding: 0 6px;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 18px;
+	text-align: center;
+	color: var(--ink);
+	background: var(--sunken);
+	border-radius: 999px;
+}
+
+.primer .ava {
+	flex: 0 0 auto;
+	display: grid;
+	place-items: center;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--accent);
+	background: var(--accent-wash);
+}
+
+/* Primer's UnderlineNav: the views of one section, the current one underlined. */
+.primer .unav {
+	display: flex;
+	gap: 8px;
+	border-bottom: 1px solid var(--line);
+	overflow-x: auto;
+}
+.primer .unav a {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 48px;
+	padding: 0 8px;
+	margin-bottom: -1px;
+	color: var(--ink-2);
+	text-decoration: none;
+	border-bottom: 2px solid transparent;
+}
+.primer .unav a:hover {
+	color: var(--ink);
+}
+.primer .unav a[aria-current='page'] {
+	color: var(--ink);
+	font-weight: 600;
+	border-bottom-color: var(--accent);
+}
+
+.primer .fc {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+.primer .fc-l {
+	padding: 0;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--ink);
+}
+.primer .fc-c {
+	margin: 0;
+	font-size: 12px;
+	color: var(--ink-3);
+}
+.primer .fc-e {
+	margin: 0;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--crit);
+}
+.primer .ti {
+	width: 100%;
+	min-height: 40px;
+	box-sizing: border-box;
+	padding: 0 12px;
+	font: inherit;
+	font-size: 14px;
+	color: var(--ink);
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+}
+.primer .ti:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: -1px;
+	border-color: var(--accent);
+}
+.primer .ti[aria-invalid='true'] {
+	border-color: var(--crit);
+}
+.primer select.ti {
+	appearance: none;
+	padding-right: 32px;
+	background-image:
+		linear-gradient(45deg, transparent 50%, currentColor 50%),
+		linear-gradient(135deg, currentColor 50%, transparent 50%);
+	background-size:
+		5px 5px,
+		5px 5px;
+	background-position:
+		right 17px center,
+		right 12px center;
+	background-repeat: no-repeat;
+}
+
+/* A choice, with what it means under it: Primer's RadioGroup with captions. */
+.primer .rad {
+	display: flex;
+	gap: 8px;
+	align-items: flex-start;
+	padding: 8px 0;
+	cursor: pointer;
+}
+.primer .rad input {
+	flex: 0 0 auto;
+	width: 16px;
+	height: 16px;
+	margin: 2px 0 0;
+	accent-color: var(--accent);
+}
+.primer .rad-t {
+	display: block;
+	font-weight: 600;
+}
+.primer .rad-c {
+	display: block;
+	margin-top: 2px;
+	font-size: 12px;
+	color: var(--ink-3);
+}
+
+.primer .btn {
+	border-radius: 6px;
+}
+.primer .btn:not(.pri, .danger) {
+	background: var(--surface-2);
+}
+
+.primer .ib {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	color: var(--ink-3);
+	background: transparent;
+	border: 0;
+	border-radius: 6px;
+	cursor: pointer;
+}
+.primer .ib:hover {
+	color: var(--ink);
+	background: var(--surface-2);
+}
+.primer .ib:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: -2px;
+}
+
+/* Primer's Banner: what happened, for a page that didn't reload to say so. */
+.primer .banner {
+	display: flex;
+	gap: 12px;
+	padding: 16px;
+	color: var(--ink);
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+}
+.primer .banner.good {
+	background: var(--good-wash);
+	border-color: var(--good);
+}
+.primer .banner > svg {
+	margin-top: 1px;
+}
+.primer .banner.good > svg {
+	color: var(--good);
+}
+.primer .banner.crit {
+	background: var(--crit-wash);
+	border-color: var(--crit);
+}
+.primer .banner.crit > svg {
+	color: var(--crit);
+}
+.primer .banner-m {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.primer .banner-t {
+	margin: 0;
+	font-weight: 600;
+}
+.primer .banner-d {
+	margin: 0;
+	color: var(--ink-2);
+}
+
+/* A secret shown once, beside the button that copies it. */
+.primer .secret {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 4px 4px 12px;
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+}
+.primer .secret code {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	font-family: var(--f-mono);
+	font-size: 14px;
+}
+
+.primer .muted {
+	color: var(--ink-3);
+}
+.primer .note {
+	margin: 0;
+	font-size: 12px;
+	color: var(--ink-3);
+}
+.primer .note a,
+.primer a.lk {
+	color: var(--accent);
+	text-decoration: none;
+}
+.primer .note a:hover,
+.primer a.lk:hover {
+	text-decoration: underline;
+}
+
+@media (pointer: coarse) {
+	.primer .ti,
+	.primer .btn {
+		min-height: 44px;
+	}
+	/* iOS zooms into a field set smaller than this. */
+	.primer .ti {
+		font-size: 16px;
+	}
+	.primer .ib {
+		width: 44px;
+		height: 44px;
+	}
+}

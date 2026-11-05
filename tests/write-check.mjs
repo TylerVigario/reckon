@@ -845,9 +845,23 @@ if (role.body?.id) {
 		200
 	);
 }
-const peoplePage = await (await fetch(`${base}/settings/people`, { headers: { cookie } })).text();
-const person = [...peoplePage.matchAll(/id="set-([0-9a-f-]{36})-role_id"/g)].map((m) => m[1])[0];
-const held = optionsOf(peoplePage, `set-${person}-role_id`).find((o) => o.label === 'Partner');
+// Team lists everyone, a row each opening their page; a page offers each role.
+const teamPage = await (await fetch(`${base}/team`, { headers: { cookie } })).text();
+const teamRows = teamPage.split('class="box-row').slice(1);
+const idOf = (/** @type {string} */ row) => /team\/([0-9a-f-]{36})"/.exec(row)?.[1];
+const myId = idOf(teamRows.find((r) => r.includes(email)) ?? '');
+const otherId = teamRows.map(idOf).find((id) => id && id !== myId);
+const person = teamRows.map(idOf).find(Boolean);
+const personPage = person
+	? await (await fetch(`${base}/team/${person}`, { headers: { cookie } })).text()
+	: '';
+const held = [
+	...personPage.matchAll(
+		/name="role" value="([0-9a-f-]{36})"[\s\S]{0,400}?class="rad-t[^"]*">([^<]+)</g
+	)
+]
+	.map((m) => ({ id: m[1], label: m[2].trim() }))
+	.find((o) => o.label === 'Partner');
 if (held)
 	await check(
 		'a role somebody holds is not removed',
@@ -864,6 +878,41 @@ if (person)
 		{ fields: { role_id: '00000000-0000-0000-0000-000000000000' } },
 		400
 	);
+
+console.log('\n  people — who they are, and whether they sign in');
+
+if (myId && otherId) {
+	const theirs = teamRows.find((r) => r.includes(`team/${otherId}"`)) ?? '';
+	const otherEmail = /class="e[^"]*">([^<]+)</.exec(theirs)?.[1]?.trim();
+	const otherName = /class="n[^"]*">([^<]+)</.exec(theirs)?.[1]?.trim();
+	const them = `/api/people/${otherId}`;
+	await check('a person needs a name', 'PATCH', them, { fields: { name: '  ' } }, 400);
+	await check('an email is one', 'PATCH', them, { fields: { email: 'not-an-email' } }, 400);
+	if (otherEmail)
+		await check(
+			'nobody signs in with the email someone else does',
+			'PATCH',
+			`/api/people/${myId}`,
+			{ fields: { email: otherEmail } },
+			400
+		);
+	if (otherName) {
+		await check('a person is renamed', 'PATCH', them, { fields: { name: `${otherName} B` } }, 200);
+		await check('and named back', 'PATCH', them, { fields: { name: otherName } }, 200);
+	}
+	await check(
+		'nobody deactivates themselves',
+		'PATCH',
+		`/api/people/${myId}`,
+		{ fields: { active: 'false' } },
+		400
+	);
+	await check('someone else is deactivated', 'PATCH', them, { fields: { active: 'false' } }, 200);
+	await check('and reactivated', 'PATCH', them, { fields: { active: 'true' } }, 200);
+} else {
+	failures.push('could not find who is signed in, and someone else, on /team');
+	console.log('  ✗ could not find who is signed in, and someone else, on /team');
+}
 
 console.log('\n  trips — recorded, sent twice, refused, and taken back');
 
@@ -1340,13 +1389,8 @@ const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
 
 	// Who "me" is and somebody who is not, and what their settings were, to put
 	// back afterwards. Their zone and locale are in their own profile.
-	const people = await page('/settings/people');
-	const blocks = people.split(/(?=id="set-[0-9a-f-]{36}-role_id")/);
-	const mine = blocks.find((b) => b.includes(email));
-	const me = mine && /id="set-([0-9a-f-]{36})-role_id"/.exec(mine)?.[1];
-	const other = blocks
-		.map((b) => /id="set-([0-9a-f-]{36})-role_id"/.exec(b)?.[1])
-		.find((id) => id && id !== me);
+	const me = myId;
+	const other = otherId;
 	const profile = await page('/profile');
 	const before = {
 		timezone: chosen(profile, 'set-timezone') ?? '',
@@ -1362,11 +1406,7 @@ const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
 		call('PATCH', '/api/settings', { fields: { timezone: zone } });
 
 	if (!me) {
-		record(
-			false,
-			"a person's own zone is theirs",
-			'could not find who is signed in on /settings/people'
-		);
+		record(false, "a person's own zone is theirs", 'could not find who is signed in on /team');
 	} else {
 		// Read in British English on a 24-hour clock while this block runs, so
 		// what it reads off the pages has one shape.

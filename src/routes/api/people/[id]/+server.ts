@@ -13,6 +13,9 @@ import { fieldOnly } from '#lib/server/mine.ts';
 
 /** Each field as the user table names it. */
 const COLUMN = {
+	name: 'name',
+	email: 'email',
+	active: 'active',
 	role_id: 'roleId',
 	access: 'access',
 	timezone: 'timezone',
@@ -25,11 +28,16 @@ type Field = keyof typeof COLUMN;
 /**
  * One thing about a person at a time.
  *
+ * Who they are: their name, and the email they sign in with, which no one else
+ * may have. Whether they can sign in: deactivated, they can't, and aren't
+ * offered work, though everything they did is kept -- and nobody deactivates
+ * themselves, which would sign them out of the screen they did it on.
+ *
  * The role they are paid in, or none: which pay rules reach them follows from
  * it -- and, until pay is recorded when it is paid, so does what the reports
  * say their unpaid work pays. And what they can reach, Full or Field
- * (#lib/access): someone active keeps Full, which the database holds to. Both
- * are changed only by someone with Full.
+ * (#lib/access): someone active keeps Full, which the database holds to. All
+ * of these are changed only by someone with Full, on Team.
  *
  * The rest are theirs alone, set in their profile, and refused for anyone
  * else: the zone they keep, and how their figures read -- a locale, a 12- or
@@ -59,7 +67,9 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	const parsed = parsePersonField(name, typeof raw === 'string' ? raw : '');
 	if (!parsed.ok) return refuse({ [name]: parsed.why });
 
-	let value = parsed.value as string | number | null;
+	let value = parsed.value;
+	if (name === 'active' && value === false && params.id === locals.user!.id)
+		return refuse({ active: "You can't deactivate yourself. Someone else with Full can." });
 	if (name === 'timezone' && typeof value === 'string') {
 		value = await knownZone(value);
 		if (value === null) return refuse({ timezone: 'The database does not know that time zone.' });
@@ -75,8 +85,11 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		);
 		if (changed.length === 0) return problem('notFound', 404, 'No person with that id.');
 	} catch (e) {
-		if (pgError(e).constraint === 'someone_keeps_full')
-			return refuse({ access: 'Someone has to keep Full. Give it to another person first.' });
+		const { constraint } = pgError(e);
+		if (constraint === 'someone_keeps_full')
+			return refuse({ [name]: 'Someone has to keep Full. Give it to another person first.' });
+		if (constraint === 'user_email_key')
+			return refuse({ email: 'Someone else signs in with that email.' });
 		const refused = refuseIfTheDatabaseSaidSo(e, [name], 'user');
 		if (refused) return refused;
 		throw e;

@@ -45,11 +45,6 @@
 				.join(' · ')
 		},
 		{
-			href: '/settings/people',
-			title: 'People and pay',
-			status: count(data.counts.people, 'person', 'people')
-		},
-		{
 			href: '/settings/travel',
 			title: 'Travel',
 			status: [
