@@ -152,7 +152,15 @@ rather than locking anyone out. Five wrong passwords from one address in
 fifteen minutes and that address waits; the limit is per address and never per
 account, so it says nothing about which addresses have one.
 
-There is no sign-up. Everyone who signs in is added from the command line:
+There is no sign-up. Someone with Full adds people on Team, and reckon sends no
+email, so whoever adds them is shown a temporary password once, four words, to
+hand over. Signing in with it reaches nothing but the page where they choose
+their own; that browser stays signed in, and any other that used the temporary
+one is signed out. Reset password, on a person's page, signs them out everywhere
+and hands over another the same way. Nobody resets their own.
+
+The first person is added from the command line, since nobody can sign in to
+add them:
 
 ```bash
 node scripts/user.mjs add you@example.com "Your Name" --role Partner
@@ -163,19 +171,21 @@ node scripts/user.mjs list
 It prompts for the password rather than taking an argument — a password in
 `history` or in `ps` is a password given away — and ends every existing session
 for that person, because a password change that leaves old sessions alive has
-changed nothing for whoever holds one.
+changed nothing for whoever holds one. A password set there is theirs, not
+temporary.
 
 Each person has an access level, apart from the role they are paid in. **Full**
 reaches everything, and is the only level that bills or pays. **Field** reaches
 the work someone does and what they are paid for it: their own time and trips,
 team work they were on, lines added to a draft, the clients and sites they work
-at, and their own pay, to read. Someone added has Field unless `--full` is
-given; the first person has Full whatever is said, since the database keeps
-someone active on Full. After that, everything about a person is changed on
-Team, by someone with Full: their name and email, their access, the role they
-are paid as, and whether they sign in. Deactivated, they can't, and aren't
-offered work; everything they did is kept, and they can be reactivated. Team
-also says when each person last signed in.
+at, and their own pay, to read. Someone added at the command line has Field
+unless `--full` is given; the first person has Full whatever is said, since the
+database keeps someone active on Full. After that, everything about a person is
+changed on Team, by someone with Full: their name and email, their access, the
+role they are paid as, their password, and whether they sign in. Deactivated,
+they can't, and aren't offered work; everything they did is kept, and they can
+be reactivated. Team also says when each person last signed in, and who is
+Invited, yet to sign in with the password handed to them.
 
 Twelve characters at least, checked on the first entry rather than after the
 second. On a development database, `--insecure` lifts that and says so:
@@ -236,7 +246,7 @@ nothing else.
 | ------------------ | ---------------------------------------------------------- |
 | `build/`           | the application; `node build` runs it                      |
 | `drizzle/`         | the migrations, which the application applies as it starts |
-| `scripts/user.mjs` | adds the people who sign in                                |
+| `scripts/user.mjs` | adds the first person, and sets a password from the shell  |
 | `node_modules/`    | the production dependencies, from `npm ci --omit dev`      |
 | `package.json`     | and `package-lock.json`, as they are in the repository     |
 | `RELEASE`          | the version, the commit, and the Node it was built with    |

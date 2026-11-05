@@ -36,6 +36,7 @@ describe('who reaches a route', () => {
 				'/more',
 				'/profile',
 				'/logout',
+				'/new-password',
 				'/api/device',
 				'/api/reachable',
 				'/api/offline',

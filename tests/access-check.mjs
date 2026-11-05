@@ -154,7 +154,10 @@ const uuid = () => crypto.randomUUID();
 				need === 'field' &&
 				!route.startsWith('/api/') &&
 				!route.includes('[') &&
-				route !== '/logout'
+				route !== '/logout' &&
+				// Only for someone signed in with a password handed to them;
+				// handover-check walks it.
+				route !== '/new-password'
 		)
 		.map(([route]) => route);
 	/** @type {string[]} */

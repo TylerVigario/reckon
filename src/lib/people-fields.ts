@@ -80,6 +80,38 @@ export const PERSON_FIELDS = {
 	week_start: optional(whole(1, 7))
 };
 
+/**
+ * What is said when someone is added on Team: who they are, the role they are
+ * paid as, and what they reach. How their figures read is theirs, once they
+ * sign in.
+ */
+export const NEW_PERSON_FIELDS = {
+	name: PERSON_FIELDS.name,
+	email: PERSON_FIELDS.email,
+	role_id: PERSON_FIELDS.role_id,
+	access: PERSON_FIELDS.access
+};
+
+/**
+ * Where someone stands, as Team labels them: Invited until they first sign in
+ * with the password they were handed, then Active, and Deactivated when they
+ * can no longer sign in at all.
+ */
+export const STANDING = {
+	active: { label: 'Active', tone: 'good' },
+	invited: { label: 'Invited', tone: 'warn' },
+	deactivated: { label: 'Deactivated', tone: '' }
+} as const;
+
+export function standing(p: {
+	active: boolean;
+	temporary_password: boolean;
+	last_signed_in_at: Date | string | null;
+}): keyof typeof STANDING {
+	if (!p.active) return 'deactivated';
+	return p.temporary_password && p.last_signed_in_at === null ? 'invited' : 'active';
+}
+
 /** What only the person themselves may change: their own clock and how their figures read. */
 export const OWN_FIELDS = ['timezone', 'locale', 'hour_cycle', 'week_start'] as const;
 

@@ -56,6 +56,10 @@ export const PROBLEM = {
 	beyondAccess: {
 		type: '/problems/beyond-access',
 		title: "Beyond what this person's access reaches"
+	},
+	choosePassword: {
+		type: '/problems/choose-password',
+		title: 'Signed in with a temporary password, and yet to choose their own'
 	}
 } as const;
 

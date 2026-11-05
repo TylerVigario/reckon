@@ -229,6 +229,8 @@
 }
 
 .primer .btn {
+	/* A link drawn as a button is the height of a button beside it. */
+	box-sizing: border-box;
 	border-radius: 6px;
 }
 .primer .btn:not(.pri, .danger) {
@@ -303,6 +305,7 @@
 /* A secret shown once, beside the button that copies it. */
 .primer .secret {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
 	padding: 4px 4px 4px 12px;
@@ -311,9 +314,10 @@
 	border-radius: 6px;
 }
 .primer .secret code {
+	/* Whole, never broken at a hyphen into what reads as two: Copy goes below
+	   it instead, on a screen too narrow for both. */
 	flex: 1 1 auto;
-	min-width: 0;
-	overflow-wrap: anywhere;
+	white-space: nowrap;
 	font-family: var(--f-mono);
 	font-size: 14px;
 }
