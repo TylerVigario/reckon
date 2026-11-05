@@ -66,7 +66,8 @@ export const role = pgTable(
 
 /**
  * Anyone who can sign in. Signing in is an account row, so a user without one
- * cannot; there is no sign-up, and accounts are made from the command line.
+ * cannot; there is no sign-up. Someone with Full adds people on Team, and the
+ * first person is added from the command line (scripts/user.mjs).
  */
 export const user = pgTable(
 	'user',
@@ -99,6 +100,13 @@ export const user = pgTable(
 		 * recorded: they never have, or not since reckon began keeping it.
 		 */
 		lastSignedInAt: tstz(),
+		/**
+		 * Whether the password they sign in with was handed to them (0033): made
+		 * when someone with Full added them or reset it, and shown once, to give
+		 * them. Until they choose their own, signing in reaches nothing but the
+		 * page where they do (/new-password).
+		 */
+		temporaryPassword: boolean().default(false).notNull(),
 		/**
 		 * The zone this person keeps their days in, as Postgres names it. Their
 		 * own timesheet, the day a new entry starts on, and every moment shown to

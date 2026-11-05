@@ -342,6 +342,7 @@ T["user"] = [("PK","id","uuid"),("","name","text"),("UK","email","text · lowerc
     ("FK","role_id","uuid · null = not paid"),("","active","bool"),
     ("","access","full|field · what they reach"),
     ("","last_signed_in_at","timestamptz · null = none recorded"),
+    ("","temporary_password","bool · handed over, not yet theirs"),
     ("","timezone","text · null = the business's"),("","locale","text · null = the business's"),
     ("","hour_cycle","h12|h23 · null = the locale's"),("","week_start","1–7 · null = the locale's"),
     ("","created_at","timestamptz"),("","updated_at","timestamptz")]
@@ -693,8 +694,10 @@ c += [note("n8", "What someone can reach is user.access, apart from role_id, the
                  "what the locale says.\n\n"
                  "user, session, account and verification are Better Auth's, in its "
                  "shape. A password is an account whose provider_id is credential, and "
-                 "what it holds is an argon2id hash. There is no sign-up: people are "
-                 "added from the command line.\n\n"
+                 "what it holds is an argon2id hash. There is no sign-up: someone with "
+                 "Full adds people on Team, and the first from the command line. A "
+                 "password handed over is temporary_password until they choose their "
+                 "own, and signing in with it reaches nothing else.\n\n"
                  "A session is a row, not a stateless token: one server, one "
                  "database, and every page reads it anyway, so a stateless token would "
                  "save no round trip and cost revocation. The cookie is the token "

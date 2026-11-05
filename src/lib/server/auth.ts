@@ -12,7 +12,9 @@ import type { Access } from '#lib/access.ts';
 /**
  * Sign-in, by Better Auth over the app's own database.
  *
- * There is no sign-up: an operator's people are added from the command line
+ * There is no sign-up: someone with Full adds people on Team, each with a
+ * password handed to them that lasts until they choose their own
+ * (#lib/server/handover), and the first person is added from the command line
  * (scripts/user.mjs). Better Auth's HTTP routes are not mounted -- sign-in and
  * sign-out are form actions calling it directly -- so its own rate limiter
  * never runs, and wrong passwords are limited per address in ./sign-in-limit.
@@ -41,6 +43,8 @@ export const hashPassword = (password: string) => hash(password, ARGON);
 export const CURRENT_HASH = `$argon2id$v=19$m=${ARGON.memoryCost},t=${ARGON.timeCost},p=${ARGON.parallelism}$`;
 
 export const MIN_PASSWORD_LENGTH = 12;
+/** Better Auth's own ceiling, said here so a password chosen outside it keeps to it. */
+export const MAX_PASSWORD_LENGTH = 128;
 const SESSION_DAYS = 30;
 
 function createAuth() {
@@ -69,6 +73,7 @@ function createAuth() {
 			enabled: true,
 			disableSignUp: true,
 			minPasswordLength: MIN_PASSWORD_LENGTH,
+			maxPasswordLength: MAX_PASSWORD_LENGTH,
 			password: {
 				hash: hashPassword,
 				verify: ({ hash: stored, password }) => verify(stored, password).catch(() => false)
@@ -86,8 +91,10 @@ function createAuth() {
 			additionalFields: {
 				roleId: { type: 'string', required: false, input: false },
 				active: { type: 'boolean', required: false, defaultValue: true, input: false },
-				// Set on People, by someone with Full (#lib/access).
+				// Set on Team, by someone with Full (#lib/access).
 				access: { type: 'string', required: false, defaultValue: 'field', input: false },
+				// Set when a password is handed over, cleared when they choose their own.
+				temporaryPassword: { type: 'boolean', required: false, defaultValue: false, input: false },
 				// Set through /api/people, where each is checked: the zone against
 				// Postgres's zones, the locale against Intl's.
 				timezone: { type: 'string', required: false, input: false },
@@ -119,6 +126,11 @@ export type SessionUser = {
 	email: string;
 	/** What they can reach (#lib/access). */
 	access: Access;
+	/**
+	 * Signed in with a password handed to them (#lib/server/handover): until
+	 * they choose their own, they reach nothing but the page where they do.
+	 */
+	temporaryPassword: boolean;
 	/** Their own zone, or null until their browser has set it. */
 	timezone: string | null;
 	/** Their own locale, clock and first day of the week; null follows the business's. */

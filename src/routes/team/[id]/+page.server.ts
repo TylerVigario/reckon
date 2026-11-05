@@ -8,7 +8,7 @@ import type { PageServerLoad } from './$types';
 /**
  * One person: who they are, what they can reach, the role they are paid as,
  * and whether they sign in -- each changed here, and nowhere else -- and when
- * they last did. What they are owed is the pay report's, and is a link from
+ * they last did, and whether they have yet to choose their own password. What they are owed is the pay report's, and is a link from
  * here.
  */
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -22,7 +22,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				active: user.active,
 				access: user.access,
 				role_id: user.roleId,
-				last_signed_in_at: user.lastSignedInAt
+				last_signed_in_at: user.lastSignedInAt,
+				temporary_password: user.temporaryPassword
 			})
 			.from(user)
 			.where(eq(user.id, params.id)),

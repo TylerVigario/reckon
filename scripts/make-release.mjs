@@ -4,7 +4,7 @@
  *
  *   build/             the application, from `vite build`; `node build` runs it
  *   drizzle/           the migrations, which the application applies when it starts
- *   scripts/user.mjs   the command that adds the people who sign in
+ *   scripts/user.mjs   the command that adds the first person, before anyone can sign in
  *   package.json       and package-lock.json, as they are here
  *   node_modules/      the production dependencies, from `npm ci --omit dev`
  *   .env.example       what the environment may set

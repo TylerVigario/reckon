@@ -47,7 +47,11 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 
 	// The person's zone and locale go with every page, so what the browser
 	// draws matches what the server drew (#lib/zone.svelte, hooks.client.ts).
-	if (!locals.user)
+	//
+	// Someone yet to choose their own password has nothing to navigate to, so
+	// the shell is drawn as for someone signed out: no rail, no service worker,
+	// nothing saved from this browser until they have.
+	if (!locals.user || locals.user.temporaryPassword)
 		return {
 			operator: operatorShown,
 			user: null,

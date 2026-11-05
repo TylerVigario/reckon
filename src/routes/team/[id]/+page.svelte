@@ -5,13 +5,14 @@
 	import Octicon from '#lib/Octicon.svelte';
 	import { ACCESS, ACCESS_WORDS, type Access } from '#lib/access.ts';
 	import { PAID_AS_WORDS } from '#lib/pay-words.ts';
-	import { parsePersonField } from '#lib/people-fields.ts';
+	import { STANDING, parsePersonField, standing } from '#lib/people-fields.ts';
 	import { readProblem } from '#lib/json.ts';
+	import { take } from '#lib/password-handover.ts';
 	import { clock, datedAt } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import { refreshAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import type { PageProps } from './$types';
 
 	/**
@@ -26,7 +27,12 @@
 	 * ACCESS AND ROLE CHANGE IN A DIALOG that lists each choice and what it
 	 * means, as GitHub's "Change role" does: they change what someone can see
 	 * and how they are paid, and a mis-tap there is not noticed the way a
-	 * misspelt name is. Deactivate is in the menu, and asks first.
+	 * misspelt name is. Reset password and Deactivate are in the menu, and ask
+	 * first.
+	 *
+	 * A PASSWORD TO HAND THEM is shown once, in the banner, with Copy beside it:
+	 * after a reset, or on arriving here from adding them. Nobody is emailed,
+	 * and only its hash is kept (#lib/server/handover).
 	 */
 	let { data }: PageProps = $props();
 
@@ -44,14 +50,28 @@
 	let saved = $state<string | null>(null);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 
-	let asking = $state<'access' | 'role' | 'deactivate' | null>(null);
+	let asking = $state<'access' | 'role' | 'reset' | 'deactivate' | null>(null);
 	let pickAccess = $state<Access>('field');
 	let pickRole = $state('');
 	let working = $state(false);
 	let askError = $state('');
 
-	type Said = { title: string; detail: string; tone: 'good' | 'crit' };
-	let said = $state<Said | null>(null);
+	type Said = { title: string; detail: string; tone: 'good' | 'crit'; secret?: string };
+	// Someone just added arrives with the password to hand them (#lib/password-handover).
+	let said = $state<Said | null>(
+		untrack(() => {
+			const handed = take(data.person.id);
+			return handed
+				? {
+						title: `${data.person.name} added`,
+						detail: `Give them this temporary password, with the email they sign in with, ${data.person.email}. It isn’t shown again, and they choose their own the first time they sign in with it.`,
+						tone: 'good',
+						secret: handed
+					}
+				: null;
+		})
+	);
+	let copied = $state(false);
 
 	/** One field, sent: null once it saved, or what is wrong. */
 	async function send(name: string, value: string): Promise<string | null> {
@@ -114,7 +134,7 @@
 		node.select();
 	};
 
-	function ask(what: 'access' | 'role' | 'deactivate') {
+	function ask(what: 'access' | 'role' | 'reset' | 'deactivate') {
 		pickAccess = p.access;
 		pickRole = p.role_id ?? '';
 		askError = '';
@@ -149,9 +169,46 @@
 					};
 	}
 
+	async function reset() {
+		working = true;
+		const r = await fetch(`/api/people/${p.id}/password`, { method: 'POST' }).catch(() => null);
+		working = false;
+		if (!r?.ok) {
+			const problem = r ? await readProblem(r) : null;
+			askError = problem
+				? (problem.errors?.password ?? problem.detail ?? 'The password wasn’t reset.')
+				: 'Not reset — no connection.';
+			return;
+		}
+		const { password } = (await r.json()) as { password: string };
+		asking = null;
+		copied = false;
+		said = {
+			title: 'Password reset',
+			detail: `Give ${first} this temporary password. It isn’t shown again, and they choose their own when they sign in with it.`,
+			tone: 'good',
+			secret: password
+		};
+		await refreshAll();
+	}
+	async function copy(secret: string) {
+		try {
+			await navigator.clipboard.writeText(secret);
+			copied = true;
+		} catch {
+			copied = false;
+		}
+	}
+
 	const menu = $derived(
 		p.active
 			? [
+					{
+						label: 'Reset password',
+						inactive: isMe ? 'You can’t reset your own password' : undefined,
+						onselect: (): void => ask('reset')
+					},
+					'divider' as const,
 					{
 						label: 'Deactivate',
 						danger: true,
@@ -232,12 +289,15 @@
 
 <div class="pad primer">
 	<div class="state">
-		<span class="lab" class:good={p.active}>{p.active ? 'Active' : 'Deactivated'}</span>
+		<span class="lab {STANDING[standing(p)].tone}">{STANDING[standing(p)].label}</span>
 		<span class="muted">
 			{p.last_signed_in_at
 				? `Last signed in at ${clock(p.last_signed_in_at, personalZone())} on ${datedAt(p.last_signed_in_at, personalZone())}`
 				: 'No sign-in recorded'}
 		</span>
+		{#if p.active && p.temporary_password}
+			<span class="muted">Yet to choose their own password</span>
+		{/if}
 	</div>
 
 	{#if said}
@@ -246,6 +306,14 @@
 			<div class="banner-m">
 				<p class="banner-t">{said.title}</p>
 				<p class="banner-d">{said.detail}</p>
+				{#if said.secret}
+					<div class="secret">
+						<code>{said.secret}</code>
+						<button type="button" class="btn sm" onclick={() => copy(said!.secret!)}>
+							<Octicon name={copied ? 'check' : 'copy'} />{copied ? 'Copied' : 'Copy'}
+						</button>
+					</div>
+				{/if}
 			</div>
 			<button type="button" class="ib" aria-label="Dismiss" onclick={() => (said = null)}>
 				<Octicon name="x" />
@@ -368,6 +436,24 @@
 				>each service</a
 			>.
 		</p>
+	</Dialog>
+
+	<Dialog
+		open={asking === 'reset'}
+		title="Reset {first}’s password?"
+		go="Reset password"
+		going="Resetting…"
+		{working}
+		ongo={reset}
+		onclose={() => (asking = null)}
+	>
+		<p>
+			{first} is signed out everywhere. You get a temporary password to give them, and they choose their
+			own when they sign in with it.
+		</p>
+		{#if askError}
+			<p class="fc-e"><Octicon name="alert" />{askError}</p>
+		{/if}
 	</Dialog>
 
 	<Dialog

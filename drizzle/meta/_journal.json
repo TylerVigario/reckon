@@ -232,6 +232,13 @@
       "when": 1793844780907,
       "tag": "0032_each_person_says_when_they_last_signed_in",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793886936434,
+      "tag": "0033_a_handed_over_password_is_temporary",
+      "breakpoints": true
     }
   ]
 }

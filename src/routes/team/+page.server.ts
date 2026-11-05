@@ -18,6 +18,8 @@ export const load: PageServerLoad = async () => {
 				email: user.email,
 				active: user.active,
 				access: user.access,
+				temporary_password: user.temporaryPassword,
+				last_signed_in_at: user.lastSignedInAt,
 				role: role.name
 			})
 			.from(user)

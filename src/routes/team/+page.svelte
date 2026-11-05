@@ -2,14 +2,16 @@
 	import Top from '#lib/Top.svelte';
 	import UnderlineNav from '#lib/UnderlineNav.svelte';
 	import { ACCESS_WORDS } from '#lib/access.ts';
+	import { STANDING, standing } from '#lib/people-fields.ts';
 	import { resolve } from '$app/paths';
 	import type { PageProps } from './$types';
 
 	/**
 	 * Team: the people who sign in, and the roles they are paid as, as two
 	 * views of one section. People is one box with a row each -- who they are,
-	 * their role and access, whether they still sign in -- and each row opens
-	 * that person's page, where everything about them is changed.
+	 * their role and access, whether they sign in yet or still -- and each row
+	 * opens that person's page, where everything about them is changed. Add
+	 * person is the screen's one action, beside its title.
 	 */
 	let { data }: PageProps = $props();
 
@@ -22,7 +24,11 @@
 			.toUpperCase();
 </script>
 
-<Top title="Team" back={resolve('/more')} backLabel="More" />
+<Top title="Team" back={resolve('/more')} backLabel="More">
+	{#snippet actions()}
+		<a class="btn pri sm" href={resolve('/team/new')}>Add person</a>
+	{/snippet}
+</Top>
 
 <div class="pad primer">
 	<UnderlineNav
@@ -48,7 +54,7 @@
 					<span class="e">{p.email}</span>
 				</span>
 				<span class="as">{p.role ?? 'Not paid'} · {ACCESS_WORDS[p.access].label}</span>
-				<span class="lab" class:good={p.active}>{p.active ? 'Active' : 'Deactivated'}</span>
+				<span class="lab {STANDING[standing(p)].tone}">{STANDING[standing(p)].label}</span>
 			</a>
 		{/each}
 	</section>

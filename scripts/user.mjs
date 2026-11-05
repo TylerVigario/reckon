@@ -6,11 +6,16 @@
  *   node scripts/user.mjs add avery@example.com "Avery Quinn" [--role Partner] [--full]
  *   node scripts/user.mjs password avery@example.com [--insecure]
  *
- * There is no sign-up: everyone who signs in is added here, and an open
- * registration form on an invoicing system is a liability rather than a
- * feature. `add` makes the person and asks for their password straight away;
- * `password` sets a new one. A password is prompted for rather than passed as
- * an argument, so it never reaches shell history or the process list.
+ * There is no sign-up: an open registration form on an invoicing system is a
+ * liability rather than a feature. Someone with Full adds people on Team, and
+ * resets a password there, handing over one they replace with their own. This
+ * is for the first person, before anyone can sign in to do that, and for a
+ * password when nobody who could is able to.
+ *
+ * `add` makes the person and asks for their password straight away; `password`
+ * sets a new one, and it is theirs rather than temporary. A password is
+ * prompted for rather than passed as an argument, so it never reaches shell
+ * history or the process list.
  *
  * Someone added has Field access -- the work they do, and what they are paid
  * for it -- unless --full gives them everything. The first person has Full
@@ -228,6 +233,8 @@ async function setPassword(user) {
 				 values ($1::uuid, $1::text, 'credential', $2)`,
 				[user.id, password]
 			);
+		// Typed here, it is not one handed over to be replaced.
+		await client.query('update "user" set temporary_password = false where id = $1', [user.id]);
 		const gone = await client.query('delete from session where user_id = $1', [user.id]);
 		await client.query('commit');
 		return gone.rowCount ?? 0;
@@ -241,7 +248,7 @@ async function setPassword(user) {
 
 if (command === 'list') {
 	const people = await q(`
-		select u.email, u.name, r.name as role, u.access, u.active,
+		select u.email, u.name, r.name as role, u.access, u.active, u.temporary_password,
 		       exists (select 1 from account a
 		                where a.user_id = u.id and a.provider_id = 'credential'
 		                  and a.password is not null) as can_sign_in,
@@ -259,7 +266,11 @@ if (command === 'list') {
 				p.role ?? 'no role',
 				p.access === 'full' ? 'Full' : 'Field',
 				p.active ? 'active' : 'inactive',
-				p.can_sign_in ? 'has a password' : 'NO PASSWORD',
+				p.can_sign_in
+					? p.temporary_password
+						? 'temporary password'
+						: 'has a password'
+					: 'NO PASSWORD',
 				`${p.sessions} session(s)`
 			].join(' · ')
 		);
