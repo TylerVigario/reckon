@@ -25,12 +25,14 @@
 	const id = $props.id();
 	let button = $state<HTMLButtonElement>();
 	let list = $state<HTMLUListElement>();
-	let at = $state({ top: 0, right: 0 });
 
 	function place(e: ToggleEvent) {
 		if (e.newState !== 'open' || !button) return;
 		const r = button.getBoundingClientRect();
-		at = { top: r.bottom + 4, right: Math.max(8, innerWidth - r.right) };
+		// Set on the element rather than written as a style attribute, which the
+		// content security policy refuses (vite.config.ts).
+		list?.style.setProperty('top', `${r.bottom + 4}px`);
+		list?.style.setProperty('right', `${Math.max(8, innerWidth - r.right)}px`);
 	}
 	function arrive(e: ToggleEvent) {
 		if (e.newState === 'open') entries()[0]?.focus();
@@ -77,8 +79,6 @@
 	popover="auto"
 	role="menu"
 	aria-label={label}
-	style:top="{at.top}px"
-	style:right="{at.right}px"
 	onbeforetoggle={place}
 	ontoggle={arrive}
 	onkeydown={move}
