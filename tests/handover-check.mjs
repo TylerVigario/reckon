@@ -85,6 +85,8 @@ const choose = (/** @type {Ask} */ ask, /** @type {string} */ password, confirm 
 		headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'text/html' }
 	});
 const FOUR_WORDS = /^[a-z]+(-[a-z]+){3}$/;
+/** What a password handed over looks like, for a failure to say without printing it. */
+const shape = (/** @type {string} */ p) => (FOUR_WORDS.test(p) ? 'four words' : 'not four words');
 
 const db = process.env.DATABASE_URL
 	? new pg.Client({ connectionString: process.env.DATABASE_URL })
@@ -116,7 +118,7 @@ try {
 	check(
 		added.status === 201 && !!id && FOUR_WORDS.test(handed),
 		'adding a person answers with four words to hand them',
-		`${added.status} ${handed}`
+		`${added.status}, ${shape(handed)}`
 	);
 	check(
 		added.headers.get('cache-control') === 'no-store',
@@ -194,7 +196,7 @@ try {
 	check(
 		reset.status === 200 && FOUR_WORDS.test(replaced) && replaced !== handed,
 		'a reset answers with another four words',
-		`${reset.status} ${replaced}`
+		`${reset.status}, ${replaced === handed ? 'the same as before' : shape(replaced)}`
 	);
 	const out = await asThem('/');
 	check(to(out) === '/login', 'and signs them out everywhere', `${out.status} ${to(out)}`);
