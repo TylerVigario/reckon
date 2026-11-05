@@ -82,7 +82,11 @@ export const user = pgTable(
 		 * reprices nothing already worked out.
 		 */
 		roleId: uuid(),
-		/** Whether they count: an inactive person is not offered to work, nor ticked on a team. */
+		/**
+		 * Whether they are on the team. Deactivated on Team, they can't sign in,
+		 * aren't offered work and aren't ticked on a team; everything they did is
+		 * kept.
+		 */
 		active: boolean().default(true).notNull(),
 		/**
 		 * What they can reach, apart from what they are paid as (0031): Full or
@@ -90,6 +94,11 @@ export const user = pgTable(
 		 * with Field, and the database keeps one active person on Full.
 		 */
 		access: text({ enum: ACCESS }).default('field').notNull(),
+		/**
+		 * When they last signed in (0032), set by the sign-in form. Null is none
+		 * recorded: they never have, or not since reckon began keeping it.
+		 */
+		lastSignedInAt: tstz(),
 		/**
 		 * The zone this person keeps their days in, as Postgres names it. Their
 		 * own timesheet, the day a new entry starts on, and every moment shown to

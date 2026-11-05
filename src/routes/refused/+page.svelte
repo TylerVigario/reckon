@@ -18,7 +18,7 @@
 					<div class="rec-t">You have Field access</div>
 					<div class="rec-s">
 						That reaches your own time and trips, team work you were on, drafts to add lines to, and
-						your own pay. Someone with Full can change your access on People and pay.
+						your own pay. Someone with Full can change your access on Team.
 					</div>
 				{:else}
 					<div class="rec-t">You have Full access</div>

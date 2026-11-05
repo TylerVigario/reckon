@@ -140,16 +140,19 @@ const set = (/** @type {string} */ selector, /** @type {string} */ value) =>
 		value
 	);
 
-await go('/settings/people');
+await go('/team/roles');
 const paysAs = /** @type {string[]} */ (
 	await run(() =>
-		[...document.querySelectorAll('select[id$="-pays_as"]')].map(
-			(x) => /** @type {HTMLSelectElement} */ (x).selectedOptions[0]?.textContent?.trim() ?? ''
+		[...document.querySelectorAll('tbody tr')].map((tr) =>
+			[...tr.querySelectorAll('td')]
+				.slice(0, 2)
+				.map((td) => td.textContent?.trim().toLowerCase() ?? '')
+				.join(' — ')
 		)
 	)
 );
 check(
-	['Partner — guaranteed payments', 'Employee — wages', 'Contractor — fees'].every((x) =>
+	['partner — guaranteed payments', 'employee — wages', 'contractor — fees'].every((x) =>
 		paysAs.includes(x)
 	),
 	`each role says what it is paid as (${paysAs.join(', ')})`

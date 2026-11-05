@@ -225,6 +225,13 @@
       "when": 1793821105496,
       "tag": "0031_each_person_has_full_or_field_access",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793844780907,
+      "tag": "0032_each_person_says_when_they_last_signed_in",
+      "breakpoints": true
     }
   ]
 }

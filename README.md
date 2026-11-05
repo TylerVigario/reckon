@@ -171,8 +171,11 @@ the work someone does and what they are paid for it: their own time and trips,
 team work they were on, lines added to a draft, the clients and sites they work
 at, and their own pay, to read. Someone added has Field unless `--full` is
 given; the first person has Full whatever is said, since the database keeps
-someone active on Full. After that, access is set on People and pay, by someone
-with Full.
+someone active on Full. After that, everything about a person is changed on
+Team, by someone with Full: their name and email, their access, the role they
+are paid as, and whether they sign in. Deactivated, they can't, and aren't
+offered work; everything they did is kept, and they can be reactivated. Team
+also says when each person last signed in.
 
 Twelve characters at least, checked on the first entry rather than after the
 second. On a development database, `--insecure` lifts that and says so:

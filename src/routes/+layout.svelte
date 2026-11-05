@@ -11,6 +11,8 @@
 	import { hoursBadge, zoneName } from '#lib/format.ts';
 	import { CLIENT_PAGE } from '#lib/client-link.ts';
 	import { opens } from '#lib/access.ts';
+	// Primer's shapes, for the screens drawn to it so far (#lib/primer.css).
+	import '#lib/primer.css';
 
 	let { data, children }: LayoutProps = $props();
 
@@ -139,6 +141,7 @@
 		{ href: '/invoices', label: 'Invoices', count: () => counts.drafts },
 		{ href: '/catalogue', label: 'Catalogue', count: () => null },
 		{ href: '/clients', label: 'Entities', count: () => counts.entities },
+		{ href: '/team', label: 'Team', count: () => null },
 		{ href: '/reports', label: 'Reports', count: () => null },
 		{ href: '/settings', label: 'Settings', count: () => null }
 	] satisfies { href: RouteId; label: string; count: () => string | number | null | undefined }[];
@@ -162,7 +165,15 @@
 	);
 
 	// Everything reached through More lights More.
-	const UNDER_MORE = ['/more', '/catalogue', '/clients', '/services', '/settings', '/profile'];
+	const UNDER_MORE = [
+		'/more',
+		'/catalogue',
+		'/clients',
+		'/team',
+		'/services',
+		'/settings',
+		'/profile'
+	];
 	// And a screen that hangs off Today lights Today. Unbilled work is Today's
 	// second tile opened up -- it spans time and mileage, so it belongs to
 	// neither of their tabs.

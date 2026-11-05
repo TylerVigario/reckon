@@ -102,11 +102,12 @@ const ROUTES = [
 	'/reports/schedule-a',
 	'/reports/pay',
 	'/reports/retainers',
+	'/team',
+	'/team/roles',
 	'/settings',
 	'/settings/business',
 	'/settings/invoicing',
 	'/settings/tax',
-	'/settings/people',
 	'/settings/travel',
 	'/settings/integrations'
 ];

@@ -1,7 +1,7 @@
 import { count } from '#lib/format.ts';
 import { fail, redirect } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db, schema } from '#lib/server/db/index.ts';
 import { authHeaders, getAuth, rehashIfDated } from '#lib/server/auth.ts';
 import { clearFailures, recordFailure, waitFor } from '#lib/server/sign-in-limit.ts';
@@ -58,6 +58,12 @@ export const actions: Actions = {
 		}
 		clearFailures(address);
 		await rehashIfDated(userId, password);
+		// What Team says as their last sign-in. Signing in is not a change to the
+		// person, so updated_at stays as it was.
+		await db
+			.update(schema.user)
+			.set({ lastSignedInAt: sql`now()`, updatedAt: sql`${schema.user.updatedAt}` })
+			.where(eq(schema.user.id, userId));
 		redirect(303, safeNext(f.get('next'), event.url.origin));
 	}
 };

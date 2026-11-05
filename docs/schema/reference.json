@@ -854,6 +854,11 @@
       ],
       [
        "",
+       "last_signed_in_at",
+       "timestamptz · null = none recorded"
+      ],
+      [
+       "",
        "timezone",
        "text · null = the business's"
       ],

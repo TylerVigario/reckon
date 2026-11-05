@@ -36,11 +36,11 @@ const signedIn = await fetch(base + '/login', {
 	headers: { origin: base, accept: 'text/html', ...PROXY }
 });
 const cookie = (signedIn.headers.getSetCookie?.() ?? []).map((c) => c.split(';')[0]).join('; ');
-const people = await (await fetch(base + '/settings/people', { headers: { cookie } })).text();
-const mine = people.split(/(?=id="set-[0-9a-f-]{36}-role_id")/).find((b) => b.includes(email));
-const me = mine && /id="set-([0-9a-f-]{36})-role_id"/.exec(mine)?.[1];
+const team = await (await fetch(base + '/team', { headers: { cookie } })).text();
+const mine = team.split('class="box-row').find((b) => b.includes(email));
+const me = mine && /team\/([0-9a-f-]{36})"/.exec(mine)?.[1];
 if (!me) {
-	console.error('  could not find who is signed in on /settings/people');
+	console.error('  could not find who is signed in on /team');
 	process.exit(1);
 }
 const stored = async () => {

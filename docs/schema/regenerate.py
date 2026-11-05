@@ -341,6 +341,7 @@ T["user"] = [("PK","id","uuid"),("","name","text"),("UK","email","text · lowerc
     ("","email_verified","bool"),("","image","text"),
     ("FK","role_id","uuid · null = not paid"),("","active","bool"),
     ("","access","full|field · what they reach"),
+    ("","last_signed_in_at","timestamptz · null = none recorded"),
     ("","timezone","text · null = the business's"),("","locale","text · null = the business's"),
     ("","hour_cycle","h12|h23 · null = the locale's"),("","week_start","1–7 · null = the locale's"),
     ("","created_at","timestamptz"),("","updated_at","timestamptz")]
@@ -569,8 +570,8 @@ c += [note("n4", "started_at and ended_at are when the work was done and zone is
                  "somebody gave it by hand. to_stop_id is where a leg went, so the same "
                  "drive later starts from its miles. note and the odometer are the "
                  "trip's own, as a mileage log asks.",
-           40, 840, 1576, 380)]
-files.append(write("04-work-captured.drawio", "Work as it is captured", c, 1680, 1260))
+           40, 880, 1576, 380)]
+files.append(write("04-work-captured.drawio", "Work as it is captured", c, 1680, 1300))
 
 # 05 -- agreements
 c = at("entity",40,60) + at("agreement",440,60) \
@@ -671,8 +672,8 @@ c += [note("n7", "Stripe pays one deposit covering several invoices, net of "
 files.append(write("07-money-in.drawio", "Money in", c, 1260, 620))
 
 # 08 -- operator and record
-c = at("operator",40,60) + at("user",480,60) + at("session",480,430) \
-  + at("account",480,670) + at("record_history",900,410) + at("account_map",900,60) \
+c = at("operator",40,60) + at("user",480,60) + at("session",480,452) \
+  + at("account",480,692) + at("record_history",900,410) + at("account_map",900,60) \
   + at("ledger_export",900,180) + at("integration",900,650) + at("verification",900,800)
 c += [edge("e80","operator","account_map","maps"),
       edge("e82","user","session","is signed in by",
@@ -712,8 +713,8 @@ c += [note("n8", "What someone can reach is user.access, apart from role_id, the
                  "receipt is described rather than copied while its row holds it, and kept "
                  "whole once the history is the only place it is: replaced, or taken off "
                  "with its line. made_at is when a change was made on a phone, beside "
-                 "changed_at, when it arrived.", 40, 1000, 1300, 330)]
-files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 1370))
+                 "changed_at, when it arrived.", 40, 1030, 1300, 330)]
+files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 1400))
 
 # 09 -- pay, as it was paid
 c = at("person_payment",40,60) + at("person_payment_item",480,60) + at("user",40,330) \

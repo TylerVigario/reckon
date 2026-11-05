@@ -9,11 +9,13 @@
  * not paid for work.
  *
  * And what a person can reach, apart from what they are paid as: Full or Field
- * (#lib/access).
+ * (#lib/access). And who they are -- a name, and the email they sign in with --
+ * and whether they can sign in at all.
  */
 import {
 	anId,
 	cap,
+	flag,
 	no,
 	ok,
 	oneOf,
@@ -49,6 +51,12 @@ const aZone = (v: string): Parsed => {
 	}
 };
 
+/** An email as signing in reads it: one @, a dot after it, lowercased. */
+const anEmail = (v: string): Parsed =>
+	/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
+		? ok(v.toLowerCase())
+		: no('Enter an email address in the correct format, like name@example.com.');
+
 /** A locale Intl can write in, as Intl spells it: "en-gb" is saved as en-GB. */
 const aLocale = (v: string): Parsed => {
 	const tag = pickLocale(v);
@@ -56,6 +64,11 @@ const aLocale = (v: string): Parsed => {
 };
 
 export const PERSON_FIELDS = {
+	name: required('Enter their name.', cap(120)),
+	// What they sign in with: changing it changes how they sign in.
+	email: required('Enter their email address.', cap(254, anEmail)),
+	// False is deactivated: they can't sign in, and aren't offered work.
+	active: flag,
 	// Empty is no role: signs in, is not paid.
 	role_id: optional(anId),
 	access: required('Full or Field.', oneOf(ACCESS)),
