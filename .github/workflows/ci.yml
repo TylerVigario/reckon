@@ -272,10 +272,10 @@ jobs:
         # the replacement could stop and they would all stay green.
         run: node tests/rehash-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
-      - name: Someone added or reset signs in with the password handed over, and chooses their own
+      - name: Someone added or reset signs in with the password handed over, chooses their own, and changes it
         # It adds a person and takes them away again, so the checks around it
         # see the business as seeded.
-        run: node tests/handover-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/password-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: It installs, and time and lines on a draft work with the server out of reach
         # Out of reach for real: the server is stopped between the runs, because

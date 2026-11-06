@@ -157,7 +157,10 @@ email, so whoever adds them is shown a temporary password once, four words, to
 hand over. Signing in with it reaches nothing but the page where they choose
 their own; that browser stays signed in, and any other that used the temporary
 one is signed out. Reset password, on a person's page, signs them out everywhere
-and hands over another the same way. Nobody resets their own.
+and hands over another the same way. Nobody resets their own: anyone changes
+theirs under Password on Your profile, giving the current one first. That
+browser is given a new session and every other is signed out, and a wrong
+current password counts against the address as a wrong sign-in does.
 
 The first person is added from the command line, since nobody can sign in to
 add them:
@@ -182,10 +185,10 @@ at, and their own pay, to read. Someone added at the command line has Field
 unless `--full` is given; the first person has Full whatever is said, since the
 database keeps someone active on Full. After that, everything about a person is
 changed on Team, by someone with Full: their name and email, their access, the
-role they are paid as, their password, and whether they sign in. Deactivated,
-they can't, and aren't offered work; everything they did is kept, and they can
-be reactivated. Team also says when each person last signed in, and who is
-Invited, yet to sign in with the password handed to them.
+role they are paid as, a reset of their password, and whether they sign in.
+Deactivated, they can't, and aren't offered work; everything they did is kept,
+and they can be reactivated. Team also says when each person last signed in,
+and who is Invited, yet to sign in with the password handed to them.
 
 Twelve characters at least, checked on the first entry rather than after the
 second. On a development database, `--insecure` lifts that and says so:

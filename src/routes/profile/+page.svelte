@@ -160,6 +160,19 @@
 	</div>
 
 	<div class="sec">
+		<div class="sec-h"><h2>Signing in</h2></div>
+		<div class="rows">
+			<a class="rec link" href={resolve('/profile/password')}>
+				<div class="rec-m">
+					<div class="rec-t">Password</div>
+					<div class="rec-s">Change the one you sign in with.</div>
+				</div>
+				<span class="arw" aria-hidden="true">›</span>
+			</a>
+		</div>
+	</div>
+
+	<div class="sec">
 		<div class="sec-h"><h2>On this device</h2></div>
 		<div class="rows inset">
 			<Setting

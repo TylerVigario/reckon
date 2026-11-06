@@ -156,7 +156,7 @@ const uuid = () => crypto.randomUUID();
 				!route.includes('[') &&
 				route !== '/logout' &&
 				// Only for someone signed in with a password handed to them;
-				// handover-check walks it.
+				// password-check walks it.
 				route !== '/new-password'
 		)
 		.map(([route]) => route);
