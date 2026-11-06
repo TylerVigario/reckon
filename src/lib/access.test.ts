@@ -35,6 +35,7 @@ describe('who reaches a route', () => {
 				'/refused',
 				'/more',
 				'/profile',
+				'/profile/password',
 				'/logout',
 				'/new-password',
 				'/api/device',

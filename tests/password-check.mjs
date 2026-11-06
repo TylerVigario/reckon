@@ -1,18 +1,23 @@
 #!/usr/bin/env node
 /**
- * Proves a person added on Team, or whose password is reset there, signs in
- * with the password handed over and must choose their own before anything else
- * opens (#lib/server/handover).
+ * Proves a person's password goes from one handed over to their own, and is
+ * theirs to change: a person added on Team, or whose password is reset there,
+ * signs in with the password handed over and must choose their own before
+ * anything else opens (#lib/server/handover), and changes it on Your profile
+ * with the current one.
  *
- *   node tests/handover-check.mjs <base-url> <full-email> <full-password>
+ *   node tests/password-check.mjs <base-url> <full-email> <full-password>
  *
  * Someone with Full adds a person and is answered with a password, once. That
  * person signs in with it and reaches nothing but /new-password -- a screen is
  * sent there, an endpoint refused -- where the temporary password itself, one
  * too short and two that differ are each refused. Choosing one keeps that
  * browser signed in and signs out any other that used the temporary one; the
- * temporary one stops working and theirs works. A reset signs them out
- * everywhere and hands over another; nobody resets their own.
+ * temporary one stops working and theirs works. Changing it at
+ * /profile/password refuses a current password that isn't theirs, gives that
+ * browser a new session and signs out every other, and only the new one signs
+ * in. A reset signs them out everywhere and hands over another; nobody resets
+ * their own.
  *
  * Over HTTP, the way a browser does it. Needs the database the server uses, to
  * take away the person it added: it leaves nothing it made.
@@ -21,7 +26,7 @@ import pg from 'pg';
 
 const [, , base, fullEmail, fullPassword] = process.argv;
 if (!base || !fullEmail || !fullPassword) {
-	console.error('usage: node tests/handover-check.mjs <base-url> <full-email> <full-password>');
+	console.error('usage: node tests/password-check.mjs <base-url> <full-email> <full-password>');
 	process.exit(2);
 }
 
@@ -39,19 +44,22 @@ const check = (/** @type {boolean} */ ok, /** @type {string} */ what, detail = '
 	console.log(`  ${ok ? '✓' : '✗'} ${what}`);
 };
 
-/** The session cookie a sign-in sets, or '' when it was refused. */
-const signIn = async (/** @type {string} */ email, /** @type {string} */ password) => {
-	const r = await fetch(`${base}/login`, {
-		method: 'POST',
-		body: new URLSearchParams({ email, password, next: '/' }),
-		redirect: 'manual',
-		headers: { origin: base, ...PROXY }
-	});
-	return (r.headers.getSetCookie?.() ?? [])
+/** The session cookie a response sets, or '' when it sets none. */
+const sessionOf = (/** @type {Response} */ r) =>
+	(r.headers.getSetCookie?.() ?? [])
 		.map((c) => c.split(';')[0])
 		.filter((c) => c.includes('session_token='))
 		.join('; ');
-};
+/** The session cookie a sign-in sets, or '' when it was refused. */
+const signIn = async (/** @type {string} */ email, /** @type {string} */ password) =>
+	sessionOf(
+		await fetch(`${base}/login`, {
+			method: 'POST',
+			body: new URLSearchParams({ email, password, next: '/' }),
+			redirect: 'manual',
+			headers: { origin: base, ...PROXY }
+		})
+	);
 
 /** @typedef {(path: string, init?: RequestInit) => Promise<Response>} Ask */
 const as = (/** @type {string} */ cookie) =>
@@ -76,14 +84,26 @@ const problemOf = async (/** @type {Response} */ r) =>
 /** Where a redirect sends someone, as a path. */
 const to = (/** @type {Response} */ r) =>
 	r.status === 303 ? new URL(r.headers.get('location') ?? '', base).pathname : null;
-const choose = (/** @type {Ask} */ ask, /** @type {string} */ password, confirm = password) =>
-	ask('/new-password', {
+// A form posted as a browser posts one: without accept, SvelteKit answers as it
+// does an enhanced form, in JSON, and a redirect is a 200.
+const post = (
+	/** @type {Ask} */ ask,
+	/** @type {string} */ path,
+	/** @type {Record<string, string>} */ fields
+) =>
+	ask(path, {
 		method: 'POST',
-		body: new URLSearchParams({ password, confirm }),
-		// As a browser posts a form: without it, SvelteKit answers as it does an
-		// enhanced form, in JSON, and a redirect is a 200.
+		body: new URLSearchParams(fields),
 		headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'text/html' }
 	});
+const choose = (/** @type {Ask} */ ask, /** @type {string} */ password, confirm = password) =>
+	post(ask, '/new-password', { password, confirm });
+const change = (
+	/** @type {Ask} */ ask,
+	/** @type {string} */ current,
+	/** @type {string} */ password,
+	confirm = password
+) => post(ask, '/profile/password', { current, password, confirm });
 const FOUR_WORDS = /^[a-z]+(-[a-z]+){3}$/;
 /** What a password handed over looks like, for a failure to say without printing it. */
 const shape = (/** @type {string} */ p) => (FOUR_WORDS.test(p) ? 'four words' : 'not four words');
@@ -142,7 +162,7 @@ try {
 	const first = await signIn(email, handed);
 	const second = await signIn(email, handed);
 	check(!!first && !!second, 'they sign in with it, in two browsers');
-	const asThem = as(first);
+	let asThem = as(first);
 	const home = await asThem('/');
 	check(to(home) === '/new-password', 'a screen sends them to choose a password', `${home.status}`);
 	const api = await asThem('/api/time');
@@ -190,6 +210,47 @@ try {
 		'their page says Active, with nothing left to choose'
 	);
 
+	// ------------------------------------------------- changing theirs ----
+	const elsewhere = await signIn(email, own);
+	const changing = await asThem('/profile/password');
+	check(
+		changing.status === 200 && (await changing.text()).includes('Update password'),
+		'the page to change it opens'
+	);
+	const since = 'a-password-changed-since';
+	const notTheirs = await change(asThem, 'not-their-password', since);
+	check(
+		notTheirs.status === 400 && (await notTheirs.text()).includes('isn’t your current password'),
+		'a current password that isn’t theirs is refused',
+		String(notTheirs.status)
+	);
+	const tooShort = await change(asThem, own, 'too-short');
+	check(
+		tooShort.status === 400,
+		'a new one shorter than twelve is refused',
+		String(tooShort.status)
+	);
+	const apart = await change(asThem, own, since, 'a-password-changed-later');
+	check(apart.status === 400, 'two that differ are refused', String(apart.status));
+
+	const changed = await change(asThem, own, since);
+	const renewed = sessionOf(changed);
+	check(
+		changed.status === 200 && (await changed.text()).includes('Password updated'),
+		'changing it says so',
+		String(changed.status)
+	);
+	check(!!renewed && renewed !== first, 'and gives this browser a new session');
+	const before = await asThem('/');
+	check(to(before) === '/login', 'so the session it was changed in is gone', `${before.status}`);
+	asThem = as(renewed);
+	const after = await asThem('/');
+	check(after.status === 200, 'and this browser stays signed in', String(after.status));
+	const away = await as(elsewhere)('/');
+	check(to(away) === '/login', 'the other browser is signed out', `${away.status} ${to(away)}`);
+	check(!(await signIn(email, own)), 'the old one no longer signs in');
+	check(!!(await signIn(email, since)), 'the new one does');
+
 	// ------------------------------------------------------- a reset ----
 	const reset = await asFull(`/api/people/${id}/password`, { method: 'POST' });
 	const replaced = reset.ok ? ((await reset.json()).password ?? '') : '';
@@ -200,7 +261,7 @@ try {
 	);
 	const out = await asThem('/');
 	check(to(out) === '/login', 'and signs them out everywhere', `${out.status} ${to(out)}`);
-	check(!(await signIn(email, own)), 'their own password no longer signs in');
+	check(!(await signIn(email, since)), 'their own password no longer signs in');
 	const back = await signIn(email, replaced);
 	const held = back ? await as(back)('/') : null;
 	check(

@@ -59,6 +59,7 @@ export const REACH = {
 	'/refused': 'field',
 	'/more': 'field',
 	'/profile': 'field',
+	'/profile/password': 'field',
 	'/logout': 'field',
 	// Where someone signed in with a password handed to them chooses their own.
 	'/new-password': 'field',
