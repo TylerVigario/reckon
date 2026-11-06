@@ -296,6 +296,22 @@ await check(
 	{ fields: { terms_days: '45' } },
 	200
 );
+{
+	// Empty follows the house default. The page shows the box empty and names
+	// the default under it, rather than showing it as the client's own -- in
+	// the box or greyed into it as a placeholder.
+	await call('PATCH', `/api/clients/${clientSlug}`, { fields: { terms_days: '' } });
+	const page = await (await fetch(`${base}/clients/${clientSlug}`, { headers: { cookie } })).text();
+	const box = page.match(/<input[^>]*name="terms_days"[^>]*>/)?.[0] ?? '';
+	const ok =
+		!!box &&
+		!/value="[^"]/.test(box) &&
+		!/placeholder="[^"]/.test(box) &&
+		/house default of \d+ days?/.test(page);
+	if (ok) passed++;
+	else failures.push(`a client following the house default: ${box || 'no terms box'}`);
+	console.log(`  ${ok ? '✓' : '✗'} a client following the house default shows it empty, naming it`);
+}
 await check(
 	'exemption without a certificate is refused',
 	'PATCH',
