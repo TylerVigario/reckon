@@ -4,6 +4,7 @@
 	import { parseField } from './settings-fields.ts';
 	import { readJson, readProblem, type Saved } from '#lib/json.ts';
 	import type { ProblemLike } from '#lib/problem.ts';
+	import type { ResolvedPathname } from '$app/types';
 
 	/**
 	 * One setting that saves itself.
@@ -25,6 +26,7 @@
 		type = 'text',
 		placeholder = '',
 		hint = '',
+		more = null,
 		options = null,
 		seg = false,
 		inputmode = undefined,
@@ -44,6 +46,11 @@
 		placeholder?: string;
 		/** Under the box; or worked out from what the box holds, as it is typed. */
 		hint?: string | ((current: string) => string);
+		/**
+		 * Where something the hint names is set, as a link after it: a default
+		 * the field follows is shown and changed on a page of its own.
+		 */
+		more?: { href: ResolvedPathname; label: string } | null;
 		options?: { value: string; label: string }[] | null;
 		/**
 		 * The options as a row of buttons, where a list would hide the
@@ -268,7 +275,10 @@
 	{#if status === 'bad'}
 		<small class="why" id="{id}-why">{why}</small>
 	{:else if hint}
-		<small>{typeof hint === 'function' ? hint(current) : hint}</small>
+		<small>
+			{typeof hint === 'function' ? hint(current) : hint}
+			{#if more}<a href={more.href}>{more.label}</a>{/if}
+		</small>
 	{/if}
 </div>
 

@@ -43,6 +43,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		name: string;
 		active: boolean;
 		terms: number | null;
+		default_terms: number;
 		payment_method: string | null;
 		tax_exempt: boolean;
 		certificate: string | null;
@@ -60,7 +61,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		)
 		select ${e.id} as id, ${e.slug} as slug, ${e.name} as name, ${e.active} as active,
 		       ${e}.xmin::text as version,
-		       coalesce(${e.termsDays}, (select ${t.operator.defaultTermsDays} from ${t.operator})) as terms,
+		       ${e.termsDays} as terms,
+		       (select ${t.operator.defaultTermsDays} from ${t.operator}) as default_terms,
 		       ${e.paymentMethod} as payment_method, ${e.taxExempt} as tax_exempt,
 		       ${e.exemptionCertificate} as certificate,
 		       ${e.exemptionExpiresOn}::text as expires_on,

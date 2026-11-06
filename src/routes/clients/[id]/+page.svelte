@@ -3,7 +3,7 @@
 	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import { parseClientField } from '#lib/client-fields.ts';
-	import { day, daysAgo, miles, pct, rateParts } from '#lib/format.ts';
+	import { count, day, daysAgo, miles, pct, rateParts } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -11,6 +11,11 @@
 	let { data }: PageProps = $props();
 
 	const c = $derived(data.client);
+	// The client's own terms, or empty to follow the house default, which lives
+	// on Invoicing and is only named here.
+	const termsHint = $derived(
+		`Days from the invoice date to when it is due. Empty follows the house default of ${count(c.default_terms, 'day')}, set on`
+	);
 	// Someone with Field reads where a client is, and nothing they owe (#lib/access).
 	const field = $derived(data.user?.access === 'field');
 	// One version for the row, shared by every field on it: a save by any
@@ -121,7 +126,8 @@
 					onversion={(v) => (version = v)}
 					validate={parseClientField}
 					inputmode="numeric"
-					hint="Days from the invoice date to when it is due. Empty uses the house default."
+					hint={termsHint}
+					more={{ href: resolve('/settings/invoicing'), label: 'Invoicing' }}
 				/>
 				<Setting
 					name="payment_method"
