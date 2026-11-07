@@ -101,6 +101,7 @@ export const REACH = {
 	// The clients and sites they work at, to read.
 	'/clients': 'field',
 	'/clients/contacts': 'field',
+	'/clients/contacts/[id]': 'field',
 	'/clients/[id]': 'field',
 	'/clients/[id]/sites': 'field',
 	'/clients/[id]/sites/[site]': 'field',
@@ -124,6 +125,9 @@ export const REACH = {
 	'/api/clients/[id]/sites': 'full',
 	'/api/clients/[id]/sites/[site]': 'full',
 	'/api/clients/[id]/sites/[site]/contacts': 'full',
+	'/clients/[id]/contacts/new': 'full',
+	'/api/clients/[id]/contacts': 'full',
+	'/api/contacts/[id]': 'full',
 	'/api/sites/drive': 'full',
 	'/api/address': 'full',
 	'/catalogue': 'full',

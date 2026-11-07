@@ -1,10 +1,15 @@
 import { sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
-/** People, who cross entities and locations both. */
-export const load: PageServerLoad = async () => {
+/**
+ * People, who cross entities and locations both, each opening their own page.
+ * Someone with Field reads them, and not whose invoices go to whom
+ * (#lib/access).
+ */
+export const load: PageServerLoad = async ({ locals }) => {
 	const c = t.contact;
 	const ec = t.entityContact;
 	const e = t.entity;
@@ -39,5 +44,7 @@ export const load: PageServerLoad = async () => {
 		 group by ${c.id}
 		 order by ${c.name}`);
 
-	return { contacts };
+	return {
+		contacts: fieldOnly(locals) ? contacts.map((c) => ({ ...c, primary_for: [] })) : contacts
+	};
 };

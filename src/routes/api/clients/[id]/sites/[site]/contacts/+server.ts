@@ -1,9 +1,10 @@
 import { and, eq } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
-import { contact, entityContact, site as sites, siteContact } from '#lib/server/db/schema/index.ts';
+import { entityContact, site as sites, siteContact } from '#lib/server/db/schema/index.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
-import { UUID, cap, required } from '#lib/field-rules.ts';
+import { UUID } from '#lib/field-rules.ts';
 import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
+import { personFrom } from '#lib/server/contacts.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
 import { readBody, textField } from '#lib/json.ts';
@@ -21,8 +22,6 @@ import { readBody, textField } from '#lib/json.ts';
  * address says they are that client's person; the composite key in the schema
  * insists on it, and this makes it true rather than reporting a constraint.
  */
-const name = required('A name is needed.', cap(120));
-
 export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const client = await lookUpClient(params.id);
 	if (!client) return problem('notFound', 404, 'No client by that name or id.');
@@ -35,27 +34,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		.from(sites)
 		.where(eq(sites.id, found.id));
 
-	let contactId: string = textField(body, 'contact_id');
-
-	if (!UUID.test(contactId)) {
-		const parsed = name(textField(body, 'name'));
-		if (!parsed.ok) return refuse({ name: parsed.why });
-		const [made] = await db
-			.insert(contact)
-			.values({
-				name: String(parsed.value),
-				email: textField(body, 'email') || null,
-				phone: textField(body, 'phone') || null
-			})
-			.returning({ id: contact.id });
-		contactId = made.id;
-	} else {
-		const [exists] = await db
-			.select({ id: contact.id })
-			.from(contact)
-			.where(eq(contact.id, contactId));
-		if (!exists) return refuse({ contact_id: 'No such person.' });
-	}
+	const person = await personFrom(body);
+	if ('refused' in person) return person.refused;
+	const contactId = person.id;
 
 	const primary = body?.is_primary === true;
 
