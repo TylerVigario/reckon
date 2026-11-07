@@ -312,6 +312,144 @@ await check(
 	else failures.push(`a client following the house default: ${box || 'no terms box'}`);
 	console.log(`  ${ok ? '✓' : '✗'} a client following the house default shows it empty, naming it`);
 }
+
+// A client's people: added on the client, changed on their own page, and one
+// of them sent the invoices. Who the client sent them to before is put back.
+console.log('\n  contacts — added to a client, changed on their own page, sent the invoices');
+{
+	const at = `/api/clients/${clientSlug}/contacts`;
+	// Named for this run, so a second run against the same database reads its own.
+	const run = Date.now().toString(36);
+	const first = `Write Check Billing ${run}`;
+	const other = `Write Check Second ${run}`;
+	const clientPage = async () =>
+		(await fetch(`${base}/clients/${clientSlug}`, { headers: { cookie } })).text();
+	/** Who the client page says the invoices go to, and each contact's id by name. */
+	const read = (/** @type {string} */ html) => ({
+		bills:
+			/Invoices go to<\/span>[\s\S]*?class="kv-v[^"]*">(?:\s|<!--[^>]*-->)*<span[^>]*>([^<]+)</
+				.exec(html)?.[1]
+				?.trim() ?? null,
+		ids: Object.fromEntries(
+			[
+				...html.matchAll(
+					/\/clients\/contacts\/([0-9a-f-]{36})"[^>]*>(?:\s|<!--[^>]*-->)*<span class="who[^"]*">(?:\s|<!--[^>]*-->)*<span class="n[^"]*">([^<]+)</g
+				)
+			].map((m) => [m[2].trim(), m[1]])
+		)
+	});
+	const before = read(await clientPage());
+	const was = before.bills ? before.ids[before.bills] : undefined;
+
+	await check('a contact with no name is refused', 'POST', at, { name: ' ' }, 400);
+	await check(
+		'a contact whose email is not one is refused',
+		'POST',
+		at,
+		{ name: first, email: 'not-an-email' },
+		400
+	);
+	await check(
+		'a contact whose phone is not one is refused',
+		'POST',
+		at,
+		{ name: first, phone: 'call the office' },
+		400
+	);
+	const billing = await check(
+		'a contact is added to a client, and sent its invoices',
+		'POST',
+		at,
+		{ name: first, email: 'Billing@Example.com', is_primary: true },
+		201
+	);
+	const second = await check(
+		'a second contact is added, and does not take the invoices',
+		'POST',
+		at,
+		{ name: other, phone: '530 555 0100' },
+		201
+	);
+	{
+		const now = read(await clientPage());
+		const ok =
+			now.bills === first &&
+			now.ids[first] === billing.body?.contact_id &&
+			now.ids[other] === second.body?.contact_id;
+		if (ok) passed++;
+		else failures.push(`the client lists both, billing the first: ${JSON.stringify(now)}`);
+		console.log(`  ${ok ? '✓' : '✗'} the client lists both, and the invoices go to the first`);
+	}
+	await check(
+		'the invoices are given to the second',
+		'POST',
+		at,
+		{ contact_id: second.body?.contact_id, is_primary: true },
+		201
+	);
+	{
+		const bills = read(await clientPage()).bills;
+		const ok = bills === other;
+		if (ok) passed++;
+		else failures.push(`the invoices moved to the second: ${bills}`);
+		console.log(`  ${ok ? '✓' : '✗'} and only the second gets them now`);
+	}
+
+	const person = `/api/contacts/${billing.body?.contact_id}`;
+	await check(
+		"a contact's email is changed on their page",
+		'PATCH',
+		person,
+		{ fields: { email: 'Accounts@Example.com' } },
+		(/** @type {{ status: number, body: any }} */ r) =>
+			r.status === 200 && r.body?.saved?.email === 'accounts@example.com'
+	);
+	await check('and their phone', 'PATCH', person, { fields: { phone: '916-555-0100' } }, 200);
+	await check(
+		'an email that is not one is refused',
+		'PATCH',
+		person,
+		{ fields: { email: 'accounts' } },
+		400
+	);
+	await check('a name left empty is refused', 'PATCH', person, { fields: { name: '' } }, 400);
+	await check(
+		'one field at a time',
+		'PATCH',
+		person,
+		{ fields: { phone: '916-555-0100', note: 'Two' } },
+		400
+	);
+	await check(
+		'a contact that does not exist is not found',
+		'PATCH',
+		'/api/contacts/01a1a81d-0000-7000-8000-000000000000',
+		{ fields: { note: 'Nobody' } },
+		404
+	);
+	{
+		const html = await (
+			await fetch(`${base}/clients/contacts/${billing.body?.contact_id}`, { headers: { cookie } })
+		).text();
+		const ok = html.includes('accounts@example.com') && html.includes('916-555-0100');
+		if (ok) passed++;
+		else failures.push("a contact's page shows what was changed");
+		console.log(`  ${ok ? '✓' : '✗'} their page shows what was changed`);
+	}
+
+	if (was)
+		await check(
+			'who got the invoices before gets them again',
+			'POST',
+			at,
+			{
+				contact_id: was,
+				is_primary: true
+			},
+			201
+		);
+}
+
 await check(
 	'exemption without a certificate is refused',
 	'PATCH',

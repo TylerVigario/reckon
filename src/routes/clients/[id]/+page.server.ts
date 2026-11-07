@@ -14,7 +14,8 @@ import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
- * One client: what they owe, what they have agreed to, and where they are.
+ * One client: what they owe, what they have agreed to, where they are, and
+ * who to ask for and send the invoices to.
  *
  * The tax rate shown is the rate at their site, not a property of the client.
  * A client is not a place -- two clients can work at one address, and one
@@ -85,7 +86,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 	const active = and(eq(t.site.entityId, id), eq(t.site.active, true));
 	const today = businessToday();
-	const [[sites], levies, running, recent] = await Promise.all([
+	const [[sites], levies, running, recent, contacts] = await Promise.all([
 		// The client page says how many places and roughly where; the sites page
 		// says everything else, because a client's terms and its addresses are
 		// two subjects.
@@ -142,6 +143,31 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				 order by coalesce(${t.invoice.sentAt}, ${t.invoice.createdAt}) desc
 				 limit 5`
 			)
+			.then((r) => r.rows),
+		// The client's people, each opening their own page, where their details
+		// are changed; and which of them the invoices go to.
+		db
+			.execute<{
+				id: string;
+				name: string;
+				email: string | null;
+				phone: string | null;
+				bills: boolean;
+				sites: string[];
+			}>(
+				sql`
+				select ${c.id} as id, ${c.name} as name, ${c.email} as email, ${c.phone} as phone,
+				       ${ec.isPrimary} as bills,
+				       coalesce((select array_agg(${t.site.label} order by ${t.site.label})
+				                   from ${t.siteContact}
+				                   join ${t.site} on ${t.site.id} = ${t.siteContact.siteId}
+				                  where ${t.siteContact.contactId} = ${c.id}
+				                    and ${t.siteContact.entityId} = ${ec.entityId}), '{}') as sites
+				  from ${ec}
+				  join ${c} on ${c.id} = ${ec.contactId}
+				 where ${ec.entityId} = ${id}
+				 order by ${c.name}`
+			)
 			.then((r) => r.rows)
 	]);
 
@@ -171,6 +197,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		return {
 			client: { ...client, owed: null, out: null, credit: null },
 			sites,
+			contacts: contacts.map((x) => ({ ...x, bills: false })),
 			levies,
 			agreements: [],
 			recent: []
@@ -178,6 +205,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	return {
 		client,
 		sites,
+		contacts,
 		levies,
 		agreements: running.map((r) => {
 			const a = agreements.find((x) => x.id === r.id)!;
