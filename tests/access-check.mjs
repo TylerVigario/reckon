@@ -270,6 +270,38 @@ check(!linked(fullMore, '/reports/pay').size, 'Full reaches pay through the repo
 		toFull.includes('Unapplied credit') && !toField.includes('Unapplied credit'),
 		'Field reads a client without what it owes or its billing'
 	);
+	check(
+		toFull.includes('Invoices go to') && !toField.includes('Invoices go to'),
+		"Field reads a client's contacts, and not who the invoices go to"
+	);
+
+	// A contact, to read: nothing changed, and not whose invoices go to them.
+	const people = [
+		...new Set([...toFull.matchAll(/\/clients\/contacts\/([0-9a-f-]{36})"/g)].map((m) => m[1]))
+	];
+	const pages = await Promise.all(
+		people.map(async (id) => ({
+			full: await page(asFull, `/clients/contacts/${id}`),
+			field: await page(asField, `/clients/contacts/${id}`)
+		}))
+	);
+	const bills = pages.find((p) => p.full.includes('Gets invoices'));
+	check(
+		!!bills &&
+			bills.full.includes('aria-label="Edit email"') &&
+			!bills.field.includes('aria-label="Edit email"') &&
+			!bills.field.includes('Gets invoices') &&
+			!bills.field.includes('invoices are sent here'),
+		'Field reads a contact, changes nothing, and is not told whose invoices go to them'
+	);
+	const [listFull, listField] = await Promise.all([
+		page(asFull, '/clients/contacts'),
+		page(asField, '/clients/contacts')
+	]);
+	check(
+		listFull.includes('gets invoices') && !listField.includes('gets invoices'),
+		'nor on the list of contacts'
+	);
 }
 
 // ------------------------------------------------------------- writing ----

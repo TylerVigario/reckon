@@ -289,7 +289,8 @@
 				<div class="rec">
 					<div class="rec-m">
 						<div class="rec-t">
-							{p.name}{#if p.is_primary}&nbsp;<span class="lt">· answers first</span>{/if}
+							<a href={resolve('/clients/contacts/[id]', { id: p.id })}>{p.name}</a
+							>{#if p.is_primary}&nbsp;<span class="lt">· answers first</span>{/if}
 						</div>
 						<div class="rec-s">
 							{[p.email, p.phone].filter(Boolean).join(' · ') || 'no details on file'}

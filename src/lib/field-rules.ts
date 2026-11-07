@@ -134,6 +134,12 @@ export const money: Parse = (v) => {
 	return no(`At most ${MONEY_WHOLE} digits before the decimal point.`);
 };
 
+/** An email as signing in reads it: one @, a dot after it, lowercased. */
+export const anEmail: Parse = (v) =>
+	/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
+		? ok(v.toLowerCase())
+		: no('Enter an email address in the correct format, like name@example.com.');
+
 /**
  * A phone number, kept exactly as it was typed.
  *

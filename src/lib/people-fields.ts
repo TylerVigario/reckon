@@ -13,6 +13,7 @@
  * and whether they can sign in at all.
  */
 import {
+	anEmail,
 	anId,
 	cap,
 	flag,
@@ -50,12 +51,6 @@ const aZone = (v: string): Parsed => {
 		return no('Not a time zone. Try America/Los_Angeles.');
 	}
 };
-
-/** An email as signing in reads it: one @, a dot after it, lowercased. */
-const anEmail = (v: string): Parsed =>
-	/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
-		? ok(v.toLowerCase())
-		: no('Enter an email address in the correct format, like name@example.com.');
 
 /** A locale Intl can write in, as Intl spells it: "en-gb" is saved as en-GB. */
 const aLocale = (v: string): Parsed => {

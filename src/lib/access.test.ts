@@ -67,6 +67,7 @@ describe('who reaches a route', () => {
 				'/api/lines/[id]/restore',
 				'/clients',
 				'/clients/contacts',
+				'/clients/contacts/[id]',
 				'/clients/[id]',
 				'/clients/[id]/sites',
 				'/clients/[id]/sites/[site]',

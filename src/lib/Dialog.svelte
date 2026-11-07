@@ -10,7 +10,10 @@
 	 *
 	 * The first choice in it is focused, or else the action; a dangerous one
 	 * focuses Cancel, so Enter changes nothing. Escape closes it. On a phone it
-	 * rises from the bottom as a sheet, as Primer's narrow dialog does.
+	 * rises from the bottom as a sheet, as Primer's narrow dialog does -- or,
+	 * holding choices or fields to fill in, it fills the screen: Primer's
+	 * "Dialogs that have one or more input fields should always use the
+	 * full-screen variant".
 	 */
 	import type { Snippet } from 'svelte';
 	import Octicon from './Octicon.svelte';
@@ -165,6 +168,19 @@
 		}
 		footer .btn {
 			flex: 1 1 0;
+		}
+		dialog[open]:has(.body :global(input)) {
+			display: flex;
+			flex-direction: column;
+			height: 100%;
+			max-height: 100%;
+			margin: 0;
+			border: 0;
+			border-radius: 0;
+		}
+		dialog:has(.body :global(input)) .body {
+			flex: 1 1 auto;
+			overflow-y: auto;
 		}
 	}
 </style>
