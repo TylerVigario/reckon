@@ -1630,24 +1630,37 @@ const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
 			);
 		}
 
-		// How their dates read is theirs: the same day, in two locales.
-		const today = await formDay();
-		if (today) {
-			const full = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
-			const gb = (await page('/')).includes(
-				drawn('en-GB', today, today, /** @type {any} */ (full))
+		// How their dates read is theirs: the same day, in two locales. Today is
+		// headed with the business's day (#lib/server/calendar), so that is the
+		// day looked for, with the person and the business on dates that never
+		// meet: the person's day would then be missed every time, not only in
+		// the hours of a night when the two differ. Either day may turn over
+		// while the page is read, so either side of the read is right.
+		await setOwn('Pacific/Pago_Pago');
+		await setBusiness('Pacific/Kiritimati');
+		const full = /** @type {Intl.DateTimeFormatOptions} */ ({
+			weekday: 'long',
+			day: 'numeric',
+			month: 'long',
+			year: 'numeric'
+		});
+		const headed = async (/** @type {string} */ locale) => {
+			const before = zoneDay('Pacific/Kiritimati');
+			const html = await page('/');
+			return [before, zoneDay('Pacific/Kiritimati')].some((d) =>
+				html.includes(drawn(locale, d, d, full))
 			);
-			await setMine('locale', 'en-US');
-			const us = (await page('/')).includes(
-				drawn('en-US', today, today, /** @type {any} */ (full))
-			);
-			await setMine('locale', 'en-GB');
-			record(
-				gb && us,
-				"a person's locale is how their dates read",
-				`British ${gb}, American ${us} for ${today}`
-			);
-		}
+		};
+		const gb = await headed('en-GB');
+		await setMine('locale', 'en-US');
+		const us = await headed('en-US');
+		await setMine('locale', 'en-GB');
+		await setBusiness(business);
+		record(
+			gb && us,
+			"a person's locale is how their dates read",
+			`British ${gb}, American ${us} for the business's ${zoneDay('Pacific/Kiritimati')}`
+		);
 
 		// And so is the day their week starts: every week on All entries begins
 		// on it.
