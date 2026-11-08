@@ -19,7 +19,7 @@ export const load: PageServerLoad = async () => {
 	return {
 		fy,
 		month,
-		scheduleA: a && { due: a.due, unchecked: a.unchecked.length },
+		scheduleA: a && { due: a.due },
 		pay: { due: pay.due },
 		meter: { charged: meter.charged },
 		given

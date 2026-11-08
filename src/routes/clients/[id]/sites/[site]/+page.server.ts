@@ -1,9 +1,9 @@
-import { personalDay, businessToday } from '#lib/server/calendar.ts';
+import { businessDay, businessToday } from '#lib/server/calendar.ts';
 import { error } from '@sveltejs/kit';
 import { and, asc, count, desc, eq, notExists, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
-import { rateIsStale } from '#lib/server/stale.ts';
+import { rateIsStale, STALE_AFTER_DAYS } from '#lib/server/stale.ts';
 import { findClient, findSite } from '#lib/server/find.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
@@ -13,9 +13,10 @@ import type { PageServerLoad } from './$types';
  * there.
  *
  * A site is the thing a jobsite rate, a mileage figure and a contact all hang
- * off, and every one of those is
- * edited here -- except the rate, which is CDTFA's and has no field. Someone
- * with Field reads it, to work at, and changes nothing (#lib/access).
+ * off, and every one of those is edited here -- except the rate, which is
+ * CDTFA's and has no field. It is the rate's one home, where CDTFA is asked
+ * again. Someone with Field reads it, to work at, and changes nothing
+ * (#lib/access).
  */
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const client = await findClient(params.id);
@@ -50,10 +51,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			tax_area_code: s.taxAreaCode,
 			verified_on: s.areaVerifiedOn,
 			stale: rateIsStale(s.areaVerifiedOn, businessToday()),
-			changes: sql<string>`(${db
+			asked: sql<number>`(${db
 				.select({ n: count() })
 				.from(t.siteTaxCheck)
-				.where(and(eq(t.siteTaxCheck.siteId, s.id), eq(t.siteTaxCheck.changed, true)))})::text`
+				.where(eq(t.siteTaxCheck.siteId, s.id))})::int`
 		})
 		.from(s)
 		.innerJoin(e, eq(e.id, s.entityId))
@@ -94,15 +95,18 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				)
 			)
 			.orderBy(asc(t.contact.name)),
-		// Every answer CDTFA has given about this address.
+		// The latest answers CDTFA has given about this site, and which was its
+		// first, which has nothing before it to have moved from. Each is dated by
+		// the business's day, as Last asked is (#lib/server/calendar).
 		db
 			.select({
 				id: t.siteTaxCheck.id,
-				on: sql<string>`${personalDay(t.siteTaxCheck.checkedAt)}::text`,
+				on: sql<string>`${businessDay(t.siteTaxCheck.checkedAt)}::text`,
 				rate_pct: t.siteTaxCheck.ratePct,
 				jurisdiction: t.siteTaxCheck.taxJurisdiction,
 				changed: t.siteTaxCheck.changed,
-				note: t.siteTaxCheck.note
+				note: t.siteTaxCheck.note,
+				first: sql<boolean>`row_number() over (order by ${t.siteTaxCheck.checkedAt}, ${t.siteTaxCheck.id}) = 1`
 			})
 			.from(t.siteTaxCheck)
 			.where(eq(t.siteTaxCheck.siteId, found.id))
@@ -118,5 +122,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			.where(eq(t.timeEntry.siteId, found.id))
 	]);
 
-	return { site, people, elsewhere: fieldOnly(locals) ? [] : elsewhere, checks, worked };
+	return {
+		site,
+		people,
+		elsewhere: fieldOnly(locals) ? [] : elsewhere,
+		checks,
+		worked,
+		staleAfter: STALE_AFTER_DAYS
+	};
 };

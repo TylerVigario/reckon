@@ -3,8 +3,8 @@
  *
  * This is the one place that knows the contract with CDTFA, and it has two
  * callers with nothing else in common -- the app, which prices a site the
- * moment somebody saves one, and scripts/refresh-tax-rates.mjs, which re-asks
- * about everything on a schedule. A second copy of a network contract is a copy
+ * moment somebody saves one or asks again on its page, and
+ * scripts/refresh-tax-rates.mjs, which re-asks about everything on a schedule. A second copy of a network contract is a copy
  * that drifts, and the drift shows up as a rate. The script imports this file
  * as it is, under plain Node, so imports here are relative or #lib -- never a
  * $app module, which only exists inside SvelteKit.

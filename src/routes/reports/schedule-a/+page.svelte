@@ -192,7 +192,7 @@
 			</div>
 			<div class="rows">
 				{#each data.unchecked as u (u.client + u.site)}
-					<a class="rec link warn" href={resolve('/clients')}>
+					<a class="rec link warn" href={resolve('/clients/[id]/sites/[site]', u.at)}>
 						<div class="rec-m">
 							<div class="rec-t">{u.site}</div>
 							<div class="rec-s">{u.client} · {u.why}</div>

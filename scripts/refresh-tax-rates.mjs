@@ -3,7 +3,8 @@
  * Ask CDTFA what each site pays, and write down the answer.
  *
  * Every rate in the system is CDTFA's answer for an address -- this script
- * re-asks for every site, and creating or moving a site asks for that one.
+ * re-asks for every site, and creating or moving a site asks for that one, as
+ * does Ask CDTFA again on its page.
  * Nothing can author a rate by hand, which is the point: a locally held rate
  * goes stale without telling anybody, and is then charged at addresses it was
  * never true for.
@@ -130,8 +131,8 @@ for (const s of sites) {
 			await client.query('begin');
 			await client.query(
 				`insert into site_tax_check (site_id, tax_area_code, tax_jurisdiction, rate_pct,
-				                             state_rate_pct, district_rate_pct, changed)
-				 values ($1, $2, $3, $4, $5, $6, $7)`,
+				                             state_rate_pct, district_rate_pct, changed, note)
+				 values ($1, $2, $3, $4, $5, $6, $7, 'asked on a refresh')`,
 				[s.id, answer.tac, answer.jurisdiction, answer.rate, answer.state, answer.district, moved]
 			);
 			// The date moves whether or not the rate did: "confirmed today" is

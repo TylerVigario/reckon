@@ -31,17 +31,7 @@
 	</div>
 
 	<div class="sec">
-		<div class="sec-h">
-			<h2>Clients</h2>
-			{#if n(data.counts.unpriced) > 0}
-				<span class="sp"></span>
-				<span class="chip warn">
-					<span class="dot"></span>{data.counts.unpriced} rate{n(data.counts.unpriced) === 1
-						? ''
-						: 's'} over 90 days old
-				</span>
-			{/if}
-		</div>
+		<div class="sec-h"><h2>Clients</h2></div>
 		<div class="rows">
 			{#each data.clients as c (c.id)}
 				<a class="rec link" href={resolve('/clients/[id]', { id: c.slug })} class:gone={!c.active}>

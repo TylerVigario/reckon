@@ -6,7 +6,7 @@
 	import Setting from '#lib/Setting.svelte';
 	import { readProblem } from '#lib/json.ts';
 	import { parseClientField } from '#lib/client-fields.ts';
-	import { count, day, daysAgo, miles, names, pct, rateParts } from '#lib/format.ts';
+	import { count, day, daysAgo, miles, names } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -65,20 +65,6 @@
 		await refreshAll();
 	}
 
-	// An area's line: how many of this client's places sit in it, and when
-	// CDTFA last said so.
-	const levy = (l: {
-		sites: string;
-		priced_on: string | null;
-		state_rate_pct: string;
-		district_rate_pct: string;
-	}) =>
-		[
-			rateParts(l.state_rate_pct, l.district_rate_pct),
-			`${l.sites} ${Number(l.sites) === 1 ? 'site' : 'sites'}`,
-			`priced ${day(l.priced_on)}`
-		].join(' · ');
-
 	const where = $derived(
 		data.sites.n === 0
 			? 'Nowhere recorded, so no rate resolves and no mileage can be computed'
@@ -87,21 +73,8 @@
 				}`
 	);
 
-	// One area to be taxed in, name it. Several, say how many -- a client
-	// working in Tuolumne and Sacramento has two answers, and printing one would be
-	// this screen inventing a fact.
-	const sub = $derived(
-		[
-			c.contact,
-			data.levies.length === 0
-				? null
-				: data.levies.length === 1
-					? [data.levies[0].name, pct(data.levies[0].rate_pct)].filter(Boolean).join(' ')
-					: `${data.levies.length} levies`
-		]
-			.filter(Boolean)
-			.join(' · ')
-	);
+	// No rate: each site has its own, on its page, and the Sites row opens them.
+	const sub = $derived(c.contact ?? '');
 </script>
 
 <Top title={c.name} {sub} back={resolve('/clients')} backLabel="Entities" />
@@ -309,39 +282,10 @@
 		</div>
 	</div>
 
-	<div class="sec">
-		<div class="sec-h">
-			<h2>Tax</h2>
-			<span class="sp"></span>
-			<span class="chip">From CDTFA, per address</span>
-			{#if c.rules === 'us_ca'}<span class="chip">US · CA rules</span>{/if}
-		</div>
-		<div class="rows">
-			{#each data.levies as l (l.name)}
-				<div class="rec" class:warn={l.stale}>
-					<div class="rec-m">
-						<div class="rec-t">{l.name}</div>
-						<div class="rec-s">{levy(l)}</div>
-					</div>
-					<div class="rec-n">
-						{#if l.rate_pct}
-							<span class="rec-v">{pct(l.rate_pct)}</span>
-						{:else}
-							<span class="rec-v mut">—</span>
-						{/if}
-					</div>
-				</div>
-			{:else}
-				<div class="rec warn">
-					<div class="rec-m">
-						<div class="rec-t">Charged at</div>
-						<div class="rec-s">No site on file, so there is no address to price</div>
-					</div>
-					<div class="rec-n"><span class="rec-v mut">—</span></div>
-				</div>
-			{/each}
-		</div>
-		{#if !field}
+	<!-- Whether this client is taxed is its own. What it is taxed at is each site's. -->
+	{#if !field}
+		<div class="sec">
+			<div class="sec-h"><h2>Tax</h2></div>
 			<div class="rows inset">
 				<Setting
 					name="tax_exempt"
@@ -367,8 +311,8 @@
 					hint="CDTFA needs this to support an untaxed sale"
 				/>
 			</div>
-		{/if}
-	</div>
+		</div>
+	{/if}
 
 	{#if data.recent.length}
 		<div class="sec">

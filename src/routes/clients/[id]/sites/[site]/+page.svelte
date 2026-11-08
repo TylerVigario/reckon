@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { goto, refreshAll } from '$app/navigation';
 	import Top from '#lib/Top.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import { parseSiteField } from '#lib/site-fields.ts';
-	import { hours, miles, pct, rateParts } from '#lib/format.ts';
+	import { dated, hours, miles, pct, rateParts } from '#lib/format.ts';
+	import { Decimal } from '#lib/decimal.ts';
 	import Day from '#lib/Day.svelte';
 	import type { PageProps } from './$types';
 	import { readJson, readProblem } from '#lib/json.ts';
@@ -91,6 +93,52 @@
 		moving = '';
 		await refreshAll();
 	}
+
+	/**
+	 * ASK CDTFA AGAIN (7 November 2026), in the box's header as GitHub puts
+	 * Check for updates beside Last checked. What CDTFA answers is said under
+	 * it, as Primer's inline message, and goes into the history whether the
+	 * rate moved or not.
+	 */
+	let asking = $state(false);
+	let answered = $state<{ good: boolean; text: string } | null>(null);
+	async function askAgain() {
+		asking = true;
+		answered = null;
+		const r = await fetch(`${api}/ask-cdtfa`, { method: 'POST' }).catch(() => null);
+		asking = false;
+		if (!r?.ok) {
+			const p = r ? await readProblem(r) : null;
+			answered = {
+				good: false,
+				text: !r
+					? 'CDTFA was not asked — no connection.'
+					: r.status === 502
+						? `${p?.detail ?? 'CDTFA did not answer.'} Nothing has changed.`
+						: (p?.detail ?? 'CDTFA was not asked.')
+			};
+			if (r?.status === 409) await refreshAll();
+			return;
+		}
+		const a = (await readJson(r)) as { rate: string; was: string; changed: boolean };
+		answered = {
+			good: true,
+			text: a.changed
+				? `CDTFA now says ${pct(a.rate)}, ${Decimal.from(a.rate).gt(a.was) ? 'up' : 'down'} from ${pct(a.was)}. Lines written here from now on are charged at it.`
+				: `CDTFA still says ${pct(a.rate)}.`
+		};
+		await refreshAll();
+	}
+
+	// Why each answer was asked for, and what it said. The first has nothing
+	// before it to have moved from.
+	const why = (c: { note: string | null; changed: boolean; first: boolean }) =>
+		[
+			c.note ? c.note[0].toUpperCase() + c.note.slice(1) : null,
+			c.first ? (c.note ? null : 'The first answer') : c.changed ? 'The rate moved' : 'Unchanged'
+		]
+			.filter(Boolean)
+			.join(' · ');
 
 	// Adding somebody: an existing person of this client's, or a new one.
 	let adding = $state(false);
@@ -359,36 +407,70 @@
 		</div>
 	</div>
 
-	<div class="sec">
-		<div class="sec-h">
-			<h2>What CDTFA has said</h2>
-			<span class="sp"></span>
-			{#if s.stale}
-				<span class="chip warn"
-					><span class="dot"></span>Last asked <Day iso={s.verified_on} /></span
-				>
-			{:else}
-				<span class="chip good"><span class="dot"></span>Asked <Day iso={s.verified_on} /></span>
-			{/if}
-		</div>
-		<div class="rows">
-			<div class="rec">
-				<div class="rec-m">
-					<div class="rec-t">{s.jurisdiction}</div>
-					<div class="rec-s">Tax area {s.tax_area_code} · nothing here is ours to set</div>
-				</div>
-				<div class="rec-n"><span class="rec-v">{pct(s.rate_pct)}</span></div>
+	<!-- Primer's boxes, as the rest of the page will be when Entities moves to it. -->
+	<div class="primer cdtfa">
+		<section class="box" aria-labelledby="cdtfa-h">
+			<div class="box-h">
+				<h2 class="box-t" id="cdtfa-h">What CDTFA has said</h2>
+				{#if !field}
+					<button type="button" class="btn sm" disabled={asking} onclick={askAgain}
+						>{asking ? 'Asking CDTFA…' : 'Ask CDTFA again'}</button
+					>
+				{/if}
 			</div>
-			{#each data.checks as c (c.id)}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t lt"><Day iso={c.on} /></div>
-						<div class="rec-s">{c.note ?? (c.changed ? 'The rate moved' : 'Unchanged')}</div>
+			{#if answered}
+				<p
+					class="box-row im {answered.good ? 'good' : 'crit'}"
+					role={answered.good ? 'status' : 'alert'}
+				>
+					<Octicon name={answered.good ? 'check' : 'alert'} />{answered.text}
+				</p>
+			{/if}
+			<div class="box-row kv">
+				<span class="kv-l">Rate</span>
+				<span class="kv-v">
+					<span class="rt">{pct(s.rate_pct)}</span>
+					<span class="sub">{made}</span>
+				</span>
+			</div>
+			<div class="box-row kv">
+				<span class="kv-l">Area</span>
+				<span class="kv-v">
+					<span>{s.jurisdiction}</span>
+					<span class="sub">Tax area {s.tax_area_code} · nothing here is ours to set</span>
+				</span>
+			</div>
+			<div class="box-row kv">
+				<span class="kv-l">Last asked</span>
+				<span class="kv-v">
+					<span>{dated(s.verified_on)}</span>
+					{#if s.stale}
+						<span class="im warn"
+							><Octicon name="alert" />Over {data.staleAfter} days ago. A district can start or end in
+							that time.</span
+						>
+					{/if}
+				</span>
+			</div>
+		</section>
+
+		{#if data.checks.length}
+			<section class="box" aria-labelledby="history-h">
+				<div class="box-h"><h2 class="box-t" id="history-h">History</h2></div>
+				{#each data.checks as c (c.id)}
+					<div class="box-row was">
+						<span class="who">
+							<span class="n">{dated(c.on)}</span>
+							<span class="sub">{why(c)}</span>
+						</span>
+						<span class="r">{pct(c.rate_pct)}</span>
 					</div>
-					<div class="rec-n"><span class="rec-v mut">{pct(c.rate_pct)}</span></div>
-				</div>
-			{/each}
-		</div>
+				{/each}
+				{#if s.asked > data.checks.length}
+					<p class="box-row more">The latest {data.checks.length} of {s.asked}.</p>
+				{/if}
+			</section>
+		{/if}
 	</div>
 </div>
 
@@ -409,5 +491,92 @@
 	}
 	.bad {
 		color: var(--crit);
+	}
+	.cdtfa {
+		display: flex;
+		flex-direction: column;
+		gap: inherit;
+	}
+	.box-row {
+		min-height: 56px;
+		box-sizing: border-box;
+		margin: 0;
+	}
+	.kv {
+		display: grid;
+		grid-template-columns: minmax(0, 30%) minmax(0, 1fr);
+		align-items: center;
+		gap: 4px 16px;
+	}
+	.kv-l,
+	.n {
+		font-weight: 600;
+	}
+	.kv-v,
+	.who {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.kv-v {
+		color: var(--ink-2);
+	}
+	.rt {
+		font-variant-numeric: tabular-nums;
+	}
+	.sub,
+	.more {
+		font-size: 12px;
+		color: var(--ink-3);
+	}
+	.more {
+		min-height: 0;
+	}
+	.was {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+	}
+	.who {
+		flex: 1 1 auto;
+	}
+	.r {
+		color: var(--ink-2);
+		font-variant-numeric: tabular-nums;
+	}
+	/* Primer's inline message: an icon and a line, in the colour of what happened. */
+	.im {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		font-size: 12px;
+		line-height: 18px;
+	}
+	.im :global(svg) {
+		margin-top: 1px;
+	}
+	p.im {
+		min-height: 0;
+		font-size: 14px;
+		line-height: 20px;
+	}
+	p.im :global(svg) {
+		margin-top: 2px;
+	}
+	.im.good {
+		color: var(--good);
+	}
+	.im.warn {
+		color: var(--warn);
+	}
+	.im.crit {
+		color: var(--crit);
+	}
+	@media (max-width: 543px) {
+		.kv {
+			grid-template-columns: minmax(0, 1fr);
+		}
 	}
 </style>

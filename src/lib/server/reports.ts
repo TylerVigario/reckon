@@ -56,7 +56,8 @@ export type ScheduleA = {
 	districts: DistrictRow[];
 	due: string;
 	claimsResold: boolean;
-	unchecked: { site: string; client: string; why: string }[];
+	/** Each opens its site, where CDTFA is asked again: `at` is its route's params. */
+	unchecked: { site: string; client: string; why: string; at: { id: string; site: string } }[];
 	overrides: { invoice: string; description: string; rate_pct: string; reason: string | null }[];
 };
 
@@ -124,8 +125,11 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 		client: string;
 		priced_on: string;
 		days: number;
+		client_slug: string;
+		site_slug: string;
 	}>(sql`
 		select ${site.display} as site, ${entity.name} as client,
+		       ${entity.slug} as client_slug, ${site.slug} as site_slug,
 		       ${site.areaVerifiedOn}::text as priced_on,
 		       ${businessToday()}::date - ${site.areaVerifiedOn} as days
 		  from ${site}
@@ -160,10 +164,11 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 			places
 		),
 		claimsResold: claims,
-		unchecked: stale.map(({ site, client, priced_on, days }) => ({
+		unchecked: stale.map(({ site, client, priced_on, days, client_slug, site_slug }) => ({
 			site,
 			client,
-			why: `Last priced ${dated(priced_on)}, ${daysAgo(days)}`
+			why: `Last priced ${dated(priced_on)}, ${daysAgo(days)}`,
+			at: { id: client_slug, site: site_slug }
 		})),
 		overrides
 	};

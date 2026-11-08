@@ -20,19 +20,6 @@
 					<div class="rec-m">
 						<div class="rec-t">Schedule A</div>
 						<div class="rec-s">Measure and deduction by district, each at its own rate</div>
-						<div class="rec-c">
-							{#if data.scheduleA.unchecked}
-								<span class="chip warn">
-									<span class="dot"></span>{data.scheduleA.unchecked} rate{data.scheduleA
-										.unchecked === 1
-										? ''
-										: 's'} over 90 days old
-								</span>
-							{:else}
-								<span class="chip good"><span class="dot"></span>Every rate recently asked for</span
-								>
-							{/if}
-						</div>
 					</div>
 					<div class="rec-n"><span class="rec-v mut">{money(data.scheduleA.due)}</span></div>
 					<span class="arw" aria-hidden="true">›</span>
