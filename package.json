@@ -36,6 +36,7 @@
 		"print:check": "sh third_party/press/tools/all.sh --check --tz UTC"
 	},
 	"devDependencies": {
+		"@better-auth/core": "^1.7.15",
 		"@commitlint/cli": "^21.2.4",
 		"@eslint/js": "^10.0.1",
 		"@sveltejs/adapter-node": "^6.0.1",

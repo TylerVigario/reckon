@@ -277,6 +277,22 @@ jobs:
         # see the business as seeded.
         run: node tests/password-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
+      - name: Tries at a password are limited per address, however many are sent at once
+        # On a second server, told the visitor's address as a proxy would tell
+        # it, so the check tries from addresses of its own. On the job's server
+        # every request is from 127.0.0.1, and the limit would make every check
+        # after it wait.
+        run: |
+          PORT=5179 ADDRESS_HEADER=x-real-ip node build &
+          limited=$!
+          for _ in $(seq 1 30); do
+            curl -sf -o /dev/null -H 'x-real-ip: 192.0.2.1' "http://127.0.0.1:5179/login" && break
+            sleep 1
+          done
+          node tests/sign-in-limit-check.mjs "http://127.0.0.1:5179" avery@kestrel.example ci-only-password || failed=$?
+          kill "$limited"
+          exit "${failed:-0}"
+
       - name: It installs, and time and lines on a draft work with the server out of reach
         # Out of reach for real: the server is stopped between the runs, because
         # the service worker fetches on its own and a flag set on the page would

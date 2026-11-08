@@ -45,8 +45,10 @@ oversights:
   parameters, so raising them re-hashes on the next sign-in.
 - **A missing account costs the same time as a wrong password**, and both return
   the same message. Five failures from one address in fifteen minutes make that
-  address wait. The limit is per address and never per account, so it says
-  nothing about which addresses have one — and it is held in memory, so a
+  address wait. Each try is counted as it is made, so tries sent at once are
+  held to five as well, and an IPv6 address counts as its /64, which a client
+  may pick any address in. The limit is per address and never per account, so it
+  says nothing about which addresses have one — and it is held in memory, so a
   restart forgives everyone.
 - **Whatever has a body to run carries a content security policy.** A page gets
   the one SvelteKit writes, with its own inline code hashed. What an endpoint

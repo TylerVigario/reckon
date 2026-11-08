@@ -149,8 +149,9 @@ of the table lets nobody in without the secret as well. Passwords are argon2id
 at the OWASP minimum rather than Better Auth's default scrypt, and the hash
 records its own parameters, so raising them later re-hashes on the next sign-in
 rather than locking anyone out. Five wrong passwords from one address in
-fifteen minutes and that address waits; the limit is per address and never per
-account, so it says nothing about which addresses have one.
+fifteen minutes and that address waits, however many it sends at once, and an
+IPv6 address counts as its /64; the limit is per address and never per account,
+so it says nothing about which addresses have one.
 
 There is no sign-up. Someone with Full adds people on Team, and reckon sends no
 email, so whoever adds them is shown a temporary password once, four words, to

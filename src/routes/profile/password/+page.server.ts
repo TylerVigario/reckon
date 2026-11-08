@@ -7,7 +7,7 @@ import {
 	authHeaders,
 	getAuth
 } from '#lib/server/auth.ts';
-import { clearFailures, recordFailure, waitFor } from '#lib/server/sign-in-limit.ts';
+import { forgive, takeTry } from '#lib/server/sign-in-limit.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -16,7 +16,7 @@ import type { Actions, PageServerLoad } from './$types';
  * browser is given a new session and every other is signed out (7.4.3). A
  * forgotten one is reset on Team, by someone else with Full.
  *
- * A wrong current password counts against the address as a wrong sign-in does
+ * A try at the current password counts against the address as a sign-in does
  * (#lib/server/sign-in-limit), or that screen could guess at it without end.
  */
 // eslint-disable-next-line @typescript-eslint/require-await -- a load is async by contract
@@ -49,17 +49,15 @@ export const actions: Actions = {
 			return fail(400, { field: 'confirm', message: 'The passwords don’t match.' });
 
 		const address = event.getClientAddress();
-		const wait = waitFor(address);
+		const wait = takeTry(address);
 		if (wait)
 			return fail(429, {
 				field: '',
 				message: `Too many tries from here. Try again in ${count(Math.ceil(wait / 60), 'minute')}.`
 			});
 
-		const wrong = () => {
-			recordFailure(address);
-			return fail(400, { field: 'current', message: 'That isn’t your current password.' });
-		};
+		const wrong = () =>
+			fail(400, { field: 'current', message: 'That isn’t your current password.' });
 		// Longer than any password can be, so not theirs.
 		if (current.length > MAX_PASSWORD_LENGTH) return wrong();
 		try {
@@ -71,7 +69,7 @@ export const actions: Actions = {
 			if (e instanceof APIError && e.body?.code === 'INVALID_PASSWORD') return wrong();
 			throw e;
 		}
-		clearFailures(address);
+		forgive(address);
 		return { updated: true };
 	}
 };
