@@ -579,6 +579,36 @@ console.log('\n  one save must not erase another');
 		await check('a site renames', 'PATCH', at, { fields: { label: `Renamed ${stamp}` } }, 200);
 		if (label) await check('and takes its own name back', 'PATCH', at, { fields: { label } }, 200);
 		await check('a rate cannot be typed in', 'PATCH', at, { fields: { tax_rate_pct: '0' } }, 400);
+		// Asked again from the site (7 November 2026): the answer goes into its
+		// history whether or not the rate moved, and the site is dated as asked
+		// today, so no warning that it is old is left. Skipped when CDTFA cannot be
+		// reached, as creating a site is.
+		const asked = await call('POST', `${at}/ask-cdtfa`);
+		if (asked.status === 200) {
+			const after = await (
+				await fetch(`${base}/clients/${clientSlug}/sites/${existing}`, { headers: { cookie } })
+			).text();
+			// The newest answer in the history, which a run before this one cannot
+			// have left.
+			const newest = /id="history-h"[\s\S]*?class="sub[^"]*">([^<]*)</.exec(after)?.[1] ?? '';
+			const ok =
+				/^\d+\.\d{4}$/.test(String(asked.body?.rate)) &&
+				newest.startsWith('Asked again') &&
+				!after.includes('A district can start or end');
+			if (ok) passed++;
+			else
+				failures.push(
+					`asking CDTFA again: newest "${newest}", ${JSON.stringify(asked.body)?.slice(0, 120)}`
+				);
+			console.log(`  ${ok ? '✓' : '✗'} CDTFA is asked again from the site, and its answer kept`);
+		} else if (asked.status === 502) {
+			console.log('  – asking CDTFA again skipped: CDTFA could not be reached');
+		} else {
+			failures.push(
+				`asking CDTFA again: ${asked.status} ${JSON.stringify(asked.body)?.slice(0, 120)}`
+			);
+			console.log('  ✗ CDTFA is asked again from the site, and its answer kept');
+		}
 		// The demo's sites carry Google's figures and none typed, so emptying
 		// the typed one puts the site back as it was.
 		await check(

@@ -167,7 +167,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	// Anything that cannot proceed until somebody decides. An invoice out past
 	// the operator's own chase-after figure, and an address CDTFA has not been
-	// asked about lately.
+	// asked about lately, which opens its site, where CDTFA is asked again.
 	const { rows: found } = await db.execute<{
 		kind: 'invoice' | 'district';
 		client: string;
@@ -175,13 +175,16 @@ export const load: PageServerLoad = async ({ locals }) => {
 		dated_on: string;
 		amount: string | null;
 		days: number;
+		client_slug: string | null;
+		site_slug: string | null;
 	}>(sql`
 		select * from (
 		select 'invoice' as kind, ${e.name} as client, ${i.number} as ref,
 		       ${personalDay(i.sentAt)}::text as dated_on,
 		       b.owed::text as amount,
 		       ${businessToday()}::date - ${businessDay(i.sentAt)} as days,
-		       'Invoice ' || ${i.number} || ' · ' || ${e.name} as sort
+		       'Invoice ' || ${i.number} || ' · ' || ${e.name} as sort,
+		       null as client_slug, null as site_slug
 		  from ${i}
 		  join ${e} on ${e.id} = ${i.entityId}
 		  join ${owing} b on b.invoice_id = ${i.id}
@@ -193,7 +196,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 		union all
 		select 'district', ${e.name}, ${s.display}, ${s.areaVerifiedOn}::text, null,
 		       ${businessToday()}::date - ${s.areaVerifiedOn},
-		       ${e.name} || ' · ' || ${s.display} || ' · rate is old'
+		       ${e.name} || ' · ' || ${s.display} || ' · rate is old',
+		       ${e.slug}, ${s.slug}
 		  from ${s}
 		  join ${e} on ${e.id} = ${s.entityId}
 		 where ${s.active} and ${rateIsStale(s.areaVerifiedOn, businessToday())}
@@ -210,7 +214,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 					title: `Invoice ${d.ref} · ${d.client}`,
 					detail: `Sent ${dated(d.dated_on)}, still unpaid.`,
 					amount: d.amount,
-					chip: `Unpaid ${count(d.days, 'day')}`
+					chip: `Unpaid ${count(d.days, 'day')}`,
+					site: null
 				}
 			: {
 					kind: d.kind,
@@ -219,7 +224,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 						`CDTFA last priced this address on ${dated(d.dated_on)}. A district can be ` +
 						'added or ended in between, and every invoice since would be wrong.',
 					amount: d.amount,
-					chip: `${count(d.days, 'day')} since CDTFA was asked`
+					chip: `${count(d.days, 'day')} since CDTFA was asked`,
+					site: { id: d.client_slug!, site: d.site_slug! }
 				}
 	);
 

@@ -129,21 +129,22 @@ INSERT INTO site (id, entity_id, label, slug, street, city, region, postcode,
    'Woodland office','woodland-office','1000 Main St','Woodland','CA','95695', 42, 48,
    'WOODLAND', 8.0000, 7.2500, 0.7500, '570282360000', current_date - 230);
 
--- Every time CDTFA was asked, and what it said. The clinic was asked twice four
--- days ago and gave the same answer both times.
+-- Every time CDTFA was asked, and what it said, in the morning of the day each
+-- site says it was asked. The clinic was asked twice four days ago and gave the
+-- same answer both times.
 INSERT INTO site_tax_check (site_id, checked_at, tax_area_code, tax_jurisdiction,
                             rate_pct, state_rate_pct, district_rate_pct, changed) VALUES
-  ('52e62dcd-9dd8-4ddb-a985-a1ad40c24109', current_date - 230, '570282360000',
+  ('52e62dcd-9dd8-4ddb-a985-a1ad40c24109', (current_date - 230 + time '10:00') AT TIME ZONE 'America/Los_Angeles', '570282360000',
    'WOODLAND', 8.0000, 7.2500, 0.7500, true),
-  ('4c42978a-ace1-4a79-a7f0-0d9e7efed2da', current_date - 40, '310110000000',
+  ('4c42978a-ace1-4a79-a7f0-0d9e7efed2da', (current_date - 40 + time '10:00') AT TIME ZONE 'America/Los_Angeles', '310110000000',
    'AUBURN', 7.2500, 7.2500, 0.0000, true),
-  ('0ab3a11c-d59e-4526-a132-402a4bc9d9ca', current_date - 40, '310110000000',
+  ('0ab3a11c-d59e-4526-a132-402a4bc9d9ca', (current_date - 40 + time '10:00') AT TIME ZONE 'America/Los_Angeles', '310110000000',
    'AUBURN', 7.2500, 7.2500, 0.0000, true),
-  ('75aea465-ad04-43e1-b6b4-d7132872a870', current_date - 90, '349980230000',
+  ('75aea465-ad04-43e1-b6b4-d7132872a870', (current_date - 90 + time '10:00') AT TIME ZONE 'America/Los_Angeles', '349980230000',
    'UNINCORPORATED AREA-SACRAMENTO', 7.7500, 7.2500, 0.5000, true),
-  ('75aea465-ad04-43e1-b6b4-d7132872a870', current_date - 4, '349980230000',
+  ('75aea465-ad04-43e1-b6b4-d7132872a870', (current_date - 4 + time '10:00') AT TIME ZONE 'America/Los_Angeles', '349980230000',
    'UNINCORPORATED AREA-SACRAMENTO', 7.7500, 7.2500, 0.5000, false),
-  ('75aea465-ad04-43e1-b6b4-d7132872a870', current_date - 4, '349980230000',
+  ('75aea465-ad04-43e1-b6b4-d7132872a870', (current_date - 4 + time '10:00') AT TIME ZONE 'America/Los_Angeles', '349980230000',
    'UNINCORPORATED AREA-SACRAMENTO', 7.7500, 7.2500, 0.5000, false);
 
 INSERT INTO contact (id, name, email, phone) VALUES

@@ -125,6 +125,7 @@ export const REACH = {
 	'/api/clients/[id]/sites': 'full',
 	'/api/clients/[id]/sites/[site]': 'full',
 	'/api/clients/[id]/sites/[site]/contacts': 'full',
+	'/api/clients/[id]/sites/[site]/ask-cdtfa': 'full',
 	'/clients/[id]/contacts/new': 'full',
 	'/api/clients/[id]/contacts': 'full',
 	'/api/contacts/[id]': 'full',

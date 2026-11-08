@@ -1,7 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
-	import { dated } from '#lib/format.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -105,29 +104,13 @@
 			<span class="chip">Nothing here is ours to set</span>
 		</div>
 		<div class="rows">
-			<div class="rec" class:warn={Number(data.rates.stale) > 0}>
+			<div class="rec">
 				<div class="rec-m">
 					<div class="rec-t">CDTFA rate API</div>
 					<div class="rec-s">
 						Every site's rate is what CDTFA returned for its address — a site cannot exist without
-						one. A refresh asks again and writes down the answer.
+						one. Each site's page says when CDTFA was last asked, and asks again.
 					</div>
-					<div class="rec-c">
-						{#if Number(data.rates.stale) > 0}
-							<span class="chip warn">
-								<span class="dot"></span>{data.rates.stale} to re-ask about
-							</span>
-						{:else}
-							<span class="chip good"><span class="dot"></span>All asked within 90 days</span>
-						{/if}
-						{#if data.rates.oldest}
-							<span class="chip">Oldest answer {dated(data.rates.oldest)}</span>
-						{/if}
-					</div>
-				</div>
-				<div class="rec-n">
-					<span class="rec-v mut">{data.rates.sites}</span>
-					<span class="rec-x">{Number(data.rates.sites) === 1 ? 'site' : 'sites'}</span>
 				</div>
 			</div>
 		</div>

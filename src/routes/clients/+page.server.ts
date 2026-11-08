@@ -1,10 +1,8 @@
-import { and, count, eq, sql } from 'drizzle-orm';
+import { count, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
-import { businessToday } from '#lib/server/calendar.ts';
-import { rateIsStale } from '#lib/server/stale.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
@@ -50,17 +48,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 		 group by ${e.id}, o.owed
 		 order by ${e.active} desc, ${e.name}`);
 
-	// Every site has a rate; what varies is how long ago CDTFA was asked.
-	const [[contacts], [unpriced]] = await Promise.all([
-		db.select({ n: count() }).from(t.contact),
-		db
-			.select({ n: count() })
-			.from(t.site)
-			.where(and(eq(t.site.active, true), rateIsStale(t.site.areaVerifiedOn, businessToday())))
-	]);
+	const [contacts] = await db.select({ n: count() }).from(t.contact);
 
 	return {
 		clients: fieldOnly(locals) ? clients.map((x) => ({ ...x, owed: null })) : clients,
-		counts: { contacts: String(contacts.n), unpriced: String(unpriced.n) }
+		counts: { contacts: String(contacts.n) }
 	};
 };

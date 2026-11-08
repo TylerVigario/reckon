@@ -205,7 +205,7 @@
 				<div class="sec-h"><h2>Needs a decision</h2></div>
 				<div class="rows">
 					{#each data.decisions as d (`${d.kind}:${d.title}`)}
-						<div class="rec" class:crit={d.kind === 'invoice'} class:warn={d.kind === 'district'}>
+						{#snippet decision()}
 							<div class="rec-m">
 								<div class="rec-t">{d.title}</div>
 								<div class="rec-s">{d.detail}</div>
@@ -219,7 +219,16 @@
 								{#if d.amount}<span class="rec-v">{money(d.amount)}</span>
 								{:else}<span class="rec-v mut">—</span>{/if}
 							</div>
-						</div>
+						{/snippet}
+						<!-- An old rate opens its site, where CDTFA is asked again. -->
+						{#if d.site}
+							<a class="rec link warn" href={resolve('/clients/[id]/sites/[site]', d.site)}>
+								{@render decision()}
+								<span class="arw" aria-hidden="true">›</span>
+							</a>
+						{:else}
+							<div class="rec crit">{@render decision()}</div>
+						{/if}
 					{/each}
 				</div>
 			</div>

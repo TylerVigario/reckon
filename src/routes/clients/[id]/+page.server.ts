@@ -17,9 +17,9 @@ import type { PageServerLoad } from './$types';
  * One client: what they owe, what they have agreed to, where they are, and
  * who to ask for and send the invoices to.
  *
- * The tax rate shown is the rate at their site, not a property of the client.
+ * No tax rate: a rate is a site's, not the client's, and shown on the site.
  * A client is not a place -- two clients can work at one address, and one
- * client can work in two districts.
+ * client can work in two districts. The Sites row says when one is old.
  *
  * Someone with Field reads where a client is, to work there, and nothing of
  * what they owe, have agreed to or been invoiced (#lib/access).
@@ -53,7 +53,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		owed: string;
 		out: string;
 		credit: string;
-		rules: string | null;
 	}>(sql`
 		with owing as (
 			select entity_id, sum(owed) as owed, count(*) filter (where owed > 0) as out
@@ -76,8 +75,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		       ((select coalesce(sum(${cn.amount}), 0) from ${cn} where ${cn.entityId} = ${e.id})
 		        - (select coalesce(sum(${ca.amount}), 0)
 		             from ${ca} join ${cn} on ${cn.id} = ${ca.creditNoteId}
-		            where ${cn.entityId} = ${e.id}))::text as credit,
-		       (select ${t.operator.taxRuleSet} from ${t.operator}) as rules
+		            where ${cn.entityId} = ${e.id}))::text as credit
 		  from ${e}
 		  left join owing o on o.entity_id = ${e.id}
 		 where ${e.id} = ${id}`);
@@ -86,7 +84,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 	const active = and(eq(t.site.entityId, id), eq(t.site.active, true));
 	const today = businessToday();
-	const [[sites], levies, running, recent, contacts] = await Promise.all([
+	const [[sites], running, recent, contacts] = await Promise.all([
 		// The client page says how many places and roughly where; the sites page
 		// says everything else, because a client's terms and its addresses are
 		// two subjects.
@@ -101,20 +99,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			})
 			.from(t.site)
 			.where(active),
-		db
-			.select({
-				name: t.site.taxJurisdiction,
-				rate_pct: sql<string>`max(${t.site.taxRatePct})::text`,
-				state_rate_pct: sql<string>`max(${t.site.stateRatePct})::text`,
-				district_rate_pct: sql<string>`max(${t.site.districtRatePct})::text`,
-				sites: sql<string>`count(*)::text`,
-				priced_on: sql<string>`max(${t.site.areaVerifiedOn})::text`,
-				stale: sql<boolean>`bool_or(${stale})`
-			})
-			.from(t.site)
-			.where(active)
-			.groupBy(t.site.taxJurisdiction)
-			.orderBy(t.site.taxJurisdiction),
 		db
 			.select({
 				id: t.agreement.id,
@@ -198,7 +182,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			client: { ...client, owed: null, out: null, credit: null },
 			sites,
 			contacts: contacts.map((x) => ({ ...x, bills: false })),
-			levies,
 			agreements: [],
 			recent: []
 		};
@@ -206,7 +189,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		client,
 		sites,
 		contacts,
-		levies,
 		agreements: running.map((r) => {
 			const a = agreements.find((x) => x.id === r.id)!;
 			return {
