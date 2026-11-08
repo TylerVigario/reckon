@@ -4,7 +4,9 @@
  *
  *   build/             the application, from `vite build`; `node build` runs it
  *   drizzle/           the migrations, which the application applies when it starts
- *   scripts/user.mjs   the command that adds the first person, before anyone can sign in
+ *   scripts/user.mjs   the command that adds the first person, before anyone can sign in,
+ *                      with scripts/env.mjs and src/lib/server/db/defaults.js, which
+ *                      it reads its settings with and connects by
  *   package.json       and package-lock.json, as they are here
  *   node_modules/      the production dependencies, from `npm ci --omit dev`
  *   .env.example       what the environment may set
@@ -86,6 +88,9 @@ for (const p of [
 	'build',
 	'drizzle',
 	'scripts/user.mjs',
+	// What user.mjs reads its settings with, and connects by.
+	'scripts/env.mjs',
+	'src/lib/server/db/defaults.js',
 	'package.json',
 	'package-lock.json',
 	'.env.example',

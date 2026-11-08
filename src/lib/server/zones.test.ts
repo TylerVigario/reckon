@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+// pickZone is given the zones it knows; the database that lists them otherwise
+// is neither reached nor configured here.
+vi.mock('./db/index.ts', () => ({ db: {} }));
 import { pickZone } from './zones.ts';
 
 const KNOWN = new Map(

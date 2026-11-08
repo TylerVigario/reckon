@@ -31,8 +31,11 @@
  * that leaves old sessions alive has not changed anything for whoever holds one.
  *
  * Plain JavaScript, so a release can run it with no build step. It connects as
- * the app does: DATABASE_URL, or the local socket and PGDATABASE.
+ * the server does, from the same settings (#lib/server/db/defaults): .env in
+ * development, under whatever the shell sets, or the host's own.
  */
+// First, so .env is read before anything reads what it sets.
+import { database } from './env.mjs';
 import { hash } from '@node-rs/argon2';
 import pg from 'pg';
 import { stdin, stdout } from 'node:process';
@@ -156,13 +159,7 @@ function secret(prompt) {
 	});
 }
 
-const pool = process.env.DATABASE_URL
-	? new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 })
-	: new pg.Pool({
-			host: process.env.PGHOST ?? '/var/run/postgresql',
-			database: process.env.PGDATABASE ?? 'reckon_dev',
-			max: 1
-		});
+const pool = new pg.Pool({ ...database(), max: 1 });
 const q = (/** @type {string} */ text, /** @type {unknown[]} */ values = []) =>
 	pool.query(text, values).then((r) => r.rows);
 

@@ -7,18 +7,21 @@
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
-import { DATABASE_URL, PGDATABASE, PGHOST } from '$app/env/private';
+import { building } from '$app/env';
+import { DATABASE_URL, PGDATABASE, PGHOST, PGPASSWORD, PGPORT, PGUSER } from '$app/env/private';
+import { connectionFrom, NO_DATABASE } from './defaults.js';
 import * as schema from './schema/index.ts';
 
 // DATE as text, for raw queries too: the schema's date columns already say so,
 // but a date computed in SQL would otherwise come back as a Date.
 pg.types.setTypeParser(pg.types.builtins.DATE, (v) => v);
 
-// By default, the unix socket Linux packages usually create, which
-// authenticates by user rather than by password (the defaults are in
-// src/env.ts). PGHOST moves it, and DATABASE_URL wins outright -- so a host that
+// The database PGDATABASE names, at PGHOST or where libpq looks on this
+// platform (./defaults.js), and DATABASE_URL wins outright -- so a host that
 // wants TCP, another machine or a managed service says so without editing
-// this. A socket can be named in the URL too, as ?host=.
+// this. A socket can be named in the URL too, as ?host=. With neither, the
+// server stops as it starts: which database is the business's is never
+// assumed. A build reaches no database, so names none.
 //
 // IN UTC, ALWAYS. Every connection is opened with TimeZone=UTC, as a startup
 // parameter, so the host's default -- which may be anywhere -- changes
@@ -26,9 +29,9 @@ pg.types.setTypeParser(pg.types.builtins.DATE, (v) => v);
 // done in SQL, in a zone named outright (#lib/server/calendar), never by the
 // connection.
 const UTC = '-c TimeZone=UTC';
-export const pool = DATABASE_URL
-	? new pg.Pool({ connectionString: DATABASE_URL, options: UTC })
-	: new pg.Pool({ host: PGHOST, database: PGDATABASE, options: UTC });
+const where = connectionFrom({ DATABASE_URL, PGDATABASE, PGHOST, PGPASSWORD, PGPORT, PGUSER });
+if (!where && !building) throw new Error(NO_DATABASE);
+export const pool = new pg.Pool({ ...where, options: UTC });
 
 // `casing` must match drizzle.config.ts: it maps workedOn to worked_on, here at
 // runtime and there in migrations.

@@ -46,8 +46,8 @@ reckon is a SvelteKit project with Drizzle, laid out as both lay one out.
 ```bash
 npm run db:test                              a scratch database, brought up to date, every guard proven, dropped
 npm run db:drift                             the migrations match the schema: generated into a copy, connecting to nothing
-npm run db:migrate -- <database>             bring a database up to date
-npm run db:seed -- <database>                the invented business the checks run against
+npm run db:migrate                           bring the database up to date: the one PGDATABASE or DATABASE_URL names
+npm run db:seed                              the invented business the checks run against, into that database
 npm run db:generate -- --name what-changed   the migration for a change to the schema
 ```
 
@@ -55,7 +55,7 @@ npm run db:generate -- --name what-changed   the migration for a change to the s
 anything: every migration in `drizzle/` the database has not seen, by Drizzle's
 migrator, each in a transaction. One that fails stops it starting, so nothing is
 ever served from a database the code does not expect. `npm run db:migrate` does
-the same for a database named on its command line.
+the same for the database the server would use, from the same settings.
 
 Where the database can hold a rule about what may be stored rather than
 trusting the application to remember it, it does — and every guard is tested
@@ -199,7 +199,7 @@ node scripts/user.mjs password sam@kestrel.example --insecure     # an employee,
 ```
 
 **`BETTER_AUTH_SECRET` must be set when the server runs**, 32 characters at
-least, or it will not start. Left to itself Better Auth would sign with a default
+least, or it will not start, under `npm run dev` too. Left to itself Better Auth would sign with a default
 that is printed in its own source.
 
 **The session cookie is `Secure`** unless `SECURE_COOKIES=false`, so a browser
@@ -269,21 +269,26 @@ the same artifact runs on any host with any values. A value that fails its check
 stops the server at start with the reason.
 
 [`.env.example`](.env.example) is the same list as a file, and is what to copy
-to `.env` for local development, beside `vite.config.ts`, where Vite reads it.
+to `.env` for local development, beside `vite.config.ts`. `npm run dev` reads it
+there, and so do the commands and checks that reach the database
+(`scripts/env.mjs`), under whatever the shell sets. **Nothing that differs from
+one deployment to the next is assumed**: without a database or a secret, the
+server and the commands stop and say which, in development too.
 
-|                                  |                       |                                                                                                                                                                    |
-| -------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `BETTER_AUTH_SECRET`             | **required**          | signs every session cookie; 32 characters at least, random — `openssl rand -hex 32`. Without it the server does not start. Changing it signs everybody out         |
-| `SECURE_COOKIES`                 | `true`                | `false` only behind a proxy that serves plain http — see [Serving it](#serving-it)                                                                                 |
-| `PORT`                           | `3000`                |                                                                                                                                                                    |
-| `HOST`                           | `0.0.0.0`             | set it to `127.0.0.1` where a reverse proxy is the only route in, so the bind enforces that rather than convention                                                 |
-| `PROTOCOL_HEADER`, `HOST_HEADER` | unset                 | read by adapter-node: the headers a proxy uses for the scheme and the public name, where it does not pass them as https and `Host` — see [Serving it](#serving-it) |
-| `ADDRESS_HEADER`, `XFF_DEPTH`    | unset                 | read by adapter-node: the header holding a visitor's address. **Needed behind any proxy** — unset, every visitor is the proxy — see [Serving it](#serving-it)      |
-| `PGHOST`                         | `/var/run/postgresql` | a unix socket, which peer-authenticates rather than asking for a password                                                                                          |
-| `PGDATABASE`                     | `reckon_dev`          |                                                                                                                                                                    |
-| `DATABASE_URL`                   | —                     | wins outright over `PGHOST`/`PGDATABASE`, for TCP, another machine, or a managed service                                                                           |
-| `PUBLIC_GOOGLE_MAPS_API_KEY`     | **unset**             | the browser key. Address lookup; unset, no address can be chosen, so none is saved                                                                                 |
-| `GOOGLE_MAPS_API_KEY`            | **unset**             | the server key. Confirms a chosen place, and measures a site's drive and a trip's miles; unset, no address is saved and miles are typed                            |
+|                                  |                   |                                                                                                                                                                                   |
+| -------------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BETTER_AUTH_SECRET`             | **required**      | signs every session cookie; 32 characters at least, random — `openssl rand -hex 32`. Without it the server does not start, in development either. Changing it signs everybody out |
+| `SECURE_COOKIES`                 | `true`            | `false` only behind a proxy that serves plain http — see [Serving it](#serving-it)                                                                                                |
+| `PORT`                           | `3000`            |                                                                                                                                                                                   |
+| `HOST`                           | `0.0.0.0`         | set it to `127.0.0.1` where a reverse proxy is the only route in, so the bind enforces that rather than convention                                                                |
+| `PROTOCOL_HEADER`, `HOST_HEADER` | unset             | read by adapter-node: the headers a proxy uses for the scheme and the public name, where it does not pass them as https and `Host` — see [Serving it](#serving-it)                |
+| `ADDRESS_HEADER`, `XFF_DEPTH`    | unset             | read by adapter-node: the header holding a visitor's address. **Needed behind any proxy** — unset, every visitor is the proxy — see [Serving it](#serving-it)                     |
+| `PGHOST`                         | where libpq looks | on Linux the unix socket `/var/run/postgresql`, which peer-authenticates rather than asking for a password; `/tmp` on macOS, `localhost` on Windows                               |
+| `PGUSER`, `PGPASSWORD`, `PGPORT` | unset             | who to connect as, its password and the port: the operating-system user, none, 5432                                                                                               |
+| `PGDATABASE`                     | **required**      | which database, unless `DATABASE_URL` says: `reckon_dev`, say, in development. None is assumed                                                                                    |
+| `DATABASE_URL`                   | —                 | wins outright over `PGHOST`/`PGDATABASE`, for TCP, another machine, or a managed service                                                                                          |
+| `PUBLIC_GOOGLE_MAPS_API_KEY`     | **unset**         | the browser key. Address lookup; unset, no address can be chosen, so none is saved                                                                                                |
+| `GOOGLE_MAPS_API_KEY`            | **unset**         | the server key. Confirms a chosen place, and measures a site's drive and a trip's miles; unset, no address is saved and miles are typed                                           |
 
 **Two keys, because a Google API key carries exactly one application
 restriction.** It can be restricted to HTTP referrers _or_ to IP addresses,
@@ -435,15 +440,16 @@ rounded.
 
 ```bash
 npm install
+cp .env.example .env                # then PGDATABASE=reckon_dev, and a BETTER_AUTH_SECRET
 createdb reckon_dev
 npm run dev                         # brings reckon_dev up to date as it starts
-npm run db:seed -- reckon_dev       # the invented business, if it is wanted
+npm run db:seed                     # the invented business, if it is wanted
 ```
 
-By default it connects to Postgres over the unix socket
-Linux packages usually create, which authenticates by user rather than by
-password. `PGHOST`, `PGDATABASE` or `DATABASE_URL` move it — to TCP, to
-another machine, or to a managed service.
+It connects to the database `PGDATABASE` names, which nothing assumes, where
+libpq looks on this platform: on Linux the unix socket packages usually create,
+which authenticates by user rather than by password. `PGHOST` or `DATABASE_URL`
+move it — to TCP, to another machine, or to a managed service.
 
 **Capture works offline.** Time, a draft's lines and changes to them, a draft
 started on site, and a trip recorded or changed are written to the browser first

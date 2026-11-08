@@ -73,19 +73,18 @@ cd reckon
 npm ci                      # the dependencies, and the git hooks
 
 cp .env.example .env
-$EDITOR .env                # PGDATABASE=reckon_dev
+$EDITOR .env                # PGDATABASE=reckon_dev, BETTER_AUTH_SECRET=$(openssl rand -hex 32)
 
 createdb reckon_dev
 npm run db:test             # prove the schema before applying it anywhere
-npm run db:migrate -- reckon_dev
-npm run db:seed -- reckon_dev                                     # the invented business
+npm run db:migrate
+npm run db:seed                                                    # the invented business
 node scripts/user.mjs password avery@kestrel.example --insecure   # its owner, Avery
 npm run dev
 ```
 
-`.env.example` carries **production** defaults, so change the database before
-using it — a file that defaults to a development database is one copy away from
-a production process writing invoices into it.
+`.env.example` assumes no database and no secret, in development either: until
+`.env` names both, the server and the commands stop and say which is missing.
 
 **`npm ci` installs the git hooks**: `commit-msg`, without which a bad commit
 message is only caught when CI rejects the pull request title, and `pre-push`,
@@ -97,10 +96,11 @@ the binary, a speed-up for the `esbuild` command, which nothing here runs, and
 esbuild works without it. npm names any dependency that brings a new one: read
 what it does, then `npm approve-scripts` or `npm deny-scripts` it.
 
-The database commands connect the way `psql` does, so `PGHOST`, `PGUSER` and the
-rest apply. If your cluster wants a different user, become one:
-`sudo -u postgres npm run db:migrate -- …`. The server brings its own database up
-to date as it starts, too, so `npm run dev` alone keeps `reckon_dev` current.
+The database commands read `.env` as `npm run dev` does, under whatever the shell
+sets, and connect the way the server does, so `PGHOST`, `PGUSER` and the rest
+apply. If your cluster wants a different user, become one:
+`sudo -u postgres npm run db:migrate`. The server brings its own database up to
+date as it starts, too, so `npm run dev` alone keeps `reckon_dev` current.
 
 Node is pinned in [`.nvmrc`](.nvmrc). Postgres 18 or newer — every id defaults
 to `uuidv7()`, which does not predate it. CI runs 18, which is what the guards

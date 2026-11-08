@@ -16,6 +16,8 @@
  * invoice_line, which stands in front of the real one for this connection
  * alone, inside a transaction that is rolled back: nothing is written.
  */
+// First, so .env is read before anything reads what it sets.
+import { database } from '../scripts/env.mjs';
 import pg from 'pg';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
@@ -23,13 +25,7 @@ import { Ratio } from '../src/lib/decimal.ts';
 import { invoiceLine } from '../src/lib/server/db/schema/index.ts';
 import { lineTaxSql, roundTax, taxSql } from '../src/lib/server/tax-rules.ts';
 
-const pool = process.env.DATABASE_URL
-	? new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 })
-	: new pg.Pool({
-			host: process.env.PGHOST ?? '/var/run/postgresql',
-			database: process.env.PGDATABASE ?? 'reckon_dev',
-			max: 1
-		});
+const pool = new pg.Pool({ ...database(), max: 1 });
 // The casing the app's own db uses (#lib/server/db): workedOn is worked_on.
 const dialect = new PgDialect({ casing: 'snake_case' });
 
