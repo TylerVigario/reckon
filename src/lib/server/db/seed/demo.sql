@@ -8,8 +8,9 @@
 -- and tax area code on it are what CDTFA gives for that address. Distances are
 -- from an invented home base.
 --
---     createdb reckon_demo && npm run db:migrate -- reckon_demo
---     npm run db:seed -- reckon_demo
+--     createdb reckon_demo
+--     PGDATABASE=reckon_demo npm run db:migrate
+--     PGDATABASE=reckon_demo npm run db:seed
 --
 
 -- ------------------------------------------------------------ the business --

@@ -20,7 +20,7 @@ import type { Access } from '#lib/access.ts';
  * never runs, and wrong passwords are limited per address in ./sign-in-limit.
  *
  * BETTER_AUTH_SECRET signs the session cookie; src/env.ts refuses to start
- * without one anywhere but `vite dev`.
+ * without one anywhere, `vite dev` included.
  *
  * Better Auth is given no base URL, because in this application it has none:
  * its routes are not mounted, it is never called over HTTP, and its origin

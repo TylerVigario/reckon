@@ -28,6 +28,8 @@
  * needs no key. It makes one rate request per site and one rate-layer request
  * per tax area code.
  */
+// First, so .env is read before anything reads what it sets.
+import { database } from './env.mjs';
 import pg from 'pg';
 import { priceAddress, NoAnswer } from '../src/lib/server/cdtfa.ts';
 import { Decimal } from '../src/lib/decimal.ts';
@@ -38,16 +40,9 @@ const PAUSE_MS = 250;
 const all = process.argv.includes('--all');
 const dry = process.argv.includes('--dry-run');
 
-// Same connection rule as the app: the unix socket peer-authenticates, and
-// DATABASE_URL wins outright for a host that wants TCP.
-const pool = process.env.DATABASE_URL
-	? new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1, options: '-c TimeZone=UTC' })
-	: new pg.Pool({
-			host: process.env.PGHOST ?? '/var/run/postgresql',
-			database: process.env.PGDATABASE ?? 'reckon_dev',
-			max: 1,
-			options: '-c TimeZone=UTC'
-		});
+// The database the server uses, found the way the server finds it
+// (#lib/server/db/defaults).
+const pool = new pg.Pool({ ...database(), max: 1, options: '-c TimeZone=UTC' });
 const q = (/** @type {string} */ text, /** @type {unknown[]} */ values = []) =>
 	pool.query(text, values).then((r) => r.rows);
 

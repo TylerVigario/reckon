@@ -22,6 +22,8 @@
  * Over HTTP, the way a browser does it. Needs the database the server uses, to
  * take away the person it added: it leaves nothing it made.
  */
+// First, so .env is read before anything reads what it sets.
+import { database } from '../scripts/env.mjs';
 import pg from 'pg';
 
 const [, , base, fullEmail, fullPassword] = process.argv;
@@ -108,12 +110,7 @@ const FOUR_WORDS = /^[a-z]+(-[a-z]+){3}$/;
 /** What a password handed over looks like, for a failure to say without printing it. */
 const shape = (/** @type {string} */ p) => (FOUR_WORDS.test(p) ? 'four words' : 'not four words');
 
-const db = process.env.DATABASE_URL
-	? new pg.Client({ connectionString: process.env.DATABASE_URL })
-	: new pg.Client({
-			host: process.env.PGHOST ?? '/var/run/postgresql',
-			database: process.env.PGDATABASE ?? 'reckon_dev'
-		});
+const db = new pg.Client(database());
 await db.connect();
 
 const fullCookie = await signIn(fullEmail, fullPassword);

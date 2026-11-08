@@ -166,7 +166,7 @@ jobs:
         # no network: it proves the script loads, connects and finds its day.
         run: |
           createdb reckon_empty
-          npm run db:migrate -- reckon_empty
+          PGDATABASE=reckon_empty npm run db:migrate
           PGDATABASE=reckon_empty node scripts/refresh-tax-rates.mjs --dry-run
 
       - name: The database and the valuation round tax alike
@@ -181,8 +181,8 @@ jobs:
         run: |
           createdb reckon_ci
           psql -q -d postgres -c "ALTER DATABASE reckon_ci SET TimeZone = 'Pacific/Kiritimati'"
-          npm run db:migrate -- reckon_ci
-          npm run db:seed -- reckon_ci
+          npm run db:migrate
+          npm run db:seed
           printf 'ci-only-password\nci-only-password\n' \
             | node scripts/user.mjs password avery@kestrel.example
           # And someone with Field, for what that level reaches.

@@ -8,15 +8,21 @@
  *   npm run db:test
  *
  * Needs psql, since the guard suite is a psql script, and a role that may create
- * a database. Connecting is libpq's business: PGHOST, PGPORT, PGUSER, PGPASSWORD.
+ * a database. Connecting is libpq's business: PGHOST, PGPORT, PGUSER, PGPASSWORD,
+ * from .env in development under whatever the shell sets, with PGHOST where
+ * libpq looks on this platform when that is unset (#lib/server/db/defaults).
+ * The database is its own, so PGDATABASE is not read.
  */
+// First, so .env is read before anything reads what it sets.
+import './env.mjs';
 import { spawnSync } from 'node:child_process';
 import pg from 'pg';
+import { DEFAULT_PGHOST } from '../src/lib/server/db/defaults.js';
 import { bringUpToDate } from '../src/lib/server/db/migrate.ts';
 
 const SCRATCH = 'reckon_guards';
 const SUITE = 'tests/db/constraints.sql';
-const host = process.env.PGHOST ?? '/var/run/postgresql';
+const host = process.env.PGHOST?.trim() || DEFAULT_PGHOST;
 
 const cluster = new pg.Client({ host, database: 'postgres' });
 await cluster.connect();

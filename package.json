@@ -26,7 +26,7 @@
 		"test:tz": "TZ=Pacific/Kiritimati vitest run src/lib/format.test.ts src/lib/timers.test.ts && TZ=Pacific/Midway vitest run src/lib/format.test.ts src/lib/timers.test.ts",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "node scripts/migrate.mjs",
-		"db:seed": "psql -q -v ON_ERROR_STOP=1 -f src/lib/server/db/seed/demo.sql",
+		"db:seed": "node scripts/seed.mjs",
 		"db:test": "node scripts/db-test.mjs",
 		"db:drift": "node scripts/db-drift.mjs",
 		"ci": "npm run format && npm run lint && npm run check && npm run test && npm run test:tz && npm run db:drift && npm run db:test && npm run build",

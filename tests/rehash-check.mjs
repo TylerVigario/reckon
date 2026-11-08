@@ -23,6 +23,8 @@
  * Needs the database the server uses, and leaves the account signing in with the
  * same password at today's parameters.
  */
+// First, so .env is read before anything reads what it sets.
+import { database } from '../scripts/env.mjs';
 import { argon2Sync, randomBytes } from 'node:crypto';
 import pg from 'pg';
 
@@ -49,14 +51,9 @@ const salt = randomBytes(16);
 const tag = argon2Sync('argon2id', { message: password, nonce: salt, tagLength: 32, ...OLD });
 const planted = `$argon2id$v=19$m=${OLD.memory},t=${OLD.passes},p=${OLD.parallelism}$${b64(salt)}$${b64(tag)}`;
 
-// The database the server uses, found the way the server finds it: DATABASE_URL,
-// or the local socket and PGDATABASE.
-const db = process.env.DATABASE_URL
-	? new pg.Client({ connectionString: process.env.DATABASE_URL })
-	: new pg.Client({
-			host: process.env.PGHOST ?? '/var/run/postgresql',
-			database: process.env.PGDATABASE ?? 'reckon_dev'
-		});
+// The database the server uses, found the way the server finds it
+// (#lib/server/db/defaults).
+const db = new pg.Client(database());
 await db.connect();
 const failures = [];
 try {

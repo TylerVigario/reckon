@@ -26,15 +26,11 @@
  * the safe direction and often deliberate: `cap(120)` on a `text` column is a
  * length nobody would reach by typing, chosen here rather than in the schema.
  */
+// First, so .env is read before anything reads what it sets.
+import { database } from '../scripts/env.mjs';
 import pg from 'pg';
 
-const pool = process.env.DATABASE_URL
-	? new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 })
-	: new pg.Pool({
-			host: process.env.PGHOST ?? '/var/run/postgresql',
-			database: process.env.PGDATABASE ?? 'reckon_dev',
-			max: 1
-		});
+const pool = new pg.Pool({ ...database(), max: 1 });
 const q = (/** @type {string} */ text, /** @type {unknown[]} */ values = []) =>
 	pool.query(text, values).then((r) => r.rows);
 
