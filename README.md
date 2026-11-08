@@ -202,6 +202,22 @@ node scripts/user.mjs password sam@kestrel.example --insecure     # an employee,
 least, or it will not start, under `npm run dev` too. Left to itself Better Auth would sign with a default
 that is printed in its own source.
 
+**A secret can be given as a file instead.** `BETTER_AUTH_SECRET_FILE` and
+`GOOGLE_MAPS_API_KEY_FILE` name a file holding the secret, in place of the
+secret itself, and the database's password is libpq's own password file
+(`PGPASSFILE`, else `~/.pgpass`). An environment is inherited by every process
+started under it, and a systemd unit's `Environment=` can be read over D-Bus,
+which is why systemd calls environment variables "not suitable for passing
+secrets"; a file is read only by whoever may read it. The file is read once, at
+start; the whitespace around what it holds is not part of the secret, and an
+empty file is refused. Set one of a secret and its file, never both, or the
+server will not start. Under systemd, a credential and its path:
+
+```ini
+LoadCredential=better-auth-secret:/etc/reckon/better-auth-secret
+Environment=BETTER_AUTH_SECRET_FILE=%d/better-auth-secret
+```
+
 **The session cookie is `Secure`** unless `SECURE_COOKIES=false`, so a browser
 only ever sends it over https. Turning that off is for a proxy that serves plain
 http, and what it costs is the session token crossing that network in the
@@ -278,6 +294,7 @@ server and the commands stop and say which, in development too.
 |                                  |                   |                                                                                                                                                                                   |
 | -------------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `BETTER_AUTH_SECRET`             | **required**      | signs every session cookie; 32 characters at least, random — `openssl rand -hex 32`. Without it the server does not start, in development either. Changing it signs everybody out |
+| `BETTER_AUTH_SECRET_FILE`        | unset             | a file holding `BETTER_AUTH_SECRET`, in its place — see [Signing in](#signing-in)                                                                                                 |
 | `SECURE_COOKIES`                 | `true`            | `false` only behind a proxy that serves plain http — see [Serving it](#serving-it)                                                                                                |
 | `PORT`                           | `3000`            |                                                                                                                                                                                   |
 | `HOST`                           | `0.0.0.0`         | set it to `127.0.0.1` where a reverse proxy is the only route in, so the bind enforces that rather than convention                                                                |
@@ -285,10 +302,12 @@ server and the commands stop and say which, in development too.
 | `ADDRESS_HEADER`, `XFF_DEPTH`    | unset             | read by adapter-node: the header holding a visitor's address. **Needed behind any proxy** — unset, every visitor is the proxy — see [Serving it](#serving-it)                     |
 | `PGHOST`                         | where libpq looks | on Linux the unix socket `/var/run/postgresql`, which peer-authenticates rather than asking for a password; `/tmp` on macOS, `localhost` on Windows                               |
 | `PGUSER`, `PGPASSWORD`, `PGPORT` | unset             | who to connect as, its password and the port: the operating-system user, none, 5432                                                                                               |
+| `PGPASSFILE`                     | `~/.pgpass`       | libpq's password file, for a password in place of `PGPASSWORD`; passed over unless only its owner may read it                                                                     |
 | `PGDATABASE`                     | **required**      | which database, unless `DATABASE_URL` says: `reckon_dev`, say, in development. None is assumed                                                                                    |
 | `DATABASE_URL`                   | —                 | wins outright over `PGHOST`/`PGDATABASE`, for TCP, another machine, or a managed service                                                                                          |
 | `PUBLIC_GOOGLE_MAPS_API_KEY`     | **unset**         | the browser key. Address lookup; unset, no address can be chosen, so none is saved                                                                                                |
 | `GOOGLE_MAPS_API_KEY`            | **unset**         | the server key. Confirms a chosen place, and measures a site's drive and a trip's miles; unset, no address is saved and miles are typed                                           |
+| `GOOGLE_MAPS_API_KEY_FILE`       | unset             | a file holding `GOOGLE_MAPS_API_KEY`, in its place                                                                                                                                |
 
 **Two keys, because a Google API key carries exactly one application
 restriction.** It can be restricted to HTTP referrers _or_ to IP addresses,

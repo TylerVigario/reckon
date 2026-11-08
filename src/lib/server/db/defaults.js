@@ -3,6 +3,10 @@
 // the checks in tests/ share one answer, and a release can run scripts/user.mjs
 // with nothing of src/ but this.
 
+import { createReadStream, stat } from 'node:fs';
+import { userInfo } from 'node:os';
+import passfile from 'pgpass/lib/helper.js';
+
 /**
  * PGHOST when it is unset: where libpq itself looks on this platform.
  *
@@ -29,10 +33,47 @@ export const NO_DATABASE =
 	'In development, .env names it (.env.example), as PGDATABASE=reckon_dev.';
 
 /**
+ * The password pg asks for, when the database asks for one: PGPASSWORD, else the
+ * line for this connection in libpq's password file -- PGPASSFILE, else
+ * ~/.pgpass, or %APPDATA%\postgresql\pgpass.conf on Windows -- which psql reads
+ * too. A file anyone but its owner may read is passed over, as libpq passes
+ * over it. Over the unix socket on Linux nothing is asked.
+ *
+ * pg reads that file itself, but deprecated: it warns, and pg 9 drops it. So it
+ * is read here, with the module pg reads it with.
+ *
+ * @param {Record<string, string | undefined>} env
+ * @param {{ host: string, database: string, user: string | undefined, port: number | undefined }} at
+ * @returns {() => Promise<string | undefined>}
+ */
+const passwordFor = (env, at) => () => {
+	if (env.PGPASSWORD) return Promise.resolve(env.PGPASSWORD);
+	const file = passfile.getFileName({
+		PGPASSFILE: env.PGPASSFILE?.trim() || undefined,
+		HOME: process.env.HOME,
+		APPDATA: process.env.APPDATA
+	});
+	const line = {
+		host: at.host,
+		port: at.port ?? 5432,
+		database: at.database,
+		user: at.user ?? userInfo().username
+	};
+	// No line for this connection answers undefined; pg then connects with no
+	// password, and the server's refusal is the error shown.
+	return new Promise((resolve) =>
+		stat(file, (error, stats) => {
+			if (error || !passfile.usePgPass(stats, file)) return resolve(undefined);
+			passfile.getPassword(line, createReadStream(file), resolve);
+		})
+	);
+};
+
+/**
  * How to reach the database these settings name, the one rule the server and
  * every command connect by: DATABASE_URL outright, or PGDATABASE at PGHOST, as
- * PGUSER, PGPASSWORD and PGPORT say. Undefined where neither is named, which
- * NO_DATABASE says why.
+ * PGUSER, PGPASSWORD (or libpq's password file) and PGPORT say. Undefined where
+ * neither is named, which NO_DATABASE says why.
  *
  * @param {Record<string, string | undefined>} env
  * @returns {import('pg').ClientConfig | undefined}
@@ -42,11 +83,12 @@ export function connectionFrom(env) {
 	if (url) return { connectionString: url };
 	const database = env.PGDATABASE?.trim();
 	if (!database) return undefined;
-	return {
+	const at = {
 		host: env.PGHOST?.trim() || DEFAULT_PGHOST,
 		database,
 		user: env.PGUSER?.trim() || undefined,
-		password: env.PGPASSWORD || undefined,
 		port: env.PGPORT?.trim() ? Number(env.PGPORT) : undefined
 	};
+	// pg takes undefined from it as no password, though its types say a string.
+	return { ...at, password: /** @type {() => Promise<string>} */ (passwordFor(env, at)) };
 }

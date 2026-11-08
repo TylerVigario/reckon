@@ -1,4 +1,4 @@
-import { GOOGLE_MAPS_API_KEY } from '$app/env/private';
+import { googleKey } from './google-key.ts';
 
 /**
  * A TRIP'S MILES BY GOOGLE'S ROUTE: the Routes API, asked by this server only,
@@ -37,7 +37,7 @@ const waypoint = (w: Waypoint) =>
 
 /** The miles of each drive between consecutive waypoints, to a tenth; null when Google cannot say. */
 export async function routeMiles(points: readonly Waypoint[]): Promise<string[] | null> {
-	const key = GOOGLE_MAPS_API_KEY;
+	const key = googleKey();
 	if (!key || points.length < 2) return null;
 
 	const cacheKey = JSON.stringify(points);
@@ -69,7 +69,7 @@ export type Drive = { miles: string; minutes: number };
  * on. Null when Google cannot say, as for a trip.
  */
 export async function roundTrip(base: Waypoint, place: Waypoint): Promise<Drive | null> {
-	const key = GOOGLE_MAPS_API_KEY;
+	const key = googleKey();
 	if (!key) return null;
 
 	const cacheKey = JSON.stringify([base, place]);

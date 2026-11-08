@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$app/env/private', () => ({ GOOGLE_MAPS_API_KEY: 'test-key' }));
+vi.mock('$app/env/private', () => ({
+	GOOGLE_MAPS_API_KEY: 'test-key',
+	GOOGLE_MAPS_API_KEY_FILE: undefined
+}));
 
 const { roundTrip, routeMiles } = await import('./routes.ts');
 

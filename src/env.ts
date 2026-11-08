@@ -1,5 +1,6 @@
 import { defineEnvVars } from '@sveltejs/kit/env';
 import { building } from '$app/env';
+import { readSecretFile } from '#lib/server/secret-file.ts';
 
 /**
  * Everything the application reads from its environment, once.
@@ -14,6 +15,10 @@ import { building } from '$app/env';
  * Nothing is assumed that differs between one deployment and the next: which
  * database, and the secret that signs sessions, are said in development too.
  * What has a default is one that is right wherever it is left unset.
+ *
+ * A secret can be given as a file instead, X_FILE naming it in X's place
+ * (#lib/server/secret-file): its _FILE variable reads it here, once, and the
+ * code that uses the secret takes one or the other, never both.
  *
  * Not here, because the application does not read them: adapter-node's own
  * HOST, PORT, PROTOCOL_HEADER, HOST_HEADER, ADDRESS_HEADER and XFF_DEPTH.
@@ -30,22 +35,45 @@ const optional = (value: string | undefined) => value?.trim() || undefined;
 /** A secret shorter than this is not one: 32 characters is Better Auth's own floor. */
 const SHORTEST_SECRET = 32;
 
+/** The session secret, however it is given, if it is long enough to be one. */
+const sessionSecret = (what: string, secret: string | undefined) => {
+	if (secret !== undefined && secret.length < SHORTEST_SECRET)
+		throw new Error(
+			`${what} must be ${SHORTEST_SECRET} characters at least -- it signs every session. ` +
+				'`openssl rand -hex 32` makes one.'
+		);
+	return secret;
+};
+
+/** What the file a _FILE variable names holds; nothing is read while building. */
+const fromFile = (name: string) => (value: string | undefined) => {
+	const path = optional(value);
+	return path === undefined || building ? undefined : readSecretFile(name, path);
+};
+
 export const variables = defineEnvVars({
 	BETTER_AUTH_SECRET: {
 		description:
 			"Signs every session cookie. 32 characters at least, random, and this deployment's alone -- `openssl rand -hex 32`. Changing it signs everybody out.",
-		// Required everywhere, `vite dev` too. Left unset, Better Auth signs with a
-		// default printed in its own source, with which anyone could make a
-		// session -- on a dev server the network can reach, too.
+		// Required everywhere, `vite dev` too, this or BETTER_AUTH_SECRET_FILE
+		// (#lib/server/auth). Left unset, Better Auth signs with a default printed
+		// in its own source, with which anyone could make a session -- on a dev
+		// server the network can reach, too. Taken as given: only a blank one is
+		// not set.
 		schema: (value) => {
-			if (building) return value;
-			if ((value ?? '').length < SHORTEST_SECRET)
-				throw new Error(
-					`BETTER_AUTH_SECRET must be set, ${SHORTEST_SECRET} characters at least -- it signs every session. ` +
-						'`openssl rand -hex 32` makes one; in development, .env holds it (.env.example).'
-				);
-			return value;
+			const secret = value?.trim() ? value : undefined;
+			return building ? secret : sessionSecret('BETTER_AUTH_SECRET', secret);
 		}
+	},
+
+	BETTER_AUTH_SECRET_FILE: {
+		description:
+			'The path of a file holding BETTER_AUTH_SECRET, in its place: read once at start, the whitespace around it not part of it. Set one of the two.',
+		schema: (value) =>
+			sessionSecret(
+				'What BETTER_AUTH_SECRET_FILE holds',
+				fromFile('BETTER_AUTH_SECRET_FILE')(value)
+			)
 	},
 
 	SECURE_COOKIES: {
@@ -98,6 +126,12 @@ export const variables = defineEnvVars({
 		schema: (value) => value || undefined
 	},
 
+	PGPASSFILE: {
+		description:
+			"libpq's password file, for a database that asks for one: ~/.pgpass unless set. Only its owner may read it, or it is passed over, as libpq passes over it (#lib/server/db/defaults).",
+		schema: optional
+	},
+
 	PGPORT: {
 		description: '5432 unless set.',
 		schema: (value) => {
@@ -112,6 +146,12 @@ export const variables = defineEnvVars({
 		description:
 			"The server's Google key: validates a chosen address, confirms a place id, and gives each drive of a trip its miles by Google's route. Restrict it to this host's IP addresses and to the Address Validation, Places (New) and Routes APIs. Unset, an address is stored as Google returned it, and a trip's miles are typed or come from earlier trips.",
 		schema: optional
+	},
+
+	GOOGLE_MAPS_API_KEY_FILE: {
+		description:
+			'The path of a file holding GOOGLE_MAPS_API_KEY, in its place: read once at start, the whitespace around it not part of it. Set one of the two.',
+		schema: fromFile('GOOGLE_MAPS_API_KEY_FILE')
 	},
 
 	PUBLIC_GOOGLE_MAPS_API_KEY: {

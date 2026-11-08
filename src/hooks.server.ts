@@ -9,6 +9,7 @@ import type { Handle, ServerInit } from '@sveltejs/kit/hooks';
 import { eq } from 'drizzle-orm';
 import { SECURE_COOKIES } from '$app/env/private';
 import { authHeaders, getAuth } from '#lib/server/auth.ts';
+import { googleKey } from '#lib/server/google-key.ts';
 import { db, pool, schema } from '#lib/server/db/index.ts';
 import { bringUpToDate } from '#lib/server/db/migrate.ts';
 import { building } from '$app/env';
@@ -35,6 +36,9 @@ import { THEME_COOKIE, themeFrom } from '#lib/device-fields.ts';
 export const init: ServerInit = async () => {
 	if (!building) await bringUpToDate(pool);
 	getAuth();
+	// A key given both as itself and as a file stops the start here, as the
+	// session secret's does in getAuth, rather than the first address entered.
+	googleKey();
 	// Every figure and date is written in the locale of the person the request
 	// is for (#lib/format). Read from the request in hand, never kept in a
 	// module, because the server is rendering for several people at once.
