@@ -40,8 +40,12 @@ const check = (/** @type {boolean} */ ok, /** @type {string} */ what, detail = '
 
 const byte = () => crypto.getRandomValues(new Uint8Array(1))[0];
 const hex = () => crypto.getRandomValues(new Uint16Array(1))[0].toString(16);
-/** An address in TEST-NET-1. */
-const ipv4 = () => `192.0.2.${1 + (byte() % 254)}`;
+/** An address in TEST-NET-1, of the 254 that name a host. */
+const ipv4 = () => {
+	let host = byte();
+	while (host === 0 || host === 255) host = byte();
+	return `192.0.2.${host}`;
+};
 /** A /64 in IPv6's documentation prefix, and an address in one. */
 const ipv6Net = () => `2001:db8:${hex()}:${hex()}`;
 const inNet = (/** @type {string} */ net) => `${net}:${hex()}:${hex()}:${hex()}:${hex()}`;
