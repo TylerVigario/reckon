@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.7.0](https://github.com/TylerVigario/reckon/compare/v0.6.0...v0.7.0) (2026-11-08)
+
+### Features
+
+* A site's round trip and drive time are Google's route from the business ([#87](https://github.com/TylerVigario/reckon/pull/87))
+* Each device can be set to light or dark, in the profile ([#105](https://github.com/TylerVigario/reckon/pull/105))
+* What reaches past itself, or cannot be undone, asks first ([#106](https://github.com/TylerVigario/reckon/pull/106))
+* Each person has Full or Field access, and every route says which it needs ([#112](https://github.com/TylerVigario/reckon/pull/112))
+* People are a team, each with a page of their own ([#113](https://github.com/TylerVigario/reckon/pull/113))
+* A person is added, and a password reset, from Team ([#115](https://github.com/TylerVigario/reckon/pull/115))
+* A person changes their own password, on Your profile ([#116](https://github.com/TylerVigario/reckon/pull/116))
+* A contact has a page of their own, and a client picks who gets its invoices ([#118](https://github.com/TylerVigario/reckon/pull/118))
+* A site asks CDTFA again, and is the one place its rate is shown ([#120](https://github.com/TylerVigario/reckon/pull/120))
+* A secret can be given as a file, and the database's password is libpq's file ([#122](https://github.com/TylerVigario/reckon/pull/122))
+
+### Bug Fixes
+
+* A time format left to the locale shows the time it gives ([#104](https://github.com/TylerVigario/reckon/pull/104))
+* A screen's header pins one row, and its title scrolls away beneath it ([#107](https://github.com/TylerVigario/reckon/pull/107))
+* A locale is listed by its name in the screens' language, and fits a phone ([#109](https://github.com/TylerVigario/reckon/pull/109))
+* A line keeps where it was taxed, so Schedule A reads a period as it was billed ([#111](https://github.com/TylerVigario/reckon/pull/111))
+* A client following the house default shows no terms of its own ([#117](https://github.com/TylerVigario/reckon/pull/117))
+* Every command reads .env, and nothing assumes a database or a secret ([#121](https://github.com/TylerVigario/reckon/pull/121))
+
+### Refactoring
+
+* The schema reference reads its tables and notes as data ([#110](https://github.com/TylerVigario/reckon/pull/110))
+
+### Build & Packaging
+
+* [**breaking**] The repository is the SvelteKit project, and a release is its runtime ([#82](https://github.com/TylerVigario/reckon/pull/82))
+* Every dependency that can move is up to date ([#89](https://github.com/TylerVigario/reckon/pull/89))
+* Press 0.4.0 in place of the submodule, and npm run print in place of just ([#91](https://github.com/TylerVigario/reckon/pull/91))
+* Press 0.7.0, and the print scripts call press's own tools ([#96](https://github.com/TylerVigario/reckon/pull/96))
+* Every dependency that can move is current, and CodeQL's two steps update as one ([#100](https://github.com/TylerVigario/reckon/pull/100))
+* Press 0.8.0 ([#101](https://github.com/TylerVigario/reckon/pull/101))
+* Esbuild's install script is denied, and no dependency runs one ([#103](https://github.com/TylerVigario/reckon/pull/103))
+* Press 0.10.0 ([#114](https://github.com/TylerVigario/reckon/pull/114))
+
 ## [0.6.0](https://github.com/TylerVigario/reckon/compare/v0.5.0...v0.6.0) (2026-10-09)
 
 ### Features

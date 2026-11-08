@@ -1,6 +1,6 @@
 {
 	"name": "reckon",
-	"version": "0.6.0",
+	"version": "0.7.0",
 	"description": "Invoicing and time tracking, self-hosted, for a small trade business.",
 	"license": "AGPL-3.0-or-later",
 	"repository": {
