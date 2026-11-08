@@ -1,4 +1,4 @@
-import { GOOGLE_MAPS_API_KEY } from '$app/env/private';
+import { googleKey } from './google-key.ts';
 
 /**
  * Asks Google whether a place id is a place.
@@ -16,7 +16,7 @@ export type Verdict = 'real' | 'no-such-place' | 'unknown';
 const TIMEOUT_MS = 4000;
 
 export async function verifyPlace(placeId: string): Promise<Verdict> {
-	const key = GOOGLE_MAPS_API_KEY;
+	const key = googleKey();
 	if (!key) return 'unknown';
 
 	try {

@@ -3,10 +3,12 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { hash, verify } from '@node-rs/argon2';
-import { BETTER_AUTH_SECRET, SECURE_COOKIES } from '$app/env/private';
+import { building } from '$app/env';
+import { BETTER_AUTH_SECRET, BETTER_AUTH_SECRET_FILE, SECURE_COOKIES } from '$app/env/private';
 import { getRequestEvent } from '$app/server';
 import type { RequestEvent } from '@sveltejs/kit';
 import { db, schema } from './db/index.ts';
+import { eitherOf } from './secret-file.ts';
 import type { Access } from '#lib/access.ts';
 
 /**
@@ -19,8 +21,9 @@ import type { Access } from '#lib/access.ts';
  * sign-out are form actions calling it directly -- so its own rate limiter
  * never runs, and wrong passwords are limited per address in ./sign-in-limit.
  *
- * BETTER_AUTH_SECRET signs the session cookie; src/env.ts refuses to start
- * without one anywhere, `vite dev` included.
+ * BETTER_AUTH_SECRET signs the session cookie, given as it is or as the file
+ * BETTER_AUTH_SECRET_FILE names (#lib/server/secret-file). Without one the
+ * server does not start, anywhere, `vite dev` included.
  *
  * Better Auth is given no base URL, because in this application it has none:
  * its routes are not mounted, it is never called over HTTP, and its origin
@@ -48,8 +51,14 @@ export const MAX_PASSWORD_LENGTH = 128;
 const SESSION_DAYS = 30;
 
 function createAuth() {
+	const secret = eitherOf('BETTER_AUTH_SECRET', BETTER_AUTH_SECRET, BETTER_AUTH_SECRET_FILE);
+	if (secret === undefined && !building)
+		throw new Error(
+			'BETTER_AUTH_SECRET must be set, or BETTER_AUTH_SECRET_FILE: it signs every session. ' +
+				'`openssl rand -hex 32` makes one; in development, .env holds it (.env.example).'
+		);
 	return betterAuth({
-		secret: BETTER_AUTH_SECRET,
+		secret,
 		database: drizzleAdapter(db, { provider: 'pg', schema }),
 		// Every message passes through but one: at start Better Auth warns that it
 		// has no base URL, which is true and harmless here (see above), and would

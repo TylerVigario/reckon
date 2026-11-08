@@ -41,10 +41,10 @@
 		"@sveltejs/adapter-node": "^6.0.1",
 		"@sveltejs/kit": "^3.1.1",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
+		"@tylervigario/commitlint-config": "github:TylerVigario/commitlint-config#semver:^0.4.0",
 		"@types/google.maps": "^3.66.9",
 		"@types/node": "^24.19.2",
 		"@types/pg": "^8.23.1",
-		"@tylervigario/commitlint-config": "github:TylerVigario/commitlint-config#semver:^0.4.0",
 		"better-auth": "^1.7.15",
 		"conventional-changelog-conventionalcommits": "^10.4.1",
 		"drizzle-kit": "^0.31.11",
@@ -68,7 +68,8 @@
 	},
 	"dependencies": {
 		"@node-rs/argon2": "^2.2.2",
-		"pg": "^8.23.1"
+		"pg": "^8.23.1",
+		"pgpass": "^1.0.6"
 	},
 	"overrides": {
 		"minimatch": "^11.0.4"

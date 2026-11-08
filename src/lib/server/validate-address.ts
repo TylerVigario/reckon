@@ -1,4 +1,4 @@
-import { GOOGLE_MAPS_API_KEY } from '$app/env/private';
+import { googleKey } from './google-key.ts';
 import type { Verdict } from '#lib/verdict.ts';
 
 /**
@@ -34,7 +34,7 @@ const TIMEOUT_MS = 4000;
  */
 export class NoVerdict extends Error {}
 
-export const validationIsLive = () => GOOGLE_MAPS_API_KEY !== undefined;
+export const validationIsLive = () => googleKey() !== undefined;
 
 export type { Verdict } from '#lib/verdict.ts';
 
@@ -71,7 +71,7 @@ export async function validate(address: {
 	postcode?: string | null;
 	country?: string | null;
 }): Promise<Verdict | null> {
-	const key = GOOGLE_MAPS_API_KEY;
+	const key = googleKey();
 	if (!key) return null;
 
 	const lines = [address.street, address.city, address.region, address.postcode].filter(
