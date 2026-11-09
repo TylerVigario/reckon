@@ -41,6 +41,7 @@ import { database } from './env.mjs';
 import { hash } from '@node-rs/argon2';
 import pg from 'pg';
 import { stdin, stdout } from 'node:process';
+import { EMAIL_CHANNEL, NOTICE_SENDS_FOR, passwordChanged } from '../src/lib/server/notices.js';
 
 const USAGE = `usage:
   node scripts/user.mjs list
@@ -189,8 +190,10 @@ const refusal = (p) =>
  * account, ending every session they hold.
  *
  * @param {{ id: string, name: string }} user
+ * @param {{ tell?: boolean }} [options] whether they are told by email, as a
+ *   person whose password is changed is; one just added is not
  */
-async function setPassword(user) {
+async function setPassword(user, { tell = false } = {}) {
 	// A terminal can be asked again; piped input has only the lines it was
 	// given, so there a refusal ends it -- still before the second line is read.
 	const retry = stdin.isTTY;
@@ -242,6 +245,29 @@ async function setPassword(user) {
 			[user.id]
 		);
 		const gone = await client.query('delete from session where user_id = $1', [user.id]);
+		// And they are told, as a change anywhere else tells them, once this
+		// commits (src/lib/server/email.ts): by the server, which sends it.
+		if (tell) {
+			const [them] = (
+				await client.query('select name, email, timezone, locale from "user" where id = $1', [
+					user.id
+				])
+			).rows;
+			const [business] = (
+				await client.query(
+					`select trading_name as "tradingName", short_name as "shortName", email, phone,
+					        timezone, locale
+					   from operator limit 1`
+				)
+			).rows;
+			const notice = passwordChanged(them, business ?? {}, { at: new Date(), on: 'command_line' });
+			await client.query(
+				`insert into email_message (kind, user_id, to_address, subject, body, send_by)
+				 values ($1, $2, $3, $4, $5, now() + $6::interval)`,
+				[notice.kind, user.id, notice.to, notice.subject, notice.body, NOTICE_SENDS_FOR]
+			);
+			await client.query('select pg_notify($1, $2)', [EMAIL_CHANNEL, '']);
+		}
 		await client.query('commit');
 		return gone.rowCount ?? 0;
 	} catch (e) {
@@ -318,7 +344,7 @@ if (command === 'list') {
 } else {
 	const [user] = await q('select id, name from "user" where email = lower($1)', [words[0].trim()]);
 	if (!user) await stop(`Nobody has the email ${words[0]}.`);
-	const ended = await setPassword(user);
+	const ended = await setPassword(user, { tell: true });
 	console.log(`Set for ${user.name}. ${ended} existing session(s) ended.`);
 }
 

@@ -9,6 +9,8 @@ import {
 	authHeaders,
 	getAuth
 } from '#lib/server/auth.ts';
+import { tell } from '#lib/server/email.ts';
+import { passwordChanged } from '#lib/server/notices.js';
 import { passwordSet, settleTry, takeTry } from '#lib/server/sign-in-limit.ts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -90,7 +92,12 @@ export const actions: Actions = {
 			throw e;
 		}
 		await settleTry(tried, 'right');
-		await db.update(schema.user).set(passwordSet()).where(eq(schema.user.id, me.id));
+		await db.transaction(async (tx) => {
+			await tx.update(schema.user).set(passwordSet()).where(eq(schema.user.id, me.id));
+			await tell(tx, me.id, (them, business) =>
+				passwordChanged(them, business, { at: new Date(), on: 'profile' })
+			);
+		});
 		return { updated: true };
 	}
 };

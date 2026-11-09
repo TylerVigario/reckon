@@ -91,6 +91,8 @@ for (const p of [
 	// What user.mjs reads its settings with, and connects by.
 	'scripts/env.mjs',
 	'src/lib/server/db/defaults.js',
+	// And what it tells a person whose password it sets.
+	'src/lib/server/notices.js',
 	'package.json',
 	'package-lock.json',
 	'.env.example',

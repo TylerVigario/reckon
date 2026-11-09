@@ -368,6 +368,14 @@ T["sign_in_try"] = [("PK","id","uuid"),("","created_at","timestamptz"),
     ("","email_key","text · HMAC of the email"),
     ("FK","user_id","uuid · null = nobody's"),("","browser","text · its own count"),
     ("","outcome","right|wrong|inactive|stopped")]
+T["email_message"] = [("PK","id","uuid · its Message-ID"),("","created_at","timestamptz"),
+    ("","kind","password_changed|password_reset"),("FK","user_id","uuid · null = nobody's"),
+    ("","to_address","text"),("","subject","text"),
+    ("","body","text · null once sent or given up"),
+    ("","send_by","timestamptz · then given up"),("","next_try_at","timestamptz"),
+    ("","tries","smallint"),("","claimed_until","timestamptz · a sender's"),
+    ("","sent_at","timestamptz"),("","gave_up_at","timestamptz"),
+    ("","last_error","text · what the relay said")]
 T["record_history"] = [("PK","id","bigint"),("","table_name","text"),("","row_id","uuid"),
     ("","field","text"),("","old_value","text"),("","new_value","text"),
     ("FK","changed_by","uuid"),("","changed_at","timestamptz · when it arrived"),
@@ -684,7 +692,7 @@ files.append(write("07-money-in.drawio", "Money in", c, 1260, 620))
 c = at("operator",40,60) + at("user",480,60) + at("session",480,496) \
   + at("account",480,712) + at("record_history",900,410) + at("account_map",900,60) \
   + at("ledger_export",900,180) + at("integration",900,650) + at("verification",900,800) \
-  + at("sign_in_try",900,980)
+  + at("sign_in_try",900,980) + at("email_message",40,880)
 c += [edge("e80","operator","account_map","maps"),
       edge("e82","user","session","is signed in by",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=1")
@@ -692,7 +700,9 @@ c += [edge("e80","operator","account_map","maps"),
       edge("e83","user","account","signs in with",
            S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=0")),
       edge("e81","user","record_history","changed"),
-      edge("e84","user","sign_in_try","was tried")]
+      edge("e84","user","sign_in_try","was tried"),
+      edge("e85","user","email_message","is told by",
+           S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1"))]
 c += [note("n8", "What someone can reach is user.access, apart from role_id, the "
                  "capacity they are paid in, which pay rules are written against. Full "
                  "is everything, and the only level that bills or pays; Field is their "
@@ -715,6 +725,12 @@ c += [note("n8", "What someone can reach is user.access, apart from role_id, the
                  "not anyone signs in with it, keeps an HMAC of the email rather than "
                  "the email, and is kept 90 days. A hundred wrong in a row stop the "
                  "password: password_stopped_at, until a new one is set.\n\n"
+                 "email_message is every email, written in the transaction that makes "
+                 "the change it tells of, so it is sent if and only if that change is "
+                 "kept, and sent afterwards to the relay the environment names. One the "
+                 "relay puts off is tried later each time until send_by; one it refuses "
+                 "for good is given up on. body is kept only while it is still to send, "
+                 "and a row is deleted after 90 days.\n\n"
                  "A session is a row, not a stateless token: one server, one "
                  "database, and every page reads it anyway, so a stateless token would "
                  "save no round trip and cost revocation. The cookie is the token "
@@ -733,8 +749,8 @@ c += [note("n8", "What someone can reach is user.access, apart from role_id, the
                  "receipt is described rather than copied while its row holds it, and kept "
                  "whole once the history is the only place it is: replaced, or taken off "
                  "with its line. made_at is when a change was made on a phone, beside "
-                 "changed_at, when it arrived.", 40, 1230, 1300, 400)]
-files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 1680))
+                 "changed_at, when it arrived.", 40, 1230, 1300, 460)]
+files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 1740))
 
 # 09 -- pay, as it was paid
 c = at("person_payment",40,60) + at("person_payment_item",480,60) + at("user",40,330) \

@@ -142,6 +142,75 @@ export const variables = defineEnvVars({
 		}
 	},
 
+	SMTP_HOST: {
+		description:
+			"The relay reckon hands its email to (#lib/server/email): any host that takes mail by SMTP -- a provider's (smtp.example.com), or a mail server on this machine or this network. Unset, reckon sends no email.",
+		schema: optional
+	},
+
+	SMTP_PORT: {
+		description:
+			'Its port: 587 unless set, or 465 where SMTP_SECURITY is tls. A mail server on this machine usually takes it on 25.',
+		schema: (value) => {
+			const port = optional(value);
+			if (port !== undefined && !/^\d+$/.test(port))
+				throw new Error(`SMTP_PORT is a port number, not '${port}'.`);
+			return port === undefined ? undefined : Number(port);
+		}
+	},
+
+	SMTP_SECURITY: {
+		description:
+			"How the connection is kept private. starttls, unless set: the relay must upgrade it with STARTTLS, or nothing is sent. tls: TLS from the first byte, as port 465 expects. none: no TLS at all -- for a relay on this machine, where the mail crosses no network; to any other the server says so in its log every time it starts. Whatever is chosen, the relay's certificate is checked.",
+		schema: (value = 'starttls') => {
+			if (value === 'starttls' || value === 'tls' || value === 'none') return value;
+			throw new Error(`SMTP_SECURITY is starttls, tls or none, not '${value}'.`);
+		}
+	},
+
+	SMTP_USERNAME: {
+		description:
+			'Who to sign in to the relay as, where it asks. Unset, nobody: a local relay seldom asks.',
+		schema: optional
+	},
+
+	SMTP_PASSWORD: {
+		description: "SMTP_USERNAME's password, taken as given.",
+		schema: (value) => value || undefined
+	},
+
+	SMTP_PASSWORD_FILE: {
+		description:
+			'The path of a file holding SMTP_PASSWORD, in its place: read once at start, the whitespace around it not part of it. Set one of the two.',
+		schema: fromFile('SMTP_PASSWORD_FILE')
+	},
+
+	SMTP_CA_FILE: {
+		description:
+			"The path of a PEM file of the certificate authorities to trust for the relay's certificate, in place of the system's: for a relay whose certificate a private authority issued. There is no setting to leave it unchecked.",
+		schema: (value) => {
+			const path = optional(value);
+			return path === undefined || building ? path : readSecretFile('SMTP_CA_FILE', path);
+		}
+	},
+
+	SMTP_HELO_NAME: {
+		description:
+			"The name reckon gives itself when it greets the relay (EHLO). This machine's own name unless set, where that is a full one, else its address: set it to the domain it sends from where a relay asks for a real name, as Google's does.",
+		schema: optional
+	},
+
+	SMTP_FROM: {
+		description:
+			"The address reckon's email comes from, one the relay may send as: reckon@example.com, say. Needed with SMTP_HOST. It is sent under the business's trading name, and replies go to the business's own email.",
+		schema: (value) => {
+			const from = optional(value);
+			if (from !== undefined && !/^[^\s@<>",]+@[^\s@<>",]+\.[^\s@<>",]+$/.test(from))
+				throw new Error(`SMTP_FROM is an address alone, reckon@example.com, not '${from}'.`);
+			return from;
+		}
+	},
+
 	GOOGLE_MAPS_API_KEY: {
 		description:
 			"The server's Google key: validates a chosen address, confirms a place id, and gives each drive of a trip its miles by Google's route. Restrict it to this host's IP addresses and to the Address Validation, Places (New) and Routes APIs. Unset, an address is stored as Google returned it, and a trip's miles are typed or come from earlier trips.",

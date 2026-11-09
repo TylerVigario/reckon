@@ -7,9 +7,8 @@ import { passwordSet } from './sign-in-limit.ts';
 import { WORDS } from './words.ts';
 
 /**
- * A PASSWORD HANDED OVER. reckon sends no email, so whoever adds a person, or
- * resets their password, on Team is shown one once, to give them by voice or on
- * paper. Until they choose their own it reaches nothing but the page where they
+ * A PASSWORD HANDED OVER. Whoever adds a person, or resets their password, on
+ * Team is shown one once, to give them by voice or on paper. Until they choose their own it reaches nothing but the page where they
  * do (/new-password), and that is the whole of its use.
  *
  * Four words, so it is read out and typed without spelling it: about 41 bits,

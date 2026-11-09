@@ -9,4 +9,5 @@ export * from './agreements.ts';
 export * from './money.ts';
 export * from './operator.ts';
 export * from './pay.ts';
+export * from './mail.ts';
 export * from './relations.ts';

@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm';
 import { SECURE_COOKIES } from '$app/env/private';
 import { authHeaders, getAuth } from '#lib/server/auth.ts';
 import { googleKey } from '#lib/server/google-key.ts';
+import { startSending } from '#lib/server/email.ts';
 import { db, pool, schema } from '#lib/server/db/index.ts';
 import { bringUpToDate } from '#lib/server/db/migrate.ts';
 import { building } from '$app/env';
@@ -39,6 +40,10 @@ export const init: ServerInit = async () => {
 	// A key given both as itself and as a file stops the start here, as the
 	// session secret's does in getAuth, rather than the first address entered.
 	googleKey();
+	// And the email relay's settings, likewise; then whatever is waiting to be
+	// sent goes, and the server keeps sending as more is written
+	// (#lib/server/email).
+	if (!building) startSending();
 	// Every figure and date is written in the locale of the person the request
 	// is for (#lib/format). Read from the request in hand, never kept in a
 	// module, because the server is rendering for several people at once.
