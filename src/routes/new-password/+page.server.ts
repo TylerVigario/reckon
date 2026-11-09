@@ -10,14 +10,16 @@ import {
 	hashPassword
 } from '#lib/server/auth.ts';
 import { tell } from '#lib/server/email.ts';
+import { endPasswordLinks } from '#lib/server/links.ts';
 import { passwordChanged } from '#lib/server/notices.js';
 import { passwordSet } from '#lib/server/sign-in-limit.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
- * Where someone signed in with a password handed to them chooses their own
- * (#lib/server/handover). Nothing else opens until they have, and once they
- * have, there is nothing here to ask.
+ * Where someone signed in with a password handed to them chooses their own:
+ * someone added, or reset, before invitations were emailed (#lib/server/links),
+ * who still has one. Nothing else opens until they have, and once they have,
+ * there is nothing here to ask.
  */
 // eslint-disable-next-line @typescript-eslint/require-await -- a load is async by contract
 export const load: PageServerLoad = async ({ locals }) => {
@@ -72,6 +74,7 @@ export const actions: Actions = {
 				.update(schema.user)
 				.set({ temporaryPassword: false, ...passwordSet() })
 				.where(eq(schema.user.id, me.id));
+			await endPasswordLinks(tx, me.id);
 			await tell(tx, me.id, (them, business) =>
 				passwordChanged(them, business, { at: new Date(), on: 'chosen' })
 			);

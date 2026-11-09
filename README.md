@@ -162,14 +162,28 @@ email tried is recorded alike, whether or not anyone signs in with it, as an
 HMAC rather than the email itself, since a password is sometimes typed in its
 place; rows are deleted after 90 days.
 
-There is no sign-up. Someone with Full adds people on Team, and is shown a
-temporary password for them once, four words, to hand over. Signing in with it reaches nothing but the page where they choose
-their own; that browser stays signed in, and any other that used the temporary
-one is signed out. Reset password, on a person's page, signs them out everywhere
-and hands over another the same way. Nobody resets their own: anyone changes
-theirs under Password on Your profile, giving the current one first. That
-browser is given a new session and every other is signed out, and a wrong
-current password counts against the address as a wrong sign-in does.
+There is no sign-up. Someone with Full adds people on Team, and each is emailed
+an invitation: a link to choose their own password. Reset password, on a
+person's page, stops the old one, signs them out everywhere and emails a link to
+choose a new one. Whoever adds or resets someone never sees a password or the
+link, so cannot choose one for them (ASVS 5.0 6.4.6). A link is good once, for
+24 hours, the most NIST SP 800-63B-4 allows a code sent by email; Team says
+when one went and until when it works, and an invitation that lapses is sent
+again from there. The link opens a page outside the app that takes the password
+and then sends them to sign in with it, rather than signing them in. Its code
+is after the `#`, which a browser never sends, so no server, log or `Referer`
+sees it, and only a hash of it is kept; a code that is not one to use, whatever
+the reason, gets the same answer, and a network that tries ten in fifteen
+minutes waits. Nobody resets their own: anyone changes theirs under Password on
+Your profile, giving the current one first. That browser is given a new
+session and every other is signed out, and a wrong current password counts
+against the address as a wrong sign-in does.
+
+Using a link also proves the address it went to is theirs, and Team says whose
+are confirmed. Anyone added before invitations confirms theirs from Your
+profile, by a link sent there. An address changed on Team is not confirmed until
+it has been, and someone yet to accept their invitation is sent it again, at
+the new one.
 
 The first person is added from the command line, since nobody can sign in to
 add them:
@@ -197,7 +211,7 @@ changed on Team, by someone with Full: their name and email, their access, the
 role they are paid as, a reset of their password, and whether they sign in.
 Deactivated, they can't, and aren't offered work; everything they did is kept,
 and they can be reactivated. Team also says when each person last signed in,
-and who is Invited, yet to sign in with the password handed to them.
+and who is Invited, or whose invitation expired unused.
 
 Twelve characters at least, checked on the first entry rather than after the
 second. On a development database, `--insecure` lifts that and says so:
@@ -241,9 +255,14 @@ provider and every mail server takes mail that way, so whatever is behind the
 relay is the operator's choice, and nothing in reckon is tied to one. Unset, it
 sends nothing.
 
-For now it tells a person whenever their password is changed — chosen after a
-handover, changed on Your profile, set with `scripts/user.mjs` — or reset on
-Team, saying when, in their own zone, and who to ask if it was not them.
+It sends an invitation to someone added on Team, a link to choose a new password
+after a reset there, and a link to confirm an address, asked for on Your
+profile — each built from `SITE_URL`, never from the address a request came in
+on (OWASP's Forgot Password Cheat Sheet), and sent only while its link still
+works. And it tells a person whenever their password is changed — chosen with a
+link, changed on Your profile, set with `scripts/user.mjs` — saying when, in
+their own zone, and who to ask if it was not them. Without `SMTP_HOST` and
+`SITE_URL` nobody can be invited, and Team says which is missing.
 
 Each message is a row of `email_message`, written in the same transaction as the
 change it tells of, so it is sent if and only if that change is kept, and the
@@ -263,6 +282,10 @@ SMTP_FROM=reckon@example.com                   # an address it may send as
 ```bash
 SMTP_HOST=127.0.0.1  SMTP_PORT=25  SMTP_SECURITY=none   # Postfix on this machine
 SMTP_FROM=reckon@example.com
+```
+
+```bash
+SITE_URL=https://reckon.example.com   # where the links it emails go
 ```
 
 **TLS is required unless `SMTP_SECURITY=none`.** `starttls`, the default, has
@@ -294,11 +317,12 @@ add.
 
 ## Serving it
 
-**There is no address to configure.** The server reads its own from each
-request — the `Host` header, over https — so the address a form is checked
+**A request's address is never configured.** The server reads its own from
+each request — the `Host` header, over https — so the address a form is checked
 against is always the one the browser used. A configured address can disagree
 with that, and when it does every form post is refused as cross-site, sign-in
-included.
+included. `SITE_URL` is only where the links reckon emails go, since an email
+has no request to read one from; a request's `Host` never reaches one.
 
 What that asks of whatever is in front of it:
 
@@ -384,6 +408,7 @@ server and the commands stop and say which, in development too.
 | `SMTP_CA_FILE`                   | the system's      | the authorities to trust for its certificate, for one a private authority issued                                                                                                  |
 | `SMTP_HELO_NAME`                 | this machine's    | the name it greets the relay with, where the relay asks for a real one                                                                                                            |
 | `SMTP_FROM`                      | —                 | the address email comes from; needed with `SMTP_HOST`                                                                                                                             |
+| `SITE_URL`                       | unset             | where the links reckon emails go, https://reckon.example.com: https except to this machine. Unset, nobody can be invited or reset by email                                        |
 
 **Two keys, because a Google API key carries exactly one application
 restriction.** It can be restricted to HTTP referrers _or_ to IP addresses,

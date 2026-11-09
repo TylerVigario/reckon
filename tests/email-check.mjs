@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * Proves reckon sends email (#lib/server/email): a person is told by email
- * whenever their password is changed -- chosen after a handover, changed on
- * Your profile, set at the command line, reset on Team -- and the email goes
+ * Proves reckon sends email (#lib/server/email): a person added on Team is
+ * invited by email, and told whenever their password is changed -- chosen with
+ * the link, changed on Your profile, set at the command line, reset on Team --
+ * and the email goes
  * through the relay as the business, marked as a machine's. A relay that puts a
  * message off has it tried again; one that refuses it for good has it given up
  * on, and Settings says so; a message past its time is given up on, and one
@@ -19,6 +20,7 @@
 import { database } from '../scripts/env.mjs';
 import { spawnSync } from 'node:child_process';
 import pg from 'pg';
+import { arrives as arrivesAt, linkAction, linkIn } from './relay.mjs';
 
 const [, , base, fullEmail, fullPassword, relay = 'http://127.0.0.1:2526'] = process.argv;
 if (!base || !fullEmail || !fullPassword) {
@@ -68,37 +70,8 @@ const form = (/** @type {Record<string, string>} */ fields) => ({
 	headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'text/html' }
 });
 
-/** @typedef {{ from: string, to: string[], data: string, at: string }} Taken */
-
-/** What the relay has taken, its bodies decoded from quoted-printable. */
-async function inbox() {
-	const taken = /** @type {Taken[]} */ (await (await fetch(`${relay}/messages`)).json());
-	return taken.map((m) => ({ ...m, text: decoded(m.data) }));
-}
-/** A message body as written, from the quoted-printable nodemailer sends long lines as. */
-const decoded = (/** @type {string} */ data) => {
-	const joined = data.replace(/=\r\n/g, '');
-	const bytes = [];
-	for (let i = 0; i < joined.length; i++) {
-		const hex = /^=([0-9A-F]{2})/.exec(joined.slice(i, i + 3));
-		if (hex) {
-			bytes.push(parseInt(hex[1], 16));
-			i += 2;
-		} else bytes.push(...Buffer.from(joined[i]));
-	}
-	return Buffer.from(bytes).toString('utf8');
-};
-/** The first message to `to` whose text has every one of `says`, waited for a while. */
-async function arrives(/** @type {string} */ to, /** @type {string[]} */ says, seconds = 15) {
-	for (let i = 0; i < seconds * 4; i++) {
-		const found = (await inbox()).find(
-			(m) => m.to.includes(to) && says.every((s) => m.text.includes(s))
-		);
-		if (found) return found;
-		await new Promise((r) => setTimeout(r, 250));
-	}
-	return null;
-}
+const arrives = (/** @type {string} */ to, /** @type {string[]} */ says, seconds = 15) =>
+	arrivesAt(relay, to, says, seconds);
 
 const db = new pg.Client(database());
 await db.connect();
@@ -141,14 +114,18 @@ try {
 	const made = added.status === 201 ? await added.json() : null;
 	id = made?.id ?? null;
 	if (!id) throw new Error(`nobody was added (${added.status})`);
-	check((await rowsAbout(id)).length === 0, 'adding a person tells them nothing yet');
+	const one = await arrives(email, ['choose your password', `${fullName} added you`]);
+	check(!!one, 'adding a person invites them, by email');
 
 	// ------------------------------------------------- told of changes ----
-	const asThem = as(await signIn(email, made.password));
-	const chosen = 'chosen-after-the-handover';
-	await asThem('/new-password', form({ password: chosen, confirm: chosen }));
-	const one = await arrives(email, ['your password was changed', 'when you chose it']);
-	check(!!one, 'choosing one after a handover tells them so, by email');
+	const chosen = 'chosen-with-the-link';
+	const code = linkIn(one)?.code ?? '';
+	await linkAction(base, 'choose', { code, password: chosen, confirm: chosen }, PROXY);
+	const asThem = as(await signIn(email, chosen));
+	check(
+		!!(await arrives(email, ['your password was changed', 'with a link reckon emailed you'])),
+		'choosing one with the link tells them so'
+	);
 
 	if (one) {
 		const head = one.data.slice(0, one.data.indexOf('\r\n\r\n'));
@@ -172,9 +149,9 @@ try {
 			head.match(/^Message-ID: .*$/im)?.[0]
 		);
 		check(
-			one.text.includes('Ask someone with Full access') &&
+			one.text.includes(`Ask ${fullName} about it`) &&
 				(!business.email || one.text.includes(business.email)),
-			'and it says who to ask if it was not them'
+			'and it says who to ask if it was not expected'
 		);
 	}
 	const [row] = await rowsAbout(id);

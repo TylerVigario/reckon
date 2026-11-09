@@ -10,7 +10,8 @@ import {
 	SMTP_PASSWORD_FILE,
 	SMTP_PORT,
 	SMTP_SECURITY,
-	SMTP_USERNAME
+	SMTP_USERNAME,
+	SITE_URL
 } from '$app/env/private';
 import type { PoolClient } from 'pg';
 import { db, pool, type Reader } from './db/index.ts';
@@ -177,12 +178,14 @@ async function whoAndWhose(tx: Reader, userId: string) {
 
 /**
  * Tells someone of something done to their sign-in, by email, once the
- * transaction it is called in commits (#lib/server/notices).
+ * transaction it is called in commits (#lib/server/notices). A notice is worth
+ * sending for a week; one carrying a link, only until the link stops working.
  */
 export async function tell(
 	tx: Reader,
 	userId: string,
-	notice: (person: Person, business: Business) => Notice
+	notice: (person: Person, business: Business) => Notice,
+	sendBy?: Date
 ): Promise<void> {
 	const { person, business } = await whoAndWhose(tx, userId);
 	if (!person) return;
@@ -193,7 +196,7 @@ export async function tell(
 		toAddress: to,
 		subject,
 		body,
-		sendBy: sql`now() + ${NOTICE_SENDS_FOR}::interval`
+		sendBy: sendBy ?? sql`now() + ${NOTICE_SENDS_FOR}::interval`
 	});
 	// Delivered when the transaction commits, and not at all if it does not.
 	await tx.execute(sql`select pg_notify(${EMAIL_CHANNEL}, '')`);
@@ -363,7 +366,11 @@ export function startSending(): void {
 	const relay = mailer();
 	if (!relay)
 		console.warn(
-			'SMTP_HOST is unset: reckon sends no email. What it would send waits a week for one to be set.'
+			'SMTP_HOST is unset: reckon sends no email, and nobody can be invited. A notice waits a week for one to be set.'
+		);
+	else if (!SITE_URL)
+		console.warn(
+			'SITE_URL is unset: reckon has no address to build a link from, so nobody can be invited or have their password reset by email.'
 		);
 	else {
 		// Chosen, and allowed, but never quietly (RFC 8314 §5.2).

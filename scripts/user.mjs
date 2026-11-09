@@ -8,9 +8,10 @@
  *
  * There is no sign-up: an open registration form on an invoicing system is a
  * liability rather than a feature. Someone with Full adds people on Team, and
- * resets a password there, handing over one they replace with their own. This
- * is for the first person, before anyone can sign in to do that, and for a
- * password when nobody who could is able to. `list` says whose password has
+ * resets a password there, and each is emailed a link to choose their own
+ * (src/lib/server/links.ts). This is for the first person, before anyone can
+ * sign in to do that, and for a password when nobody who could is able to, or
+ * reckon has no email to send by. `list` says whose password has
  * stopped after a hundred wrong tries in a row (src/lib/server/sign-in-limit.ts),
  * and a new one, set here or on Team, works again.
  *
@@ -245,6 +246,13 @@ async function setPassword(user, { tell = false } = {}) {
 			[user.id]
 		);
 		const gone = await client.query('delete from session where user_id = $1', [user.id]);
+		// A link to choose a password still waiting would undo this one
+		// (src/lib/server/links.ts).
+		await client.query(
+			`delete from email_link
+			  where user_id = $1 and used_at is null and purpose in ('invite', 'reset')`,
+			[user.id]
+		);
 		// And they are told, as a change anywhere else tells them, once this
 		// commits (src/lib/server/email.ts): by the server, which sends it.
 		if (tell) {

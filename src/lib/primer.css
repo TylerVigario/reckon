@@ -279,6 +279,13 @@
 .primer .banner.good > svg {
 	color: var(--good);
 }
+.primer .banner.warn {
+	background: var(--warn-wash);
+	border-color: var(--warn);
+}
+.primer .banner.warn > svg {
+	color: var(--warn);
+}
 .primer .banner.crit {
 	background: var(--crit-wash);
 	border-color: var(--crit);

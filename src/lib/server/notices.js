@@ -7,8 +7,18 @@
 // instructions, including contact information, in case the recipient
 // repudiates the event". Plain text, which every mail program shows as sent.
 
-/** What an email is about, as kept on each (email_message.kind). */
-export const EMAIL_KINDS = /** @type {const} */ (['password_changed', 'password_reset']);
+/**
+ * What an email is about, as kept on each (email_message.kind). password_reset
+ * is a reset that handed over a temporary password, before reset sent a link
+ * (password_reset_link); it is kept for the rows that say so.
+ */
+export const EMAIL_KINDS = /** @type {const} */ ([
+	'password_changed',
+	'password_reset',
+	'invitation',
+	'password_reset_link',
+	'email_confirmation'
+]);
 
 /** @typedef {(typeof EMAIL_KINDS)[number]} EmailKind */
 
@@ -23,10 +33,10 @@ export const EMAIL_CHANNEL = 'email_message';
 
 /**
  * Where a password was changed by its owner: on Your profile, on the page they
- * chose it on after signing in with one handed to them, or at the server's
- * command line.
+ * chose it on after signing in with one handed to them, with a link reckon
+ * emailed them, or at the server's command line.
  *
- * @typedef {'profile' | 'chosen' | 'command_line'} ChangedOn
+ * @typedef {'profile' | 'chosen' | 'link' | 'command_line'} ChangedOn
  */
 
 /**
@@ -52,6 +62,7 @@ export const EMAIL_CHANNEL = 'email_message';
 const WHERE = {
 	profile: 'on Your profile',
 	chosen: 'when you chose it, after signing in with one handed to you',
+	link: 'with a link reckon emailed you',
 	command_line: 'at the command line on the server reckon runs on'
 };
 
@@ -122,23 +133,99 @@ export function passwordChanged(person, business, { at, on }) {
 }
 
 /**
- * Their password was reset on Team, by someone with Full, who has a temporary
- * one to hand them.
+ * The link an email carries, and until when it works (#lib/server/links). It
+ * opens a page that does nothing until it is used, and is good once.
+ *
+ * @typedef {{ link: string, until: Date }} Link
+ */
+
+/** When a link stops working, and what to do then. */
+const lapses = (
+	/** @type {Person} */ person,
+	/** @type {Business} */ business,
+	/** @type {Date} */ until,
+	/** @type {string} */ then
+) => `It works once, until ${when(until, person, business)}. ${then}`;
+
+/**
+ * They were added on Team, by someone with Full, and choose their password
+ * with the link. Using it confirms the address is theirs.
  *
  * @param {Person} person
  * @param {Business} business
- * @param {{ at: Date, by: string }} what
+ * @param {Link & { by: string }} what
  * @returns {Notice}
  */
-export function passwordReset(person, business, { at, by }) {
+export function invitation(person, business, { by, link, until }) {
 	return {
-		kind: 'password_reset',
+		kind: 'invitation',
+		to: person.email,
+		subject: subject(business, 'choose your password'),
+		body: [
+			`Hello ${person.name},`,
+			`${by} added you to ${theirReckon(business)}. Choose the password you'll sign in with, at this link:`,
+			link,
+			lapses(
+				person,
+				business,
+				until,
+				`If it lapses, ask ${by} or ${someoneWithFull(business, ' else')} to send another.`
+			),
+			`You sign in with this address, ${person.email}.`,
+			`If you weren't expecting this, nothing happens unless the link is used. Ask ${by} about it${orReach(business)}.`
+		].join('\n\n')
+	};
+}
+
+/**
+ * Their password was reset on Team, by someone with Full: it no longer works,
+ * they were signed out everywhere, and they choose a new one with the link.
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {Link & { at: Date, by: string }} what
+ * @returns {Notice}
+ */
+export function passwordResetLink(person, business, { at, by, link, until }) {
+	return {
+		kind: 'password_reset_link',
 		to: person.email,
 		subject: subject(business, 'your password was reset'),
 		body: [
 			`Hello ${person.name},`,
-			`${by} reset the password you sign in to ${theirReckon(business)} with on ${when(at, person, business)}, and signed you out everywhere. They have a temporary password to hand you, and you choose your own when you sign in with it.`,
+			`${by} reset the password you sign in to ${theirReckon(business)} with on ${when(at, person, business)}, and signed you out everywhere. Your old password no longer works. Choose a new one at this link:`,
+			link,
+			lapses(
+				person,
+				business,
+				until,
+				`If it lapses, ask ${by} or ${someoneWithFull(business, ' else')} to reset it again.`
+			),
 			`If you didn't expect this, ask ${by} or ${someoneWithFull(business, ' else')} about it${orReach(business)}.`
+		].join('\n\n')
+	};
+}
+
+/**
+ * They asked, on Your profile, to confirm that the address they sign in with
+ * is theirs: using the link does.
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {Link} what
+ * @returns {Notice}
+ */
+export function emailConfirmation(person, business, { link, until }) {
+	return {
+		kind: 'email_confirmation',
+		to: person.email,
+		subject: subject(business, 'confirm your email'),
+		body: [
+			`Hello ${person.name},`,
+			`You asked ${theirReckon(business)} to confirm that ${person.email} is yours. Confirm it at this link:`,
+			link,
+			lapses(person, business, until, 'If it lapses, ask for another on Your profile.'),
+			`If you didn't ask, someone else is signed in as you. Change your password on Your profile, or ask ${someoneWithFull(business)} to reset it${orReach(business)}.`
 		].join('\n\n')
 	};
 }

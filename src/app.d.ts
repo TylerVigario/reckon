@@ -30,6 +30,13 @@ declare global {
 			/** Light or dark as this device is set, or null for its own (#lib/device-fields). */
 			theme: Theme | null;
 		}
+		interface PageState {
+			/**
+			 * An invitation just sent, carried from Add person to the person's page
+			 * to say so there, and gone on a reload.
+			 */
+			invited?: { to: string; until: string };
+		}
 	}
 }
 

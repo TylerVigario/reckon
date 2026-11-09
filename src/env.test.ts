@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { variables } from './env.ts';
+import { siteUrl, variables } from './env.ts';
 
 /** What adapter-node reads, as its own source lists them (@sveltejs/adapter-node/src/env.js). */
 const ADAPTER_NODE = new Set([
@@ -37,5 +37,32 @@ describe('.env.example', () => {
 		expect([...shown].filter((name) => !(name in variables) && !ADAPTER_NODE.has(name))).toEqual(
 			[]
 		);
+	});
+});
+
+describe('SITE_URL', () => {
+	it('is kept as the origin links begin with', () => {
+		expect(siteUrl('https://reckon.example.com')).toBe('https://reckon.example.com');
+		expect(siteUrl('https://reckon.example.com/')).toBe('https://reckon.example.com');
+		expect(siteUrl('https://reckon.example.com:8443')).toBe('https://reckon.example.com:8443');
+	});
+
+	it('takes http only to this machine', () => {
+		expect(siteUrl('http://localhost:5173')).toBe('http://localhost:5173');
+		expect(siteUrl('http://127.0.0.1:5178')).toBe('http://127.0.0.1:5178');
+		expect(siteUrl('http://[::1]:5173')).toBe('http://[::1]:5173');
+		expect(() => siteUrl('http://reckon.example.com')).toThrow(/must be https/);
+	});
+
+	it('refuses what would end up in every link', () => {
+		expect(() => siteUrl('https://reckon.example.com/app')).toThrow(/nothing more/);
+		expect(() => siteUrl('https://reckon.example.com/?x=1')).toThrow(/nothing more/);
+		expect(() => siteUrl('https://reckon.example.com/#top')).toThrow(/nothing more/);
+		expect(() => siteUrl('https://me:pw@reckon.example.com')).toThrow(/nothing more/);
+	});
+
+	it('refuses what is no address, or not a web one', () => {
+		expect(() => siteUrl('reckon.example.com')).toThrow(/is an address/);
+		expect(() => siteUrl('ftp://reckon.example.com')).toThrow(/must be https/);
 	});
 });

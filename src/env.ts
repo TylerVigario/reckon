@@ -23,10 +23,11 @@ import { readSecretFile } from '#lib/server/secret-file.ts';
  * Not here, because the application does not read them: adapter-node's own
  * HOST, PORT, PROTOCOL_HEADER, HOST_HEADER, ADDRESS_HEADER and XFF_DEPTH.
  *
- * Nor is the site's public address. There is none to set: the server reads it
- * from each request -- the Host header, over https unless PROTOCOL_HEADER names
- * a header that says otherwise -- so it cannot disagree with the address a
- * browser actually used.
+ * The address a request is answered on is read from the request -- the Host
+ * header, over https unless PROTOCOL_HEADER names a header that says otherwise
+ * -- so it cannot disagree with the one a browser actually used. A link in an
+ * email has no request to read it from, and is never built from one: SITE_URL
+ * says where those go.
  */
 
 /** A key that is blank is a key that is not set. */
@@ -50,6 +51,24 @@ const fromFile = (name: string) => (value: string | undefined) => {
 	const path = optional(value);
 	return path === undefined || building ? undefined : readSecretFile(name, path);
 };
+
+/**
+ * SITE_URL as links begin with it: an origin alone, https unless it is this
+ * machine. A path, query or fragment would end up in every link.
+ */
+export function siteUrl(url: string): string {
+	if (!URL.canParse(url))
+		throw new Error(`SITE_URL is an address, https://reckon.example.com, not '${url}'.`);
+	const u = new URL(url);
+	const here = ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname);
+	if (u.protocol !== 'https:' && !(u.protocol === 'http:' && here))
+		throw new Error(`SITE_URL must be https, as the links it begins carry a code: not '${url}'.`);
+	if (u.pathname !== '/' || u.search || u.hash || u.username || u.password)
+		throw new Error(
+			`SITE_URL is where reckon is reached and nothing more, ${u.origin}, not '${url}'.`
+		);
+	return u.origin;
+}
 
 export const variables = defineEnvVars({
 	BETTER_AUTH_SECRET: {
@@ -208,6 +227,16 @@ export const variables = defineEnvVars({
 			if (from !== undefined && !/^[^\s@<>",]+@[^\s@<>",]+\.[^\s@<>",]+$/.test(from))
 				throw new Error(`SMTP_FROM is an address alone, reckon@example.com, not '${from}'.`);
 			return from;
+		}
+	},
+
+	SITE_URL: {
+		description:
+			"Where reckon is reached, as https://reckon.example.com: the links reckon emails -- an invitation, a password reset, confirming an address -- are built from it, never from the request a link was asked for in (OWASP's Forgot Password Cheat Sheet). https, except to this machine (http://localhost:5173) in development. Unset, nobody can be invited or have their password reset by email.",
+		schema: (value) => {
+			const url = optional(value);
+			if (url === undefined || building) return url;
+			return siteUrl(url);
 		}
 	},
 

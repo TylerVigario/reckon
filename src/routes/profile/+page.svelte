@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
+	import { enhance } from '$app/forms';
 	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import { parsePersonField } from '#lib/people-fields.ts';
@@ -18,7 +19,7 @@
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
-	let { data }: PageProps = $props();
+	let { data, form }: PageProps = $props();
 
 	const me = $derived(data.me);
 	const endpoint = $derived(`/api/people/${data.user?.id}`);
@@ -162,6 +163,32 @@
 	<div class="sec">
 		<div class="sec-h"><h2>Signing in</h2></div>
 		<div class="rows">
+			<!-- The address they sign in with, and whether it's proven theirs: by a
+			     link sent there (#lib/server/links). Changed on Team. -->
+			<div class="rec email">
+				<div class="rec-m">
+					<div class="rec-t">Email</div>
+					<div class="rec-s">
+						{me.email} ·
+						{#if me.email_verified || form?.confirmed}
+							<span class="ok">Confirmed</span>
+						{:else if form?.confirm}
+							<span class="no" role="alert">{form.confirm}</span>
+						{:else if form?.sent || data.confirmation}
+							A link is on its way there. It works once, for 24 hours.
+						{:else}
+							Not confirmed yet. Confirm it’s yours so reckon can reach you there.
+						{/if}
+					</div>
+				</div>
+				{#if !me.email_verified && !form?.confirmed}
+					<form method="POST" action="?/confirm" use:enhance>
+						<button type="submit" class="btn sm"
+							>{form?.sent || data.confirmation ? 'Send again' : 'Confirm email'}</button
+						>
+					</form>
+				{/if}
+			</div>
 			<a class="rec link" href={resolve('/profile/password')}>
 				<div class="rec-m">
 					<div class="rec-t">Password</div>
@@ -190,6 +217,24 @@
 </div>
 
 <style>
+	.email {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+	.email form {
+		flex: 0 0 auto;
+	}
+	.email .btn {
+		white-space: nowrap;
+	}
+	.ok {
+		color: var(--good);
+		font-weight: 600;
+	}
+	.no {
+		color: var(--crit);
+	}
 	.offer {
 		display: flex;
 		flex-wrap: wrap;

@@ -10,6 +10,7 @@ import {
 	getAuth
 } from '#lib/server/auth.ts';
 import { tell } from '#lib/server/email.ts';
+import { endPasswordLinks } from '#lib/server/links.ts';
 import { passwordChanged } from '#lib/server/notices.js';
 import { passwordSet, settleTry, takeTry } from '#lib/server/sign-in-limit.ts';
 import type { Actions, PageServerLoad } from './$types';
@@ -94,6 +95,7 @@ export const actions: Actions = {
 		await settleTry(tried, 'right');
 		await db.transaction(async (tx) => {
 			await tx.update(schema.user).set(passwordSet()).where(eq(schema.user.id, me.id));
+			await endPasswordLinks(tx, me.id);
 			await tell(tx, me.id, (them, business) =>
 				passwordChanged(them, business, { at: new Date(), on: 'profile' })
 			);

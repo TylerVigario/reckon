@@ -253,6 +253,13 @@
       "when": 1794241830287,
       "tag": "0035_reckon_sends_email",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794255431294,
+      "tag": "0036_a_person_is_invited_by_email",
+      "breakpoints": true
     }
   ]
 }

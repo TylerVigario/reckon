@@ -60,6 +60,10 @@ export const PROBLEM = {
 	choosePassword: {
 		type: '/problems/choose-password',
 		title: 'Signed in with a temporary password, and yet to choose their own'
+	},
+	emailUnset: {
+		type: '/problems/email-unset',
+		title: 'This sends an email, and reckon cannot send one yet'
 	}
 } as const;
 

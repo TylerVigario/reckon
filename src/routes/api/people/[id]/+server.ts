@@ -1,6 +1,9 @@
-import { eq } from 'drizzle-orm';
-import { asUser } from '#lib/server/db/index.ts';
-import { user } from '#lib/server/db/schema/index.ts';
+import { and, eq, sql } from 'drizzle-orm';
+import { asUser, type Tx } from '#lib/server/db/index.ts';
+import { account, session, user } from '#lib/server/db/schema/index.ts';
+import { tell } from '#lib/server/email.ts';
+import { cannotSend, issue } from '#lib/server/links.ts';
+import { invitation } from '#lib/server/notices.js';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { OWN_FIELDS, PERSON_FIELDS, parsePersonField } from '#lib/people-fields.ts';
@@ -29,7 +32,10 @@ type Field = keyof typeof COLUMN;
  * One thing about a person at a time.
  *
  * Who they are: their name, and the email they sign in with, which no one else
- * may have. Whether they can sign in: deactivated, they can't, and aren't
+ * may have. A new address is not confirmed until they use a link sent there
+ * (#lib/server/links), and one waiting at the old address stops working;
+ * someone yet to choose their first password is sent their invitation again,
+ * to the new one. Whether they can sign in: deactivated, they can't, and aren't
  * offered work, though everything they did is kept -- and nobody deactivates
  * themselves, which would sign them out of the screen they did it on.
  *
@@ -76,13 +82,25 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	}
 
 	try {
-		const changed = await asUser(locals.user!.id, (tx) =>
-			tx
-				.update(user)
-				.set({ [COLUMN[name]]: value })
+		const changed = await asUser(locals.user!.id, async (tx) => {
+			const [was] = await tx
+				.select({ email: user.email })
+				.from(user)
 				.where(eq(user.id, params.id))
-				.returning({ id: user.id })
-		);
+				.for('update');
+			const done = await tx
+				.update(user)
+				.set({
+					[COLUMN[name]]: value,
+					// Proven was the address before; a new one is not, yet.
+					...(name === 'email' && was && was.email !== value && { emailVerified: false })
+				})
+				.where(eq(user.id, params.id))
+				.returning({ id: user.id });
+			if (done.length && name === 'email' && was && was.email !== value)
+				await inviteAgain(tx, params.id, locals.user!);
+			return done;
+		});
 		if (changed.length === 0) return problem('notFound', 404, 'No person with that id.');
 	} catch (e) {
 		const { constraint } = pgError(e);
@@ -96,3 +114,40 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	}
 	return Response.json({ saved: { [name]: value } });
 };
+
+/**
+ * Someone yet to choose their first password, whose address was corrected,
+ * is invited again at the new one -- where reckon can send it. Otherwise their
+ * invitation lapses with the old address, and Team says so.
+ */
+async function inviteAgain(tx: Tx, userId: string, me: { id: string; name: string }) {
+	if (cannotSend()) return;
+	const [person] = await tx
+		.select({
+			active: user.active,
+			joined: user.lastSignedInAt,
+			temporary: user.temporaryPassword,
+			// "user" outright: Drizzle leaves a column unqualified in a query of one
+			// table, and inside this it would be read as account's own.
+			held: sql<boolean>`exists (select 1 from ${account} where ${account.userId} = "user".id and ${account.providerId} = 'credential')`
+		})
+		.from(user)
+		.where(eq(user.id, userId));
+	if (!person?.active || person.joined || (person.held && !person.temporary)) return;
+	// A temporary password handed over before invitations stops working, as
+	// sending the invitation again on Team stops it (../invitation).
+	if (person.held) {
+		await tx
+			.delete(account)
+			.where(and(eq(account.userId, userId), eq(account.providerId, 'credential')));
+		await tx.update(user).set({ temporaryPassword: false }).where(eq(user.id, userId));
+		await tx.delete(session).where(eq(session.userId, userId));
+	}
+	const sent = await issue(tx, userId, 'invite', me.id);
+	await tell(
+		tx,
+		userId,
+		(them, business) => invitation(them, business, { by: me.name, ...sent }),
+		sent.until
+	);
+}

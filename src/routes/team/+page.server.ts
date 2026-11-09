@@ -1,6 +1,7 @@
 import { asc, count, desc, eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { role, user } from '#lib/server/db/schema/index.ts';
+import { signingIn } from '#lib/server/links.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -20,6 +21,7 @@ export const load: PageServerLoad = async () => {
 				access: user.access,
 				temporary_password: user.temporaryPassword,
 				last_signed_in_at: user.lastSignedInAt,
+				...signingIn,
 				role: role.name
 			})
 			.from(user)
