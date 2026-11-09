@@ -80,8 +80,9 @@ export const user = pgTable(
 		email: text().notNull(),
 		/**
 		 * Whether that address is proven theirs (Better Auth's name for it): true
-		 * once they have used a link reckon emailed there (email_link), and false
-		 * again whenever it changes.
+		 * once they have used a link reckon emailed there (email_link) -- a
+		 * change's link among them, which makes the address it went to theirs --
+		 * and false whenever it is changed without one.
 		 */
 		emailVerified: boolean().default(false).notNull(),
 		image: text(),
@@ -235,10 +236,11 @@ export const verification = pgTable(
 
 /**
  * What an emailed link is for: to choose a first password, on being added on
- * Team; to choose a new one, after a reset there; or to confirm the address
- * one signs in with, asked for on Your profile.
+ * Team; to choose a new one, after a reset there; to confirm the address one
+ * signs in with, asked for on Your profile; or to make a new address the one
+ * they sign in with, asked for on Team.
  */
-export const LINK_PURPOSES = ['invite', 'reset', 'confirm'] as const;
+export const LINK_PURPOSES = ['invite', 'reset', 'confirm', 'change'] as const;
 
 /**
  * A LINK reckon emailed someone (#lib/server/links), good once, for 24 hours
@@ -248,11 +250,14 @@ export const LINK_PURPOSES = ['invite', 'reset', 'confirm'] as const;
  *
  * The code itself is never kept: code_hash is its SHA-256, and the code is 256
  * random bits, so the hash cannot be worked back to it. It works only while
- * sent_to is still the address its person signs in with, and they are active.
+ * sent_to is still the address its person signs in with, and they are active
+ * -- except a change's, which went to the address they are to sign in with
+ * instead, and makes it theirs.
  *
  * A new link for a password ends any other not yet used, as does a new
- * confirmation: one of each can be waiting at a time. A link used is kept 90
- * days, the record of a password chosen or an address confirmed.
+ * confirmation, or a new change: one of each can be waiting at a time. A link
+ * used is kept 90 days, the record of a password chosen or an address
+ * confirmed or changed.
  */
 export const emailLink = pgTable(
 	'email_link',
@@ -263,7 +268,7 @@ export const emailLink = pgTable(
 		purpose: text({ enum: LINK_PURPOSES }).notNull(),
 		/** The SHA-256 of the code. Never the code. */
 		codeHash: bytea().notNull(),
-		/** The address it went to, which using it proves. */
+		/** The address it went to, which using it proves: for a change, the new one. */
 		sentTo: text().notNull(),
 		expiresAt: tstz().notNull(),
 		/** When it was used. Null is not yet: it cannot be used twice. */
@@ -290,6 +295,9 @@ export const emailLink = pgTable(
 		uniqueIndex('email_link_one_confirmation_waiting')
 			.on(t.userId)
 			.where(sql`${t.usedAt} is null and ${t.purpose} = 'confirm'`),
+		uniqueIndex('email_link_one_change_waiting')
+			.on(t.userId)
+			.where(sql`${t.usedAt} is null and ${t.purpose} = 'change'`),
 		index('email_link_by_user').on(t.userId, t.createdAt),
 		foreignKey({
 			name: 'email_link_user_id_fkey',
