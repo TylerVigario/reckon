@@ -336,9 +336,14 @@ try {
 
 	// -------------------------------------------------- a hundred in a row ----
 	{
-		const stoppedAt = async () =>
-			(await db.query('select password_stopped_at from "user" where id = $1', [id])).rows[0]
-				?.password_stopped_at;
+		/** Whether their password has stopped: that, and not when. */
+		const stopped = async () =>
+			(
+				await db.query(
+					'select password_stopped_at is not null as stopped from "user" where id = $1',
+					[id]
+				)
+			).rows[0]?.stopped === true;
 		const sessions = async () =>
 			Number(
 				(await db.query('select count(*) from session where user_id = $1', [id])).rows[0].count
@@ -360,9 +365,9 @@ try {
 		);
 		const hundredth = await signIn(anywhere(), email, WRONG);
 		check(
-			hundredth.status === 400 && !!(await stoppedAt()),
+			hundredth.status === 400 && (await stopped()),
 			'the hundredth wrong password in a row stops it there and then',
-			`${hundredth.status}, ${await stoppedAt()}`
+			`${hundredth.status}, stopped: ${await stopped()}`
 		);
 		const before = await sessions();
 		const stranger = await signIn(anywhere(), email, own);
@@ -395,9 +400,9 @@ try {
 		const handed = reset.status === 200 ? (await reset.json()).password : '';
 		const again = await signIn(anywhere(), email, handed);
 		check(
-			reset.status === 200 && !(await stoppedAt()) && again.status === 303,
+			reset.status === 200 && !(await stopped()) && again.status === 303,
 			'a reset on Team starts it again, and the password handed over signs in',
-			`${reset.status}, ${await stoppedAt()}, ${again.status}`
+			`${reset.status}, stopped: ${await stopped()}, ${again.status}`
 		);
 	}
 } finally {
