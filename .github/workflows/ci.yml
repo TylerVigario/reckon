@@ -159,6 +159,11 @@ jobs:
       SMTP_PORT: '2525'
       SMTP_SECURITY: none
       SMTP_FROM: reckon@kestrel.example
+      # Told to stop, adapter-node waits this long (30 seconds unless set) for
+      # the browser's connections to close, and one the browser opened ahead
+      # of a request it never sent holds the whole wait. Kept short, a server
+      # still running 20 seconds after SIGTERM is held by something of its own.
+      SHUTDOWN_TIMEOUT: '2'
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
