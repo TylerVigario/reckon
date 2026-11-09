@@ -19,7 +19,8 @@ import type { Access } from '#lib/access.ts';
  * (#lib/server/handover), and the first person is added from the command line
  * (scripts/user.mjs). Better Auth's HTTP routes are not mounted -- sign-in and
  * sign-out are form actions calling it directly -- so its own rate limiter
- * never runs, and wrong passwords are limited per address in ./sign-in-limit.
+ * never runs, and tries at a password are limited per address in
+ * ./sign-in-limit.
  *
  * BETTER_AUTH_SECRET signs the session cookie, given as it is or as the file
  * BETTER_AUTH_SECRET_FILE names (#lib/server/secret-file). Without one the

@@ -4,7 +4,7 @@ import { APIError } from 'better-auth/api';
 import { eq, sql } from 'drizzle-orm';
 import { db, schema } from '#lib/server/db/index.ts';
 import { authHeaders, getAuth, rehashIfDated } from '#lib/server/auth.ts';
-import { clearFailures, recordFailure, waitFor } from '#lib/server/sign-in-limit.ts';
+import { forgive, takeTry } from '#lib/server/sign-in-limit.ts';
 import { safeNext } from '#lib/safe-next.ts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -25,7 +25,9 @@ export const actions: Actions = {
 		if (!email || !password) return fail(400, { email, message: 'Both, please.' });
 
 		const address = event.getClientAddress();
-		const wait = waitFor(address);
+		// Taken before the password is checked, so tries sent at once are each
+		// counted (#lib/server/sign-in-limit).
+		const wait = takeTry(address);
 		if (wait)
 			return fail(429, {
 				email,
@@ -39,7 +41,8 @@ export const actions: Actions = {
 				headers: authHeaders(event)
 			});
 			userId = signedIn.user.id;
-			// Someone made inactive answers exactly as a wrong password does.
+			// Someone made inactive answers exactly as a wrong password does, and
+			// is not forgiven the try.
 			if (signedIn.user.active === false) {
 				await db.delete(schema.session).where(eq(schema.session.userId, userId));
 				// A Secure cookie's name carries __Secure- in front of its own.
@@ -51,12 +54,11 @@ export const actions: Actions = {
 			}
 		} catch (e) {
 			if (!(e instanceof APIError)) throw e;
-			recordFailure(address);
 			// One message for every failure. Saying which half was wrong tells
 			// anyone who asks which accounts exist.
 			return fail(400, { email, message: 'Wrong email or password.' });
 		}
-		clearFailures(address);
+		forgive(address);
 		await rehashIfDated(userId, password);
 		// What Team says as their last sign-in. Signing in is not a change to the
 		// person, so updated_at stays as it was.
