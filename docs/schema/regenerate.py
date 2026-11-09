@@ -343,6 +343,8 @@ T["user"] = [("PK","id","uuid"),("","name","text"),("UK","email","text · lowerc
     ("","access","full|field · what they reach"),
     ("","last_signed_in_at","timestamptz · null = none recorded"),
     ("","temporary_password","bool · handed over, not yet theirs"),
+    ("","password_set_at","timestamptz · null = unknown"),
+    ("","password_stopped_at","timestamptz · null = works"),
     ("","timezone","text · null = the business's"),("","locale","text · null = the business's"),
     ("","hour_cycle","h12|h23 · null = the locale's"),("","week_start","1–7 · null = the locale's"),
     ("","created_at","timestamptz"),("","updated_at","timestamptz")]
@@ -360,6 +362,12 @@ T["account"] = [("PK","id","uuid"),("FK","user_id","uuid"),
 T["verification"] = [("PK","id","uuid"),("","identifier","text"),("","value","text"),
     ("","expires_at","timestamptz"),("","created_at","timestamptz"),
     ("","updated_at","timestamptz")]
+T["sign_in_try"] = [("PK","id","uuid"),("","created_at","timestamptz"),
+    ("","page","sign_in|password_change"),("","address","inet"),
+    ("","network","cidr · what is counted"),
+    ("","email_key","text · HMAC of the email"),
+    ("FK","user_id","uuid · null = nobody's"),("","browser","text · its own count"),
+    ("","outcome","right|wrong|inactive|stopped")]
 T["record_history"] = [("PK","id","bigint"),("","table_name","text"),("","row_id","uuid"),
     ("","field","text"),("","old_value","text"),("","new_value","text"),
     ("FK","changed_by","uuid"),("","changed_at","timestamptz · when it arrived"),
@@ -571,8 +579,8 @@ c += [note("n4", "started_at and ended_at are when the work was done and zone is
                  "somebody gave it by hand. to_stop_id is where a leg went, so the same "
                  "drive later starts from its miles. note and the odometer are the "
                  "trip's own, as a mileage log asks.",
-           40, 880, 1576, 380)]
-files.append(write("04-work-captured.drawio", "Work as it is captured", c, 1680, 1300))
+           40, 924, 1576, 380)]
+files.append(write("04-work-captured.drawio", "Work as it is captured", c, 1680, 1344))
 
 # 05 -- agreements
 c = at("entity",40,60) + at("agreement",440,60) \
@@ -673,16 +681,18 @@ c += [note("n7", "Stripe pays one deposit covering several invoices, net of "
 files.append(write("07-money-in.drawio", "Money in", c, 1260, 620))
 
 # 08 -- operator and record
-c = at("operator",40,60) + at("user",480,60) + at("session",480,452) \
-  + at("account",480,692) + at("record_history",900,410) + at("account_map",900,60) \
-  + at("ledger_export",900,180) + at("integration",900,650) + at("verification",900,800)
+c = at("operator",40,60) + at("user",480,60) + at("session",480,496) \
+  + at("account",480,712) + at("record_history",900,410) + at("account_map",900,60) \
+  + at("ledger_export",900,180) + at("integration",900,650) + at("verification",900,800) \
+  + at("sign_in_try",900,980)
 c += [edge("e80","operator","account_map","maps"),
       edge("e82","user","session","is signed in by",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=1")
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=0")),
       edge("e83","user","account","signs in with",
            S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=0")),
-      edge("e81","user","record_history","changed")]
+      edge("e81","user","record_history","changed"),
+      edge("e84","user","sign_in_try","was tried")]
 c += [note("n8", "What someone can reach is user.access, apart from role_id, the "
                  "capacity they are paid in, which pay rules are written against. Full "
                  "is everything, and the only level that bills or pays; Field is their "
@@ -698,6 +708,13 @@ c += [note("n8", "What someone can reach is user.access, apart from role_id, the
                  "Full adds people on Team, and the first from the command line. A "
                  "password handed over is temporary_password until they choose their "
                  "own, and signing in with it reaches nothing else.\n\n"
+                 "sign_in_try is every try at a password, and the limits are worked out "
+                 "from it: five per network in fifteen minutes, ten wrong in a row per "
+                 "email before each waits longer, a browser that has signed in as them "
+                 "counting on its own. It is written for every email tried, whether or "
+                 "not anyone signs in with it, keeps an HMAC of the email rather than "
+                 "the email, and is kept 90 days. A hundred wrong in a row stop the "
+                 "password: password_stopped_at, until a new one is set.\n\n"
                  "A session is a row, not a stateless token: one server, one "
                  "database, and every page reads it anyway, so a stateless token would "
                  "save no round trip and cost revocation. The cookie is the token "
@@ -716,8 +733,8 @@ c += [note("n8", "What someone can reach is user.access, apart from role_id, the
                  "receipt is described rather than copied while its row holds it, and kept "
                  "whole once the history is the only place it is: replaced, or taken off "
                  "with its line. made_at is when a change was made on a phone, beside "
-                 "changed_at, when it arrived.", 40, 1030, 1300, 330)]
-files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 1400))
+                 "changed_at, when it arrived.", 40, 1230, 1300, 400)]
+files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 1680))
 
 # 09 -- pay, as it was paid
 c = at("person_payment",40,60) + at("person_payment_item",480,60) + at("user",40,330) \

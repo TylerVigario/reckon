@@ -2421,4 +2421,47 @@ SELECT must_pass($$
 $$, 'someone on Field made inactive');
 UPDATE "user" SET active = true WHERE id = 'a0a0a0a0-0000-4000-8000-0000000000a2';
 
+\echo '=== 51. a try at a password is recorded where it came from ==='
+
+SELECT must_pass($$
+  INSERT INTO sign_in_try (page, address, network, email_key, outcome)
+  VALUES ('sign_in', '2001:db8:1:2::1', '2001:db8:1:2::/64', 'k', 'wrong')
+$$, 'a try from an address in its network');
+
+SELECT must_fail($$
+  INSERT INTO sign_in_try (page, address, network, email_key)
+  VALUES ('sign_in', '2001:db8:1:3::1', '2001:db8:1:2::/64', 'k')
+$$, 'a try from an address outside the network it counts in');
+
+SELECT must_fail($$
+  INSERT INTO sign_in_try (page, address, network, email_key)
+  VALUES ('the_back_door', '192.0.2.1', '192.0.2.1/32', 'k')
+$$, 'a try at a page that tries no password');
+
+SELECT must_fail($$
+  INSERT INTO sign_in_try (page, address, network, email_key, outcome)
+  VALUES ('sign_in', '192.0.2.1', '192.0.2.1/32', 'k', 'maybe')
+$$, 'a try that came out some other way');
+
+SELECT must_pass($$
+  INSERT INTO sign_in_try (page, address, network, email_key)
+  VALUES ('password_change', '192.0.2.1', '192.0.2.1/32', 'k')
+$$, 'a try still being checked, with no outcome yet');
+
+-- The record outlives a person taken away, as a log does, naming nobody.
+DO $$
+DECLARE kept int;
+BEGIN
+  INSERT INTO "user" (id, name, email) VALUES
+    ('a1000000-0000-4000-8000-000000000051', 'Gone', 'gone@example.com');
+  INSERT INTO sign_in_try (page, address, network, email_key, user_id, outcome)
+  VALUES ('sign_in', '192.0.2.2', '192.0.2.2/32', 'gone', 'a1000000-0000-4000-8000-000000000051', 'right');
+  DELETE FROM "user" WHERE id = 'a1000000-0000-4000-8000-000000000051';
+  SELECT count(*) INTO kept FROM sign_in_try WHERE email_key = 'gone' AND user_id IS NULL;
+  IF kept <> 1 THEN
+    RAISE EXCEPTION 'GUARD MISSING: a person taken away took % of their tries with them', 1 - kept;
+  END IF;
+  RAISE NOTICE '  keeps     a try, naming nobody, once its person is taken away';
+END $$;
+
 \echo 'All guards hold.'

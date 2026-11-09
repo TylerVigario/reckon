@@ -17,8 +17,10 @@ import { sql } from 'drizzle-orm';
 import {
 	boolean,
 	check,
+	cidr,
 	foreignKey,
 	index,
+	inet,
 	pgTable,
 	smallint,
 	text,
@@ -107,6 +109,17 @@ export const user = pgTable(
 		 * page where they do (/new-password).
 		 */
 		temporaryPassword: boolean().default(false).notNull(),
+		/**
+		 * When their password was last set (0034): chosen, changed, handed over
+		 * or set at the command line. Tries before it count against none of
+		 * theirs (#lib/server/sign-in-limit). Null is before reckon kept it.
+		 */
+		passwordSetAt: tstz(),
+		/**
+		 * When their password stopped working, after a hundred wrong tries in a
+		 * row (0034), until a new one is set. Null is working.
+		 */
+		passwordStoppedAt: tstz(),
 		/**
 		 * The zone this person keeps their days in, as Postgres names it. Their
 		 * own timesheet, the day a new entry starts on, and every moment shown to
@@ -211,4 +224,61 @@ export const verification = pgTable(
 		updatedAt: updatedAt()
 	},
 	(t) => [index('verification_by_identifier').on(t.identifier)]
+);
+
+/** The page a password was tried at: signing in, or changing one's own. */
+export const TRY_PAGES = ['sign_in', 'password_change'] as const;
+/**
+ * How a try came out. Inactive is a right password for someone made inactive,
+ * answered and counted as a wrong one; stopped, one not checked, the password
+ * having stopped. A try still being checked, or never finished, has none.
+ */
+export const TRY_OUTCOMES = ['right', 'wrong', 'inactive', 'stopped'] as const;
+
+/**
+ * Every try at a password (0034), and what the limits on them are worked out
+ * from (#lib/server/sign-in-limit): per address, per email, and a hundred wrong
+ * in a row. A row is written for every email tried, whether or not anyone signs
+ * in with it, and kept 90 days.
+ *
+ * The email as typed is never kept, since a password is sometimes typed in its
+ * place: email_key is an HMAC of it, which counts the same, and user_id is whose
+ * it was, if anyone's.
+ */
+export const signInTry = pgTable(
+	'sign_in_try',
+	{
+		id: id(),
+		createdAt: createdAt(),
+		page: text({ enum: TRY_PAGES }).notNull(),
+		/** The client's address, as adapter-node resolved it. */
+		address: inet().notNull(),
+		/** The network the per-address limit counts it in: an IPv4 address, or an IPv6 /64. */
+		network: cidr().notNull(),
+		/** An HMAC of the email as typed, under a key drawn from the session secret. */
+		emailKey: text().notNull(),
+		userId: uuid(),
+		/**
+		 * The browser, when it has signed in as them: its entry in their
+		 * signed-in-here cookie at the sign-in page, its session when changing a
+		 * password. Its tries are a count of its own. Null is a stranger.
+		 */
+		browser: text(),
+		outcome: text({ enum: TRY_OUTCOMES })
+	},
+	(t) => [
+		index('sign_in_try_by_network').on(t.network, t.createdAt),
+		index('sign_in_try_by_email').on(t.emailKey, t.createdAt),
+		index('sign_in_try_by_user').on(t.userId, t.createdAt),
+		index('sign_in_try_by_time').on(t.createdAt),
+		oneOf('sign_in_try_page_check', t.page, TRY_PAGES),
+		oneOf('sign_in_try_outcome_check', t.outcome, TRY_OUTCOMES),
+		check('sign_in_try_address_in_network', sql`${t.address} <<= ${t.network}`),
+		// The record outlives a person taken away, as a log does, until it ages out.
+		foreignKey({
+			name: 'sign_in_try_user_id_fkey',
+			columns: [t.userId],
+			foreignColumns: [user.id]
+		}).onDelete('set null')
+	]
 );

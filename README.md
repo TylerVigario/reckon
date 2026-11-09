@@ -148,10 +148,19 @@ The cookie is the session's token signed with `BETTER_AUTH_SECRET`, so a copy
 of the table lets nobody in without the secret as well. Passwords are argon2id
 at the OWASP minimum rather than Better Auth's default scrypt, and the hash
 records its own parameters, so raising them later re-hashes on the next sign-in
-rather than locking anyone out. Five wrong passwords from one address in
-fifteen minutes and that address waits, however many it sends at once, and an
-IPv6 address counts as its /64; the limit is per address and never per account,
-so it says nothing about which addresses have one.
+rather than locking anyone out.
+
+Every try at a password is recorded (`sign_in_try`), and the limits are worked
+out from the record, so a restart forgives nothing. Five tries from one address
+in fifteen minutes and that address waits, however many it sends at once, an
+IPv6 address counting as its /64. Ten wrong in a row at one email, from
+anywhere, and each try at it waits twice as long as the last, from thirty
+seconds to an hour; a browser that has signed in as that person keeps a count of
+its own, so a stranger's tries never make it wait. A hundred wrong in a row stop
+the password until a new one is set, on Team or with `scripts/user.mjs`. Every
+email tried is recorded alike, whether or not anyone signs in with it, as an
+HMAC rather than the email itself, since a password is sometimes typed in its
+place; rows are deleted after 90 days.
 
 There is no sign-up. Someone with Full adds people on Team, and reckon sends no
 email, so whoever adds them is shown a temporary password once, four words, to

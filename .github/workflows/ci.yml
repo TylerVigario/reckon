@@ -277,11 +277,13 @@ jobs:
         # see the business as seeded.
         run: node tests/password-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
-      - name: Tries at a password are limited per address, however many are sent at once
+      - name: Every try at a password is recorded, and limited per address and per email from the record, however many are sent at once
         # On a second server, told the visitor's address as a proxy would tell
         # it, so the check tries from addresses of its own. On the job's server
         # every request is from 127.0.0.1, and the limit would make every check
-        # after it wait.
+        # after it wait. The record is the database's, so the job's server reads
+        # it too: the check never tries from 127.0.0.1, and its last try at
+        # Avery's password is a right one, so nothing after it waits.
         run: |
           PORT=5179 ADDRESS_HEADER=x-real-ip node build &
           limited=$!

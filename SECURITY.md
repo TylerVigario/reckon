@@ -44,12 +44,25 @@ oversights:
 - **Passwords are argon2id** at the OWASP minimum, and the hash records its own
   parameters, so raising them re-hashes on the next sign-in.
 - **A missing account costs the same time as a wrong password**, and both return
-  the same message. Five failures from one address in fifteen minutes make that
-  address wait. Each try is counted as it is made, so tries sent at once are
-  held to five as well, and an IPv6 address counts as its /64, which a client
-  may pick any address in. The limit is per address and never per account, so it
-  says nothing about which addresses have one — and it is held in memory, so a
-  restart forgives everyone.
+  the same message.
+- **Every try at a password is recorded, and limited from the record**
+  (`sign_in_try`), so a restart forgives nothing. Five tries from one address in
+  fifteen minutes make that address wait, and an IPv6 address counts as its /64,
+  which a client may pick any address in. Ten wrong in a row at one email, from
+  any number of addresses, and each try at it waits twice as long as the last,
+  from thirty seconds to an hour; a browser that has signed in as that person
+  keeps a count of its own, so a stranger's tries never make it wait. A try is
+  recorded before its password is checked, under a lock on its address and its
+  email, so tries sent at once are held to both limits. A request a limit turns
+  away writes nothing.
+- **A hundred wrong passwords in a row stop one**, saved on the person: it is
+  not checked again, and answers as a wrong one, until someone with Full sets a
+  new one on Team or it is set with `scripts/user.mjs`.
+- **The record says nothing about which emails sign in.** Every email tried
+  writes the same rows and runs the same queries, whether or not anyone signs
+  in with it, and a password that has stopped is answered after the same work a
+  wrong one takes. What was typed as the email is kept only as an HMAC, since a
+  password is sometimes typed in its place. Rows are deleted after 90 days.
 - **Whatever has a body to run carries a content security policy.** A page gets
   the one SvelteKit writes, with its own inline code hashed. What an endpoint
   returns — the logo, the operator's stylesheet, the manifest, the API — gets

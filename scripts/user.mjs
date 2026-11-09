@@ -10,7 +10,9 @@
  * liability rather than a feature. Someone with Full adds people on Team, and
  * resets a password there, handing over one they replace with their own. This
  * is for the first person, before anyone can sign in to do that, and for a
- * password when nobody who could is able to.
+ * password when nobody who could is able to. `list` says whose password has
+ * stopped after a hundred wrong tries in a row (src/lib/server/sign-in-limit.ts),
+ * and a new one, set here or on Team, works again.
  *
  * `add` makes the person and asks for their password straight away; `password`
  * sets a new one, and it is theirs rather than temporary. A password is
@@ -230,8 +232,15 @@ async function setPassword(user) {
 				 values ($1::uuid, $1::text, 'credential', $2)`,
 				[user.id, password]
 			);
-		// Typed here, it is not one handed over to be replaced.
-		await client.query('update "user" set temporary_password = false where id = $1', [user.id]);
+		// Typed here, it is not one handed over to be replaced; and it is new, so
+		// none of the old one's tries count against it, and it works
+		// (src/lib/server/sign-in-limit.ts).
+		await client.query(
+			`update "user" set temporary_password = false, password_set_at = now(),
+			        password_stopped_at = null
+			  where id = $1`,
+			[user.id]
+		);
 		const gone = await client.query('delete from session where user_id = $1', [user.id]);
 		await client.query('commit');
 		return gone.rowCount ?? 0;
@@ -246,6 +255,7 @@ async function setPassword(user) {
 if (command === 'list') {
 	const people = await q(`
 		select u.email, u.name, r.name as role, u.access, u.active, u.temporary_password,
+		       u.password_stopped_at is not null as stopped,
 		       exists (select 1 from account a
 		                where a.user_id = u.id and a.provider_id = 'credential'
 		                  and a.password is not null) as can_sign_in,
@@ -264,9 +274,11 @@ if (command === 'list') {
 				p.access === 'full' ? 'Full' : 'Field',
 				p.active ? 'active' : 'inactive',
 				p.can_sign_in
-					? p.temporary_password
-						? 'temporary password'
-						: 'has a password'
+					? p.stopped
+						? 'PASSWORD STOPPED, a hundred wrong in a row'
+						: p.temporary_password
+							? 'temporary password'
+							: 'has a password'
 					: 'NO PASSWORD',
 				`${p.sessions} session(s)`
 			].join(' · ')
