@@ -96,6 +96,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 					weekStart: found.user.weekStart ?? null
 				}
 			: null;
+	event.locals.sessionId = event.locals.user ? found!.session.id : null;
 	if (found && found.user.active === false)
 		await db.delete(schema.session).where(eq(schema.session.userId, found.user.id));
 

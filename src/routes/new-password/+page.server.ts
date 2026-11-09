@@ -9,6 +9,7 @@ import {
 	getAuth,
 	hashPassword
 } from '#lib/server/auth.ts';
+import { passwordSet } from '#lib/server/sign-in-limit.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -67,7 +68,7 @@ export const actions: Actions = {
 			await tx.update(schema.account).set({ password: hash }).where(credential);
 			await tx
 				.update(schema.user)
-				.set({ temporaryPassword: false })
+				.set({ temporaryPassword: false, ...passwordSet() })
 				.where(eq(schema.user.id, me.id));
 			await tx
 				.delete(schema.session)

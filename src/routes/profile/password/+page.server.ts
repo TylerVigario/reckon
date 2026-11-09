@@ -1,13 +1,15 @@
 import { fail } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
+import { eq } from 'drizzle-orm';
 import { count } from '#lib/format.ts';
+import { db, schema } from '#lib/server/db/index.ts';
 import {
 	MAX_PASSWORD_LENGTH,
 	MIN_PASSWORD_LENGTH,
 	authHeaders,
 	getAuth
 } from '#lib/server/auth.ts';
-import { forgive, takeTry } from '#lib/server/sign-in-limit.ts';
+import { passwordSet, settleTry, takeTry } from '#lib/server/sign-in-limit.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -16,8 +18,10 @@ import type { Actions, PageServerLoad } from './$types';
  * browser is given a new session and every other is signed out (7.4.3). A
  * forgotten one is reset on Team, by someone else with Full.
  *
- * A try at the current password counts against the address as a sign-in does
- * (#lib/server/sign-in-limit), or that screen could guess at it without end.
+ * A try at the current password is recorded and counted as a sign-in is
+ * (#lib/server/sign-in-limit) -- against the address, against this browser's
+ * own count, and toward the hundred in a row that stop it -- or that screen
+ * could guess at it without end.
  */
 // eslint-disable-next-line @typescript-eslint/require-await -- a load is async by contract
 export const load: PageServerLoad = async ({ locals }) => ({
@@ -48,16 +52,32 @@ export const actions: Actions = {
 		if (confirm !== password)
 			return fail(400, { field: 'confirm', message: 'The passwords don’t match.' });
 
-		const address = event.getClientAddress();
-		const wait = takeTry(address);
-		if (wait)
+		const me = event.locals.user!;
+		// This browser is signed in as them, so its tries are a count of its own.
+		const tried = await takeTry({
+			page: 'password_change',
+			address: event.getClientAddress(),
+			email: me.email,
+			browser: event.locals.sessionId
+		});
+		if ('refused' in tried)
 			return fail(429, {
 				field: '',
-				message: `Too many tries from here. Try again in ${count(Math.ceil(wait / 60), 'minute')}.`
+				message: `Too many tries ${tried.refused.by === 'address' ? 'from here' : 'at your password'}. Try again in ${count(Math.ceil(tried.refused.wait / 60), 'minute')}.`
 			});
+		if (tried.stopped) {
+			await settleTry(tried, 'stopped');
+			return fail(400, {
+				field: '',
+				message:
+					'Your password has stopped working, after a hundred wrong tries in a row. Someone else with Full can reset it on Team.'
+			});
+		}
 
-		const wrong = () =>
-			fail(400, { field: 'current', message: 'That isn’t your current password.' });
+		const wrong = async () => {
+			await settleTry(tried, 'wrong');
+			return fail(400, { field: 'current', message: 'That isn’t your current password.' });
+		};
 		// Longer than any password can be, so not theirs.
 		if (current.length > MAX_PASSWORD_LENGTH) return wrong();
 		try {
@@ -69,7 +89,8 @@ export const actions: Actions = {
 			if (e instanceof APIError && e.body?.code === 'INVALID_PASSWORD') return wrong();
 			throw e;
 		}
-		forgive(address);
+		await settleTry(tried, 'right');
+		await db.update(schema.user).set(passwordSet()).where(eq(schema.user.id, me.id));
 		return { updated: true };
 	}
 };

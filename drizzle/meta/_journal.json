@@ -239,6 +239,13 @@
       "when": 1793886936434,
       "tag": "0033_a_handed_over_password_is_temporary",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1794195481384,
+      "tag": "0034_every_try_at_a_password_is_recorded",
+      "breakpoints": true
     }
   ]
 }

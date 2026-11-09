@@ -6,6 +6,8 @@ declare global {
 		interface Locals {
 			/** Set by hooks.server.ts. Null only on a route in OPEN. */
 			user: SessionUser | null;
+			/** The session this browser is signed in with, by its id. Set with `user`. */
+			sessionId: string | null;
 			/**
 			 * The person's time zone: their own, or the business's until they set
 			 * it. Set by hooks.server.ts on every request (#lib/server/calendar).

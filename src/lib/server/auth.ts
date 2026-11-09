@@ -19,8 +19,8 @@ import type { Access } from '#lib/access.ts';
  * (#lib/server/handover), and the first person is added from the command line
  * (scripts/user.mjs). Better Auth's HTTP routes are not mounted -- sign-in and
  * sign-out are form actions calling it directly -- so its own rate limiter
- * never runs, and tries at a password are limited per address in
- * ./sign-in-limit.
+ * never runs: every try at a password is recorded, and limited per address and
+ * per email, in ./sign-in-limit.
  *
  * BETTER_AUTH_SECRET signs the session cookie, given as it is or as the file
  * BETTER_AUTH_SECRET_FILE names (#lib/server/secret-file). Without one the
@@ -51,13 +51,22 @@ export const MIN_PASSWORD_LENGTH = 12;
 export const MAX_PASSWORD_LENGTH = 128;
 const SESSION_DAYS = 30;
 
-function createAuth() {
+/**
+ * The secret every session is signed with, and the browsers that have signed in
+ * (#lib/server/signed-in-here). Undefined only while building.
+ */
+export function authSecret(): string | undefined {
 	const secret = eitherOf('BETTER_AUTH_SECRET', BETTER_AUTH_SECRET, BETTER_AUTH_SECRET_FILE);
 	if (secret === undefined && !building)
 		throw new Error(
 			'BETTER_AUTH_SECRET must be set, or BETTER_AUTH_SECRET_FILE: it signs every session. ' +
 				'`openssl rand -hex 32` makes one; in development, .env holds it (.env.example).'
 		);
+	return secret;
+}
+
+function createAuth() {
+	const secret = authSecret();
 	return betterAuth({
 		secret,
 		database: drizzleAdapter(db, { provider: 'pg', schema }),
