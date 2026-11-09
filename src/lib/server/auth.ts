@@ -14,13 +14,12 @@ import type { Access } from '#lib/access.ts';
 /**
  * Sign-in, by Better Auth over the app's own database.
  *
- * There is no sign-up: someone with Full adds people on Team, each with a
- * password handed to them that lasts until they choose their own
- * (#lib/server/handover), and the first person is added from the command line
- * (scripts/user.mjs). Better Auth's HTTP routes are not mounted -- sign-in and
- * sign-out are form actions calling it directly -- so its own rate limiter
- * never runs: every try at a password is recorded, and limited per address and
- * per email, in ./sign-in-limit.
+ * There is no sign-up: someone with Full adds people on Team, each emailed a
+ * link to choose their own password (#lib/server/links), and the first person
+ * is added from the command line (scripts/user.mjs). Better Auth's HTTP routes
+ * are not mounted -- sign-in and sign-out are form actions calling it
+ * directly -- so its own rate limiter never runs: every try at a password is
+ * recorded, and limited per address and per email, in ./sign-in-limit.
  *
  * BETTER_AUTH_SECRET signs the session cookie, given as it is or as the file
  * BETTER_AUTH_SECRET_FILE names (#lib/server/secret-file). Without one the
@@ -146,8 +145,9 @@ export type SessionUser = {
 	/** What they can reach (#lib/access). */
 	access: Access;
 	/**
-	 * Signed in with a password handed to them (#lib/server/handover): until
-	 * they choose their own, they reach nothing but the page where they do.
+	 * Signed in with a password handed to them, before invitations were
+	 * emailed: until they choose their own, they reach nothing but the page
+	 * where they do.
 	 */
 	temporaryPassword: boolean;
 	/** Their own zone, or null until their browser has set it. */

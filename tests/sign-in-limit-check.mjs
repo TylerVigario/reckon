@@ -3,7 +3,7 @@
  * Proves the sign-in limit holds, worked out from the record of every try at a
  * password (#lib/server/sign-in-limit).
  *
- *   node tests/sign-in-limit-check.mjs <base-url> <full-email> <full-password>
+ *   node tests/sign-in-limit-check.mjs <base-url> <full-email> <full-password> [relay-read-back-url]
  *
  * Per address: five tries at a password in fifteen minutes, however many are
  * sent at once, at signing in and at changing a password alike, with an IPv6
@@ -18,7 +18,8 @@
  *
  * At a hundred wrong in a row the right password no longer signs in, from a
  * browser that has signed in as them too, nor changes theirs, and stays so when
- * the tries that stopped it are gone; a reset on Team starts it again.
+ * the tries that stopped it are gone; a reset on Team, and a new password
+ * chosen with its emailed link, starts it again.
  *
  * The record: a row for every try, at an email anyone signs in with or not, and
  * none for a request a limit turns away; what was typed as the email kept
@@ -32,15 +33,19 @@
  * Over HTTP, the way a browser does it. Needs the database the server uses, to
  * read the record, to write the tries that hours of waiting would, and to take
  * away the person it adds: it leaves nothing it made but the record's rows.
+ * The person it adds chooses their password with the link they are emailed,
+ * read back from the relay stand-in (tests/smtp-stand-in.mjs), at
+ * http://127.0.0.1:2526 unless said.
  */
 // First, so .env is read before anything reads what it sets.
 import { database } from '../scripts/env.mjs';
 import pg from 'pg';
+import { arrives, linkAction, linkIn } from './relay.mjs';
 
-const [, , base, fullEmail, fullPassword] = process.argv;
+const [, , base, fullEmail, fullPassword, relay = 'http://127.0.0.1:2526'] = process.argv;
 if (!base || !fullEmail || !fullPassword) {
 	console.error(
-		'usage: node tests/sign-in-limit-check.mjs <base-url> <full-email> <full-password>'
+		'usage: node tests/sign-in-limit-check.mjs <base-url> <full-email> <full-password> [relay-read-back-url]'
 	);
 	process.exit(2);
 }
@@ -256,6 +261,17 @@ try {
 	const full = sessionOf(await signIn(anywhere(), fullEmail, fullPassword));
 	if (!full) throw new Error(`could not sign in as ${fullEmail}`);
 	const email = `limit-${crypto.randomUUID().slice(0, 8)}@kestrel.example`;
+	/** Chooses `password` with the newest emailed link saying `says`: whether it took. */
+	const choose = async (/** @type {string[]} */ says, /** @type {string} */ password) => {
+		const code = linkIn(await arrives(relay, email, says))?.code ?? '';
+		const chose = await linkAction(
+			base,
+			'choose',
+			{ code, password, confirm: password },
+			{ 'x-real-ip': anywhere(), ...PROXY }
+		);
+		return chose.type === 'success';
+	};
 	const added = await asSignedIn(full, '/api/people', 'POST', {
 		fields: { name: 'Rowan Ellery', email, role_id: '', access: 'field' }
 	});
@@ -263,16 +279,17 @@ try {
 	id = made?.id ?? null;
 	if (!id) throw new Error(`nobody was added (${added.status}), so nothing after it can be asked`);
 
-	// Their own browser: signed in with the password handed over, and their own chosen.
-	const handedIn = await signIn(anywhere(), email, made.password);
-	let theirs = signedInHereOf(handedIn);
-	let session = sessionOf(handedIn);
+	// Their own browser: their password chosen with the link they were emailed,
+	// and signed in with it.
 	const own = 'a-password-of-their-own';
-	const chosen = await post('/new-password', anywhere(), { password: own, confirm: own }, session);
+	const chosen = await choose(['choose your password'], own);
+	const signedIn = await signIn(anywhere(), email, own);
+	let theirs = signedInHereOf(signedIn);
+	let session = sessionOf(signedIn);
 	check(
-		!!theirs && !!session && chosen.status === 303,
+		chosen && !!theirs && !!session,
 		'someone signs in, and their browser is told it has',
-		`${handedIn.status}, ${chosen.status}`
+		`${chosen}, ${signedIn.status}`
 	);
 
 	{
@@ -397,15 +414,17 @@ try {
 		);
 
 		const reset = await asSignedIn(full, `/api/people/${id}/password`, 'POST', undefined);
-		const handed = reset.status === 200 ? (await reset.json()).password : '';
-		const again = await signIn(anywhere(), email, handed);
+		const fresh = 'a-password-after-the-reset';
+		const rechosen = reset.status === 200 && (await choose(['your password was reset'], fresh));
+		const again = await signIn(anywhere(), email, fresh);
 		check(
-			reset.status === 200 && !(await stopped()) && again.status === 303,
-			'a reset on Team starts it again, and the password handed over signs in',
-			`${reset.status}, stopped: ${await stopped()}, ${again.status}`
+			rechosen && !(await stopped()) && again.status === 303,
+			'a reset on Team, and a password chosen with its link, starts it again',
+			`${reset.status}, ${rechosen}, stopped: ${await stopped()}, ${again.status}`
 		);
 	}
 } finally {
+	if (id) await db.query('delete from email_message where user_id = $1', [id]);
 	if (id) await db.query('delete from "user" where id = $1', [id]);
 	await db.end();
 }

@@ -1,0 +1,211 @@
+import { createHash, randomBytes } from 'node:crypto';
+import { and, count, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { SITE_URL } from '$app/env/private';
+import { db, type Tx } from './db/index.ts';
+import { account, emailLink, linkTry, user, type LINK_PURPOSES } from './db/schema/index.ts';
+import type { Waiting } from '#lib/people-fields.ts';
+import { mailer } from './email.ts';
+import { placeOf } from './sign-in-limit.ts';
+
+/**
+ * LINKS reckon emails (email_link): an invitation to choose a first password,
+ * a reset's link to choose a new one, and a link confirming the address one
+ * signs in with. Each carries a code, and is good once, for 24 hours -- the
+ * most NIST SP 800-63A-4 §3.8 and SP 800-63B-4 §4.2.1.2 allow a code sent by
+ * email.
+ *
+ * THE CODE is 32 random bytes, written in base64url: 256 bits, past the 112
+ * NIST asks of any secret (SP 800-63B-4 §3.2.12). Only its SHA-256 is kept, so
+ * nobody who reads the table can use what is in it. It is in the email and
+ * nowhere else, and never in the part of the link a server sees: a link is
+ * SITE_URL/link#<code>, and what follows the # stays in the browser (ASVS 5.0
+ * 14.2.1), out of every server's log and every Referer header, and out of
+ * reach of a mail scanner that opens links to see where they go. The page
+ * reads it there and posts it.
+ *
+ * THE LINK begins with SITE_URL, never the address a request came in on, which
+ * a request can say anything about (OWASP's Forgot Password Cheat Sheet).
+ *
+ * A link works only while the address it went to is still the one its person
+ * signs in with, and while they are active. Using it proves they read mail
+ * there, and marks the address confirmed. A code that is not one to use --
+ * unknown, used or lapsed -- is answered alike, so the page says nothing about
+ * which codes exist, and counts against the network it came from.
+ */
+
+export type Purpose = (typeof LINK_PURPOSES)[number];
+
+/** How long a link works. */
+export const LINK_HOURS = 24;
+
+/** A code as a link carries it: 32 bytes of base64url, unpadded. */
+export const CODE = /^[A-Za-z0-9_-]{43}$/;
+
+/** What is kept of a code. */
+export const hashOf = (code: string) => createHash('sha256').update(code).digest();
+
+/** What reckon is missing to send a link, or null when it has all it needs. */
+export function cannotSend(): 'SMTP_HOST' | 'SITE_URL' | null {
+	if (!mailer()) return 'SMTP_HOST';
+	if (!SITE_URL) return 'SITE_URL';
+	return null;
+}
+
+/** Said wherever a link can't be sent for want of a setting. */
+export const unsentBecause = (missing: 'SMTP_HOST' | 'SITE_URL') =>
+	missing === 'SMTP_HOST'
+		? 'Email isn’t set up: SMTP_HOST is unset, so reckon has no relay to send it through.'
+		: 'Email isn’t set up: SITE_URL is unset, so reckon has no address to build the link from.';
+
+/** The purposes a link that sets a password has; one of them waits at a time. */
+const SETS_PASSWORD = ['invite', 'reset'] as const;
+
+/**
+ * A new link for `userId`, to the address they sign in with now: any other of
+ * the same kind still waiting stops working. The link, and until when it
+ * works. Called in the transaction that emails it, so neither is kept without
+ * the other.
+ */
+export async function issue(
+	tx: Tx,
+	userId: string,
+	purpose: Purpose,
+	sentBy: string
+): Promise<{ link: string; until: Date; to: string }> {
+	if (!SITE_URL) throw new Error('A link is issued only where SITE_URL is set.');
+	const [person] = await tx.select({ email: user.email }).from(user).where(eq(user.id, userId));
+	if (!person) throw new Error(`Nobody has the id ${userId}.`);
+	const code = randomBytes(32).toString('base64url');
+	const alike = purpose === 'confirm' ? (['confirm'] as const) : SETS_PASSWORD;
+	await tx
+		.delete(emailLink)
+		.where(
+			and(
+				eq(emailLink.userId, userId),
+				isNull(emailLink.usedAt),
+				inArray(emailLink.purpose, [...alike])
+			)
+		);
+	// The record of links used is kept 90 days.
+	await tx.delete(emailLink).where(lt(emailLink.usedAt, sql`now() - interval '90 days'`));
+	const [made] = await tx
+		.insert(emailLink)
+		.values({
+			userId,
+			purpose,
+			codeHash: hashOf(code),
+			sentTo: person.email,
+			expiresAt: sql`now() + make_interval(hours => ${LINK_HOURS})`,
+			sentBy
+		})
+		.returning({ until: emailLink.expiresAt });
+	return { link: `${SITE_URL}/link#${code}`, until: made.until, to: person.email };
+}
+
+/** A link that can be used now, and its person, as the page speaks of them. */
+export type Usable = {
+	id: string;
+	purpose: Purpose;
+	userId: string;
+	name: string;
+	email: string;
+};
+
+/**
+ * The link `code` names, if it can be used now, held for the rest of the
+ * transaction so it is used once however many tries arrive at once. Null for
+ * any code that is not one to use.
+ */
+export async function usable(tx: Tx, code: string): Promise<Usable | null> {
+	if (!CODE.test(code)) return null;
+	const [found] = await tx
+		.select({
+			id: emailLink.id,
+			purpose: emailLink.purpose,
+			userId: emailLink.userId,
+			name: user.name,
+			email: user.email
+		})
+		.from(emailLink)
+		.innerJoin(user, eq(user.id, emailLink.userId))
+		.where(
+			and(
+				eq(emailLink.codeHash, hashOf(code)),
+				isNull(emailLink.usedAt),
+				gt(emailLink.expiresAt, sql`now()`),
+				eq(user.active, true),
+				eq(user.email, emailLink.sentTo)
+			)
+		)
+		.for('update', { of: [emailLink, user] });
+	return found ?? null;
+}
+
+/** Marks a link used, and the address it went to proven theirs. */
+export async function used(tx: Tx, link: Usable): Promise<void> {
+	await tx
+		.update(emailLink)
+		.set({ usedAt: sql`now()` })
+		.where(eq(emailLink.id, link.id));
+	await tx.update(user).set({ emailVerified: true }).where(eq(user.id, link.userId));
+}
+
+/**
+ * Ends any link to choose a password that `userId` has waiting, once they have
+ * chosen one some other way: a link still working after a change would undo
+ * it (OWASP's Forgot Password Cheat Sheet).
+ */
+export async function endPasswordLinks(tx: Tx, userId: string): Promise<void> {
+	await tx
+		.delete(emailLink)
+		.where(
+			and(
+				eq(emailLink.userId, userId),
+				isNull(emailLink.usedAt),
+				inArray(emailLink.purpose, [...SETS_PASSWORD])
+			)
+		);
+}
+
+/** Codes a network may try that are not one to use, in a window, before it waits. */
+export const MISSES_ALLOWED = 10;
+const WINDOW = sql`interval '15 minutes'`;
+
+/** Whether `address`'s network has missed too often lately to try again yet. */
+export async function turnedAway(address: string): Promise<boolean> {
+	const { network } = placeOf(address);
+	const [{ n }] = await db
+		.select({ n: count() })
+		.from(linkTry)
+		.where(and(eq(linkTry.network, network), gt(linkTry.createdAt, sql`now() - ${WINDOW}`)));
+	return n >= MISSES_ALLOWED;
+}
+
+/** Counts a code that was not one to use against `address`'s network. */
+export async function missed(address: string): Promise<void> {
+	await db.delete(linkTry).where(lt(linkTry.createdAt, sql`now() - interval '1 day'`));
+	await db.insert(linkTry).values(placeOf(address));
+}
+
+/**
+ * What Team reads of each person's signing in, as columns of a select from
+ * user: whether they have a password, and the newest link to choose one they
+ * have waiting (#lib/people-fields Waiting). The person is named as "user"
+ * outright: Drizzle leaves a column unqualified in a query of one table, and
+ * inside these it would be read as the inner table's own.
+ */
+export const signingIn = {
+	has_password: sql<boolean>`exists (
+		select 1 from ${account}
+		 where ${account.userId} = "user".id and ${account.providerId} = 'credential'
+		   and ${account.password} is not null)`,
+	waiting: sql<Waiting | null>`(
+		select json_build_object(
+			'purpose', l.purpose,
+			'sent_at', l.created_at,
+			'until', l.expires_at,
+			'lapsed', l.expires_at <= now() or l.sent_to <> "user".email)
+		  from ${emailLink} l
+		 where l.user_id = "user".id and l.used_at is null and l.purpose in ('invite', 'reset')
+		 order by l.created_at desc limit 1)`
+};

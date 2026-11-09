@@ -14,10 +14,11 @@ describe('who reaches a route', () => {
 		for (const r of routes) expect(reaches('field', REACH[r])).toBe(REACH[r] !== 'full');
 	});
 
-	it('opens without signing in only the sign-in page, what it uses, and the client link', () => {
+	it('opens without signing in only the sign-in page, what it uses, the client link and an emailed one', () => {
 		expect(needing('open')).toEqual(
 			[
 				'/login',
+				'/link',
 				'/manifest.webmanifest',
 				'/operator/logo',
 				'/operator/theme.css',

@@ -25,9 +25,10 @@ import {
 	smallint,
 	text,
 	unique,
+	uniqueIndex,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { createdAt, id, lowercaseEmail, oneOf, tstz, updatedAt } from './columns.ts';
+import { bytea, createdAt, id, lowercaseEmail, oneOf, tstz, updatedAt } from './columns.ts';
 import { ACCESS } from '../../../access.ts';
 
 /**
@@ -77,6 +78,11 @@ export const user = pgTable(
 		id: id(),
 		name: text().notNull(),
 		email: text().notNull(),
+		/**
+		 * Whether that address is proven theirs (Better Auth's name for it): true
+		 * once they have used a link reckon emailed there (email_link), and false
+		 * again whenever it changes.
+		 */
 		emailVerified: boolean().default(false).notNull(),
 		image: text(),
 		/**
@@ -110,9 +116,10 @@ export const user = pgTable(
 		 */
 		temporaryPassword: boolean().default(false).notNull(),
 		/**
-		 * When their password was last set (0034): chosen, changed, handed over
-		 * or set at the command line. Tries before it count against none of
-		 * theirs (#lib/server/sign-in-limit). Null is before reckon kept it.
+		 * When their password was last set (0034): chosen with an emailed link,
+		 * changed, handed over before invitations, or set at the command line.
+		 * Tries before it count against none of theirs (#lib/server/sign-in-limit).
+		 * Null is before reckon kept it.
 		 */
 		passwordSetAt: tstz(),
 		/**
@@ -224,6 +231,99 @@ export const verification = pgTable(
 		updatedAt: updatedAt()
 	},
 	(t) => [index('verification_by_identifier').on(t.identifier)]
+);
+
+/**
+ * What an emailed link is for: to choose a first password, on being added on
+ * Team; to choose a new one, after a reset there; or to confirm the address
+ * one signs in with, asked for on Your profile.
+ */
+export const LINK_PURPOSES = ['invite', 'reset', 'confirm'] as const;
+
+/**
+ * A LINK reckon emailed someone (#lib/server/links), good once, for 24 hours
+ * at most: NIST SP 800-63A-4 §3.8 allows a code confirming an email address no
+ * longer, and SP 800-63B-4 §4.2.1.2 a recovery code sent by email none. Using
+ * one also proves the person reads mail at the address it went to.
+ *
+ * The code itself is never kept: code_hash is its SHA-256, and the code is 256
+ * random bits, so the hash cannot be worked back to it. It works only while
+ * sent_to is still the address its person signs in with, and they are active.
+ *
+ * A new link for a password ends any other not yet used, as does a new
+ * confirmation: one of each can be waiting at a time. A link used is kept 90
+ * days, the record of a password chosen or an address confirmed.
+ */
+export const emailLink = pgTable(
+	'email_link',
+	{
+		id: id(),
+		createdAt: createdAt(),
+		userId: uuid().notNull(),
+		purpose: text({ enum: LINK_PURPOSES }).notNull(),
+		/** The SHA-256 of the code. Never the code. */
+		codeHash: bytea().notNull(),
+		/** The address it went to, which using it proves. */
+		sentTo: text().notNull(),
+		expiresAt: tstz().notNull(),
+		/** When it was used. Null is not yet: it cannot be used twice. */
+		usedAt: tstz(),
+		/** Who had it sent: someone with Full, or the person themselves. */
+		sentBy: uuid()
+	},
+	(t) => [
+		unique('email_link_code_hash_key').on(t.codeHash),
+		check('email_link_code_hash_is_a_sha256', sql`octet_length(${t.codeHash}) = 32`),
+		oneOf('email_link_purpose_check', t.purpose, LINK_PURPOSES),
+		lowercaseEmail('email_link_sent_to_lowercase', t.sentTo),
+		check(
+			'email_link_lasts_a_day_at_most',
+			sql`${t.expiresAt} > ${t.createdAt} and ${t.expiresAt} <= ${t.createdAt} + interval '24 hours'`
+		),
+		check(
+			'email_link_used_while_it_worked',
+			sql`${t.usedAt} is null or ${t.usedAt} between ${t.createdAt} and ${t.expiresAt}`
+		),
+		uniqueIndex('email_link_one_password_link_waiting')
+			.on(t.userId)
+			.where(sql`${t.usedAt} is null and ${t.purpose} in ('invite', 'reset')`),
+		uniqueIndex('email_link_one_confirmation_waiting')
+			.on(t.userId)
+			.where(sql`${t.usedAt} is null and ${t.purpose} = 'confirm'`),
+		index('email_link_by_user').on(t.userId, t.createdAt),
+		foreignKey({
+			name: 'email_link_user_id_fkey',
+			columns: [t.userId],
+			foreignColumns: [user.id]
+		}).onDelete('cascade'),
+		foreignKey({
+			name: 'email_link_sent_by_fkey',
+			columns: [t.sentBy],
+			foreignColumns: [user.id]
+		}).onDelete('set null')
+	]
+);
+
+/**
+ * Every code tried at a link that was not one to use -- unknown, used, lapsed
+ * -- by the network it came from (#lib/server/links), so a network that keeps
+ * trying is turned away: NIST SP 800-63B-4 §4.2.1.2 holds an emailed code to
+ * the throttling of §3.2.2. A code is 256 random bits, which no number of
+ * tries finds; the limit is the standard's, and costs a person nothing. Kept a
+ * day.
+ */
+export const linkTry = pgTable(
+	'link_try',
+	{
+		id: id(),
+		createdAt: createdAt(),
+		address: inet().notNull(),
+		network: cidr().notNull()
+	},
+	(t) => [
+		index('link_try_by_network').on(t.network, t.createdAt),
+		check('link_try_address_in_network', sql`${t.address} <<= ${t.network}`)
+	]
 );
 
 /** The page a password was tried at: signing in, or changing one's own. */

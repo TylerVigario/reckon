@@ -46,9 +46,11 @@ export type Reach = 'open' | Access;
  * Shared with the screens, so a link is offered only where it opens.
  */
 export const REACH = {
-	// What the sign-in page needs, and the client's link to a sent invoice --
-	// one page, opened by a token nobody can guess, showing that invoice alone.
+	// What the sign-in page needs, the client's link to a sent invoice -- one
+	// page, opened by a token nobody can guess, showing that invoice alone --
+	// and where a link reckon emailed opens, by a code nobody can guess.
 	'/login': 'open',
+	'/link': 'open',
 	'/manifest.webmanifest': 'open',
 	'/operator/logo': 'open',
 	'/operator/theme.css': 'open',
@@ -173,6 +175,7 @@ export const REACH = {
 	'/api/settings': 'full',
 	'/api/people': 'full',
 	'/api/people/[id]/password': 'full',
+	'/api/people/[id]/invitation': 'full',
 	'/api/roles': 'full',
 	'/api/roles/[id]': 'full',
 	'/api/units': 'full',

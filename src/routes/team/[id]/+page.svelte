@@ -7,11 +7,11 @@
 	import { PAID_AS_WORDS } from '#lib/pay-words.ts';
 	import { STANDING, parsePersonField, standing } from '#lib/people-fields.ts';
 	import { readProblem } from '#lib/json.ts';
-	import { take } from '#lib/password-handover.ts';
 	import { clock, datedAt } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import { refreshAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import { tick, untrack } from 'svelte';
 	import type { PageProps } from './$types';
 
@@ -30,9 +30,11 @@
 	 * misspelt name is. Reset password and Deactivate are in the menu, and ask
 	 * first.
 	 *
-	 * A PASSWORD TO HAND THEM is shown once, in the banner, with Copy beside it:
-	 * after a reset, or on arriving here from adding them. Nobody is emailed,
-	 * and only its hash is kept (#lib/server/handover).
+	 * SIGNING IN is by a link emailed to them (#lib/server/links): an
+	 * invitation, until they choose their first password, then a reset's. The
+	 * line under their name says when the one waiting went and until when it
+	 * works, or that it lapsed, with Resend invitation beside one that did.
+	 * Nobody here sees a password, or the link (ASVS 5.0 6.4.6).
 	 */
 	let { data }: PageProps = $props();
 
@@ -51,27 +53,25 @@
 	let timer: ReturnType<typeof setTimeout> | undefined;
 
 	let asking = $state<'access' | 'role' | 'reset' | 'deactivate' | null>(null);
+	const at = (t: string | Date) => `${clock(t, personalZone())} on ${datedAt(t, personalZone())}`;
 	let pickAccess = $state<Access>('field');
 	let pickRole = $state('');
 	let working = $state(false);
 	let askError = $state('');
 
-	type Said = { title: string; detail: string; tone: 'good' | 'crit'; secret?: string };
-	// Someone just added arrives with the password to hand them (#lib/password-handover).
+	type Said = { title: string; detail: string; tone: 'good' | 'crit' };
+	const invitedSaid = (to: string, until: string): Said => ({
+		title: `Invitation sent to ${to}`,
+		detail: `${data.person.name.split(/\s+/)[0]} chooses their password with the link in it. It works once, until ${at(until)}. If it doesn’t reach them, send it again from the menu.`,
+		tone: 'good'
+	});
+	// Someone just added arrives with word that their invitation went (team/new).
 	let said = $state<Said | null>(
 		untrack(() => {
-			const handed = take(data.person.id);
-			return handed
-				? {
-						title: `${data.person.name} added`,
-						detail: `Give them this temporary password, with the email they sign in with, ${data.person.email}. It isn’t shown again, and they choose their own the first time they sign in with it.`,
-						tone: 'good',
-						secret: handed
-					}
-				: null;
+			const sent = page.state.invited;
+			return sent ? invitedSaid(sent.to, sent.until) : null;
 		})
 	);
-	let copied = $state(false);
 
 	/** One field, sent: null once it saved, or what is wrong. */
 	async function send(name: string, value: string): Promise<string | null> {
@@ -169,45 +169,62 @@
 					};
 	}
 
-	async function reset() {
+	/** Sends a link, a reset's or an invitation's: what went, or why not. */
+	async function sendLink(what: 'password' | 'invitation') {
 		working = true;
-		const r = await fetch(`/api/people/${p.id}/password`, { method: 'POST' }).catch(() => null);
+		const r = await fetch(`/api/people/${p.id}/${what}`, { method: 'POST' }).catch(() => null);
 		working = false;
 		if (!r?.ok) {
 			const problem = r ? await readProblem(r) : null;
-			askError = problem
-				? (problem.errors?.password ?? problem.detail ?? 'The password wasn’t reset.')
-				: 'Not reset — no connection.';
+			const why = problem
+				? (problem.errors?.[what] ?? problem.detail ?? 'Nothing was sent.')
+				: 'Nothing was sent — no connection.';
+			if (asking) return void (askError = why);
+			said = {
+				title: what === 'password' ? 'Not reset' : 'Invitation not sent',
+				detail: why,
+				tone: 'crit'
+			};
 			return;
 		}
-		const { password } = (await r.json()) as { password: string };
+		const { sent_to, until } = (await r.json()) as { sent_to: string; until: string };
 		asking = null;
-		copied = false;
-		said = {
-			title: 'Password reset',
-			detail: `Give ${first} this temporary password. It isn’t shown again, and they choose their own when they sign in with it.`,
-			tone: 'good',
-			secret: password
-		};
+		said =
+			what === 'invitation'
+				? invitedSaid(sent_to, until)
+				: {
+						title: `Reset link sent to ${sent_to}`,
+						detail: `${first} is signed out everywhere, and their old password no longer works. The link lets them choose a new one, once, until ${at(until)}.`,
+						tone: 'good'
+					};
 		await refreshAll();
 	}
-	async function copy(secret: string) {
-		try {
-			await navigator.clipboard.writeText(secret);
-			copied = true;
-		} catch {
-			copied = false;
-		}
-	}
+	const reset = () => sendLink('password');
+	const resend = () => sendLink('invitation');
+
+	const where = $derived(standing(p));
+	const unsent = $derived(
+		data.cannotSend === 'SMTP_HOST'
+			? 'Email isn’t set up: SMTP_HOST is unset'
+			: data.cannotSend === 'SITE_URL'
+				? 'Email isn’t set up: SITE_URL is unset'
+				: undefined
+	);
 
 	const menu = $derived(
 		p.active
 			? [
-					{
-						label: 'Reset password',
-						inactive: isMe ? 'You can’t reset your own password' : undefined,
-						onselect: (): void => ask('reset')
-					},
+					where === 'invited' || where === 'expired' || where === 'uninvited'
+						? {
+								label: where === 'uninvited' ? 'Send invitation' : 'Resend invitation',
+								inactive: unsent,
+								onselect: (): void => void resend()
+							}
+						: {
+								label: 'Reset password',
+								inactive: isMe ? 'You change your own on Your profile' : unsent,
+								onselect: (): void => ask('reset')
+							},
 					'divider' as const,
 					{
 						label: 'Deactivate',
@@ -232,6 +249,16 @@
 {#snippet savedMark(key: string)}
 	{#if saved === key}
 		<span class="saved" role="status"><Octicon name="check" />Saved</span>
+	{/if}
+{/snippet}
+
+{#snippet confirmed()}
+	{#if p.email_verified}
+		<span class="sub ok"><Octicon name="check" />Confirmed</span>
+	{:else if where === 'invited' || where === 'expired' || where === 'uninvited'}
+		<span class="sub">Not confirmed yet. Using their invitation confirms it.</span>
+	{:else}
+		<span class="sub">Not confirmed. {first} confirms it from their profile.</span>
 	{/if}
 {/snippet}
 
@@ -265,7 +292,10 @@
 			</div>
 		{:else}
 			<span class="kv-l">{label}</span>
-			<span class="kv-v"><span>{p[key]} {@render savedMark(key)}</span></span>
+			<span class="kv-v"
+				><span>{p[key]} {@render savedMark(key)}</span>
+				{#if key === 'email'}{@render confirmed()}{/if}</span
+			>
 			<span class="end">
 				{#if editing === null}
 					<button
@@ -289,14 +319,48 @@
 
 <div class="pad primer">
 	<div class="state">
-		<span class="lab {STANDING[standing(p)].tone}">{STANDING[standing(p)].label}</span>
-		<span class="muted">
-			{p.last_signed_in_at
-				? `Last signed in at ${clock(p.last_signed_in_at, personalZone())} on ${datedAt(p.last_signed_in_at, personalZone())}`
-				: 'No sign-in recorded'}
-		</span>
-		{#if p.active && p.temporary_password}
-			<span class="muted">Yet to choose their own password</span>
+		<span class="lab {STANDING[where].tone}">{STANDING[where].label}</span>
+		{#if where === 'invited' && p.waiting}
+			<span class="muted"
+				>Invitation sent at {at(p.waiting.sent_at)} · works until {at(p.waiting.until)}</span
+			>
+		{:else if where === 'invited'}
+			<span class="muted">Handed a temporary password, and yet to sign in with it</span>
+		{:else if where === 'uninvited'}
+			<span class="muted">Has no password, and has never been sent an invitation</span>
+			<button type="button" class="btn sm" onclick={resend} disabled={working || !!unsent}
+				>Send invitation</button
+			>
+		{:else if where === 'expired'}
+			<span class="muted">
+				{p.waiting
+					? `Sent at ${at(p.waiting.sent_at)}, and not used within 24 hours`
+					: 'No invitation waiting'}
+			</span>
+			<button type="button" class="btn sm" onclick={resend} disabled={working || !!unsent}
+				>Resend invitation</button
+			>
+		{:else}
+			<span class="muted">
+				{p.last_signed_in_at
+					? `Last signed in at ${at(p.last_signed_in_at)}`
+					: 'No sign-in recorded'}
+			</span>
+			{#if p.active && p.temporary_password}
+				<span class="muted">Yet to choose their own password</span>
+			{:else if p.active && p.waiting?.purpose === 'reset' && !p.waiting.lapsed}
+				<span class="muted"
+					>Reset link sent at {at(p.waiting.sent_at)} · works until {at(p.waiting.until)}</span
+				>
+			{:else if p.active && !p.has_password}
+				<span class="muted">Has no password: their reset link lapsed unused</span>
+				<button
+					type="button"
+					class="btn sm"
+					onclick={() => ask('reset')}
+					disabled={working || !!unsent || isMe}>Send another</button
+				>
+			{/if}
 		{/if}
 	</div>
 
@@ -306,14 +370,6 @@
 			<div class="banner-m">
 				<p class="banner-t">{said.title}</p>
 				<p class="banner-d">{said.detail}</p>
-				{#if said.secret}
-					<div class="secret">
-						<code>{said.secret}</code>
-						<button type="button" class="btn sm" onclick={() => copy(said!.secret!)}>
-							<Octicon name={copied ? 'check' : 'copy'} />{copied ? 'Copied' : 'Copy'}
-						</button>
-					</div>
-				{/if}
 			</div>
 			<button type="button" class="ib" aria-label="Dismiss" onclick={() => (said = null)}>
 				<Octicon name="x" />
@@ -324,7 +380,11 @@
 	<section class="box" aria-labelledby="details-h">
 		<div class="box-h"><h2 class="box-t" id="details-h">Details</h2></div>
 		{@render plain('name', 'Name', '')}
-		{@render plain('email', 'Email', 'They sign in with this.')}
+		{@render plain(
+			'email',
+			'Email',
+			'They sign in with this. A new one isn’t confirmed until they use a link sent there.'
+		)}
 	</section>
 
 	<section class="box" aria-labelledby="reach-h">
@@ -448,8 +508,8 @@
 		onclose={() => (asking = null)}
 	>
 		<p>
-			{first} is signed out everywhere. You get a temporary password to give them, and they choose their
-			own when they sign in with it.
+			{first} is signed out everywhere, and their password stops working. We email {p.email} a link to
+			choose a new one, which works once, for 24 hours.
 		</p>
 		{#if askError}
 			<p class="fc-e"><Octicon name="alert" />{askError}</p>
@@ -467,8 +527,9 @@
 		onclose={() => (asking = null)}
 	>
 		<p>
-			{first} is signed out, can’t sign in, and isn’t offered work. Their time, trips and pay are kept,
-			and you can reactivate them.
+			{first} is signed out, can’t sign in, and isn’t offered work.
+			{#if where === 'invited'}Their invitation stops working.{/if}
+			Their time, trips and pay are kept, and you can reactivate them.
 		</p>
 	</Dialog>
 </div>
@@ -522,6 +583,13 @@
 	.ie .ti {
 		flex: 1 1 14rem;
 		width: auto;
+	}
+	.sub.ok {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		color: var(--good);
+		font-weight: 600;
 	}
 	.saved {
 		display: inline-flex;

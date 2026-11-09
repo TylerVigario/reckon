@@ -20,6 +20,7 @@ import { readLocaleFrom } from '#lib/format.ts';
 import { readCurrencyFrom } from '#lib/currency.ts';
 import { localeTag, weekStartOf, type HourCycle } from '#lib/locales.ts';
 import { REACH, reaches } from '#lib/access.ts';
+import { LINK_PAGE } from '#lib/client-link.ts';
 import { problem } from '#lib/server/problem.ts';
 import { THEME_COOKIE, themeFrom } from '#lib/device-fields.ts';
 
@@ -78,8 +79,9 @@ export const init: ServerInit = async () => {
  * Open without signing in: the sign-in page and what it uses -- the manifest,
  * the logo and the operator's stylesheet, which a browser fetches without the
  * session cookie anyway, to install the app and draw its icon, and none of
- * which says more than the sign-in page already does -- and the client's link
- * to a sent invoice (#lib/client-link).
+ * which says more than the sign-in page already does -- the client's link to a
+ * sent invoice (#lib/client-link), and where a link reckon emailed opens
+ * (#lib/server/links).
  */
 export const handle: Handle = async ({ event, resolve }) => {
 	// A person made inactive is signed out wherever they are, at their next
@@ -133,8 +135,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 		if (path.startsWith('/api/')) error(401, 'sign in first');
 		redirect(303, `/login?next=${encodeURIComponent(event.url.pathname + event.url.search)}`);
 	}
-	// Signed in with a password handed to them, someone reaches nothing but the
-	// page where they choose their own, and signing out (#lib/server/handover).
+	// Signed in with a password handed to them, before invitations were emailed,
+	// someone reaches nothing but the page where they choose their own, and
+	// signing out.
 	if (
 		event.locals.user?.temporaryPassword &&
 		need !== 'open' &&
@@ -182,8 +185,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 function secured(url: URL, response: Response): Response {
 	response.headers.set('X-Content-Type-Options', 'nosniff');
 	// same-origin, not no-referrer: an internal link keeps its referrer, and
-	// nothing leaves this origin anyway.
-	response.headers.set('Referrer-Policy', 'same-origin');
+	// nothing leaves this origin anyway. Where an emailed link opens, none at
+	// all, as OWASP's Forgot Password Cheat Sheet has it: its code is never in
+	// the address, but nothing there needs a referrer either.
+	response.headers.set(
+		'Referrer-Policy',
+		LINK_PAGE.test(url.pathname) ? 'no-referrer' : 'same-origin'
+	);
 	// Nothing here asks for a camera, a microphone or a location. Saying so
 	// stops an injected script asking on the app's behalf.
 	response.headers.set(

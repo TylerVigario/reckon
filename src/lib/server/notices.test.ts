@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { passwordChanged, passwordReset } from './notices.js';
+import { emailConfirmation, invitation, passwordChanged, passwordResetLink } from './notices.js';
 
 const AVERY = {
 	name: 'Avery Lind',
@@ -59,15 +59,78 @@ describe('a password changed', () => {
 	});
 });
 
-describe('a password reset on Team', () => {
-	it('names who reset it, and that they hold a temporary one to hand over', () => {
-		const n = passwordReset(AVERY, KESTREL, { at: AT, by: 'Quinn Harper' });
+const LINK = 'https://reckon.example.com/link#Mm9e7oVwq1Kp0bNcQkR3sT4uV5wX6yZ7aB8cD9eF0gH';
+const UNTIL = new Date('2026-11-10T22:05:00Z');
+
+describe('a password chosen with an emailed link', () => {
+	it('says so, as any change of password is told', () => {
+		const n = passwordChanged(AVERY, KESTREL, { at: AT, on: 'link' });
+		expect(n.body).toContain('with a link reckon emailed you');
+	});
+});
+
+describe('an invitation', () => {
+	const n = invitation(AVERY, KESTREL, { by: 'Quinn Harper', link: LINK, until: UNTIL });
+
+	it('carries the link, on a line of its own, and who sent it', () => {
 		expect(n).toMatchObject({
-			kind: 'password_reset',
+			kind: 'invitation',
+			to: 'avery@kestrel.example',
+			subject: 'Kestrel: choose your password'
+		});
+		expect(n.body).toContain("Quinn Harper added you to Kestrel Field Services's reckon.");
+		expect(n.body.split('\n\n')).toContain(LINK);
+	});
+
+	it('says until when it works, in their own zone, and that it works once', () => {
+		expect(n.body).toContain('It works once, until Tuesday, November 10, 2026 at 2:05 PM PST.');
+		expect(n.body).toContain('ask Quinn Harper or someone else with Full access');
+	});
+
+	it('names the address they sign in with', () => {
+		expect(n.body).toContain('You sign in with this address, avery@kestrel.example.');
+	});
+});
+
+describe('a password reset on Team', () => {
+	const n = passwordResetLink(AVERY, KESTREL, {
+		at: AT,
+		by: 'Quinn Harper',
+		link: LINK,
+		until: UNTIL
+	});
+
+	it('names who reset it, that the old one stopped, and carries the link', () => {
+		expect(n).toMatchObject({
+			kind: 'password_reset_link',
 			subject: 'Kestrel: your password was reset'
 		});
 		expect(n.body).toContain('Quinn Harper reset the password');
-		expect(n.body).toContain('signed you out everywhere');
-		expect(n.body).toContain('a temporary password to hand you');
+		expect(n.body).toContain('signed you out everywhere. Your old password no longer works.');
+		expect(n.body.split('\n\n')).toContain(LINK);
+		expect(n.body).not.toContain('temporary');
+	});
+
+	it('says what to do if they did not expect it, and how to reach the business', () => {
+		expect(n.body).toContain("If you didn't expect this, ask Quinn Harper");
+		expect(n.body).toContain('reach the business at office@kestrel.example or 555-0100');
+	});
+});
+
+describe('confirming an address', () => {
+	const n = emailConfirmation(AVERY, KESTREL, { link: LINK, until: UNTIL });
+
+	it('carries the link, and names the address it confirms', () => {
+		expect(n).toMatchObject({
+			kind: 'email_confirmation',
+			to: 'avery@kestrel.example',
+			subject: 'Kestrel: confirm your email'
+		});
+		expect(n.body).toContain('confirm that avery@kestrel.example is yours');
+		expect(n.body.split('\n\n')).toContain(LINK);
+	});
+
+	it('says that someone asking for it unasked is signed in as them', () => {
+		expect(n.body).toContain("If you didn't ask, someone else is signed in as you.");
 	});
 });

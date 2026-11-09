@@ -2532,4 +2532,112 @@ BEGIN
   RAISE NOTICE '  keeps     an email sent, naming nobody, once its person is taken away';
 END $$;
 
+\echo '=== 53. an emailed link works once, for a day at most, one of a kind at a time ==='
+
+INSERT INTO "user" (id, name, email) VALUES
+  ('a1000000-0000-4000-8000-000000000053', 'Invited', 'invited@example.com');
+
+SELECT must_pass($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'invite', sha256('code-1'::bytea), 'invited@example.com', now() + interval '24 hours')
+$$, 'an invitation that works for 24 hours');
+
+SELECT must_fail($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, created_at, expires_at)
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'confirm', sha256('code-2'::bytea), 'invited@example.com', now(), now() + interval '24 hours 1 second')
+$$, 'a link that works for longer than 24 hours');
+
+SELECT must_fail($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, created_at, expires_at)
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'confirm', sha256('code-2'::bytea), 'invited@example.com', now(), now())
+$$, 'a link that stops working as it is made');
+
+SELECT must_fail($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'confirm', 'code-2'::bytea, 'invited@example.com', now() + interval '1 hour')
+$$, 'a link keeping something other than a SHA-256 of its code');
+
+SELECT must_fail($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'sign_in', sha256('code-2'::bytea), 'invited@example.com', now() + interval '1 hour')
+$$, 'a link for something reckon never sends one for');
+
+SELECT must_fail($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'confirm', sha256('code-2'::bytea), 'Invited@Example.com', now() + interval '1 hour')
+$$, 'a link sent to an address not lowercased');
+
+SELECT must_fail($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'reset', sha256('code-2'::bytea), 'invited@example.com', now() + interval '1 hour')
+$$, 'a second link to choose a password while one waits');
+
+SELECT must_pass($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'confirm', sha256('code-3'::bytea), 'invited@example.com', now() + interval '1 hour')
+$$, 'a confirmation waiting beside a link to choose a password');
+
+SELECT must_fail($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'confirm', sha256('code-4'::bytea), 'invited@example.com', now() + interval '1 hour')
+$$, 'a second confirmation while one waits');
+
+SELECT must_fail($$
+  UPDATE email_link SET used_at = expires_at + interval '1 second'
+   WHERE code_hash = sha256('code-1'::bytea)
+$$, 'a link used after it stopped working');
+
+SELECT must_fail($$
+  UPDATE email_link SET used_at = created_at - interval '1 second'
+   WHERE code_hash = sha256('code-1'::bytea)
+$$, 'a link used before it was made');
+
+SELECT must_pass($$
+  UPDATE email_link SET used_at = now() WHERE code_hash = sha256('code-1'::bytea)
+$$, 'a link used while it works');
+
+SELECT must_pass($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'reset', sha256('code-5'::bytea), 'invited@example.com', now() + interval '1 hour')
+$$, 'a new link to choose a password once the last was used');
+
+SELECT must_fail($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
+  VALUES ('a0a0a0a0-0000-4000-8000-0000000000a2', 'reset', sha256('code-5'::bytea), 'sam@example.com', now() + interval '1 hour')
+$$, 'two links with the same code');
+
+SELECT must_pass($$
+  INSERT INTO email_message (kind, to_address, subject, body, send_by)
+  VALUES ('invitation', 'invited@example.com', 'Kestrel: choose your password', 'Hello', now() + interval '24 hours')
+$$, 'an email carrying an invitation');
+
+-- A person's links go with them; one they sent outlives them, naming nobody.
+DO $$
+DECLARE left_over int; sender uuid;
+BEGIN
+  INSERT INTO "user" (id, name, email) VALUES
+    ('a1000000-0000-4000-8000-000000000054', 'Sender', 'sender@example.com');
+  UPDATE email_link SET sent_by = 'a1000000-0000-4000-8000-000000000054'
+   WHERE code_hash = sha256('code-5'::bytea);
+  DELETE FROM "user" WHERE id = 'a1000000-0000-4000-8000-000000000054';
+  SELECT sent_by INTO sender FROM email_link WHERE code_hash = sha256('code-5'::bytea);
+  IF sender IS NOT NULL THEN
+    RAISE EXCEPTION 'GUARD MISSING: a link still names who sent it after they were taken away';
+  END IF;
+  DELETE FROM "user" WHERE id = 'a1000000-0000-4000-8000-000000000053';
+  SELECT count(*) INTO left_over FROM email_link WHERE sent_to = 'invited@example.com';
+  IF left_over <> 0 THEN
+    RAISE EXCEPTION 'GUARD MISSING: % link(s) outlived the person they were for', left_over;
+  END IF;
+  RAISE NOTICE '  keeps     a link only while its person is kept, and its sender only while theirs is';
+END $$;
+
+SELECT must_pass($$
+  INSERT INTO link_try (address, network) VALUES ('192.0.2.7', '192.0.2.7/32')
+$$, 'a code tried, counted against the network it came from');
+
+SELECT must_fail($$
+  INSERT INTO link_try (address, network) VALUES ('192.0.2.7', '198.51.100.0/24')
+$$, 'a code tried, counted against a network it did not come from');
+
 \echo 'All guards hold.'

@@ -88,13 +88,30 @@ export const NEW_PERSON_FIELDS = {
 };
 
 /**
- * Where someone stands, as Team labels them: Invited until they first sign in
- * with the password they were handed, then Active, and Deactivated when they
- * can no longer sign in at all.
+ * The newest link to choose a password that someone has waiting
+ * (#lib/server/links): an invitation, or a reset's. Lapsed once its 24 hours
+ * pass, or once the address it went to is no longer theirs.
+ */
+export type Waiting = {
+	purpose: 'invite' | 'reset';
+	sent_at: string;
+	until: string;
+	lapsed: boolean;
+};
+
+/**
+ * Where someone stands, as Team labels them: Invited while the link to choose
+ * their first password works, Invitation expired once it lapses unused, then
+ * Active, and Deactivated when they can no longer sign in at all. Someone
+ * handed a temporary password, before invitations were emailed, is Invited
+ * until they first sign in with it; someone with no password who was never
+ * sent one -- made by hand, or brought in -- is Not invited.
  */
 export const STANDING = {
 	active: { label: 'Active', tone: 'good' },
 	invited: { label: 'Invited', tone: 'warn' },
+	expired: { label: 'Invitation expired', tone: 'crit' },
+	uninvited: { label: 'Not invited', tone: 'warn' },
 	deactivated: { label: 'Deactivated', tone: '' }
 } as const;
 
@@ -102,9 +119,15 @@ export function standing(p: {
 	active: boolean;
 	temporary_password: boolean;
 	last_signed_in_at: Date | string | null;
+	has_password: boolean;
+	waiting: Waiting | null;
 }): keyof typeof STANDING {
 	if (!p.active) return 'deactivated';
-	return p.temporary_password && p.last_signed_in_at === null ? 'invited' : 'active';
+	if (p.last_signed_in_at !== null) return 'active';
+	if (p.temporary_password) return 'invited';
+	if (p.has_password) return 'active';
+	if (!p.waiting) return 'uninvited';
+	return p.waiting.purpose === 'invite' && !p.waiting.lapsed ? 'invited' : 'expired';
 }
 
 /** What only the person themselves may change: their own clock and how their figures read. */

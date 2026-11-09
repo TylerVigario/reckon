@@ -2,14 +2,16 @@ import { error } from '@sveltejs/kit';
 import { and, asc, count, eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { role, user } from '#lib/server/db/schema/index.ts';
+import { cannotSend, signingIn } from '#lib/server/links.ts';
 import { UUID } from '#lib/field-rules.ts';
 import type { PageServerLoad } from './$types';
 
 /**
  * One person: who they are, what they can reach, the role they are paid as,
  * and whether they sign in -- each changed here, and nowhere else -- and when
- * they last did, and whether they have yet to choose their own password. What they are owed is the pay report's, and is a link from
- * here.
+ * they last did, whether the address they sign in with is confirmed, and the
+ * link to choose a password they have waiting, if any. What they are owed is
+ * the pay report's, and is a link from here.
  */
 export const load: PageServerLoad = async ({ params, locals }) => {
 	if (!UUID.test(params.id)) error(404, 'Nobody with that id.');
@@ -23,7 +25,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				access: user.access,
 				role_id: user.roleId,
 				last_signed_in_at: user.lastSignedInAt,
-				temporary_password: user.temporaryPassword
+				temporary_password: user.temporaryPassword,
+				email_verified: user.emailVerified,
+				...signingIn
 			})
 			.from(user)
 			.where(eq(user.id, params.id)),
@@ -38,5 +42,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			.where(and(eq(user.active, true), eq(user.access, 'full')))
 	]);
 	if (!person) error(404, 'Nobody with that id.');
-	return { person, roles, onFull, me: locals.user!.id };
+	// What reckon is missing to send an invitation or a reset's link, if anything.
+	return { person, roles, onFull, me: locals.user!.id, cannotSend: cannotSend() };
 };

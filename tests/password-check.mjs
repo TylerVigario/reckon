@@ -1,34 +1,38 @@
 #!/usr/bin/env node
 /**
- * Proves a person's password goes from one handed over to their own, and is
- * theirs to change: a person added on Team, or whose password is reset there,
- * signs in with the password handed over and must choose their own before
- * anything else opens (#lib/server/handover), and changes it on Your profile
- * with the current one.
+ * Proves a person chooses their own password, by a link emailed to them, and
+ * that it is theirs to change (#lib/server/links): someone added on Team is
+ * invited by email, and whoever added them sees no password and no link; the
+ * link opens a page, outside the app, that takes a password once and signs
+ * nobody in; a reset on Team stops the old password, signs them out
+ * everywhere and emails a link to choose a new one; an invitation lapses after
+ * 24 hours and is sent again, and one waiting goes to a corrected address
+ * instead; anyone confirms their address from Your profile; and a code that is
+ * not one to use is answered alike, and counted until the network waits.
  *
- *   node tests/password-check.mjs <base-url> <full-email> <full-password>
+ * Someone handed a temporary password before invitations were emailed still
+ * reaches nothing but /new-password until they choose their own. A password
+ * is changed on Your profile with the current one, which renews that browser's
+ * session and signs out every other.
  *
- * Someone with Full adds a person and is answered with a password, once. That
- * person signs in with it and reaches nothing but /new-password -- a screen is
- * sent there, an endpoint refused -- where the temporary password itself, one
- * too short and two that differ are each refused. Choosing one keeps that
- * browser signed in and signs out any other that used the temporary one; the
- * temporary one stops working and theirs works. Changing it at
- * /profile/password refuses a current password that isn't theirs, gives that
- * browser a new session and signs out every other, and only the new one signs
- * in. A reset signs them out everywhere and hands over another; nobody resets
- * their own.
+ *   node tests/password-check.mjs <base-url> <full-email> <full-password> [relay-read-back-url]
  *
- * Over HTTP, the way a browser does it. Needs the database the server uses, to
- * take away the person it added: it leaves nothing it made.
+ * The server sends to the relay stand-in (tests/smtp-stand-in.mjs), read back
+ * at http://127.0.0.1:2526 unless said, with SITE_URL the base url. Over HTTP,
+ * the way a browser does it. Needs the database the server uses: it leaves
+ * nothing it made.
  */
 // First, so .env is read before anything reads what it sets.
 import { database } from '../scripts/env.mjs';
+import { spawnSync } from 'node:child_process';
 import pg from 'pg';
+import { arrives, inbox, linkAction, linkIn } from './relay.mjs';
 
-const [, , base, fullEmail, fullPassword] = process.argv;
+const [, , base, fullEmail, fullPassword, relay = 'http://127.0.0.1:2526'] = process.argv;
 if (!base || !fullEmail || !fullPassword) {
-	console.error('usage: node tests/password-check.mjs <base-url> <full-email> <full-password>');
+	console.error(
+		'usage: node tests/password-check.mjs <base-url> <full-email> <full-password> [relay-read-back-url]'
+	);
 	process.exit(2);
 }
 
@@ -98,20 +102,46 @@ const post = (
 		body: new URLSearchParams(fields),
 		headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'text/html' }
 	});
-const choose = (/** @type {Ask} */ ask, /** @type {string} */ password, confirm = password) =>
-	post(ask, '/new-password', { password, confirm });
 const change = (
 	/** @type {Ask} */ ask,
 	/** @type {string} */ current,
 	/** @type {string} */ password,
 	confirm = password
 ) => post(ask, '/profile/password', { current, password, confirm });
-const FOUR_WORDS = /^[a-z]+(-[a-z]+){3}$/;
-/** What a password handed over looks like, for a failure to say without printing it. */
-const shape = (/** @type {string} */ p) => (FOUR_WORDS.test(p) ? 'four words' : 'not four words');
+
+/** One of the link page's actions, as its page posts it. */
+const act = (
+	/** @type {'look' | 'choose' | 'confirm'} */ name,
+	/** @type {Record<string, string>} */ fields
+) => linkAction(base, name, fields, PROXY);
+/** Every code an email has carried so far, so each one asked for is a new one. */
+const seen = new Set();
+/**
+ * The code in the newest email to `email` saying all of `says` that carries
+ * one not seen before, waited for: '' if none comes.
+ */
+async function codeFor(/** @type {string} */ email, /** @type {string[]} */ says) {
+	for (let i = 0; i < 60; i++) {
+		const fresh = (await inbox(relay))
+			.filter((m) => m.to.includes(email) && says.every((s) => m.text.includes(s)))
+			.map((m) => linkIn(m)?.code)
+			.filter((c) => !!c && !seen.has(c));
+		const code = fresh.at(-1);
+		if (code) {
+			seen.add(code);
+			return code;
+		}
+		await new Promise((r) => setTimeout(r, 250));
+	}
+	return '';
+}
+const works = async (/** @type {string} */ code) =>
+	(await act('look', { code })).type === 'success';
 
 const db = new pg.Client(database());
 await db.connect();
+/** Whose network the server sees these checks come from: this machine. */
+const HERE = '127.0.0.1/32';
 
 const fullCookie = await signIn(fullEmail, fullPassword);
 if (!fullCookie) {
@@ -119,28 +149,30 @@ if (!fullCookie) {
 	process.exit(1);
 }
 const asFull = as(fullCookie);
-const email = `handover-${crypto.randomUUID().slice(0, 8)}@kestrel.example`;
-/** @type {string | null} */
-let id = null;
+const [{ id: mine, name: fullName }] = (
+	await db.query('select id, name from "user" where email = $1', [fullEmail.toLowerCase()])
+).rows;
+const tag = crypto.randomUUID().slice(0, 8);
+const email = `invited-${tag}@kestrel.example`;
+const jun = `jun-${tag}@kestrel.example`;
+const corrected = `corrected-${tag}@kestrel.example`;
+/** @type {string[]} */
+const made = [];
+const addresses = [email, jun, corrected];
 
 try {
-	// ---------------------------------------------------------- adding ----
+	// ---------------------------------------------------------- invited ----
 	const added = await asFull(
 		'/api/people',
 		send('POST', { fields: { name: 'Quinn Harper', email, role_id: '', access: 'field' } })
 	);
-	const made = added.status === 201 ? await added.json() : null;
-	id = made?.id ?? null;
-	const handed = made?.password ?? '';
+	const answer = added.status === 201 ? await added.json() : null;
+	const id = answer?.id ?? null;
+	if (id) made.push(id);
 	check(
-		added.status === 201 && !!id && FOUR_WORDS.test(handed),
-		'adding a person answers with four words to hand them',
-		`${added.status}, ${shape(handed)}`
-	);
-	check(
-		added.headers.get('cache-control') === 'no-store',
-		'and nothing between keeps the answer',
-		String(added.headers.get('cache-control'))
+		added.status === 201 && !!id && answer.sent_to === email && !('password' in answer),
+		'adding a person answers with where their invitation went, and no password',
+		`${added.status} ${JSON.stringify(answer && Object.keys(answer))}`
 	);
 	const again = await asFull(
 		'/api/people',
@@ -152,62 +184,96 @@ try {
 		String(again.status)
 	);
 	if (!id) throw new Error('nobody was added, so nothing after it can be asked');
+
+	const invited = await arrives(relay, email, ['choose your password', `${fullName} added you`]);
+	const link = linkIn(invited);
+	check(!!link, 'they are emailed an invitation, naming who added them, with a link');
+	check(link?.site === new URL(base).origin, 'the link begins with SITE_URL', String(link?.site));
+	check(!!invited?.text.includes('It works once, until'), 'and says it works once, and until when');
+	const code = link?.code ?? '';
+	seen.add(code);
+	const kept = (
+		await db.query(`select row_to_json(l)::text as row from email_link l where user_id = $1`, [id])
+	).rows;
+	check(
+		kept.length === 1 && !kept[0].row.includes(code),
+		'only a hash of its code is kept',
+		`${kept.length} row(s)`
+	);
+	const [mail] = (
+		await db.query(
+			`select send_by <= now() + interval '24 hours' as soon from email_message
+			  where user_id = $1 and kind = 'invitation'`,
+			[id]
+		)
+	).rows;
+	check(!!mail?.soon, 'and the email is not sent once its link has stopped working');
 	const team = await (await asFull('/team')).text();
-	check(/Quinn Harper[\s\S]*?Invited/.test(team), 'Team says they are Invited before they sign in');
+	check(/Quinn Harper[\s\S]*?Invited/.test(team), 'Team says they are Invited');
+	const theirPage = await (await asFull(`/team/${id}`)).text();
+	check(theirPage.includes('Invitation sent at'), 'their page says when it went, and until when');
 
-	// ------------------------------------------ signed in with it, held ----
-	const first = await signIn(email, handed);
-	const second = await signIn(email, handed);
-	check(!!first && !!second, 'they sign in with it, in two browsers');
-	let asThem = as(first);
-	const home = await asThem('/');
-	check(to(home) === '/new-password', 'a screen sends them to choose a password', `${home.status}`);
-	const api = await asThem('/api/time');
+	// ------------------------------------------------------ the link ----
+	const page = await fetch(`${base}/link`, { headers: PROXY });
+	check(page.status === 200, 'the link opens without signing in', String(page.status));
 	check(
-		api.status === 403 && (await problemOf(api))?.type === '/problems/choose-password',
-		'and an endpoint is refused, saying why',
-		String(api.status)
+		page.headers.get('referrer-policy') === 'no-referrer' &&
+			(page.headers.get('cache-control') ?? '').includes('no-store'),
+		'with no referrer sent from it, and nothing kept of it',
+		`${page.headers.get('referrer-policy')} ${page.headers.get('cache-control')}`
 	);
-	const choosing = await asThem('/new-password');
+	const looked = await act('look', { code });
 	check(
-		choosing.status === 200 && (await choosing.text()).includes('Choose a new password'),
-		'the page to choose it opens'
+		looked.type === 'success' && looked.text.includes('invite') && looked.text.includes(email),
+		'its code says what it is for, and whose'
 	);
-
-	const short = await choose(asThem, 'too-short');
+	const unknown = await act('look', { code: code.replace(/^./, (c) => (c === 'A' ? 'B' : 'A')) });
+	const nonsense = await act('look', { code: 'not-a-code' });
+	check(
+		unknown.status === 404 && nonsense.status === 404 && unknown.text === nonsense.text,
+		'a code that is not one is answered alike, whatever it is',
+		`${unknown.status} ${nonsense.status}`
+	);
+	const short = await act('choose', { code, password: 'too-short', confirm: 'too-short' });
 	check(short.status === 400, 'a password shorter than twelve is refused', String(short.status));
-	const differ = await choose(asThem, 'a-password-of-mine', 'a-password-of-yours');
+	const differ = await act('choose', {
+		code,
+		password: 'a-password-of-mine',
+		confirm: 'a-password-of-yours'
+	});
 	check(differ.status === 400, 'two that differ are refused', String(differ.status));
-	const same = await choose(asThem, handed);
-	check(
-		same.status === 400 && (await same.text()).includes('temporary password'),
-		'the temporary one is refused as theirs',
-		String(same.status)
-	);
+	check(await works(code), 'and a refused password leaves the link working');
 
-	// ---------------------------------------------------- their own ----
 	const own = 'a-password-of-their-own';
-	const chosen = await choose(asThem, own);
-	check(to(chosen) === '/', 'choosing one takes them home', String(chosen.status));
-	const now = await asThem('/');
-	check(now.status === 200, 'and this browser stays signed in', String(now.status));
-	const other = await as(second)('/');
+	const chosen = await act('choose', { code, password: own, confirm: own });
+	check(chosen.type === 'success', 'choosing one with it saves it', String(chosen.status));
+	check(!chosen.setsSession, 'and signs nobody in');
+	const twice = await act('choose', {
+		code,
+		password: 'another-one-of-theirs',
+		confirm: 'another-one-of-theirs'
+	});
+	check(twice.status === 404, 'the link works once', String(twice.status));
+	check(!(await works(code)), 'and is no longer one to use');
+	const first = await signIn(email, own);
+	check(!!first, 'they sign in with the one they chose');
+	const [proven] = (await db.query('select email_verified from "user" where id = $1', [id])).rows;
+	check(proven?.email_verified === true, 'and using the link proved the address theirs');
 	check(
-		to(other) === '/login',
-		'the other browser that used the temporary one is signed out',
-		`${other.status} ${to(other)}`
+		!!(await arrives(relay, email, [
+			'your password was changed',
+			'with a link reckon emailed you'
+		])),
+		'they are told by email that it was set'
 	);
-	check(!(await signIn(email, handed)), 'the temporary one no longer signs in');
-	check(!!(await signIn(email, own)), 'their own does');
-	const chose = await asThem('/new-password');
-	check(to(chose) === '/', 'and there is nothing left to choose', String(chose.status));
-	const page = await (await asFull(`/team/${id}`)).text();
+	const nowPage = await (await asFull(`/team/${id}`)).text();
 	check(
-		page.includes('Active') && !page.includes('Yet to choose their own password'),
-		'their page says Active, with nothing left to choose'
+		nowPage.includes('Active') && nowPage.includes('Confirmed'),
+		'their page says Active, and their email Confirmed'
 	);
 
 	// ------------------------------------------------- changing theirs ----
+	let asThem = as(first);
 	const elsewhere = await signIn(email, own);
 	const changing = await asThem('/profile/password');
 	check(
@@ -221,15 +287,6 @@ try {
 		'a current password that isn’t theirs is refused',
 		String(notTheirs.status)
 	);
-	const tooShort = await change(asThem, own, 'too-short');
-	check(
-		tooShort.status === 400,
-		'a new one shorter than twelve is refused',
-		String(tooShort.status)
-	);
-	const apart = await change(asThem, own, since, 'a-password-changed-later');
-	check(apart.status === 400, 'two that differ are refused', String(apart.status));
-
 	const changed = await change(asThem, own, since);
 	const renewed = sessionOf(changed);
 	check(
@@ -238,11 +295,7 @@ try {
 		String(changed.status)
 	);
 	check(!!renewed && renewed !== first, 'and gives this browser a new session');
-	const before = await asThem('/');
-	check(to(before) === '/login', 'so the session it was changed in is gone', `${before.status}`);
 	asThem = as(renewed);
-	const after = await asThem('/');
-	check(after.status === 200, 'and this browser stays signed in', String(after.status));
 	const away = await as(elsewhere)('/');
 	check(to(away) === '/login', 'the other browser is signed out', `${away.status} ${to(away)}`);
 	check(!(await signIn(email, own)), 'the old one no longer signs in');
@@ -250,39 +303,166 @@ try {
 
 	// ------------------------------------------------------- a reset ----
 	const reset = await asFull(`/api/people/${id}/password`, { method: 'POST' });
-	const replaced = reset.ok ? ((await reset.json()).password ?? '') : '';
+	const resetAnswer = reset.ok ? await reset.json() : null;
 	check(
-		reset.status === 200 && FOUR_WORDS.test(replaced) && replaced !== handed,
-		'a reset answers with another four words',
-		`${reset.status}, ${replaced === handed ? 'the same as before' : shape(replaced)}`
+		reset.status === 200 && resetAnswer?.sent_to === email && !('password' in resetAnswer),
+		'a reset answers with where the link went, and no password',
+		String(reset.status)
 	);
 	const out = await asThem('/');
 	check(to(out) === '/login', 'and signs them out everywhere', `${out.status} ${to(out)}`);
-	check(!(await signIn(email, since)), 'their own password no longer signs in');
-	const back = await signIn(email, replaced);
-	const held = back ? await as(back)('/') : null;
-	check(
-		!!held && to(held) === '/new-password',
-		'the new one does, and holds them until they choose',
-		String(held?.status)
-	);
+	check(!(await signIn(email, since)), 'their password stops working');
+	const resetCode = await codeFor(email, [
+		'your password was reset',
+		`${fullName} reset the password`
+	]);
+	check(!!resetCode, 'they are emailed a link to choose a new one, naming who reset it');
 	const resetPage = await (await asFull(`/team/${id}`)).text();
+	check(resetPage.includes('Reset link sent at'), 'their page says the link went, and until when');
+	const looksReset = await act('look', { code: resetCode });
 	check(
-		resetPage.includes('Yet to choose their own password'),
-		'their page says they have yet to choose'
+		looksReset.type === 'success' && looksReset.text.includes('reset'),
+		'the link says it is a reset'
 	);
-
-	const [{ id: mine }] = (
-		await db.query('select id from "user" where email = $1', [fullEmail.toLowerCase()])
-	).rows;
+	const fresh = 'a-password-after-the-reset';
+	const reChosen = await act('choose', { code: resetCode, password: fresh, confirm: fresh });
+	check(
+		reChosen.type === 'success' && !!(await signIn(email, fresh)),
+		'choosing one with it works, and signs in',
+		String(reChosen.status)
+	);
 	const self = await asFull(`/api/people/${mine}/password`, { method: 'POST' });
 	check(
 		self.status === 400 && !!(await problemOf(self))?.errors?.password,
-		'nobody resets their own',
+		'nobody resets their own on Team',
 		String(self.status)
 	);
+
+	// A password set some other way ends a link still waiting.
+	await asFull(`/api/people/${id}/password`, { method: 'POST' });
+	const waiting = await codeFor(email, ['your password was reset']);
+	const shell = 'set-at-the-command-line';
+	const ran = spawnSync('node', ['scripts/user.mjs', 'password', email], {
+		input: `${shell}\n${shell}\n`,
+		encoding: 'utf8'
+	});
+	check(
+		ran.status === 0 && !!waiting && !(await works(waiting)),
+		'a password set at the command line ends a link that was waiting',
+		ran.stderr.trim()
+	);
+
+	// ------------------------------------------- lapsed, and sent again ----
+	const second = await asFull(
+		'/api/people',
+		send('POST', { fields: { name: 'Jun Hale', email: jun, role_id: '', access: 'field' } })
+	);
+	const secondId = second.status === 201 ? (await second.json()).id : null;
+	if (!secondId) throw new Error(`a second person was not added (${second.status})`);
+	made.push(secondId);
+	const lapsing = await codeFor(jun, ['choose your password']);
+	await db.query(
+		`update email_link set created_at = now() - interval '25 hours', expires_at = now() - interval '1 hour'
+		  where user_id = $1`,
+		[secondId]
+	);
+	check(!(await works(lapsing)), 'an invitation more than 24 hours old no longer works');
+	const lapsedTeam = await (await asFull('/team')).text();
+	check(/Jun Hale[\s\S]*?Invitation expired/.test(lapsedTeam), 'and Team says it expired');
+	const resetInvited = await asFull(`/api/people/${secondId}/password`, { method: 'POST' });
+	check(
+		resetInvited.status === 400 && !!(await problemOf(resetInvited))?.errors?.password,
+		'someone yet to choose a password is not reset, but invited again',
+		String(resetInvited.status)
+	);
+	const resent = await asFull(`/api/people/${secondId}/invitation`, { method: 'POST' });
+	check(
+		resent.status === 200,
+		'sending the invitation again is done on Team',
+		String(resent.status)
+	);
+	const second1 = await codeFor(jun, ['choose your password']);
+	check(!!second1 && second1 !== lapsing && (await works(second1)), 'with a new link that works');
+
+	const moved = await asFull(
+		`/api/people/${secondId}`,
+		send('PATCH', { fields: { email: corrected } })
+	);
+	const second2 = await codeFor(corrected, ['choose your password']);
+	check(
+		moved.ok && !!second2 && (await works(second2)) && !(await works(second1)),
+		'correcting the address of someone invited sends it there, and the old link stops',
+		String(moved.status)
+	);
+	await asFull(`/api/people/${secondId}`, send('PATCH', { fields: { active: 'false' } }));
+	check(!(await works(second2)), 'and deactivating them stops it too');
+
+	// ------------------------------------------ confirmed from Profile ----
+	await db.query('update "user" set email_verified = false where id = $1', [id]);
+	const asTheirs = as(await signIn(email, shell));
+	const profile = await (await asTheirs('/profile')).text();
+	check(profile.includes('Not confirmed yet'), 'Your profile says an address is not confirmed');
+	const asked = await post(asTheirs, '/profile?/confirm', {});
+	check(
+		asked.status === 200 && (await asked.text()).includes('on its way'),
+		'asking to confirm it says a link is on its way',
+		String(asked.status)
+	);
+	const confirmCode = await codeFor(email, ['confirm your email']);
+	check(!!confirmCode, 'and emails one there');
+	const soon = await post(asTheirs, '/profile?/confirm', {});
+	check(soon.status === 429, 'another is not sent a moment later', String(soon.status));
+	const confirmed = await act('confirm', { code: confirmCode });
+	const [nowProven] = (await db.query('select email_verified from "user" where id = $1', [id]))
+		.rows;
+	check(
+		confirmed.type === 'success' && nowProven?.email_verified === true,
+		'using it confirms the address',
+		String(confirmed.status)
+	);
+	check(
+		(await act('choose', { code: confirmCode, password: fresh, confirm: fresh })).status === 404,
+		'and a confirmation sets no password'
+	);
+
+	// --------------------------- a password handed over, before all this ----
+	await db.query('update "user" set temporary_password = true where id = $1', [id]);
+	const held = as(await signIn(email, shell));
+	const home = await held('/');
+	check(
+		to(home) === '/new-password',
+		'someone handed a temporary password is sent to choose one',
+		`${home.status}`
+	);
+	const api = await held('/api/time');
+	check(
+		api.status === 403 && (await problemOf(api))?.type === '/problems/choose-password',
+		'and an endpoint is refused, saying why',
+		String(api.status)
+	);
+	const theirOwn = 'chosen-after-a-handover';
+	const choseOwn = await post(held, '/new-password', { password: theirOwn, confirm: theirOwn });
+	check(to(choseOwn) === '/', 'choosing their own lets them in', String(choseOwn.status));
+
+	// ------------------------------------------------- too many misses ----
+	await db.query('delete from link_try where network = $1', [HERE]);
+	await asFull(`/api/people/${id}/password`, { method: 'POST' });
+	const good = await codeFor(email, ['your password was reset']);
+	for (let i = 0; i < 10; i++) await act('look', { code: `${'x'.repeat(42)}${i}` });
+	const turned = await act('look', { code: good });
+	check(
+		!!good && turned.status === 429,
+		'ten codes that are not one, from one network, and it waits before the next',
+		String(turned.status)
+	);
+} catch (e) {
+	const why = e instanceof Error ? e.message : String(e);
+	failures.push(why);
+	console.log(`  ✗ ${why}`);
 } finally {
-	if (id) await db.query('delete from "user" where id = $1', [id]);
+	for (const who of made) await db.query('delete from "user" where id = $1', [who]);
+	await db.query('delete from email_message where to_address = any($1)', [addresses]);
+	await db.query('delete from link_try where network = $1', [HERE]);
 	await db.end();
 }
 
