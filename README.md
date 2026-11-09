@@ -162,9 +162,8 @@ email tried is recorded alike, whether or not anyone signs in with it, as an
 HMAC rather than the email itself, since a password is sometimes typed in its
 place; rows are deleted after 90 days.
 
-There is no sign-up. Someone with Full adds people on Team, and reckon sends no
-email, so whoever adds them is shown a temporary password once, four words, to
-hand over. Signing in with it reaches nothing but the page where they choose
+There is no sign-up. Someone with Full adds people on Team, and is shown a
+temporary password for them once, four words, to hand over. Signing in with it reaches nothing but the page where they choose
 their own; that browser stays signed in, and any other that used the temporary
 one is signed out. Reset password, on a person's page, signs them out everywhere
 and hands over another the same way. Nobody resets their own: anyone changes
@@ -232,6 +231,66 @@ Environment=BETTER_AUTH_SECRET_FILE=%d/better-auth-secret
 only ever sends it over https. Turning that off is for a proxy that serves plain
 http, and what it costs is the session token crossing that network in the
 clear — the server says so in its log every time it starts.
+
+## Email
+
+reckon sends email by SMTP to a relay the environment names: a provider's —
+Amazon SES, Postmark, SendGrid, Mailgun, Fastmail, Gmail with an app password —
+or a mail server on the same machine or network that passes it on. Every
+provider and every mail server takes mail that way, so whatever is behind the
+relay is the operator's choice, and nothing in reckon is tied to one. Unset, it
+sends nothing.
+
+For now it tells a person whenever their password is changed — chosen after a
+handover, changed on Your profile, set with `scripts/user.mjs` — or reset on
+Team, saying when, in their own zone, and who to ask if it was not them.
+
+Each message is a row of `email_message`, written in the same transaction as the
+change it tells of, so it is sent if and only if that change is kept, and the
+request that made it never waits on mail. The server sends it as soon as the
+transaction commits. A message the relay puts off is tried again a minute
+later, then five, fifteen and every hour after, for a week; one it refuses for
+good is given up on at once. What a message said is kept only until then, and a
+row is deleted after 90 days.
+
+```bash
+SMTP_HOST=email-smtp.us-west-2.amazonaws.com   # a provider's relay
+SMTP_USERNAME=AKIA…                            # its SMTP credentials
+SMTP_PASSWORD_FILE=/etc/reckon/smtp-password
+SMTP_FROM=reckon@example.com                   # an address it may send as
+```
+
+```bash
+SMTP_HOST=127.0.0.1  SMTP_PORT=25  SMTP_SECURITY=none   # Postfix on this machine
+SMTP_FROM=reckon@example.com
+```
+
+**TLS is required unless `SMTP_SECURITY=none`.** `starttls`, the default, has
+the relay upgrade the connection on 587, and a relay that does not offer to is
+not sent to; `tls` speaks TLS from the first byte, on 465. The relay's
+certificate is always checked, at TLS 1.2 or later; a relay whose certificate a
+private authority issued — Proton Mail Bridge's, say — is trusted with
+`SMTP_CA_FILE`, and there is no setting to leave it unchecked. `none` is for a
+relay on this machine, where the mail crosses no network: to any other host the
+server says so in its log at every start, and a password is never sent without
+TLS except to this machine.
+
+The port is anything the relay listens on, since clouds block the usual ones:
+outbound 25 on AWS, Google Cloud and Azure; 25 and 465 on Hetzner; 25, 465 and
+587 on DigitalOcean, where a provider's 2525 or 2587 still reaches.
+
+When the server starts it says in its log whether the relay answers and takes
+its sign-in. **Settings → Integrations** shows where email goes and as whom,
+when the relay last took something, and the last message it would not take, with
+what it said; **Send a test email** sends one to whoever pressed it and says
+what the relay answered.
+
+Messages go from the address `SMTP_FROM` names, under the business's trading
+name, with replies to the business's own email, and say they were sent by a
+machine (`Auto-Submitted: auto-generated`), so an out-of-office does not answer
+them. Signing them (DKIM) and the domain's SPF and DMARC records are the
+relay's and the domain's, not reckon's: a provider's setup guide says what to
+add.
 
 ## Serving it
 
@@ -318,6 +377,13 @@ server and the commands stop and say which, in development too.
 | `PUBLIC_GOOGLE_MAPS_API_KEY`     | **unset**         | the browser key. Address lookup; unset, no address can be chosen, so none is saved                                                                                                |
 | `GOOGLE_MAPS_API_KEY`            | **unset**         | the server key. Confirms a chosen place, and measures a site's drive and a trip's miles; unset, no address is saved and miles are typed                                           |
 | `GOOGLE_MAPS_API_KEY_FILE`       | unset             | a file holding `GOOGLE_MAPS_API_KEY`, in its place                                                                                                                                |
+| `SMTP_HOST`                      | **unset**         | the relay email goes to — see [Email](#email). Unset, reckon sends none                                                                                                           |
+| `SMTP_PORT`                      | `587`             | its port; `465` where `SMTP_SECURITY=tls`                                                                                                                                         |
+| `SMTP_SECURITY`                  | `starttls`        | `starttls`, `tls`, or `none` for a relay on this machine                                                                                                                          |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | unset             | its sign-in, where it asks; `SMTP_PASSWORD_FILE` holds the password in a file instead                                                                                             |
+| `SMTP_CA_FILE`                   | the system's      | the authorities to trust for its certificate, for one a private authority issued                                                                                                  |
+| `SMTP_HELO_NAME`                 | this machine's    | the name it greets the relay with, where the relay asks for a real one                                                                                                            |
+| `SMTP_FROM`                      | —                 | the address email comes from; needed with `SMTP_HOST`                                                                                                                             |
 
 **Two keys, because a Google API key carries exactly one application
 restriction.** It can be restricted to HTTP referrers _or_ to IP addresses,

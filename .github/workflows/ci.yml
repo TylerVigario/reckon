@@ -153,6 +153,17 @@ jobs:
       PROTOCOL_HEADER: x-forwarded-proto
       # Signs the sessions of a database that is gone when the job ends.
       BETTER_AUTH_SECRET: ci-only-secret-for-a-database-that-ends-with-the-job
+      # Email goes to the relay stand-in on this machine (tests/smtp-stand-in.mjs),
+      # as it would to a mail server beside the application.
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: '2525'
+      SMTP_SECURITY: none
+      SMTP_FROM: reckon@kestrel.example
+      # Told to stop, adapter-node waits this long (30 seconds unless set) for
+      # the browser's connections to close, and one the browser opened ahead
+      # of a request it never sent holds the whole wait. Kept short, a server
+      # still running 20 seconds after SIGTERM is held by something of its own.
+      SHUTDOWN_TIMEOUT: '2'
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -173,6 +184,17 @@ jobs:
         # Every scope and method of a tax rule's rounding, in SQL and in
         # TypeScript, over the same made-up lines. Nothing is written.
         run: PGDATABASE=reckon_empty node tests/tax-check.mjs
+
+      - name: A mail relay to send to
+        # Before the business is set up: setting a password tells its person by
+        # email, and that is written now and sent once the server starts.
+        run: |
+          node tests/smtp-stand-in.mjs &
+          for _ in $(seq 1 10); do
+            curl -sf -o /dev/null http://127.0.0.1:2526/messages && exit 0
+            sleep 1
+          done
+          echo "::error::the relay stand-in never answered"; exit 1
 
       - name: A business to run the checks against
         # The database's default zone is set to one nobody keeps. reckon opens
@@ -277,6 +299,11 @@ jobs:
         # see the business as seeded.
         run: node tests/password-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
+      - name: A person is told by email whenever their password changes, and a relay in trouble is tried again or given up on
+        # After the password check, for the same reason: it adds a person and
+        # takes them away again.
+        run: node tests/email-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+
       - name: Every try at a password is recorded, and limited per address and per email from the record, however many are sent at once
         # On a second server, told the visitor's address as a proxy would tell
         # it, so the check tries from addresses of its own. On the job's server
@@ -305,8 +332,14 @@ jobs:
         run: |
           check() { node tests/offline-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password "$1"; }
           check online
-          kill "$(cat /tmp/reckon.pid)"
-          sleep 1
+          # And it stops when told to, as a service manager expects, rather
+          # than waiting to be killed: nothing it starts may keep it running.
+          pid="$(cat /tmp/reckon.pid)"
+          kill "$pid"
+          for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+          if kill -0 "$pid" 2>/dev/null; then
+            echo "::error::the server was still running 20 seconds after SIGTERM"; exit 1
+          fi
           check offline
           # While the phone is out of reach, the server moves on without it.
           psql -q -v ON_ERROR_STOP=1 -d reckon_ci -f tests/offline-meanwhile.sql

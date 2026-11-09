@@ -2464,4 +2464,72 @@ BEGIN
   RAISE NOTICE '  keeps     a try, naming nobody, once its person is taken away';
 END $$;
 
+\echo '=== 52. an email says what it said only while it is still to send ==='
+
+SELECT must_pass($$
+  INSERT INTO email_message (kind, to_address, subject, body, send_by)
+  VALUES ('password_changed', 'avery@example.com', 'Kestrel: your password was changed', 'Hello', now() + interval '7 days')
+$$, 'an email waiting to be sent, with what it says');
+
+SELECT must_fail($$
+  INSERT INTO email_message (kind, to_address, subject, body, send_by)
+  VALUES ('password_changed', 'avery@example.com', 'Kestrel: your password was changed', NULL, now() + interval '7 days')
+$$, 'an email waiting to be sent with nothing to say');
+
+SELECT must_pass($$
+  INSERT INTO email_message (kind, to_address, subject, body, send_by, sent_at)
+  VALUES ('password_changed', 'avery@example.com', 'Sent', NULL, now(), now())
+$$, 'an email sent, keeping nothing of what it said');
+
+SELECT must_fail($$
+  INSERT INTO email_message (kind, to_address, subject, body, send_by, sent_at)
+  VALUES ('password_changed', 'avery@example.com', 'Sent', 'Hello', now(), now())
+$$, 'an email sent, still keeping what it said');
+
+SELECT must_fail($$
+  INSERT INTO email_message (kind, to_address, subject, body, send_by, gave_up_at)
+  VALUES ('password_changed', 'avery@example.com', 'Given up', 'Hello', now(), now())
+$$, 'an email given up on, still keeping what it said');
+
+SELECT must_fail($$
+  INSERT INTO email_message (kind, to_address, subject, send_by, sent_at, gave_up_at)
+  VALUES ('password_changed', 'avery@example.com', 'Both', now(), now(), now())
+$$, 'an email both sent and given up on');
+
+SELECT must_fail($$
+  INSERT INTO email_message (kind, to_address, subject, body, send_by)
+  VALUES ('a_newsletter', 'avery@example.com', 'News', 'Hello', now())
+$$, 'an email about something reckon never sends');
+
+SELECT must_fail($$
+  INSERT INTO email_message (kind, to_address, subject, body, send_by)
+  VALUES ('password_changed', 'Avery@Example.com', 'Kestrel', 'Hello', now())
+$$, 'an email to an address not lowercased');
+
+SELECT must_fail($$
+  INSERT INTO email_message (kind, to_address, subject, body, send_by)
+  VALUES ('password_changed', 'avery@example.com', '  ', 'Hello', now())
+$$, 'an email with no subject');
+
+SELECT must_fail($$
+  INSERT INTO email_message (kind, to_address, subject, body, send_by, tries)
+  VALUES ('password_changed', 'avery@example.com', 'Kestrel', 'Hello', now(), -1)
+$$, 'an email tried fewer than no times');
+
+-- What was sent outlives the person it was about, naming nobody, until it ages out.
+DO $$
+DECLARE kept int;
+BEGIN
+  INSERT INTO "user" (id, name, email) VALUES
+    ('a1000000-0000-4000-8000-000000000052', 'Told', 'told@example.com');
+  INSERT INTO email_message (kind, user_id, to_address, subject, send_by, sent_at)
+  VALUES ('password_reset', 'a1000000-0000-4000-8000-000000000052', 'told@example.com', 'Told', now(), now());
+  DELETE FROM "user" WHERE id = 'a1000000-0000-4000-8000-000000000052';
+  SELECT count(*) INTO kept FROM email_message WHERE to_address = 'told@example.com' AND user_id IS NULL;
+  IF kept <> 1 THEN
+    RAISE EXCEPTION 'GUARD MISSING: a person taken away took % of their emails with them', 1 - kept;
+  END IF;
+  RAISE NOTICE '  keeps     an email sent, naming nobody, once its person is taken away';
+END $$;
+
 \echo 'All guards hold.'

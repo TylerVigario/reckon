@@ -63,6 +63,15 @@ oversights:
   in with it, and a password that has stopped is answered after the same work a
   wrong one takes. What was typed as the email is kept only as an HMAC, since a
   password is sometimes typed in its place. Rows are deleted after 90 days.
+- **Email crosses the network under TLS**, at 1.2 or later, with the relay's
+  certificate always checked: STARTTLS that a relay does not offer means nothing
+  is sent, not that it is sent in the clear. `SMTP_SECURITY=none` is for a
+  relay on the same machine; to any other the server says so at every start,
+  and never sends a password over it. The relay's password can be a file
+  rather than in the environment, and is never logged.
+- **An email keeps what it said only until it is sent** or given up on, and its
+  row is deleted after 90 days. A person is told by email whenever their
+  password is changed or reset, with who to ask if it was not them.
 - **Whatever has a body to run carries a content security policy.** A page gets
   the one SvelteKit writes, with its own inline code hashed. What an endpoint
   returns — the logo, the operator's stylesheet, the manifest, the API — gets
