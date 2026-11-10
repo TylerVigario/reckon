@@ -5,8 +5,9 @@
  *   build/             the application, from `vite build`; `node build` runs it
  *   drizzle/           the migrations, which the application applies when it starts
  *   scripts/user.mjs   the command that adds the first person, before anyone can sign in,
- *                      with scripts/env.mjs and src/lib/server/db/defaults.js, which
- *                      it reads its settings with and connects by
+ *                      with what it imports: scripts/env.mjs and
+ *                      src/lib/server/db/defaults.js, which it reads its settings with
+ *                      and connects by, and the notices it emails
  *   package.json       and package-lock.json, as they are here
  *   node_modules/      the production dependencies, from `npm ci --omit dev`
  *   .env.example       what the environment may set
@@ -36,6 +37,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
+import { RELEASE_FILES } from './release-files.mjs';
 import { releaseVersion } from './release-version.mjs';
 
 /** @type {(name: string, fallback: string) => string} */
@@ -83,23 +85,7 @@ fs.mkdirSync(staging, { recursive: true });
 console.log('  vite build');
 run('npm', ['run', 'build'], { stdio: 'inherit' });
 
-const take = (/** @type {string} */ p) => fs.cpSync(p, path.join(staging, p), { recursive: true });
-for (const p of [
-	'build',
-	'drizzle',
-	'scripts/user.mjs',
-	// What user.mjs reads its settings with, and connects by.
-	'scripts/env.mjs',
-	'src/lib/server/db/defaults.js',
-	// And what it tells a person whose password it sets.
-	'src/lib/server/notices.js',
-	'package.json',
-	'package-lock.json',
-	'.env.example',
-	'LICENSE',
-	'LICENSE-NOTICE.md'
-])
-	take(p);
+for (const p of RELEASE_FILES) fs.cpSync(p, path.join(staging, p), { recursive: true });
 
 // The production dependencies, exactly as the lockfile resolved them. No
 // lifecycle script runs: nothing here needs one, and @node-rs/argon2 carries
