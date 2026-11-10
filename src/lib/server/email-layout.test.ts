@@ -64,7 +64,8 @@ describe('an email laid out', () => {
 		const { html } = email();
 		expect(html).toContain('>Choose your password</a>');
 		expect(html).toContain(`>${LINK}</a>`);
-		expect(html.match(new RegExp(`href="${LINK.replace(/[.?]/g, '\\$&')}"`, 'g'))).toHaveLength(2);
+		// Both, the button and the address under it: counted as text, not as a pattern.
+		expect(html.split(`href="${LINK}"`)).toHaveLength(3);
 	});
 
 	it('declares light and dark, for the programs that honour it', () => {
