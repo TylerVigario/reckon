@@ -9,6 +9,7 @@
 // same words (#lib/server/email-layout), the text sent first, for the programs
 // and the readers that prefer it.
 
+import { contactFor, reachOf } from './contact.js';
 import { laidOut } from './email-layout.js';
 
 /**
@@ -88,10 +89,6 @@ const named = (/** @type {Business} */ business) => business.tradingName?.trim()
 const theirReckon = (/** @type {Business} */ business) =>
 	named(business) ? `${named(business)}'s reckon` : 'reckon';
 
-/** Someone with Full access, at the business where it has a name. */
-const someoneWithFull = (/** @type {Business} */ business, other = '') =>
-	`someone${other} with Full access${named(business) ? ` at ${named(business)}` : ''}`;
-
 /** A moment as the person reads one: their zone and locale, or the business's. */
 function when(
 	/** @type {Date} */ at,
@@ -116,11 +113,13 @@ function when(
 	}
 }
 
-/** However the business can be reached, after the rest of a sentence: "" if it can't. */
-function orReach(/** @type {Business} */ business) {
-	const reach = [business.email, business.phone].filter(Boolean).join(' or ');
-	return reach ? `, or reach the business at ${reach}` : '';
-}
+/**
+ * Whom to contact as well as a person named, after the rest of a sentence:
+ * the business, where it gives a way to reach it (#lib/server/contact); "" if
+ * it gives none, the person named being whom to ask.
+ */
+const orContact = (/** @type {Business} */ business) =>
+	reachOf(business) ? `, or contact ${contactFor(business)}` : '';
 
 /**
  * A notice laid out (#lib/server/email-layout): its text and its HTML from the
@@ -171,7 +170,7 @@ export function passwordChanged(person, business, { at, on }) {
 			`Hello ${person.name},`,
 			`The password you sign in to ${theirReckon(business)} with was changed on ${when(at, person, business)}, ${WHERE[on]}.`,
 			'If that was you, there is nothing more to do.',
-			`If it wasn't, someone else has your password. Ask ${someoneWithFull(business)} to reset it on Team${orReach(business)}.`
+			`If it wasn't, someone else has your password. Contact ${contactFor(business)} to have it reset.`
 		]
 	});
 }
@@ -210,14 +209,9 @@ export function invitation(person, business, { by, link, until }) {
 			`Hello ${person.name},`,
 			`${by} added you to ${theirReckon(business)}. Choose the password you'll sign in with, at this link:`,
 			{ link, label: 'Choose your password' },
-			lapses(
-				person,
-				business,
-				until,
-				`If it lapses, ask ${by} or ${someoneWithFull(business, ' else')} to send another.`
-			),
+			lapses(person, business, until, `If it lapses, ask ${by} to send another.`),
 			`You sign in with this address, ${person.email}.`,
-			`If you weren't expecting this, nothing happens unless the link is used. Ask ${by} about it${orReach(business)}.`
+			`If you weren't expecting this, nothing happens unless the link is used. Ask ${by} about it${orContact(business)}.`
 		]
 	});
 }
@@ -241,13 +235,8 @@ export function passwordResetLink(person, business, { at, by, link, until }) {
 			`Hello ${person.name},`,
 			`${by} reset the password you sign in to ${theirReckon(business)} with on ${when(at, person, business)}, and signed you out everywhere. Your old password no longer works. Choose a new one at this link:`,
 			{ link, label: 'Choose a new password' },
-			lapses(
-				person,
-				business,
-				until,
-				`If it lapses, ask ${by} or ${someoneWithFull(business, ' else')} to reset it again.`
-			),
-			`If you didn't expect this, ask ${by} or ${someoneWithFull(business, ' else')} about it${orReach(business)}.`
+			lapses(person, business, until, `If it lapses, ask ${by} to reset it again.`),
+			`If you didn't expect this, ask ${by} about it${orContact(business)}.`
 		]
 	});
 }
@@ -272,7 +261,7 @@ export function emailConfirmation(person, business, { link, until }) {
 			`You asked ${theirReckon(business)} to confirm that ${person.email} is yours. Confirm it at this link:`,
 			{ link, label: 'Confirm your email' },
 			lapses(person, business, until, 'If it lapses, ask for another on Your profile.'),
-			`If you didn't ask, someone else is signed in as you. Change your password on Your profile, or ask ${someoneWithFull(business)} to reset it${orReach(business)}.`
+			`If you didn't ask, someone else is signed in as you. Change your password on Your profile, or contact ${contactFor(business)} to have it reset.`
 		]
 	});
 }
@@ -289,7 +278,6 @@ export function emailConfirmation(person, business, { link, until }) {
  * @returns {Notice}
  */
 export function emailChange(person, business, { by, link, until, to }) {
-	const reach = [business.email, business.phone].filter(Boolean).join(' or ');
 	return laid(person, business, {
 		kind: 'email_change',
 		to,
@@ -303,12 +291,10 @@ export function emailChange(person, business, { by, link, until, to }) {
 				person,
 				business,
 				until,
-				by
-					? `If it lapses, ask ${by} or ${someoneWithFull(business, ' else')} to send another.`
-					: 'If it lapses, send another from Team.'
+				by ? `If it lapses, ask ${by} to send another.` : 'If it lapses, send another from Team.'
 			),
 			"Until it's used, you keep signing in with your old address.",
-			`If you aren't ${person.name}, this address was given by mistake, and nothing changes unless the link is used.${reach ? ` Tell ${named(business) ?? 'the business'} at ${reach}.` : ''}`
+			`If you aren't ${person.name}, this address was given by mistake, and nothing changes unless the link is used.${reachOf(business) ? ` Tell ${contactFor(business)}.` : ''}`
 		]
 	});
 }
@@ -335,8 +321,8 @@ export function emailChanging(person, business, { at, by, to }) {
 			`On ${when(at, person, business)}, ${by ?? 'you'} asked for the email you sign in to ${theirReckon(business)} with to change from this one to ${to}. A link went there to confirm it, and until it's used you keep signing in with this one.`,
 			'If you expected this, there is nothing more to do.',
 			by
-				? `If you didn't, ask ${by} or ${someoneWithFull(business, ' else')} to cancel it on Team${orReach(business)}.`
-				: `If you didn't, someone else is signed in as you. Cancel it on Team and change your password on Your profile, or ask ${someoneWithFull(business, ' else')} to reset it${orReach(business)}.`
+				? `If you didn't, ask ${by} to cancel it${orContact(business)}.`
+				: `If you didn't, someone else is signed in as you. Cancel it on Team and change your password on Your profile, or contact ${contactFor(business)} to have it reset.`
 		]
 	});
 }
@@ -364,7 +350,7 @@ export function passwordRecovery(person, business, { at, link, until }) {
 			`On ${when(at, person, business)}, someone asked to choose a new password for the email you sign in to ${theirReckon(business)} with. Choose one at this link:`,
 			{ link, label: 'Choose a new password' },
 			lapses(person, business, until, "Until it's used, your password stays as it is."),
-			`If you didn't ask, you can ignore this email: nothing changes unless the link is used. If more keep coming, tell ${someoneWithFull(business)}${orReach(business)}.`
+			`If you didn't ask, you can ignore this email: nothing changes unless the link is used. If more keep coming, contact ${contactFor(business)}.`
 		]
 	});
 }
@@ -372,8 +358,9 @@ export function passwordRecovery(person, business, { at, link, until }) {
 /**
  * Someone asked to choose a new password for this address, which is not yet
  * confirmed theirs: reckon recovers an account only to an address proven its
- * holder's (NIST SP 800-63B-4 §4.2.1.2), so this carries no link, and says who
- * can send one -- a link from Team, which confirms the address as it is used.
+ * holder's (NIST SP 800-63B-4 §4.2.1.2), so this carries no link, and says whom
+ * to contact for one (#lib/server/contact): a link sent from Team confirms the
+ * address as it is used.
  *
  * @param {Person} person
  * @param {Business} business
@@ -389,7 +376,7 @@ export function passwordRecoveryUnconfirmed(person, business, { at }) {
 		blocks: [
 			`Hello ${person.name},`,
 			`On ${when(at, person, business)}, someone asked to choose a new password for the email you sign in to ${theirReckon(business)} with.`,
-			`This address hasn't been confirmed as yours, so reckon can't send a link to choose one here. A link sent from Team confirms the address as it's used: ask ${someoneWithFull(business)} for one${orReach(business)}.`,
+			`This address hasn't been confirmed as yours, so reckon can't send a link to choose one here. Contact ${contactFor(business)} to have one sent: using it confirms the address too.`,
 			"If you didn't ask, there is nothing to do: your password hasn't changed."
 		]
 	});

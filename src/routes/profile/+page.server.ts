@@ -5,6 +5,7 @@ import { emailLink, user } from '#lib/server/db/schema/index.ts';
 import { tell } from '#lib/server/email.ts';
 import { cannotSend, changing, issue, unsentBecause } from '#lib/server/links.ts';
 import { emailConfirmation } from '#lib/server/notices.js';
+import { whomToContact } from '#lib/server/whom-to-contact.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -20,7 +21,7 @@ import type { Actions, PageServerLoad } from './$types';
  * the new one: said here, with where it went and until when.
  */
 export const load: PageServerLoad = async ({ locals }) => {
-	const [[me], [waiting]] = await Promise.all([
+	const [[me], [waiting], contact] = await Promise.all([
 		db
 			.select({
 				email: user.email,
@@ -36,10 +37,15 @@ export const load: PageServerLoad = async ({ locals }) => {
 		db
 			.select({ until: emailLink.expiresAt })
 			.from(emailLink)
-			.where(confirmationWaiting(locals.user!.id))
+			.where(confirmationWaiting(locals.user!.id)),
+		whomToContact()
 	]);
 	return {
 		me,
+		// Whom to contact for another link, where they cannot send one
+		// themselves: someone with Full sends one from Team.
+		contact,
+		full: locals.user!.access === 'full',
 		confirmation: waiting ? { until: waiting.until } : null,
 		businessZone: locals.businessZone,
 		businessLocale: locals.businessLocale

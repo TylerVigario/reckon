@@ -17,6 +17,8 @@ export const RELEASE_FILES = [
 	'src/lib/server/notices.js',
 	'src/lib/server/email-layout.js',
 	'src/lib/server/image-size.js',
+	// And whom it tells them to contact.
+	'src/lib/server/contact.js',
 	'package.json',
 	'package-lock.json',
 	'.env.example',

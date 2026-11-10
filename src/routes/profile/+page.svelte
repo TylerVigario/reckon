@@ -189,7 +189,7 @@
 					{#if me.changing}
 						<div class="rec-s">
 							{me.changing.lapsed
-								? `The change to ${me.changing.to} lapsed: its link wasn’t used within 24 hours. Ask for another on Team.`
+								? `The change to ${me.changing.to} lapsed: its link wasn’t used within 24 hours. ${data.full ? 'Send another from Team.' : `To have another sent, contact ${data.contact}.`}`
 								: `Changing to ${me.changing.to}. Use the link sent there, by ${clock(me.changing.until, personalZone())} on ${datedAt(me.changing.until, personalZone())}. Until then you sign in with this one.`}
 						</div>
 					{/if}
