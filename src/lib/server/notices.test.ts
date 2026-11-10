@@ -206,3 +206,43 @@ describe('a change of address, to the old one', () => {
 		expect(own.body).toContain("If you didn't, someone else is signed in as you.");
 	});
 });
+
+describe('every notice', () => {
+	const UNTIL_ = new Date('2026-11-10T22:05:00Z');
+	const all = [
+		passwordChanged(AVERY, KESTREL, { at: AT, on: 'link' }),
+		invitation(AVERY, KESTREL, { by: 'Sam Ortiz', link: LINK, until: UNTIL_ }),
+		passwordResetLink(AVERY, KESTREL, { at: AT, by: 'Sam Ortiz', link: LINK, until: UNTIL_ }),
+		emailConfirmation(AVERY, KESTREL, { link: LINK, until: UNTIL_ }),
+		emailChange(AVERY, KESTREL, { by: 'Sam Ortiz', link: LINK, until: UNTIL_, to: 'a@b.example' }),
+		emailChanging(AVERY, KESTREL, { at: AT, by: 'Sam Ortiz', to: 'a@b.example' })
+	];
+
+	it('goes as HTML as well as text, its subject the title and every paragraph in both', () => {
+		for (const n of all) {
+			expect(n.html).toContain(`<title>${n.subject}</title>`);
+			for (const para of n.body.split('\n\n').slice(0, -1)) {
+				const html = para
+					.replaceAll('&', '&amp;')
+					.replaceAll('<', '&lt;')
+					.replaceAll('>', '&gt;')
+					.replaceAll("'", '&#39;');
+				expect(n.html).toContain(html);
+			}
+		}
+	});
+
+	it('signs off with the business and how to reach it', () => {
+		for (const n of all)
+			expect(n.body.split('\n\n').at(-1)).toBe(
+				'— Kestrel Field Services · office@kestrel.example · 555-0100'
+			);
+	});
+
+	it('draws each link as a button saying where it goes', () => {
+		expect(all[1].html).toContain('>Choose your password</a>');
+		expect(all[2].html).toContain('>Choose a new password</a>');
+		expect(all[3].html).toContain('>Confirm your email</a>');
+		expect(all[4].html).toContain('>Confirm your new email</a>');
+	});
+});

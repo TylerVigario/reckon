@@ -43,6 +43,7 @@ import { hash } from '@node-rs/argon2';
 import pg from 'pg';
 import { stdin, stdout } from 'node:process';
 import { EMAIL_CHANNEL, NOTICE_SENDS_FOR, passwordChanged } from '../src/lib/server/notices.js';
+import { mailableLogo } from '../src/lib/server/email-layout.js';
 
 const USAGE = `usage:
   node scripts/user.mjs list
@@ -264,15 +265,29 @@ async function setPassword(user, { tell = false } = {}) {
 			const [business] = (
 				await client.query(
 					`select trading_name as "tradingName", short_name as "shortName", email, phone,
-					        timezone, locale
+					        timezone, locale, accent_colour as "accentColour", logo,
+					        logo_media_type as "logoMediaType"
 					   from operator limit 1`
 				)
 			).rows;
-			const notice = passwordChanged(them, business ?? {}, { at: new Date(), on: 'command_line' });
+			const { logo, logoMediaType, ...rest } = business ?? {};
+			const notice = passwordChanged(
+				them,
+				{ ...rest, logo: mailableLogo(logo, logoMediaType) },
+				{ at: new Date(), on: 'command_line' }
+			);
 			await client.query(
-				`insert into email_message (kind, user_id, to_address, subject, body, send_by)
-				 values ($1, $2, $3, $4, $5, now() + $6::interval)`,
-				[notice.kind, user.id, notice.to, notice.subject, notice.body, NOTICE_SENDS_FOR]
+				`insert into email_message (kind, user_id, to_address, subject, body, html, send_by)
+				 values ($1, $2, $3, $4, $5, $6, now() + $7::interval)`,
+				[
+					notice.kind,
+					user.id,
+					notice.to,
+					notice.subject,
+					notice.body,
+					notice.html,
+					NOTICE_SENDS_FOR
+				]
 			);
 			await client.query('select pg_notify($1, $2)', [EMAIL_CHANNEL, '']);
 		}

@@ -3,8 +3,9 @@
  * Proves reckon sends email (#lib/server/email): a person added on Team is
  * invited by email, and told whenever their password is changed -- chosen with
  * the link, changed on Your profile, set at the command line, reset on Team --
- * and the email goes
- * through the relay as the business, marked as a machine's. A relay that puts a
+ * and the email goes through the relay as the business, marked as a machine's,
+ * as plain text and as HTML, the text first, a logo carried inside it. A relay
+ * that puts a
  * message off has it tried again; one that refuses it for good has it given up
  * on, and Settings says so; a message past its time is given up on, and one
  * older than 90 days is gone. What a message said is kept only until it is sent.
@@ -80,7 +81,7 @@ const nudge = () => db.query(`select pg_notify('email_message', '')`);
 const rowsAbout = async (/** @type {string} */ userId) =>
 	(
 		await db.query(
-			`select kind, to_address, body, tries, sent_at, gave_up_at, last_error, next_try_at > now() as later
+			`select kind, to_address, body, html, tries, sent_at, gave_up_at, last_error, next_try_at > now() as later
 			   from email_message where user_id = $1 order by created_at desc`,
 			[userId]
 		)
@@ -148,6 +149,19 @@ try {
 			'its Message-ID the row’s own, on the sending domain',
 			head.match(/^Message-ID: .*$/im)?.[0]
 		);
+		const textAt = one.data.search(/^Content-Type: text\/plain/im);
+		const htmlAt = one.data.search(/^Content-Type: text\/html/im);
+		check(
+			/^Content-Type: multipart\/alternative/im.test(one.data) && textAt > 0 && htmlAt > textAt,
+			'it goes as plain text and as HTML, the text first (RFC 2046 §5.1.4)',
+			`text at ${textAt}, html at ${htmlAt}`
+		);
+		check(
+			one.text.includes('<title>') &&
+				one.text.includes('role="presentation"') &&
+				one.text.includes('>Choose your password</a>'),
+			'its HTML is laid out, with the link as a button'
+		);
 		check(
 			one.text.includes(`Ask ${fullName} about it`) &&
 				(!business.email || one.text.includes(business.email)),
@@ -156,9 +170,9 @@ try {
 	}
 	const [row] = await rowsAbout(id);
 	check(
-		row?.sent_at !== null && row?.body === null,
-		'once sent, what it said is no longer kept',
-		JSON.stringify({ sent: !!row?.sent_at, body: row?.body !== null })
+		row?.sent_at !== null && row?.body === null && row?.html === null,
+		'once sent, what it said is no longer kept, as text or as HTML',
+		JSON.stringify({ sent: !!row?.sent_at, body: row?.body !== null, html: row?.html !== null })
 	);
 
 	const changed = 'changed-on-their-profile';
@@ -268,6 +282,30 @@ try {
 		!!(await arrives(fullEmail.toLowerCase(), ['a test of email', 'reckon can send email'])),
 		'and it reaches whoever asked for it'
 	);
+
+	// ------------------------------------------------------ with a logo ----
+	const [kept] = (await db.query('select logo, logo_media_type from operator limit 1')).rows;
+	// The smallest PNG there is: one pixel.
+	const png = Buffer.from(
+		'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+		'base64'
+	);
+	await db.query(`update operator set logo = $1, logo_media_type = 'image/png'`, [png]);
+	try {
+		await asFull('/settings/integrations?/test', form({}));
+		const withLogo = await arrives(fullEmail.toLowerCase(), ['a test of email', 'cid:logo@reckon']);
+		check(
+			!!withLogo &&
+				/^Content-ID: <logo@reckon>$/im.test(withLogo.data) &&
+				/^Content-Disposition: inline/im.test(withLogo.data),
+			'with a logo, it is carried inside the message, not fetched from anywhere'
+		);
+	} finally {
+		await db.query('update operator set logo = $1, logo_media_type = $2', [
+			kept?.logo ?? null,
+			kept?.logo_media_type ?? null
+		]);
+	}
 } catch (e) {
 	const why = e instanceof Error ? e.message : String(e);
 	failures.push(why);

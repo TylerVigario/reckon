@@ -267,6 +267,13 @@
       "when": 1794266020958,
       "tag": "0037_a_changed_address_waits_until_it_is_proven",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1794275021513,
+      "tag": "0038_emails_are_html_beside_their_text",
+      "breakpoints": true
     }
   ]
 }

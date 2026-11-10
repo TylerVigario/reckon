@@ -10,6 +10,8 @@
  *
  * Read from the file's own header, so no image library is shipped for it.
  */
+import { pngSize } from './image-size.js';
+
 export type IconFit = { type: string; sizes: string };
 
 const SMALLEST = 512;
@@ -27,15 +29,6 @@ export function iconFromLogo(bytes: Uint8Array, mediaType: string | null): IconF
 			: null;
 	}
 	return null;
-}
-
-/** A PNG's width and height, from the IHDR chunk that must come first. */
-function pngSize(b: Uint8Array): { width: number; height: number } | null {
-	const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-	if (b.length < 24 || signature.some((v, i) => b[i] !== v)) return null;
-	if (String.fromCharCode(b[12], b[13], b[14], b[15]) !== 'IHDR') return null;
-	const view = new DataView(b.buffer, b.byteOffset, b.byteLength);
-	return { width: view.getUint32(16), height: view.getUint32(20) };
 }
 
 /** Whether an SVG's drawing area is square, by its viewBox or its own size. */

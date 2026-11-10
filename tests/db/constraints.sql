@@ -2481,6 +2481,16 @@ SELECT must_pass($$
   VALUES ('password_changed', 'avery@example.com', 'Sent', NULL, now(), now())
 $$, 'an email sent, keeping nothing of what it said');
 
+SELECT must_pass($$
+  INSERT INTO email_message (kind, to_address, subject, body, html, send_by)
+  VALUES ('password_changed', 'avery@example.com', 'Kestrel: your password was changed', 'Hello', '<p>Hello</p>', now() + interval '7 days')
+$$, 'an email waiting to be sent, as text and as HTML');
+
+SELECT must_fail($$
+  INSERT INTO email_message (kind, to_address, subject, body, html, send_by, sent_at)
+  VALUES ('password_changed', 'avery@example.com', 'Sent', NULL, '<p>Hello</p>', now(), now())
+$$, 'an email keeping its HTML without its text');
+
 SELECT must_fail($$
   INSERT INTO email_message (kind, to_address, subject, body, send_by, sent_at)
   VALUES ('password_changed', 'avery@example.com', 'Sent', 'Hello', now(), now())
