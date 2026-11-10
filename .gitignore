@@ -13,6 +13,11 @@ vite.config.ts.timestamp-*
 __pycache__/
 *.pyc
 
+# An operator's own records, kept beside the code and never committed: notes,
+# decisions, anything drawn from real clients. Listed here, not only in
+# .git/info/exclude, because Prettier reads this file and not that one.
+/private/
+
 # The local environment, which may hold keys for development. Never committed:
 # .env.example says what goes in it.
 .env
