@@ -2,7 +2,8 @@ import { fail } from '@sveltejs/kit';
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { account, session, user } from '#lib/server/db/schema/index.ts';
-import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, hashPassword } from '#lib/server/auth.ts';
+import { hashPassword, weaknessOf } from '#lib/server/auth.ts';
+import { GUIDANCE, MIN_PASSWORD_LENGTH, REFUSED } from '#lib/server/password-rules.js';
 import { tell } from '#lib/server/email.ts';
 import { endPasswordLinks, missed, turnedAway, usable, used } from '#lib/server/links.ts';
 import { passwordChanged } from '#lib/server/notices.js';
@@ -31,7 +32,7 @@ export const load: PageServerLoad = async ({ locals, setHeaders }) => {
 		// Whom to contact for a link that no longer works (#lib/server/contact).
 		contact: await whomToContact(),
 		min: MIN_PASSWORD_LENGTH,
-		max: MAX_PASSWORD_LENGTH,
+		guidance: GUIDANCE,
 		// Whoever is signed in in this browser, who has to sign out to sign in as
 		// someone else.
 		signedInAs: locals.user ? { name: locals.user.name, email: locals.user.email } : null
@@ -55,7 +56,18 @@ export const actions: Actions = {
 			await missed(address);
 			return fail(404, DEAD);
 		}
-		return { purpose: found.purpose, name: found.name, email: found.email };
+		// Whether the password it replaces still works, or has stopped: after a
+		// hundred wrong tries, or found in a breach (#lib/server/breach).
+		const [person] = await db
+			.select({ stoppedAt: user.passwordStoppedAt })
+			.from(user)
+			.where(eq(user.id, found.userId));
+		return {
+			purpose: found.purpose,
+			name: found.name,
+			email: found.email,
+			stopped: !!person?.stoppedAt
+		};
 	},
 
 	/** A password chosen with an invitation, a reset's link or a recovery's. */
@@ -67,18 +79,20 @@ export const actions: Actions = {
 		const password = text(f.get('password'));
 		const confirm = text(f.get('confirm'));
 
-		// Said before the code is used, so a password refused leaves the link working.
-		if (password.length < MIN_PASSWORD_LENGTH)
+		// Said before the code is used, so a password refused leaves the link
+		// working. Held against its person's names, so the code is looked up
+		// first, and a code that is not one to use is answered as ever.
+		const whose = await db.transaction((tx) => usable(tx, code));
+		if (!whose) {
+			await missed(address);
+			return fail(404, DEAD);
+		}
+		const weak = await weaknessOf(password, whose);
+		if (weak)
 			return fail(400, {
 				why: 'password' as const,
 				field: 'password' as const,
-				message: `Enter a password of at least ${MIN_PASSWORD_LENGTH} characters.`
-			});
-		if (password.length > MAX_PASSWORD_LENGTH)
-			return fail(400, {
-				why: 'password' as const,
-				field: 'password' as const,
-				message: `Enter a password of at most ${MAX_PASSWORD_LENGTH} characters.`
+				message: REFUSED[weak]
 			});
 		if (confirm !== password)
 			return fail(400, {

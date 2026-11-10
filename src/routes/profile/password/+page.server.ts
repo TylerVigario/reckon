@@ -3,12 +3,14 @@ import { APIError } from 'better-auth/api';
 import { eq } from 'drizzle-orm';
 import { count } from '#lib/format.ts';
 import { db, schema } from '#lib/server/db/index.ts';
+import { authHeaders, getAuth, weaknessOf } from '#lib/server/auth.ts';
 import {
+	GUIDANCE,
 	MAX_PASSWORD_LENGTH,
 	MIN_PASSWORD_LENGTH,
-	authHeaders,
-	getAuth
-} from '#lib/server/auth.ts';
+	REFUSED,
+	lengthOf
+} from '#lib/server/password-rules.js';
 import { tell } from '#lib/server/email.ts';
 import { endPasswordLinks } from '#lib/server/links.ts';
 import { passwordChanged } from '#lib/server/notices.js';
@@ -20,7 +22,8 @@ import type { Actions, PageServerLoad } from './$types';
  * left signed in is not always whoever signed in (OWASP ASVS 6.2.3). This
  * browser is given a new session and every other is signed out (7.4.3). A
  * forgotten one is replaced with Forgot password? on the sign-in page
- * (#lib/server/recovery).
+ * (#lib/server/recovery). The new one is held to the rules
+ * (#lib/server/password-rules).
  *
  * A try at the current password is recorded and counted as a sign-in is
  * (#lib/server/sign-in-limit) -- against the address, against this browser's
@@ -30,7 +33,8 @@ import type { Actions, PageServerLoad } from './$types';
 // eslint-disable-next-line @typescript-eslint/require-await -- a load is async by contract
 export const load: PageServerLoad = async ({ locals }) => ({
 	email: locals.user!.email,
-	min: MIN_PASSWORD_LENGTH
+	min: MIN_PASSWORD_LENGTH,
+	guidance: GUIDANCE
 });
 
 export const actions: Actions = {
@@ -43,20 +47,12 @@ export const actions: Actions = {
 		const confirm = text(f.get('confirm'));
 
 		if (!current) return fail(400, { field: 'current', message: 'Enter your current password.' });
-		if (password.length < MIN_PASSWORD_LENGTH)
-			return fail(400, {
-				field: 'password',
-				message: `Enter a password of at least ${MIN_PASSWORD_LENGTH} characters.`
-			});
-		if (password.length > MAX_PASSWORD_LENGTH)
-			return fail(400, {
-				field: 'password',
-				message: `Enter a password of at most ${MAX_PASSWORD_LENGTH} characters.`
-			});
+		const me = event.locals.user!;
+		const weak = await weaknessOf(password, me);
+		if (weak) return fail(400, { field: 'password', message: REFUSED[weak] });
 		if (confirm !== password)
 			return fail(400, { field: 'confirm', message: 'The passwords don’t match.' });
 
-		const me = event.locals.user!;
 		// This browser is signed in as them, so its tries are a count of its own.
 		const tried = await takeTry({
 			page: 'password_change',
@@ -74,7 +70,7 @@ export const actions: Actions = {
 			return fail(400, {
 				field: '',
 				message:
-					'Your password has stopped working, after a hundred wrong tries in a row. Sign out, and choose a new one with Forgot password? on the sign-in page.'
+					'Your password has stopped working. Sign out, and choose a new one with Forgot password? on the sign-in page.'
 			});
 		}
 
@@ -83,7 +79,7 @@ export const actions: Actions = {
 			return fail(400, { field: 'current', message: 'That isn’t your current password.' });
 		};
 		// Longer than any password can be, so not theirs.
-		if (current.length > MAX_PASSWORD_LENGTH) return wrong();
+		if (lengthOf(current) > MAX_PASSWORD_LENGTH) return wrong();
 		try {
 			await getAuth().api.changePassword({
 				body: { currentPassword: current, newPassword: password, revokeOtherSessions: true },

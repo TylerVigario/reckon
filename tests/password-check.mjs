@@ -235,7 +235,7 @@ try {
 		`${unknown.status} ${nonsense.status}`
 	);
 	const short = await act('choose', { code, password: 'too-short', confirm: 'too-short' });
-	check(short.status === 400, 'a password shorter than twelve is refused', String(short.status));
+	check(short.status === 400, 'a password shorter than fifteen is refused', String(short.status));
 	const differ = await act('choose', {
 		code,
 		password: 'a-password-of-mine',

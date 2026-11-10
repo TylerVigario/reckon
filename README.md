@@ -191,6 +191,22 @@ address), and an unknown or deactivated one nothing. A network asking ten times
 in fifteen minutes waits, and an address is sent one email every five minutes
 at most, both counted whether or not anyone signs in with it.
 
+**A password is 15 characters at least**, each character counted once, as NIST
+SP 800-63B-4 counts them, and is refused, saying why, if it is one of the most
+common, if Have I Been Pwned's Pwned Passwords has seen it in a breach, or if
+it is made of reckon's, the business's or the person's own names (§3.1.1.2).
+That holds wherever one is chosen: with a link, on Your profile, and at the
+command line. Only the first five characters of its SHA-1 leave the server.
+Every sign-in asks Pwned Passwords again, since a password can turn up in a
+breach after it was chosen, and a sign-in is the one moment it is in hand. One
+it has seen by then stops there (§4.3): no session opens, every session they
+had ends, and a confirmed address is emailed the hour's link to choose another,
+saying why; an address not confirmed is told so, without one. Where Pwned
+Passwords cannot be asked, a new password is held to a bundled list of the
+most common ones, a sign-in goes ahead, and the log says so.
+`PWNED_PASSWORDS_URL` names another service answering its range API, such as a
+copy kept on the host with Have I Been Pwned's downloader.
+
 Using a link also proves the address it went to is theirs, and Team says whose
 are confirmed. Anyone added before invitations confirms theirs from Your
 profile, by a link sent there.
@@ -234,8 +250,9 @@ Deactivated, they can't, and aren't offered work; everything they did is kept,
 and they can be reactivated. Team also says when each person last signed in,
 and who is Invited, or whose invitation expired unused.
 
-Twelve characters at least, checked on the first entry rather than after the
-second. On a development database, `--insecure` lifts that and says so:
+The password is held to the same rules, checked on the first entry rather than
+after the second. On a development database, `--insecure` lifts them and says
+so:
 
 ```bash
 node scripts/user.mjs password avery@kestrel.example --insecure   # the seeded owner, Full
@@ -442,6 +459,7 @@ server and the commands stop and say which, in development too.
 | `SMTP_HELO_NAME`                 | this machine's    | the name it greets the relay with, where the relay asks for a real one                                                                                                            |
 | `SMTP_FROM`                      | —                 | the address email comes from; needed with `SMTP_HOST`                                                                                                                             |
 | `SITE_URL`                       | unset             | where the links reckon emails go, https://reckon.example.com: https except to this machine. Unset, nobody can be invited or reset by email                                        |
+| `PWNED_PASSWORDS_URL`            | Pwned Passwords   | where a password is looked up among those seen in breaches, by the first five characters of its SHA-1: another service answering its range API, a copy on this host say           |
 
 **Two keys, because a Google API key carries exactly one application
 restriction.** It can be restricted to HTTP referrers _or_ to IP addresses,

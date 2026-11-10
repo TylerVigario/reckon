@@ -4,10 +4,21 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { hash, verify } from '@node-rs/argon2';
 import { building } from '$app/env';
-import { BETTER_AUTH_SECRET, BETTER_AUTH_SECRET_FILE, SECURE_COOKIES } from '$app/env/private';
+import {
+	BETTER_AUTH_SECRET,
+	BETTER_AUTH_SECRET_FILE,
+	PWNED_PASSWORDS_URL,
+	SECURE_COOKIES
+} from '$app/env/private';
 import { getRequestEvent } from '$app/server';
 import type { RequestEvent } from '@sveltejs/kit';
 import { db, schema } from './db/index.ts';
+import {
+	MAX_PASSWORD_LENGTH,
+	MIN_PASSWORD_LENGTH,
+	weakness,
+	wordsAbout
+} from './password-rules.js';
 import { eitherOf } from './secret-file.ts';
 import type { Access } from '#lib/access.ts';
 
@@ -45,9 +56,6 @@ export const hashPassword = (password: string) => hash(password, ARGON);
 /** The header every hash made at today's parameters starts with. */
 export const CURRENT_HASH = `$argon2id$v=19$m=${ARGON.memoryCost},t=${ARGON.timeCost},p=${ARGON.parallelism}$`;
 
-export const MIN_PASSWORD_LENGTH = 12;
-/** Better Auth's own ceiling, said here so a password chosen outside it keeps to it. */
-export const MAX_PASSWORD_LENGTH = 128;
 const SESSION_DAYS = 30;
 
 /**
@@ -90,8 +98,11 @@ function createAuth() {
 		emailAndPassword: {
 			enabled: true,
 			disableSignUp: true,
+			// In UTF-16 units, where the rules count characters
+			// (#lib/server/password-rules): a character is one unit or two, so
+			// these never refuse a password the rules allow, and the rules decide.
 			minPasswordLength: MIN_PASSWORD_LENGTH,
-			maxPasswordLength: MAX_PASSWORD_LENGTH,
+			maxPasswordLength: 2 * MAX_PASSWORD_LENGTH,
 			password: {
 				hash: hashPassword,
 				verify: ({ hash: stored, password }) => verify(stored, password).catch(() => false)
@@ -157,6 +168,23 @@ export type SessionUser = {
 	hourCycle: 'h12' | 'h23' | null;
 	weekStart: number | null;
 };
+
+/**
+ * What is wrong with a password being chosen for this person
+ * (#lib/server/password-rules), or null: held against their own names and the
+ * business's, and asked of Pwned Passwords where PWNED_PASSWORDS_URL says.
+ */
+export async function weaknessOf(password: string, person: { name: string; email: string }) {
+	const [business] = await db
+		.select({
+			tradingName: schema.operator.tradingName,
+			shortName: schema.operator.shortName,
+			email: schema.operator.email
+		})
+		.from(schema.operator)
+		.limit(1);
+	return weakness(password, { about: wordsAbout(person, business), pwned: PWNED_PASSWORDS_URL });
+}
 
 /**
  * The headers to hand Better Auth for this request: the client's own, with the

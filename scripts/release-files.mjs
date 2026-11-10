@@ -19,6 +19,9 @@ export const RELEASE_FILES = [
 	'src/lib/server/image-size.js',
 	// And whom it tells them to contact.
 	'src/lib/server/contact.js',
+	// And the rules it holds a password to, with the list of common ones.
+	'src/lib/server/password-rules.js',
+	'src/lib/server/common-passwords.js',
 	'package.json',
 	'package-lock.json',
 	'.env.example',

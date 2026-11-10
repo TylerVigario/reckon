@@ -84,13 +84,13 @@
 					minlength={data.min}
 					required
 					aria-invalid={wrongIn('password') ? 'true' : undefined}
-					aria-describedby={wrongIn('password') ? 'p-new-e' : 'p-new-c'}
+					aria-describedby={wrongIn('password') ? 'p-new-e p-new-c' : 'p-new-c'}
 				/>
+				<!-- How to choose one stays in view when one is refused: that is when it is needed. -->
 				{#if wrongIn('password')}
 					{@render wrong('p-new', wrongIn('password'))}
-				{:else}
-					<p class="fc-c" id="p-new-c">At least {data.min} characters.</p>
 				{/if}
+				<p class="fc-c" id="p-new-c">At least {data.min} characters. {data.guidance}</p>
 			</div>
 			<div class="fc">
 				<label class="fc-l" for="p-confirm">Confirm new password</label>

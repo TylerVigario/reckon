@@ -162,6 +162,10 @@ jobs:
       # Where the links it emails go: the server itself, over http, as only an
       # address on this machine may be.
       SITE_URL: http://127.0.0.1:5178
+      # Passwords are looked up in the Pwned Passwords stand-in on this machine
+      # (tests/pwned-stand-in.mjs), with a breach of its own, so no check asks
+      # the real one and every check knows which it will call breached.
+      PWNED_PASSWORDS_URL: http://127.0.0.1:5180/range/
       # Told to stop, adapter-node waits this long (30 seconds unless set) for
       # the browser's connections to close, and one the browser opened ahead
       # of a request it never sent holds the whole wait. Kept short, a server
@@ -198,6 +202,17 @@ jobs:
             sleep 1
           done
           echo "::error::the relay stand-in never answered"; exit 1
+
+      - name: Pwned Passwords to ask
+        # Before the business is set up: setting a password holds it to the
+        # rules, which ask Pwned Passwords.
+        run: |
+          node tests/pwned-stand-in.mjs &
+          for _ in $(seq 1 10); do
+            curl -sf -o /dev/null http://127.0.0.1:5180/range/00000 && exit 0
+            sleep 1
+          done
+          echo "::error::the Pwned Passwords stand-in never answered"; exit 1
 
       - name: A business to run the checks against
         # The database's default zone is set to one nobody keeps. reckon opens
@@ -316,6 +331,11 @@ jobs:
         # After the email change check, for the same reason: it adds people and
         # takes them away again, and clears what it asked from this machine.
         run: node tests/forgot-password-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+
+      - name: A password chosen keeps every rule, and one Pwned Passwords has seen since stops at sign-in and a link to replace it is emailed
+        # After the forgot password check, for the same reason: it adds people
+        # and takes them away again.
+        run: node tests/password-rules-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
       - name: Every try at a password is recorded, and limited per address and per email from the record, however many are sent at once
         # On a second server, told the visitor's address as a proxy would tell

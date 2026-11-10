@@ -1,6 +1,7 @@
 import { defineEnvVars } from '@sveltejs/kit/env';
 import { building } from '$app/env';
 import { readSecretFile } from '#lib/server/secret-file.ts';
+import { PWNED_PASSWORDS } from '#lib/server/password-rules.js';
 
 /**
  * Everything the application reads from its environment, once.
@@ -102,6 +103,17 @@ export const variables = defineEnvVars({
 			if (value === 'true') return true;
 			if (value === 'false') return false;
 			throw new Error(`SECURE_COOKIES must be true or false, not '${value}'.`);
+		}
+	},
+
+	PWNED_PASSWORDS_URL: {
+		description:
+			"Where a password is looked up among those seen in breaches, by the first five characters of its SHA-1 (#lib/server/password-rules): each new one, and each one signed in with. Have I Been Pwned's Pwned Passwords unless set; another service answering its range API -- a copy kept on this host, say -- is named by its …/range/ URL.",
+		schema: (value) => {
+			const url = optional(value) ?? PWNED_PASSWORDS;
+			if (!URL.canParse(url) || !['https:', 'http:'].includes(new URL(url).protocol))
+				throw new Error(`PWNED_PASSWORDS_URL is an http or https URL, not '${url}'.`);
+			return url;
 		}
 	},
 

@@ -28,7 +28,7 @@
 				autocomplete="new-password"
 				minlength={data.min}
 				aria-invalid={form?.field === 'password' ? 'true' : undefined}
-				aria-describedby={form?.field === 'password' ? 'why' : 'hint'}
+				aria-describedby={form?.field === 'password' ? 'why hint' : 'hint'}
 				required
 			/>
 		</label>
@@ -43,7 +43,7 @@
 				required
 			/>
 		</label>
-		<p class="hint" id="hint">At least {data.min} characters.</p>
+		<p class="hint" id="hint">At least {data.min} characters. {data.guidance}</p>
 		<button type="submit">Save password</button>
 	</form>
 </main>

@@ -124,8 +124,9 @@ export const user = pgTable(
 		 */
 		passwordSetAt: tstz(),
 		/**
-		 * When their password stopped working, after a hundred wrong tries in a
-		 * row (0034), until a new one is set. Null is working.
+		 * When their password stopped working, until a new one is set: after a
+		 * hundred wrong tries in a row (0034), or when Pwned Passwords had seen it
+		 * as they signed in with it (0040, #lib/server/breach). Null is working.
 		 */
 		passwordStoppedAt: tstz(),
 		/**
@@ -373,9 +374,11 @@ export const TRY_PAGES = ['sign_in', 'password_change'] as const;
 /**
  * How a try came out. Inactive is a right password for someone made inactive,
  * answered and counted as a wrong one; stopped, one not checked, the password
- * having stopped. A try still being checked, or never finished, has none.
+ * having stopped; breached, a right password Pwned Passwords has seen, which
+ * stopped it there (#lib/server/breach). A try still being checked, or never
+ * finished, has none.
  */
-export const TRY_OUTCOMES = ['right', 'wrong', 'inactive', 'stopped'] as const;
+export const TRY_OUTCOMES = ['right', 'wrong', 'inactive', 'stopped', 'breached'] as const;
 
 /**
  * Every try at a password (0034), and what the limits on them are worked out
