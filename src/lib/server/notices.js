@@ -5,7 +5,11 @@
 // A notice says what happened, when, in the person's own zone and words, and
 // what to do if it was not them -- NIST SP 800-63B-4 §4.6: "clear
 // instructions, including contact information, in case the recipient
-// repudiates the event". Plain text, which every mail program shows as sent.
+// repudiates the event". Each is laid out as HTML and as plain text from the
+// same words (#lib/server/email-layout), the text sent first, for the programs
+// and the readers that prefer it.
+
+import { laidOut } from './email-layout.js';
 
 /**
  * What an email is about, as kept on each (email_message.kind). password_reset
@@ -57,9 +61,16 @@ export const EMAIL_CHANNEL = 'email_message';
  * @property {string | null} [phone]
  * @property {string | null} [timezone]
  * @property {string | null} [locale]
+ * @property {string | null} [accentColour] #rrggbb
+ * @property {{ width: number, height: number } | null} [logo] its size, where it is a PNG or JPEG
  */
 
-/** @typedef {{ kind: EmailKind, to: string, subject: string, body: string }} Notice */
+/**
+ * An email, ready to keep and send: its plain text, and the same as HTML
+ * (#lib/server/email-layout).
+ *
+ * @typedef {{ kind: EmailKind, to: string, subject: string, body: string, html: string }} Notice
+ */
 
 const WHERE = {
 	profile: 'on Your profile',
@@ -109,6 +120,34 @@ function orReach(/** @type {Business} */ business) {
 	return reach ? `, or reach the business at ${reach}` : '';
 }
 
+/**
+ * A notice laid out (#lib/server/email-layout): its text and its HTML from the
+ * same blocks -- a string is a paragraph, { link, label } a link.
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {{ kind: EmailKind, to: string, subject: string, heading: string, blocks: (string | { link: string, label: string })[] }} notice
+ * @returns {Notice}
+ */
+function laid(person, business, { kind, to, subject, heading, blocks }) {
+	const { text, html } = laidOut({
+		subject,
+		heading,
+		blocks: blocks.map((b) => (typeof b === 'string' ? { text: b } : b)),
+		look: lookOf(business)
+	});
+	return { kind, to, subject, body: text, html };
+}
+
+/** The business as an email shows it (#lib/server/email-layout Look). */
+export const lookOf = (/** @type {Business} */ business) => ({
+	name: named(business) ?? 'reckon',
+	email: business.email ?? null,
+	phone: business.phone ?? null,
+	accent: business.accentColour ?? null,
+	logo: business.logo ?? null
+});
+
 const subject = (/** @type {Business} */ business, /** @type {string} */ what) =>
 	`${business.shortName?.trim() || named(business) || 'reckon'}: ${what}`;
 
@@ -121,17 +160,18 @@ const subject = (/** @type {Business} */ business, /** @type {string} */ what) =
  * @returns {Notice}
  */
 export function passwordChanged(person, business, { at, on }) {
-	return {
+	return laid(person, business, {
 		kind: 'password_changed',
 		to: person.email,
 		subject: subject(business, 'your password was changed'),
-		body: [
+		heading: 'Your password was changed',
+		blocks: [
 			`Hello ${person.name},`,
 			`The password you sign in to ${theirReckon(business)} with was changed on ${when(at, person, business)}, ${WHERE[on]}.`,
 			'If that was you, there is nothing more to do.',
 			`If it wasn't, someone else has your password. Ask ${someoneWithFull(business)} to reset it on Team${orReach(business)}.`
-		].join('\n\n')
-	};
+		]
+	});
 }
 
 /**
@@ -159,14 +199,15 @@ const lapses = (
  * @returns {Notice}
  */
 export function invitation(person, business, { by, link, until }) {
-	return {
+	return laid(person, business, {
 		kind: 'invitation',
 		to: person.email,
 		subject: subject(business, 'choose your password'),
-		body: [
+		heading: `Welcome to ${named(business) ?? 'reckon'}`,
+		blocks: [
 			`Hello ${person.name},`,
 			`${by} added you to ${theirReckon(business)}. Choose the password you'll sign in with, at this link:`,
-			link,
+			{ link, label: 'Choose your password' },
 			lapses(
 				person,
 				business,
@@ -175,8 +216,8 @@ export function invitation(person, business, { by, link, until }) {
 			),
 			`You sign in with this address, ${person.email}.`,
 			`If you weren't expecting this, nothing happens unless the link is used. Ask ${by} about it${orReach(business)}.`
-		].join('\n\n')
-	};
+		]
+	});
 }
 
 /**
@@ -189,14 +230,15 @@ export function invitation(person, business, { by, link, until }) {
  * @returns {Notice}
  */
 export function passwordResetLink(person, business, { at, by, link, until }) {
-	return {
+	return laid(person, business, {
 		kind: 'password_reset_link',
 		to: person.email,
 		subject: subject(business, 'your password was reset'),
-		body: [
+		heading: 'Your password was reset',
+		blocks: [
 			`Hello ${person.name},`,
 			`${by} reset the password you sign in to ${theirReckon(business)} with on ${when(at, person, business)}, and signed you out everywhere. Your old password no longer works. Choose a new one at this link:`,
-			link,
+			{ link, label: 'Choose a new password' },
 			lapses(
 				person,
 				business,
@@ -204,8 +246,8 @@ export function passwordResetLink(person, business, { at, by, link, until }) {
 				`If it lapses, ask ${by} or ${someoneWithFull(business, ' else')} to reset it again.`
 			),
 			`If you didn't expect this, ask ${by} or ${someoneWithFull(business, ' else')} about it${orReach(business)}.`
-		].join('\n\n')
-	};
+		]
+	});
 }
 
 /**
@@ -218,18 +260,19 @@ export function passwordResetLink(person, business, { at, by, link, until }) {
  * @returns {Notice}
  */
 export function emailConfirmation(person, business, { link, until }) {
-	return {
+	return laid(person, business, {
 		kind: 'email_confirmation',
 		to: person.email,
 		subject: subject(business, 'confirm your email'),
-		body: [
+		heading: 'Confirm your email',
+		blocks: [
 			`Hello ${person.name},`,
 			`You asked ${theirReckon(business)} to confirm that ${person.email} is yours. Confirm it at this link:`,
-			link,
+			{ link, label: 'Confirm your email' },
 			lapses(person, business, until, 'If it lapses, ask for another on Your profile.'),
 			`If you didn't ask, someone else is signed in as you. Change your password on Your profile, or ask ${someoneWithFull(business)} to reset it${orReach(business)}.`
-		].join('\n\n')
-	};
+		]
+	});
 }
 
 /**
@@ -245,14 +288,15 @@ export function emailConfirmation(person, business, { link, until }) {
  */
 export function emailChange(person, business, { by, link, until, to }) {
 	const reach = [business.email, business.phone].filter(Boolean).join(' or ');
-	return {
+	return laid(person, business, {
 		kind: 'email_change',
 		to,
 		subject: subject(business, 'confirm your new email'),
-		body: [
+		heading: 'Confirm your new email',
+		blocks: [
 			`Hello ${person.name},`,
 			`${by ? `${by} is changing` : 'You are changing'} the email you sign in to ${theirReckon(business)} with to this one, ${to}. Confirm it's yours at this link:`,
-			link,
+			{ link, label: 'Confirm your new email' },
 			lapses(
 				person,
 				business,
@@ -263,8 +307,8 @@ export function emailChange(person, business, { by, link, until, to }) {
 			),
 			"Until it's used, you keep signing in with your old address.",
 			`If you aren't ${person.name}, this address was given by mistake, and nothing changes unless the link is used.${reach ? ` Tell ${named(business) ?? 'the business'} at ${reach}.` : ''}`
-		].join('\n\n')
-	};
+		]
+	});
 }
 
 /**
@@ -279,17 +323,18 @@ export function emailChange(person, business, { by, link, until, to }) {
  * @returns {Notice}
  */
 export function emailChanging(person, business, { at, by, to }) {
-	return {
+	return laid(person, business, {
 		kind: 'email_changing',
 		to: person.email,
 		subject: subject(business, 'your sign-in email is changing'),
-		body: [
+		heading: 'Your sign-in email is changing',
+		blocks: [
 			`Hello ${person.name},`,
 			`On ${when(at, person, business)}, ${by ?? 'you'} asked for the email you sign in to ${theirReckon(business)} with to change from this one to ${to}. A link went there to confirm it, and until it's used you keep signing in with this one.`,
 			'If you expected this, there is nothing more to do.',
 			by
 				? `If you didn't, ask ${by} or ${someoneWithFull(business, ' else')} to cancel it on Team${orReach(business)}.`
 				: `If you didn't, someone else is signed in as you. Cancel it on Team and change your password on Your profile, or ask ${someoneWithFull(business, ' else')} to reset it${orReach(business)}.`
-		].join('\n\n')
-	};
+		]
+	});
 }

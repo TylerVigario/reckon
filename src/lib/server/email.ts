@@ -19,10 +19,12 @@ import { emailMessage, integration, operator, user } from './db/schema/index.ts'
 import {
 	EMAIL_CHANNEL,
 	NOTICE_SENDS_FOR,
+	lookOf,
 	type Business,
 	type Notice,
 	type Person
 } from './notices.js';
+import { LOGO_CID, laidOut, mailableLogo } from './email-layout.js';
 import { eitherOf } from './secret-file.ts';
 
 /**
@@ -106,7 +108,14 @@ const HELD = sql`interval '2 minutes'`;
 /** The relay, and the address it is sent as. */
 type Relay = { transport: Transporter; from: string };
 /** The business a message is from, and where a reply goes. */
-type Sender = { name: string; email: string | null } | undefined;
+type Sender =
+	| {
+			name: string;
+			email: string | null;
+			logo?: Uint8Array | null;
+			logoMediaType?: string | null;
+	  }
+	| undefined;
 
 let relay: (Relay & { host: string }) | null | undefined;
 
@@ -165,14 +174,18 @@ async function whoAndWhose(tx: Reader, userId: string) {
 				email: operator.email,
 				phone: operator.phone,
 				timezone: operator.timezone,
-				locale: operator.locale
+				locale: operator.locale,
+				accentColour: operator.accentColour,
+				logo: operator.logo,
+				logoMediaType: operator.logoMediaType
 			})
 			.from(operator)
 			.limit(1)
 	]);
+	const { logo, logoMediaType, ...rest } = business ?? {};
 	return {
 		person: person satisfies Person | undefined,
-		business: (business ?? {}) satisfies Business
+		business: { ...rest, logo: mailableLogo(logo, logoMediaType) } satisfies Business
 	};
 }
 
@@ -189,13 +202,14 @@ export async function tell(
 ): Promise<void> {
 	const { person, business } = await whoAndWhose(tx, userId);
 	if (!person) return;
-	const { kind, to, subject, body } = notice(person, business);
+	const { kind, to, subject, body, html } = notice(person, business);
 	await tx.insert(emailMessage).values({
 		kind,
 		userId,
 		toAddress: to,
 		subject,
 		body,
+		html,
 		sendBy: sendBy ?? sql`now() + ${NOTICE_SENDS_FOR}::interval`
 	});
 	// Delivered when the transaction commits, and not at all if it does not.
@@ -224,6 +238,7 @@ export async function sendDue(): Promise<void> {
 				.set({
 					gaveUpAt: sql`now()`,
 					body: null,
+					html: null,
 					claimedUntil: null,
 					lastError: sql`coalesce(${emailMessage.lastError}, 'never sent: no relay was set')`
 				})
@@ -243,6 +258,7 @@ export async function sendDue(): Promise<void> {
 				to_address: string;
 				subject: string;
 				body: string;
+				html: string | null;
 				tries: number;
 			}>(sql`
 				update ${emailMessage} set claimed_until = now() + ${HELD}, tries = tries + 1
@@ -250,10 +266,15 @@ export async function sendDue(): Promise<void> {
 				               where sent_at is null and gave_up_at is null and next_try_at <= now()
 				                 and (claimed_until is null or claimed_until < now())
 				               order by next_try_at limit 10 for update skip locked)
-				returning id, to_address, subject, body, tries`);
+				returning id, to_address, subject, body, html, tries`);
 			if (!due.rows.length) return;
 			const [business] = await db
-				.select({ name: operator.tradingName, email: operator.email })
+				.select({
+					name: operator.tradingName,
+					email: operator.email,
+					logo: operator.logo,
+					logoMediaType: operator.logoMediaType
+				})
 				.from(operator)
 				.limit(1);
 			for (const m of due.rows) await sendOne(relay, m, business);
@@ -264,11 +285,16 @@ export async function sendDue(): Promise<void> {
 	}
 }
 
-/** One message as it goes: from the business, replies to it, and marked as a machine's. */
+/**
+ * One message as it goes: from the business, replies to it, and marked as a
+ * machine's. Its text, and its HTML after it (RFC 2046 §5.1.4: "the plainest
+ * format first and the richest format last", which nodemailer keeps), with the
+ * business's logo carried inside it where the HTML draws it.
+ */
 const sent = (
 	relay: Relay,
 	business: Sender,
-	m: { id: string; to: string; subject: string; text: string }
+	m: { id: string; to: string; subject: string; text: string; html?: string | null }
 ) =>
 	relay.transport.sendMail({
 		from: { name: business?.name ?? 'reckon', address: relay.from },
@@ -276,10 +302,30 @@ const sent = (
 		replyTo: business?.email ?? undefined,
 		subject: m.subject,
 		text: m.text,
+		...(m.html && { html: m.html, attachments: logoFor(m.html, business) }),
 		messageId: messageId(m.id, relay.from),
 		// RFC 3834: sent by a machine, so an out-of-office reply is not sent back.
 		headers: { 'Auto-Submitted': 'auto-generated' }
 	});
+
+/**
+ * The logo as an inline part (RFC 2392), where the HTML draws it and the
+ * business still has one a mail program can show. One taken away since the
+ * email was written leaves its name, the image's alt text, in its place.
+ */
+function logoFor(html: string, business: Sender) {
+	if (!html.includes(`cid:${LOGO_CID}`) || !business?.logo) return [];
+	if (!mailableLogo(business.logo, business.logoMediaType)) return [];
+	return [
+		{
+			cid: LOGO_CID,
+			filename: business.logoMediaType === 'image/png' ? 'logo.png' : 'logo.jpg',
+			content: Buffer.from(business.logo),
+			contentType: business.logoMediaType ?? undefined,
+			contentDisposition: 'inline' as const
+		}
+	];
+}
 
 /** What the relay said, or why it could not be asked, short enough to keep. */
 const saidBy = (e: unknown) => {
@@ -299,7 +345,14 @@ const proven = (relay: Relay) =>
 
 async function sendOne(
 	relay: Relay,
-	m: { id: string; to_address: string; subject: string; body: string; tries: number },
+	m: {
+		id: string;
+		to_address: string;
+		subject: string;
+		body: string;
+		html: string | null;
+		tries: number;
+	},
 	business: Sender
 ) {
 	const done = (set: PgUpdateSetSource<typeof emailMessage>) =>
@@ -308,13 +361,19 @@ async function sendOne(
 			.set({ claimedUntil: null, ...set })
 			.where(eq(emailMessage.id, m.id));
 	try {
-		await sent(relay, business, { id: m.id, to: m.to_address, subject: m.subject, text: m.body });
-		await done({ sentAt: sql`now()`, body: null, lastError: null });
+		await sent(relay, business, {
+			id: m.id,
+			to: m.to_address,
+			subject: m.subject,
+			text: m.body,
+			html: m.html
+		});
+		await done({ sentAt: sql`now()`, body: null, html: null, lastError: null });
 		await proven(relay);
 	} catch (e) {
 		const permanent = (e as { permanent?: boolean }).permanent === true;
 		const said = saidBy(e);
-		if (permanent) await done({ gaveUpAt: sql`now()`, body: null, lastError: said });
+		if (permanent) await done({ gaveUpAt: sql`now()`, body: null, html: null, lastError: said });
 		else
 			await done({
 				nextTryAt: sql`now() + ${sql.raw(`interval '${againAfter(m.tries)} seconds'`)}`,
@@ -335,20 +394,33 @@ export async function sendTest(to: { name: string; email: string }) {
 	if (!relay)
 		return { sent: false as const, said: 'SMTP_HOST is unset, so reckon sends no email.' };
 	const [business] = await db
-		.select({ name: operator.tradingName, email: operator.email })
+		.select({
+			name: operator.tradingName,
+			tradingName: operator.tradingName,
+			shortName: operator.shortName,
+			email: operator.email,
+			phone: operator.phone,
+			accentColour: operator.accentColour,
+			logo: operator.logo,
+			logoMediaType: operator.logoMediaType
+		})
 		.from(operator)
 		.limit(1);
+	const subject = `${business?.shortName?.trim() || business?.name || 'reckon'}: a test of email`;
+	const { text, html } = laidOut({
+		subject,
+		heading: 'Email works',
+		blocks: [
+			{ text: `Hello ${to.name},` },
+			{
+				text: `You asked for this on Settings, under Integrations. It reached you, so reckon can send email: it goes to ${relay.host}, as ${relay.from}.`
+			},
+			{ text: 'There is nothing to do.' }
+		],
+		look: lookOf({ ...business, logo: mailableLogo(business?.logo, business?.logoMediaType) })
+	});
 	try {
-		await sent(relay, business, {
-			id: crypto.randomUUID(),
-			to: to.email,
-			subject: `${business?.name ?? 'reckon'}: a test of email`,
-			text: [
-				`Hello ${to.name},`,
-				`You asked for this on Settings, under Integrations. It reached you, so reckon can send email: it goes to ${relay.host}, as ${relay.from}.`,
-				'There is nothing to do.'
-			].join('\n\n')
-		});
+		await sent(relay, business, { id: crypto.randomUUID(), to: to.email, subject, text, html });
 		await proven(relay);
 		return { sent: true as const, to: to.email };
 	} catch (e) {

@@ -274,6 +274,16 @@ link, changed on Your profile, set with `scripts/user.mjs` — saying when, in
 their own zone, and who to ask if it was not them. Without `SMTP_HOST` and
 `SITE_URL` nobody can be invited, and Team says which is missing.
 
+Every message goes as plain text and as HTML, the text first (RFC 2046), both
+laid out from the same words by one layout written by hand
+(`src/lib/server/email-layout.js`): the business's logo — a PNG or JPEG,
+carried inside the message rather than fetched, its name in its place
+otherwise — a heading, the words, a button in the business's accent colour with
+its link spelled out under it, and a footer saying how to reach the business.
+Tables and inline styles, so classic Outlook for Windows draws it as the rest
+do; dark colours where a mail program asks for them; the button's words at
+4.5:1 whatever the accent. The templates are code, not settings.
+
 Each message is a row of `email_message`, written in the same transaction as the
 change it tells of, so it is sent if and only if that change is kept, and the
 request that made it never waits on mail. The server sends it as soon as the

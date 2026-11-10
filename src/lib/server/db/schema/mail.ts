@@ -28,6 +28,12 @@ export const emailMessage = pgTable(
 		subject: text().notNull(),
 		/** Plain text. Null once it has been sent or given up on. */
 		body: text(),
+		/**
+		 * The same as HTML (#lib/server/email-layout), sent after the text as its
+		 * richer form. Null once it has been sent or given up on, and for the
+		 * messages written before reckon sent HTML.
+		 */
+		html: text(),
 		/** After this it is no longer worth sending, and is given up on. */
 		sendBy: tstz().notNull(),
 		/** When it is next tried. */
@@ -56,6 +62,8 @@ export const emailMessage = pgTable(
 			'email_message_body_while_waiting',
 			sql`(${t.sentAt} is null and ${t.gaveUpAt} is null) = (${t.body} is not null)`
 		),
+		// The HTML is the text's other form: never kept without it.
+		check('email_message_html_beside_its_text', sql`${t.html} is null or ${t.body} is not null`),
 		foreignKey({
 			name: 'email_message_user_id_fkey',
 			columns: [t.userId],
