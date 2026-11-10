@@ -19,7 +19,8 @@ import type { Actions, PageServerLoad } from './$types';
  * Changing one's own password, with the current one: whoever is at a screen
  * left signed in is not always whoever signed in (OWASP ASVS 6.2.3). This
  * browser is given a new session and every other is signed out (7.4.3). A
- * forgotten one is reset on Team, by someone else with Full.
+ * forgotten one is replaced with Forgot password? on the sign-in page
+ * (#lib/server/recovery).
  *
  * A try at the current password is recorded and counted as a sign-in is
  * (#lib/server/sign-in-limit) -- against the address, against this browser's
@@ -73,7 +74,7 @@ export const actions: Actions = {
 			return fail(400, {
 				field: '',
 				message:
-					'Your password has stopped working, after a hundred wrong tries in a row. Someone else with Full can reset it on Team.'
+					'Your password has stopped working, after a hundred wrong tries in a row. Sign out, and choose a new one with Forgot password? on the sign-in page.'
 			});
 		}
 

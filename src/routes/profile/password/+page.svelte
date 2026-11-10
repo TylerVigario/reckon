@@ -121,7 +121,10 @@
 		</div>
 	</form>
 
-	<p class="note">Forgotten your current password? Someone else with Full can reset it on Team.</p>
+	<p class="note">
+		Forgotten your current password? Sign out, and choose a new one with Forgot password? on the
+		sign-in page.
+	</p>
 </div>
 
 <style>

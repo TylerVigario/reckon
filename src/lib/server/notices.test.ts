@@ -9,6 +9,7 @@ import {
 	passwordRecoveryUnconfirmed,
 	passwordResetLink
 } from './notices.js';
+import { contactFor } from './contact.js';
 
 const AVERY = {
 	name: 'Avery Lind',
@@ -39,10 +40,12 @@ describe('a password changed', () => {
 		expect(n.body).toContain('on Your profile');
 	});
 
-	it('says what to do if it was not them, and how to reach the business', () => {
+	it('says what to do if it was not them: contact the business, by the way it is reached', () => {
 		const n = passwordChanged(AVERY, KESTREL, { at: AT, on: 'command_line' });
-		expect(n.body).toContain('Ask someone with Full access at Kestrel Field Services');
-		expect(n.body).toContain('reach the business at office@kestrel.example or 555-0100');
+		expect(n.body).toContain(
+			'Contact Kestrel Field Services at office@kestrel.example or 555-0100 to have it reset.'
+		);
+		expect(n.body).not.toContain('Full access');
 	});
 
 	it('follows the business’s zone and locale where they have none, and reckon’s name where it has none', () => {
@@ -54,8 +57,7 @@ describe('a password changed', () => {
 		expect(n.subject).toBe('reckon: your password was changed');
 		expect(n.body).toMatch(/9 November 2026 at 22:05 UTC/);
 		expect(n.body).toContain('sign in to reckon with');
-		expect(n.body).toContain('Ask someone with Full access to reset it on Team.');
-		expect(n.body).not.toContain('reach the business');
+		expect(n.body).toContain('Contact your administrator to have it reset.');
 	});
 
 	it('still reads in a zone or locale it does not know', () => {
@@ -93,7 +95,7 @@ describe('an invitation', () => {
 
 	it('says until when it works, in their own zone, and that it works once', () => {
 		expect(n.body).toContain('It works once, until Tuesday, November 10, 2026 at 2:05 PM PST.');
-		expect(n.body).toContain('ask Quinn Harper or someone else with Full access');
+		expect(n.body).toContain('If it lapses, ask Quinn Harper to send another.');
 	});
 
 	it('names the address they sign in with', () => {
@@ -121,8 +123,9 @@ describe('a password reset on Team', () => {
 	});
 
 	it('says what to do if they did not expect it, and how to reach the business', () => {
-		expect(n.body).toContain("If you didn't expect this, ask Quinn Harper");
-		expect(n.body).toContain('reach the business at office@kestrel.example or 555-0100');
+		expect(n.body).toContain(
+			"If you didn't expect this, ask Quinn Harper about it, or contact Kestrel Field Services at office@kestrel.example or 555-0100."
+		);
 	});
 });
 
@@ -197,9 +200,8 @@ describe('a change of address, to the old one', () => {
 	it('carries no link, and says whom to ask to cancel it', () => {
 		expect(n.body).not.toContain('/link');
 		expect(n.body).toContain(
-			'ask Sam Ortiz or someone else with Full access at Kestrel Field Services to cancel it on Team'
+			'ask Sam Ortiz to cancel it, or contact Kestrel Field Services at office@kestrel.example or 555-0100.'
 		);
-		expect(n.body).toContain('office@kestrel.example or 555-0100');
 	});
 
 	it('where they asked for it themselves, says someone else may be signed in as them', () => {
@@ -266,7 +268,9 @@ describe('a forgotten password, to a confirmed address', () => {
 
 	it('says that whoever did not ask can ignore it, and whom to tell if more come', () => {
 		expect(n.body).toContain("If you didn't ask, you can ignore this email");
-		expect(n.body).toContain('tell someone with Full access at Kestrel Field Services');
+		expect(n.body).toContain(
+			'If more keep coming, contact Kestrel Field Services at office@kestrel.example or 555-0100.'
+		);
 	});
 });
 
@@ -283,7 +287,37 @@ describe('a forgotten password, to an address not confirmed', () => {
 		expect(n.html).not.toContain('/link');
 		expect(n.body).toContain("This address hasn't been confirmed as yours");
 		expect(n.body).toContain(
-			"A link sent from Team confirms the address as it's used: ask someone with Full access at Kestrel Field Services for one"
+			'Contact Kestrel Field Services at office@kestrel.example or 555-0100 to have one sent: using it confirms the address too.'
+		);
+	});
+});
+
+describe('whom to contact', () => {
+	it('is never a level of access, in any email reckon sends', () => {
+		for (const n of [
+			passwordChanged(AVERY, KESTREL, { at: AT, on: 'profile' }),
+			invitation(AVERY, KESTREL, { by: 'Quinn Harper', link: LINK, until: UNTIL }),
+			passwordResetLink(AVERY, KESTREL, { at: AT, by: 'Quinn Harper', link: LINK, until: UNTIL }),
+			emailConfirmation(AVERY, KESTREL, { link: LINK, until: UNTIL }),
+			emailChange(AVERY, KESTREL, { by: 'Sam Ortiz', link: LINK, until: UNTIL, to: 'a@b.example' }),
+			emailChanging(AVERY, KESTREL, { at: AT, by: 'Sam Ortiz', to: 'a@b.example' }),
+			emailChanging(AVERY, KESTREL, { at: AT, by: null, to: 'a@b.example' }),
+			passwordRecovery(AVERY, KESTREL, { at: AT, link: LINK, until: UNTIL }),
+			passwordRecoveryUnconfirmed(AVERY, KESTREL, { at: AT })
+		])
+			expect(n.body, n.kind).not.toMatch(/with Full/i);
+	});
+
+	it('is the business by the way it is reached, or their administrator where it gives none', () => {
+		expect(contactFor(KESTREL)).toBe(
+			'Kestrel Field Services at office@kestrel.example or 555-0100'
+		);
+		expect(contactFor({ ...KESTREL, email: null })).toBe('Kestrel Field Services at 555-0100');
+		expect(contactFor({ email: 'office@kestrel.example' })).toBe(
+			'the business at office@kestrel.example'
+		);
+		expect(contactFor({ tradingName: 'Kestrel Field Services', email: ' ', phone: null })).toBe(
+			'your administrator'
 		);
 	});
 });

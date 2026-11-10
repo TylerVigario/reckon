@@ -7,6 +7,7 @@ import { tell } from '#lib/server/email.ts';
 import { endPasswordLinks, missed, turnedAway, usable, used } from '#lib/server/links.ts';
 import { passwordChanged } from '#lib/server/notices.js';
 import { passwordSet } from '#lib/server/sign-in-limit.ts';
+import { whomToContact } from '#lib/server/whom-to-contact.ts';
 import { pgError } from '#lib/server/field-errors.ts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -24,10 +25,11 @@ import type { Actions, PageServerLoad } from './$types';
  * they sign in with it (OWASP's Forgot Password Cheat Sheet, "Don't
  * automatically log the user in"), and every session they had is ended.
  */
-// eslint-disable-next-line @typescript-eslint/require-await -- a load is async by contract
 export const load: PageServerLoad = async ({ locals, setHeaders }) => {
 	setHeaders({ 'cache-control': 'no-store' });
 	return {
+		// Whom to contact for a link that no longer works (#lib/server/contact).
+		contact: await whomToContact(),
 		min: MIN_PASSWORD_LENGTH,
 		max: MAX_PASSWORD_LENGTH,
 		// Whoever is signed in in this browser, who has to sign out to sign in as

@@ -2,6 +2,9 @@
 	import { page } from '$app/state';
 	import Top from '#lib/Top.svelte';
 	import { resolve } from '$app/paths';
+	import type { PageProps } from './$types';
+
+	let { data }: PageProps = $props();
 
 	// Where hooks.server.ts turns away a screen someone's access does not reach
 	// (#lib/access). Nothing of that screen was read to get here.
@@ -18,7 +21,7 @@
 					<div class="rec-t">You have Field access</div>
 					<div class="rec-s">
 						That reaches your own time and trips, team work you were on, drafts to add lines to, and
-						your own pay. Someone with Full can change your access on Team.
+						your own pay. To have your access changed, contact {data.contact}.
 					</div>
 				{:else}
 					<div class="rec-t">You have Full access</div>

@@ -214,7 +214,7 @@
 			<h1>That email is taken</h1>
 			<p class="lede">
 				Someone else signs in to {business} with {view.email} now, so it can’t be yours as well. You still
-				sign in with your old one. Ask whoever changed it.
+				sign in with your old one. Contact {data.contact} about it.
 			</p>
 			<a class="go quiet" href={resolve('/login')}>Sign in</a>
 		</div>
@@ -228,7 +228,7 @@
 			<h1>This link no longer works</h1>
 			<p class="lede">
 				It has been used already, or it has expired. To choose a new password, use Forgot password?
-				on the sign-in page. For anything else, ask whoever sent it to send another.
+				on the sign-in page. For anything else, contact {data.contact} to have another sent.
 			</p>
 			<a class="go quiet" href={resolve('/login')}>Sign in</a>
 		</div>
