@@ -312,6 +312,11 @@ jobs:
         # them away again.
         run: node tests/email-change-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
+      - name: Whoever forgot their password is emailed a link, the page answering alike for every address, and a network asking too often waits
+        # After the email change check, for the same reason: it adds people and
+        # takes them away again, and clears what it asked from this machine.
+        run: node tests/forgot-password-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+
       - name: Every try at a password is recorded, and limited per address and per email from the record, however many are sent at once
         # On a second server, told the visitor's address as a proxy would tell
         # it, so the check tries from addresses of its own. On the job's server

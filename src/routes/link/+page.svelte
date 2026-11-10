@@ -17,7 +17,7 @@
 		| { at: 'reading' }
 		| { at: 'wait' }
 		| { at: 'dead' }
-		| { at: 'choose'; purpose: 'invite' | 'reset'; name: string; email: string }
+		| { at: 'choose'; purpose: 'invite' | 'reset' | 'recover'; name: string; email: string }
 		| { at: 'saved'; email: string }
 		| { at: 'confirmed'; email: string }
 		| { at: 'change'; name: string; email: string }
@@ -58,7 +58,7 @@
 		const r = await act('look', { code });
 		if (r?.type !== 'success' || !r.data) return void (view = after(r));
 		const found = r.data as {
-			purpose: 'invite' | 'reset' | 'confirm' | 'change';
+			purpose: 'invite' | 'reset' | 'confirm' | 'change' | 'recover';
 			name: string;
 			email: string;
 		};
@@ -123,17 +123,19 @@
 		<p class="lede" role="status">Reading your link…</p>
 	{:else if view.at === 'choose'}
 		<form onsubmit={choose} novalidate>
-			<h1>{view.purpose === 'reset' ? 'Choose a new password' : `Welcome to ${business}`}</h1>
+			<h1>{view.purpose === 'invite' ? `Welcome to ${business}` : 'Choose a new password'}</h1>
 			<p class="lede">
 				{view.purpose === 'reset'
 					? `For ${view.email}. Your old password no longer works.`
-					: `Choose a password to sign in as ${view.email}.`}
+					: view.purpose === 'recover'
+						? `For ${view.email}. Your old password works until you save a new one.`
+						: `Choose a password to sign in as ${view.email}.`}
 			</p>
 			{#if refused}<p class="msg" id="why" role="alert">{refused.message}</p>{/if}
 			<!-- Who it is for, so a password manager saves it against the right sign-in. -->
 			<input type="hidden" name="username" autocomplete="username" value={view.email} />
 			<label
-				>{view.purpose === 'reset' ? 'New password' : 'Password'}
+				>{view.purpose === 'invite' ? 'Password' : 'New password'}
 				<input
 					name="password"
 					type="password"
@@ -165,7 +167,10 @@
 		{@const other = otherHere(view.email)}
 		<div class="card" role="status">
 			<h1>Password saved</h1>
-			<p class="lede">Sign in with {view.email} and the password you just chose.</p>
+			<p class="lede">
+				Sign in with {view.email} and the password you just chose. Anywhere you were signed in, you’ve
+				been signed out.
+			</p>
 			{#if other}
 				<p class="lede">
 					{other.name} is signed in in this browser, and signs out first.
@@ -222,8 +227,8 @@
 		<div class="card" role="alert">
 			<h1>This link no longer works</h1>
 			<p class="lede">
-				It has been used already, or it’s more than 24 hours old. Ask whoever sent it to send
-				another.
+				It has been used already, or it has expired. To choose a new password, use Forgot password?
+				on the sign-in page. For anything else, ask whoever sent it to send another.
 			</p>
 			<a class="go quiet" href={resolve('/login')}>Sign in</a>
 		</div>

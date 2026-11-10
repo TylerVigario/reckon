@@ -274,6 +274,13 @@
       "when": 1794275021513,
       "tag": "0038_emails_are_html_beside_their_text",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1794277684982,
+      "tag": "0039_forgot_password_emails_a_link",
+      "breakpoints": true
     }
   ]
 }

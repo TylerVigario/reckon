@@ -5,6 +5,8 @@ import {
 	emailConfirmation,
 	invitation,
 	passwordChanged,
+	passwordRecovery,
+	passwordRecoveryUnconfirmed,
 	passwordResetLink
 } from './notices.js';
 
@@ -244,5 +246,44 @@ describe('every notice', () => {
 		expect(all[2].html).toContain('>Choose a new password</a>');
 		expect(all[3].html).toContain('>Confirm your email</a>');
 		expect(all[4].html).toContain('>Confirm your new email</a>');
+	});
+});
+
+describe('a forgotten password, to a confirmed address', () => {
+	const n = passwordRecovery(AVERY, KESTREL, { at: AT, link: LINK, until: UNTIL });
+
+	it('carries the link, saying when it was asked for, and that nothing has changed', () => {
+		expect(n).toMatchObject({
+			kind: 'password_recovery',
+			to: 'avery@kestrel.example',
+			subject: 'Kestrel: choose a new password'
+		});
+		expect(n.body).toContain('On Monday, November 9, 2026 at 2:05 PM PST, someone asked');
+		expect(n.body.split('\n\n')).toContain(LINK);
+		expect(n.body).toContain("Until it's used, your password stays as it is.");
+		expect(n.html).toContain('>Choose a new password</a>');
+	});
+
+	it('says that whoever did not ask can ignore it, and whom to tell if more come', () => {
+		expect(n.body).toContain("If you didn't ask, you can ignore this email");
+		expect(n.body).toContain('tell someone with Full access at Kestrel Field Services');
+	});
+});
+
+describe('a forgotten password, to an address not confirmed', () => {
+	const n = passwordRecoveryUnconfirmed(AVERY, KESTREL, { at: AT });
+
+	it('carries no link, and says who can send one', () => {
+		expect(n).toMatchObject({
+			kind: 'password_recovery_unconfirmed',
+			to: 'avery@kestrel.example',
+			subject: 'Kestrel: choosing a new password'
+		});
+		expect(n.body).not.toContain('/link');
+		expect(n.html).not.toContain('/link');
+		expect(n.body).toContain("This address hasn't been confirmed as yours");
+		expect(n.body).toContain(
+			"A link sent from Team confirms the address as it's used: ask someone with Full access at Kestrel Field Services for one"
+		);
 	});
 });

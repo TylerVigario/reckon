@@ -2602,6 +2602,21 @@ SELECT must_fail($$
   VALUES ('a1000000-0000-4000-8000-000000000053', 'change', sha256('code-7'::bytea), 'invited.newer@example.com', now() + interval '1 hour')
 $$, 'a second change while one waits');
 
+SELECT must_pass($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'recover', sha256('code-8'::bytea), 'invited@example.com', now() + interval '1 hour')
+$$, 'a recovery waiting beside the others, for an hour');
+
+SELECT must_fail($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'recover', sha256('code-9'::bytea), 'invited@example.com', now() + interval '30 minutes')
+$$, 'a second recovery while one waits');
+
+SELECT must_fail($$
+  UPDATE email_link SET expires_at = created_at + interval '2 hours'
+   WHERE code_hash = sha256('code-8'::bytea)
+$$, 'a recovery that lasts longer than an hour');
+
 SELECT must_fail($$
   UPDATE email_link SET used_at = expires_at + interval '1 second'
    WHERE code_hash = sha256('code-1'::bytea)
@@ -2656,6 +2671,14 @@ BEGIN
   END IF;
   RAISE NOTICE '  keeps     a link only while its person is kept, and its sender only while theirs is';
 END $$;
+
+SELECT must_pass($$
+  INSERT INTO recovery_ask (address, network, email_key) VALUES ('192.0.2.7', '192.0.2.7/32', 'k')
+$$, 'an ask for a new password, by its network and a key of the email asked for');
+
+SELECT must_fail($$
+  INSERT INTO recovery_ask (address, network, email_key) VALUES ('192.0.2.7', '198.51.100.0/24', 'k')
+$$, 'an ask counted against a network it did not come from');
 
 SELECT must_pass($$
   INSERT INTO link_try (address, network) VALUES ('192.0.2.7', '192.0.2.7/32')

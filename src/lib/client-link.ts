@@ -14,5 +14,8 @@ export const CLIENT_PAGE = /^\/invoice\/[A-Za-z0-9_-]{20,64}(\/__data\.json)?$/;
  */
 export const LINK_PAGE = /^\/link(\/__data\.json)?$/;
 
+/** Where whoever forgot their password asks for a link: as sign-in is, too. */
+export const FORGOT_PAGE = /^\/forgot-password(\/__data\.json)?$/;
+
 /** The link to an invoice, on the origin the request came in on. */
 export const clientLink = (origin: string, token: string) => `${origin}/invoice/${token}`;
