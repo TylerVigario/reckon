@@ -10,9 +10,11 @@ import { placeOf } from './sign-in-limit.ts';
 /**
  * LINKS reckon emails (email_link): an invitation to choose a first password,
  * a reset's link to choose a new one, a link confirming the address one signs
- * in with, and one making a new address the one they sign in with. Each
- * carries a code, and is good once, for 24 hours -- the most NIST SP
- * 800-63A-4 §3.8 and SP 800-63B-4 §4.2.1.2 allow a code sent by email.
+ * in with, one making a new address the one they sign in with, and one to
+ * choose a new password, asked for by whoever forgot theirs. Each carries a
+ * code, and is good once, for 24 hours at most -- the most NIST SP 800-63A-4
+ * §3.8 and SP 800-63B-4 §4.2.1.2 allow a code sent by email -- and a
+ * recovery's for an hour.
  *
  * THE CODE is 32 random bytes, written in base64url: 256 bits, past the 112
  * NIST asks of any secret (SP 800-63B-4 §3.2.12). Only its SHA-256 is kept, so
@@ -39,8 +41,18 @@ import { placeOf } from './sign-in-limit.ts';
 
 export type Purpose = (typeof LINK_PURPOSES)[number];
 
-/** How long a link works. */
-export const LINK_HOURS = 24;
+/**
+ * How long a link works, in minutes: a day, the most NIST allows a code sent by
+ * email -- an invitation or a reset waits in an inbox for whenever it is read.
+ * A recovery is asked for by someone waiting for it, so it has an hour.
+ */
+export const LINK_MINUTES = {
+	invite: 24 * 60,
+	reset: 24 * 60,
+	confirm: 24 * 60,
+	change: 24 * 60,
+	recover: 60
+} as const satisfies Record<Purpose, number>;
 
 /** A code as a link carries it: 32 bytes of base64url, unpadded. */
 export const CODE = /^[A-Za-z0-9_-]{43}$/;
@@ -61,7 +73,10 @@ export const unsentBecause = (missing: 'SMTP_HOST' | 'SITE_URL') =>
 		? 'Email isn’t set up: SMTP_HOST is unset, so reckon has no relay to send it through.'
 		: 'Email isn’t set up: SITE_URL is unset, so reckon has no address to build the link from.';
 
-/** The purposes a link that sets a password has; one of them waits at a time. */
+/**
+ * The purposes a link that sets a password has: an invitation or a reset's, one
+ * of which waits at a time, and a recovery's, which waits beside them.
+ */
 const SETS_PASSWORD = ['invite', 'reset'] as const;
 
 /** What else a link ends when it is issued: any other of its kind still waiting. */
@@ -69,7 +84,8 @@ const ALIKE = {
 	invite: SETS_PASSWORD,
 	reset: SETS_PASSWORD,
 	confirm: ['confirm'],
-	change: ['change']
+	change: ['change'],
+	recover: ['recover']
 } as const satisfies Record<Purpose, readonly Purpose[]>;
 
 /**
@@ -83,7 +99,7 @@ export async function issue(
 	tx: Tx,
 	userId: string,
 	purpose: Purpose,
-	sentBy: string,
+	sentBy: string | null,
 	changeTo?: string
 ): Promise<{ link: string; until: Date; to: string }> {
 	if (!SITE_URL) throw new Error('A link is issued only where SITE_URL is set.');
@@ -112,7 +128,7 @@ export async function issue(
 			purpose,
 			codeHash: hashOf(code),
 			sentTo: to,
-			expiresAt: sql`now() + make_interval(hours => ${LINK_HOURS})`,
+			expiresAt: sql`now() + make_interval(mins => ${LINK_MINUTES[purpose]})`,
 			sentBy
 		})
 		.returning({ until: emailLink.expiresAt });
@@ -172,8 +188,8 @@ export async function used(tx: Tx, link: Usable): Promise<void> {
 
 /**
  * Ends any link to choose a password that `userId` has waiting, once they have
- * chosen one some other way: a link still working after a change would undo
- * it (OWASP's Forgot Password Cheat Sheet).
+ * chosen one some other way, or with another link: a link still working after
+ * a change would undo it (OWASP's Forgot Password Cheat Sheet).
  */
 export async function endPasswordLinks(tx: Tx, userId: string): Promise<void> {
 	await tx
@@ -182,7 +198,7 @@ export async function endPasswordLinks(tx: Tx, userId: string): Promise<void> {
 			and(
 				eq(emailLink.userId, userId),
 				isNull(emailLink.usedAt),
-				inArray(emailLink.purpose, [...SETS_PASSWORD])
+				inArray(emailLink.purpose, [...SETS_PASSWORD, 'recover'])
 			)
 		);
 }

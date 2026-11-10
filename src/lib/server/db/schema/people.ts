@@ -237,10 +237,11 @@ export const verification = pgTable(
 /**
  * What an emailed link is for: to choose a first password, on being added on
  * Team; to choose a new one, after a reset there; to confirm the address one
- * signs in with, asked for on Your profile; or to make a new address the one
- * they sign in with, asked for on Team.
+ * signs in with, asked for on Your profile; to make a new address the one they
+ * sign in with, asked for on Team; or to choose a new password, asked for by
+ * whoever forgot theirs, which changes nothing until it is used.
  */
-export const LINK_PURPOSES = ['invite', 'reset', 'confirm', 'change'] as const;
+export const LINK_PURPOSES = ['invite', 'reset', 'confirm', 'change', 'recover'] as const;
 
 /**
  * A LINK reckon emailed someone (#lib/server/links), good once, for 24 hours
@@ -255,9 +256,9 @@ export const LINK_PURPOSES = ['invite', 'reset', 'confirm', 'change'] as const;
  * instead, and makes it theirs.
  *
  * A new link for a password ends any other not yet used, as does a new
- * confirmation, or a new change: one of each can be waiting at a time. A link
- * used is kept 90 days, the record of a password chosen or an address
- * confirmed or changed.
+ * confirmation, a new change, or a new recovery: one of each can be waiting at
+ * a time. A recovery's lasts an hour, the rest a day. A link used is kept 90
+ * days, the record of a password chosen or an address confirmed or changed.
  */
 export const emailLink = pgTable(
 	'email_link',
@@ -298,6 +299,14 @@ export const emailLink = pgTable(
 		uniqueIndex('email_link_one_change_waiting')
 			.on(t.userId)
 			.where(sql`${t.usedAt} is null and ${t.purpose} = 'change'`),
+		uniqueIndex('email_link_one_recovery_waiting')
+			.on(t.userId)
+			.where(sql`${t.usedAt} is null and ${t.purpose} = 'recover'`),
+		// A recovery is asked for by someone waiting for it: an hour, not a day.
+		check(
+			'email_link_recovery_lasts_an_hour_at_most',
+			sql`${t.purpose} <> 'recover' or ${t.expiresAt} <= ${t.createdAt} + interval '1 hour'`
+		),
 		index('email_link_by_user').on(t.userId, t.createdAt),
 		foreignKey({
 			name: 'email_link_user_id_fkey',
@@ -331,6 +340,31 @@ export const linkTry = pgTable(
 	(t) => [
 		index('link_try_by_network').on(t.network, t.createdAt),
 		check('link_try_address_in_network', sql`${t.address} <<= ${t.network}`)
+	]
+);
+
+/**
+ * Every ask for a link to choose a new password, by someone who forgot theirs:
+ * the network it came from, and an HMAC of the email asked for
+ * (#lib/server/sign-in-limit emailKey), kept whether or not anyone signs in
+ * with it, so the limits say nothing about who does. A network asking too often
+ * waits, and an address is sent one email every few minutes at most, so nobody
+ * can flood someone's inbox with them (OWASP's Forgot Password Cheat Sheet;
+ * ASVS 5.0 2.4.1). Kept a day.
+ */
+export const recoveryAsk = pgTable(
+	'recovery_ask',
+	{
+		id: id(),
+		createdAt: createdAt(),
+		address: inet().notNull(),
+		network: cidr().notNull(),
+		emailKey: text().notNull()
+	},
+	(t) => [
+		index('recovery_ask_by_network').on(t.network, t.createdAt),
+		index('recovery_ask_by_email').on(t.emailKey, t.createdAt),
+		check('recovery_ask_address_in_network', sql`${t.address} <<= ${t.network}`)
 	]
 );
 

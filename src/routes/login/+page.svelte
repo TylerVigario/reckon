@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { PageProps } from './$types';
 	let { form }: PageProps = $props();
@@ -17,10 +18,17 @@
 			>Email
 			<input name="email" type="email" autocomplete="username" value={form?.email ?? ''} required />
 		</label>
-		<label
-			>Password
-			<input name="password" type="password" autocomplete="current-password" required />
-		</label>
+		<div class="pw">
+			<label for="password">Password</label>
+			<a class="aside" href={resolve('/forgot-password')}>Forgot password?</a>
+			<input
+				id="password"
+				name="password"
+				type="password"
+				autocomplete="current-password"
+				required
+			/>
+		</div>
 		<button type="submit">Sign in</button>
 	</form>
 </main>
@@ -61,6 +69,21 @@
 		gap: 0.35rem;
 		font-size: 0.8rem;
 		color: light-dark(#5a6472, #a3adbc);
+	}
+	/* Forgot password? beside the label, where GitHub puts it. */
+	.pw {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		align-items: baseline;
+		gap: 0.35rem;
+		font-size: 0.8rem;
+		color: light-dark(#5a6472, #a3adbc);
+	}
+	.pw input {
+		grid-column: 1 / -1;
+	}
+	.aside {
+		color: light-dark(#1f5f9e, #7fb2e5);
 	}
 	input {
 		font: inherit;

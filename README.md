@@ -174,10 +174,22 @@ and then sends them to sign in with it, rather than signing them in. Its code
 is after the `#`, which a browser never sends, so no server, log or `Referer`
 sees it, and only a hash of it is kept; a code that is not one to use, whatever
 the reason, gets the same answer, and a network that tries ten in fifteen
-minutes waits. Nobody resets their own: anyone changes theirs under Password on
-Your profile, giving the current one first. That browser is given a new
-session and every other is signed out, and a wrong current password counts
-against the address as a wrong sign-in does.
+minutes waits. Anyone changes theirs under Password on Your profile, giving the
+current one first. That browser is given a new session and every other is
+signed out, and a wrong current password counts against the address as a wrong
+sign-in does.
+
+Whoever forgot theirs uses **Forgot password?** on the sign-in page. The page
+answers the same whatever address is given, before anything about it is looked
+up, so it says nothing about who signs in (OWASP's Forgot Password Cheat
+Sheet). An active person's confirmed address is then emailed a link to choose a
+new password, good once for an hour; their password works until it is used, so
+asking locks nobody out. Using it ends every session they had and tells them,
+as any change of password does. An address not yet confirmed is sent an email
+saying so, without a link (NIST SP 800-63B-4 §4.2.1.2 recovers only to a proven
+address), and an unknown or deactivated one nothing. A network asking ten times
+in fifteen minutes waits, and an address is sent one email every five minutes
+at most, both counted whether or not anyone signs in with it.
 
 Using a link also proves the address it went to is theirs, and Team says whose
 are confirmed. Anyone added before invitations confirms theirs from Your
@@ -266,7 +278,8 @@ sends nothing.
 
 It sends an invitation to someone added on Team, a link to choose a new password
 after a reset there, a link to confirm an address, asked for on Your profile,
-and a link to a new address asked for on Team, with word to the old one — each
+a link to a new address asked for on Team, with word to the old one, and a link
+to choose a new password, asked for by whoever forgot theirs — each
 built from `SITE_URL`, never from the address a request came in
 on (OWASP's Forgot Password Cheat Sheet), and sent only while its link still
 works. And it tells a person whenever their password is changed — chosen with a

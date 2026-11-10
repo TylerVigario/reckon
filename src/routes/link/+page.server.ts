@@ -4,7 +4,7 @@ import { db } from '#lib/server/db/index.ts';
 import { account, session, user } from '#lib/server/db/schema/index.ts';
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, hashPassword } from '#lib/server/auth.ts';
 import { tell } from '#lib/server/email.ts';
-import { missed, turnedAway, usable, used } from '#lib/server/links.ts';
+import { endPasswordLinks, missed, turnedAway, usable, used } from '#lib/server/links.ts';
 import { passwordChanged } from '#lib/server/notices.js';
 import { passwordSet } from '#lib/server/sign-in-limit.ts';
 import { pgError } from '#lib/server/field-errors.ts';
@@ -56,7 +56,7 @@ export const actions: Actions = {
 		return { purpose: found.purpose, name: found.name, email: found.email };
 	},
 
-	/** A password chosen with an invitation or a reset's link. */
+	/** A password chosen with an invitation, a reset's link or a recovery's. */
 	choose: async ({ request, getClientAddress }) => {
 		const address = getClientAddress();
 		if (await turnedAway(address)) return WAIT;
@@ -88,7 +88,7 @@ export const actions: Actions = {
 		const hash = await hashPassword(password);
 		const chosen = await db.transaction(async (tx) => {
 			const link = await usable(tx, code);
-			if (!link || (link.purpose !== 'invite' && link.purpose !== 'reset')) return null;
+			if (!link || !['invite', 'reset', 'recover'].includes(link.purpose)) return null;
 			const credential = and(eq(account.userId, link.userId), eq(account.providerId, 'credential'));
 			const updated = await tx
 				.update(account)
@@ -108,6 +108,8 @@ export const actions: Actions = {
 				.set({ temporaryPassword: false, ...passwordSet() })
 				.where(eq(user.id, link.userId));
 			await used(tx, link);
+			// Any other link to choose one, a reset's or a recovery's, stops now.
+			await endPasswordLinks(tx, link.userId);
 			await tx.delete(session).where(eq(session.userId, link.userId));
 			await tell(tx, link.userId, (them, business) =>
 				passwordChanged(them, business, { at: new Date(), on: 'link' })

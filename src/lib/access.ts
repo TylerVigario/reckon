@@ -50,6 +50,7 @@ export const REACH = {
 	// page, opened by a token nobody can guess, showing that invoice alone --
 	// and where a link reckon emailed opens, by a code nobody can guess.
 	'/login': 'open',
+	'/forgot-password': 'open',
 	'/link': 'open',
 	'/manifest.webmanifest': 'open',
 	'/operator/logo': 'open',

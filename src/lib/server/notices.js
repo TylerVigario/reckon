@@ -23,7 +23,9 @@ export const EMAIL_KINDS = /** @type {const} */ ([
 	'password_reset_link',
 	'email_confirmation',
 	'email_change',
-	'email_changing'
+	'email_changing',
+	'password_recovery',
+	'password_recovery_unconfirmed'
 ]);
 
 /** @typedef {(typeof EMAIL_KINDS)[number]} EmailKind */
@@ -335,6 +337,60 @@ export function emailChanging(person, business, { at, by, to }) {
 			by
 				? `If you didn't, ask ${by} or ${someoneWithFull(business, ' else')} to cancel it on Team${orReach(business)}.`
 				: `If you didn't, someone else is signed in as you. Cancel it on Team and change your password on Your profile, or ask ${someoneWithFull(business, ' else')} to reset it${orReach(business)}.`
+		]
+	});
+}
+
+/**
+ * Someone asked, on the sign-in page, to choose a new password for this
+ * address, which is confirmed theirs: the link lets them, and their password
+ * stays as it is until it is used (OWASP's Forgot Password Cheat Sheet: "Do not
+ * make a change to the account until a valid token is presented"). Whoever
+ * asked may not be them, so it says what to do if they did not.
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {Link & { at: Date }} what
+ * @returns {Notice}
+ */
+export function passwordRecovery(person, business, { at, link, until }) {
+	return laid(person, business, {
+		kind: 'password_recovery',
+		to: person.email,
+		subject: subject(business, 'choose a new password'),
+		heading: 'Choose a new password',
+		blocks: [
+			`Hello ${person.name},`,
+			`On ${when(at, person, business)}, someone asked to choose a new password for the email you sign in to ${theirReckon(business)} with. Choose one at this link:`,
+			{ link, label: 'Choose a new password' },
+			lapses(person, business, until, "Until it's used, your password stays as it is."),
+			`If you didn't ask, you can ignore this email: nothing changes unless the link is used. If more keep coming, tell ${someoneWithFull(business)}${orReach(business)}.`
+		]
+	});
+}
+
+/**
+ * Someone asked to choose a new password for this address, which is not yet
+ * confirmed theirs: reckon recovers an account only to an address proven its
+ * holder's (NIST SP 800-63B-4 §4.2.1.2), so this carries no link, and says who
+ * can send one -- a link from Team, which confirms the address as it is used.
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {{ at: Date }} what
+ * @returns {Notice}
+ */
+export function passwordRecoveryUnconfirmed(person, business, { at }) {
+	return laid(person, business, {
+		kind: 'password_recovery_unconfirmed',
+		to: person.email,
+		subject: subject(business, 'choosing a new password'),
+		heading: 'Choosing a new password',
+		blocks: [
+			`Hello ${person.name},`,
+			`On ${when(at, person, business)}, someone asked to choose a new password for the email you sign in to ${theirReckon(business)} with.`,
+			`This address hasn't been confirmed as yours, so reckon can't send a link to choose one here. A link sent from Team confirms the address as it's used: ask ${someoneWithFull(business)} for one${orReach(business)}.`,
+			"If you didn't ask, there is nothing to do: your password hasn't changed."
 		]
 	});
 }
