@@ -6,7 +6,8 @@
 	import Setting from '#lib/Setting.svelte';
 	import { parsePersonField } from '#lib/people-fields.ts';
 	import { parseDeviceField } from '#lib/device-fields.ts';
-	import { clockSample, weekdayName, zoneName } from '#lib/format.ts';
+	import { clock, clockSample, datedAt, weekdayName, zoneName } from '#lib/format.ts';
+	import { personalZone } from '#lib/zone.svelte.ts';
 	import { zoneOptions } from '#lib/zone-options.ts';
 	import {
 		localeName,
@@ -22,6 +23,9 @@
 	let { data, form }: PageProps = $props();
 
 	const me = $derived(data.me);
+	// A change of address waiting: its link confirms the new one, so the one
+	// they have isn't offered for confirming meanwhile.
+	const changingNow = $derived(!!me.changing && !me.changing.lapsed);
 	const endpoint = $derived(`/api/people/${data.user?.id}`);
 	// What follows from the locale while the person has not chosen otherwise.
 	const locale = $derived(me.locale ?? data.businessLocale);
@@ -176,12 +180,21 @@
 							<span class="no" role="alert">{form.confirm}</span>
 						{:else if form?.sent || data.confirmation}
 							A link is on its way there. It works once, for 24 hours.
+						{:else if changingNow}
+							Not confirmed.
 						{:else}
 							Not confirmed yet. Confirm it’s yours so reckon can reach you there.
 						{/if}
 					</div>
+					{#if me.changing}
+						<div class="rec-s">
+							{me.changing.lapsed
+								? `The change to ${me.changing.to} lapsed: its link wasn’t used within 24 hours. Ask for another on Team.`
+								: `Changing to ${me.changing.to}. Use the link sent there, by ${clock(me.changing.until, personalZone())} on ${datedAt(me.changing.until, personalZone())}. Until then you sign in with this one.`}
+						</div>
+					{/if}
 				</div>
-				{#if !me.email_verified && !form?.confirmed}
+				{#if !me.email_verified && !form?.confirmed && !changingNow}
 					<form method="POST" action="?/confirm" use:enhance>
 						<button type="submit" class="btn sm"
 							>{form?.sent || data.confirmation ? 'Send again' : 'Confirm email'}</button

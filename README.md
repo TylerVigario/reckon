@@ -181,9 +181,18 @@ against the address as a wrong sign-in does.
 
 Using a link also proves the address it went to is theirs, and Team says whose
 are confirmed. Anyone added before invitations confirms theirs from Your
-profile, by a link sent there. An address changed on Team is not confirmed until
-it has been, and someone yet to accept their invitation is sent it again, at
-the new one.
+profile, by a link sent there.
+
+A new address for someone who has signed in waits until it is proven theirs:
+they keep signing in with the one they have until they use the link emailed to
+the new one, which then becomes theirs, confirmed (NIST SP 800-63B-4
+§4.2.1.2). The address they have is told when the change is asked for — who
+asked, and for what — with no link in it. Team shows the change Pending, or
+Expired once its link lapses, with Send again and Cancel change; their own
+profile says where the link went. The link's page asks before it changes
+anything, so a mail scanner opening it changes nothing. Someone yet to accept
+their invitation changes at once and is sent it again, at the new address;
+someone deactivated changes at once, unconfirmed, and nobody is emailed.
 
 The first person is added from the command line, since nobody can sign in to
 add them:
@@ -256,8 +265,9 @@ relay is the operator's choice, and nothing in reckon is tied to one. Unset, it
 sends nothing.
 
 It sends an invitation to someone added on Team, a link to choose a new password
-after a reset there, and a link to confirm an address, asked for on Your
-profile — each built from `SITE_URL`, never from the address a request came in
+after a reset there, a link to confirm an address, asked for on Your profile,
+and a link to a new address asked for on Team, with word to the old one — each
+built from `SITE_URL`, never from the address a request came in
 on (OWASP's Forgot Password Cheat Sheet), and sent only while its link still
 works. And it tells a person whenever their password is changed — chosen with a
 link, changed on Your profile, set with `scripts/user.mjs` — saying when, in

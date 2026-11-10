@@ -19,7 +19,10 @@
 		| { at: 'dead' }
 		| { at: 'choose'; purpose: 'invite' | 'reset'; name: string; email: string }
 		| { at: 'saved'; email: string }
-		| { at: 'confirmed'; email: string };
+		| { at: 'confirmed'; email: string }
+		| { at: 'change'; name: string; email: string }
+		| { at: 'changed'; email: string }
+		| { at: 'taken'; email: string };
 	let view = $state<View>({ at: 'reading' });
 	let code = '';
 	let password = $state('');
@@ -30,7 +33,10 @@
 	const business = $derived(page.data.operator?.trading_name?.trim() || 'reckon');
 
 	/** One of the page's actions, posted as a form would be. */
-	async function act(name: 'look' | 'choose' | 'confirm', fields: Record<string, string>) {
+	async function act(
+		name: 'look' | 'choose' | 'confirm' | 'change',
+		fields: Record<string, string>
+	) {
 		const body = new FormData();
 		for (const [k, v] of Object.entries(fields)) body.set(k, v);
 		const r = await fetch(`?/${name}`, {
@@ -52,10 +58,13 @@
 		const r = await act('look', { code });
 		if (r?.type !== 'success' || !r.data) return void (view = after(r));
 		const found = r.data as {
-			purpose: 'invite' | 'reset' | 'confirm';
+			purpose: 'invite' | 'reset' | 'confirm' | 'change';
 			name: string;
 			email: string;
 		};
+		// A change waits to be asked for: opening the link changes nothing.
+		if (found.purpose === 'change')
+			return void (view = { at: 'change', name: found.name, email: found.email });
 		if (found.purpose !== 'confirm')
 			return void (view = { at: 'choose', ...found, purpose: found.purpose });
 		const c = await act('confirm', { code });
@@ -76,6 +85,19 @@
 		if (r?.type === 'failure' && r.data?.why === 'password')
 			return void (refused = r.data as { field: 'password' | 'confirm'; message: string });
 		if (!r) return void (refused = { field: 'password', message: 'Not saved — no connection.' });
+		view = after(r);
+	}
+
+	async function change(e: SubmitEvent) {
+		e.preventDefault();
+		if (saving || view.at !== 'change') return;
+		const email = view.email;
+		saving = true;
+		const r = await act('change', { code });
+		saving = false;
+		if (r?.type === 'success') return void (view = { at: 'changed', email });
+		if (r?.type === 'failure' && r.data?.why === 'taken')
+			return void (view = { at: 'taken', email });
 		view = after(r);
 	}
 
@@ -162,6 +184,34 @@
 			<a class="go" href={data.signedInAs ? resolve('/profile') : resolve('/login')}
 				>{data.signedInAs ? 'Back to your profile' : 'Sign in'}</a
 			>
+		</div>
+	{:else if view.at === 'change'}
+		<form onsubmit={change}>
+			<h1>Confirm your new email</h1>
+			<p class="lede">
+				For {view.name}. You’ll sign in to {business} as {view.email} from now on.
+			</p>
+			<button type="submit" disabled={saving}>{saving ? 'Confirming…' : 'Confirm email'}</button>
+			<p class="hint">
+				If you aren’t {view.name}, close this page. Nothing changes unless you confirm.
+			</p>
+		</form>
+	{:else if view.at === 'changed'}
+		<div class="card" role="status">
+			<h1>Email changed</h1>
+			<p class="lede">Sign in with {view.email} from now on. It’s confirmed as yours.</p>
+			<a class="go" href={data.signedInAs ? resolve('/profile') : resolve('/login')}
+				>{data.signedInAs ? 'Back to your profile' : 'Sign in'}</a
+			>
+		</div>
+	{:else if view.at === 'taken'}
+		<div class="card" role="alert">
+			<h1>That email is taken</h1>
+			<p class="lede">
+				Someone else signs in to {business} with {view.email} now, so it can’t be yours as well. You still
+				sign in with your old one. Ask whoever changed it.
+			</p>
+			<a class="go quiet" href={resolve('/login')}>Sign in</a>
 		</div>
 	{:else if view.at === 'wait'}
 		<div class="card" role="alert">

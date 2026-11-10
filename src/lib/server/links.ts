@@ -1,18 +1,18 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, count, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, count, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { SITE_URL } from '$app/env/private';
 import { db, type Tx } from './db/index.ts';
 import { account, emailLink, linkTry, user, type LINK_PURPOSES } from './db/schema/index.ts';
-import type { Waiting } from '#lib/people-fields.ts';
+import type { Changing, Waiting } from '#lib/people-fields.ts';
 import { mailer } from './email.ts';
 import { placeOf } from './sign-in-limit.ts';
 
 /**
  * LINKS reckon emails (email_link): an invitation to choose a first password,
- * a reset's link to choose a new one, and a link confirming the address one
- * signs in with. Each carries a code, and is good once, for 24 hours -- the
- * most NIST SP 800-63A-4 §3.8 and SP 800-63B-4 §4.2.1.2 allow a code sent by
- * email.
+ * a reset's link to choose a new one, a link confirming the address one signs
+ * in with, and one making a new address the one they sign in with. Each
+ * carries a code, and is good once, for 24 hours -- the most NIST SP
+ * 800-63A-4 §3.8 and SP 800-63B-4 §4.2.1.2 allow a code sent by email.
  *
  * THE CODE is 32 random bytes, written in base64url: 256 bits, past the 112
  * NIST asks of any secret (SP 800-63B-4 §3.2.12). Only its SHA-256 is kept, so
@@ -28,7 +28,11 @@ import { placeOf } from './sign-in-limit.ts';
  *
  * A link works only while the address it went to is still the one its person
  * signs in with, and while they are active. Using it proves they read mail
- * there, and marks the address confirmed. A code that is not one to use --
+ * there, and marks the address confirmed. A change's link went to the address
+ * they are to sign in with instead: it works while they are active, until a
+ * newer change or a cancelled one ends it, and using it makes that address
+ * theirs (SP 800-63B-4 §4.2.1.2: an address "SHALL be established only after
+ * the subscriber provides the correct confirmation code"). A code that is not one to use --
  * unknown, used or lapsed -- is answered alike, so the page says nothing about
  * which codes exist, and counts against the network it came from.
  */
@@ -60,23 +64,36 @@ export const unsentBecause = (missing: 'SMTP_HOST' | 'SITE_URL') =>
 /** The purposes a link that sets a password has; one of them waits at a time. */
 const SETS_PASSWORD = ['invite', 'reset'] as const;
 
+/** What else a link ends when it is issued: any other of its kind still waiting. */
+const ALIKE = {
+	invite: SETS_PASSWORD,
+	reset: SETS_PASSWORD,
+	confirm: ['confirm'],
+	change: ['change']
+} as const satisfies Record<Purpose, readonly Purpose[]>;
+
 /**
- * A new link for `userId`, to the address they sign in with now: any other of
- * the same kind still waiting stops working. The link, and until when it
- * works. Called in the transaction that emails it, so neither is kept without
- * the other.
+ * A new link for `userId`, to the address they sign in with now -- or, for a
+ * change, to `changeTo`, the one they are to sign in with: any other of the
+ * same kind still waiting stops working. The link, and until when it works.
+ * Called in the transaction that emails it, so neither is kept without the
+ * other.
  */
 export async function issue(
 	tx: Tx,
 	userId: string,
 	purpose: Purpose,
-	sentBy: string
+	sentBy: string,
+	changeTo?: string
 ): Promise<{ link: string; until: Date; to: string }> {
 	if (!SITE_URL) throw new Error('A link is issued only where SITE_URL is set.');
+	if ((purpose === 'change') !== (changeTo !== undefined))
+		throw new Error('A change, and only a change, is sent to an address of its own.');
 	const [person] = await tx.select({ email: user.email }).from(user).where(eq(user.id, userId));
 	if (!person) throw new Error(`Nobody has the id ${userId}.`);
+	const to = changeTo ?? person.email;
 	const code = randomBytes(32).toString('base64url');
-	const alike = purpose === 'confirm' ? (['confirm'] as const) : SETS_PASSWORD;
+	const alike = ALIKE[purpose];
 	await tx
 		.delete(emailLink)
 		.where(
@@ -94,15 +111,18 @@ export async function issue(
 			userId,
 			purpose,
 			codeHash: hashOf(code),
-			sentTo: person.email,
+			sentTo: to,
 			expiresAt: sql`now() + make_interval(hours => ${LINK_HOURS})`,
 			sentBy
 		})
 		.returning({ until: emailLink.expiresAt });
-	return { link: `${SITE_URL}/link#${code}`, until: made.until, to: person.email };
+	return { link: `${SITE_URL}/link#${code}`, until: made.until, to };
 }
 
-/** A link that can be used now, and its person, as the page speaks of them. */
+/**
+ * A link that can be used now, and its person, as the page speaks of them:
+ * `email` is the address it went to, which for a change is the new one.
+ */
 export type Usable = {
 	id: string;
 	purpose: Purpose;
@@ -124,7 +144,7 @@ export async function usable(tx: Tx, code: string): Promise<Usable | null> {
 			purpose: emailLink.purpose,
 			userId: emailLink.userId,
 			name: user.name,
-			email: user.email
+			email: emailLink.sentTo
 		})
 		.from(emailLink)
 		.innerJoin(user, eq(user.id, emailLink.userId))
@@ -134,7 +154,7 @@ export async function usable(tx: Tx, code: string): Promise<Usable | null> {
 				isNull(emailLink.usedAt),
 				gt(emailLink.expiresAt, sql`now()`),
 				eq(user.active, true),
-				eq(user.email, emailLink.sentTo)
+				or(eq(emailLink.purpose, 'change'), eq(user.email, emailLink.sentTo))
 			)
 		)
 		.for('update', { of: [emailLink, user] });
@@ -209,3 +229,29 @@ export const signingIn = {
 		 where l.user_id = "user".id and l.used_at is null and l.purpose in ('invite', 'reset')
 		 order by l.created_at desc limit 1)`
 };
+
+/**
+ * A change of their address still waiting, as a column of a select from user:
+ * the address it is to, when its link went and until when it works, or null
+ * (#lib/people-fields Changing). "user" outright, as in signingIn.
+ */
+export const changing = sql<Changing | null>`(
+	select json_build_object(
+		'to', l.sent_to,
+		'sent_at', l.created_at,
+		'until', l.expires_at,
+		'lapsed', l.expires_at <= now())
+	  from ${emailLink} l
+	 where l.user_id = "user".id and l.used_at is null and l.purpose = 'change'
+	 order by l.created_at desc limit 1)`;
+
+/** Ends a change of `userId`'s address still waiting: its link stops working. */
+export async function endChange(tx: Tx, userId: string): Promise<boolean> {
+	const ended = await tx
+		.delete(emailLink)
+		.where(
+			and(eq(emailLink.userId, userId), isNull(emailLink.usedAt), eq(emailLink.purpose, 'change'))
+		)
+		.returning({ id: emailLink.id });
+	return ended.length > 0;
+}

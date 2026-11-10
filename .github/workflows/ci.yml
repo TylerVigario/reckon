@@ -307,6 +307,11 @@ jobs:
         # takes them away again.
         run: node tests/email-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
+      - name: A new address for someone who has signed in waits until they use the link sent there, and the old one is told
+        # After the email check, for the same reason: it adds people and takes
+        # them away again.
+        run: node tests/email-change-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+
       - name: Every try at a password is recorded, and limited per address and per email from the record, however many are sent at once
         # On a second server, told the visitor's address as a proxy would tell
         # it, so the check tries from addresses of its own. On the job's server

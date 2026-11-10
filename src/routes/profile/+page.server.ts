@@ -3,7 +3,7 @@ import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { emailLink, user } from '#lib/server/db/schema/index.ts';
 import { tell } from '#lib/server/email.ts';
-import { cannotSend, issue, unsentBecause } from '#lib/server/links.ts';
+import { cannotSend, changing, issue, unsentBecause } from '#lib/server/links.ts';
 import { emailConfirmation } from '#lib/server/notices.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -16,7 +16,8 @@ import type { Actions, PageServerLoad } from './$types';
  * And the address they sign in with, and whether it is confirmed theirs: one
  * that is not -- anyone added before invitations were emailed -- they confirm
  * here, by a link sent there (#lib/server/links). The address itself is
- * changed on Team.
+ * changed on Team, and a change of it waits for them to use the link sent to
+ * the new one: said here, with where it went and until when.
  */
 export const load: PageServerLoad = async ({ locals }) => {
 	const [[me], [waiting]] = await Promise.all([
@@ -27,7 +28,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 				timezone: user.timezone,
 				locale: user.locale,
 				hour_cycle: user.hourCycle,
-				week_start: user.weekStart
+				week_start: user.weekStart,
+				changing
 			})
 			.from(user)
 			.where(eq(user.id, locals.user!.id)),

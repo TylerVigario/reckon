@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { emailConfirmation, invitation, passwordChanged, passwordResetLink } from './notices.js';
+import {
+	emailChange,
+	emailChanging,
+	emailConfirmation,
+	invitation,
+	passwordChanged,
+	passwordResetLink
+} from './notices.js';
 
 const AVERY = {
 	name: 'Avery Lind',
@@ -132,5 +139,70 @@ describe('confirming an address', () => {
 
 	it('says that someone asking for it unasked is signed in as them', () => {
 		expect(n.body).toContain("If you didn't ask, someone else is signed in as you.");
+	});
+});
+
+describe('a change of address, to the new one', () => {
+	const NEW = 'avery.lind@fieldmail.example';
+	const n = emailChange(AVERY, KESTREL, { by: 'Sam Ortiz', link: LINK, until: UNTIL, to: NEW });
+
+	it('goes to the new address, carrying the link and who asked', () => {
+		expect(n).toMatchObject({
+			kind: 'email_change',
+			to: NEW,
+			subject: 'Kestrel: confirm your new email'
+		});
+		expect(n.body).toContain(`Sam Ortiz is changing the email you sign in to`);
+		expect(n.body).toContain(`to this one, ${NEW}`);
+		expect(n.body.split('\n\n')).toContain(LINK);
+		expect(n.body).toContain('It works once, until');
+	});
+
+	it('never says the address they have now, which a mistyped one would reach', () => {
+		expect(n.body).not.toContain(AVERY.email);
+		expect(n.body).toContain('you keep signing in with your old address');
+	});
+
+	it('tells anyone it reached by mistake that nothing changes, and how to reach the business', () => {
+		expect(n.body).toContain(
+			"If you aren't Avery Lind, this address was given by mistake, and nothing changes unless the link is used."
+		);
+		expect(n.body).toContain('office@kestrel.example or 555-0100');
+	});
+
+	it('says it was theirs to ask for where they asked for it themselves', () => {
+		const own = emailChange(AVERY, KESTREL, { by: null, link: LINK, until: UNTIL, to: NEW });
+		expect(own.body).toContain('You are changing the email');
+		expect(own.body).toContain('send another from Team');
+	});
+});
+
+describe('a change of address, to the old one', () => {
+	const NEW = 'avery.lind@fieldmail.example';
+	const n = emailChanging(AVERY, KESTREL, { at: AT, by: 'Sam Ortiz', to: NEW });
+
+	it('goes to the address they have, saying who asked, when, and for what', () => {
+		expect(n).toMatchObject({
+			kind: 'email_changing',
+			to: 'avery@kestrel.example',
+			subject: 'Kestrel: your sign-in email is changing'
+		});
+		expect(n.body).toContain('Monday, November 9, 2026 at 2:05 PM PST, Sam Ortiz asked');
+		expect(n.body).toContain(`from this one to ${NEW}`);
+		expect(n.body).toContain("until it's used you keep signing in with this one");
+	});
+
+	it('carries no link, and says whom to ask to cancel it', () => {
+		expect(n.body).not.toContain('/link');
+		expect(n.body).toContain(
+			'ask Sam Ortiz or someone else with Full access at Kestrel Field Services to cancel it on Team'
+		);
+		expect(n.body).toContain('office@kestrel.example or 555-0100');
+	});
+
+	it('where they asked for it themselves, says someone else may be signed in as them', () => {
+		const own = emailChanging(AVERY, KESTREL, { at: AT, by: null, to: NEW });
+		expect(own.body).toContain(', you asked for the email');
+		expect(own.body).toContain("If you didn't, someone else is signed in as you.");
 	});
 });

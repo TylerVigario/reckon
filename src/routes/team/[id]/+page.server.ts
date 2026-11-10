@@ -2,15 +2,16 @@ import { error } from '@sveltejs/kit';
 import { and, asc, count, eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { role, user } from '#lib/server/db/schema/index.ts';
-import { cannotSend, signingIn } from '#lib/server/links.ts';
+import { cannotSend, changing, signingIn } from '#lib/server/links.ts';
 import { UUID } from '#lib/field-rules.ts';
 import type { PageServerLoad } from './$types';
 
 /**
  * One person: who they are, what they can reach, the role they are paid as,
  * and whether they sign in -- each changed here, and nowhere else -- and when
- * they last did, whether the address they sign in with is confirmed, and the
- * link to choose a password they have waiting, if any. What they are owed is
+ * they last did, whether the address they sign in with is confirmed, the
+ * link to choose a password they have waiting, and a change of their address
+ * waiting, if any. What they are owed is
  * the pay report's, and is a link from here.
  */
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -27,7 +28,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				last_signed_in_at: user.lastSignedInAt,
 				temporary_password: user.temporaryPassword,
 				email_verified: user.emailVerified,
-				...signingIn
+				...signingIn,
+				changing
 			})
 			.from(user)
 			.where(eq(user.id, params.id)),

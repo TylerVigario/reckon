@@ -17,7 +17,9 @@ export const EMAIL_KINDS = /** @type {const} */ ([
 	'password_reset',
 	'invitation',
 	'password_reset_link',
-	'email_confirmation'
+	'email_confirmation',
+	'email_change',
+	'email_changing'
 ]);
 
 /** @typedef {(typeof EMAIL_KINDS)[number]} EmailKind */
@@ -226,6 +228,68 @@ export function emailConfirmation(person, business, { link, until }) {
 			link,
 			lapses(person, business, until, 'If it lapses, ask for another on Your profile.'),
 			`If you didn't ask, someone else is signed in as you. Change your password on Your profile, or ask ${someoneWithFull(business)} to reset it${orReach(business)}.`
+		].join('\n\n')
+	};
+}
+
+/**
+ * Someone with Full asked, on Team, for the address they sign in with to be
+ * this one: using the link makes it theirs, and confirms it. Sent to the new
+ * address, which may be a stranger's if it was mistyped, so it does not say
+ * the old one. `by` is null where they asked for it themselves.
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {Link & { by: string | null, to: string }} what
+ * @returns {Notice}
+ */
+export function emailChange(person, business, { by, link, until, to }) {
+	const reach = [business.email, business.phone].filter(Boolean).join(' or ');
+	return {
+		kind: 'email_change',
+		to,
+		subject: subject(business, 'confirm your new email'),
+		body: [
+			`Hello ${person.name},`,
+			`${by ? `${by} is changing` : 'You are changing'} the email you sign in to ${theirReckon(business)} with to this one, ${to}. Confirm it's yours at this link:`,
+			link,
+			lapses(
+				person,
+				business,
+				until,
+				by
+					? `If it lapses, ask ${by} or ${someoneWithFull(business, ' else')} to send another.`
+					: 'If it lapses, send another from Team.'
+			),
+			"Until it's used, you keep signing in with your old address.",
+			`If you aren't ${person.name}, this address was given by mistake, and nothing changes unless the link is used.${reach ? ` Tell ${named(business) ?? 'the business'} at ${reach}.` : ''}`
+		].join('\n\n')
+	};
+}
+
+/**
+ * The address they sign in with is to change to `to`, asked for on Team: told
+ * to the address they have now, when it is asked for, so a change they did
+ * not expect can be stopped before it is made. `by` is null where they asked
+ * for it themselves.
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {{ at: Date, by: string | null, to: string }} what
+ * @returns {Notice}
+ */
+export function emailChanging(person, business, { at, by, to }) {
+	return {
+		kind: 'email_changing',
+		to: person.email,
+		subject: subject(business, 'your sign-in email is changing'),
+		body: [
+			`Hello ${person.name},`,
+			`On ${when(at, person, business)}, ${by ?? 'you'} asked for the email you sign in to ${theirReckon(business)} with to change from this one to ${to}. A link went there to confirm it, and until it's used you keep signing in with this one.`,
+			'If you expected this, there is nothing more to do.',
+			by
+				? `If you didn't, ask ${by} or ${someoneWithFull(business, ' else')} to cancel it on Team${orReach(business)}.`
+				: `If you didn't, someone else is signed in as you. Cancel it on Team and change your password on Your profile, or ask ${someoneWithFull(business, ' else')} to reset it${orReach(business)}.`
 		].join('\n\n')
 	};
 }

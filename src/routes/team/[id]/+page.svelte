@@ -35,6 +35,11 @@
 	 * line under their name says when the one waiting went and until when it
 	 * works, or that it lapsed, with Resend invitation beside one that did.
 	 * Nobody here sees a password, or the link (ASVS 5.0 6.4.6).
+	 *
+	 * A NEW ADDRESS for someone who has signed in waits: they keep the one they
+	 * have until they use the link sent to the new one, and the old one is told
+	 * (api/people/[id] changeEmail). The email row shows it Pending, or Expired
+	 * once the link lapses, with Send again and Cancel change beside it.
 	 */
 	let { data }: PageProps = $props();
 
@@ -114,11 +119,73 @@
 		if (!parsed.ok) return void (error = parsed.why);
 		if (parsed.value === p[key]) return leave();
 		saving = true;
-		const why = await send(key, draft);
+		const why = key === 'email' ? await saveEmail(draft) : await send(key, draft);
 		saving = false;
 		if (why) return void (error = why);
-		flash(key);
+		if (key !== 'email') flash(key);
 		await leave();
+	}
+
+	const changeSaid = (to: string, until: string, was: string): Said => ({
+		title: `Confirmation link sent to ${to}`,
+		detail: `${isMe ? 'You keep' : `${first} keeps`} signing in with ${was} until ${isMe ? 'you' : 'they'} use it, once, by ${at(until)}. We told ${was} that you asked.`,
+		tone: 'good'
+	});
+
+	/**
+	 * A new address: theirs at once, said Saved; or, for someone who has signed
+	 * in, waiting for them to use the link sent there, said in a banner.
+	 */
+	async function saveEmail(value: string): Promise<string | null> {
+		const was = p.email;
+		const r = await fetch(`/api/people/${p.id}`, {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ fields: { email: value } })
+		}).catch(() => null);
+		if (!r) return 'Not saved — no connection.';
+		if (!r.ok) {
+			const problem = await readProblem(r);
+			return problem.errors?.email ?? problem.detail ?? 'That did not save.';
+		}
+		const body = (await r.json()) as { waiting?: { to: string; until: string } };
+		if (body.waiting) said = changeSaid(body.waiting.to, body.waiting.until, was);
+		else flash('email');
+		await refreshAll();
+		return null;
+	}
+
+	/** The change of address waiting: its link sent again, or the change cancelled. */
+	async function changeAgain(how: 'POST' | 'DELETE') {
+		const to = p.changing?.to ?? '';
+		working = true;
+		const r = await fetch(`/api/people/${p.id}/email-change`, { method: how }).catch(() => null);
+		working = false;
+		if (!r?.ok) {
+			const problem = r ? await readProblem(r) : null;
+			said = {
+				title: how === 'POST' ? 'Not sent' : 'Not cancelled',
+				detail: problem
+					? (problem.errors?.change ?? problem.detail ?? 'Nothing changed.')
+					: 'Nothing changed — no connection.',
+				tone: 'crit'
+			};
+			return;
+		}
+		if (how === 'POST') {
+			const { until } = (await r.json()) as { until: string };
+			said = {
+				title: `Confirmation link sent again to ${to}`,
+				detail: `It works once, until ${at(until)}. The one sent before no longer works.`,
+				tone: 'good'
+			};
+		} else
+			said = {
+				title: 'Email change cancelled',
+				detail: `${isMe ? 'You still sign' : `${first} still signs`} in with ${p.email}. The link sent to ${to} no longer works.`,
+				tone: 'good'
+			};
+		await refreshAll();
 	}
 	function keys(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
@@ -262,6 +329,32 @@
 	{/if}
 {/snippet}
 
+{#snippet changeWaiting()}
+	{#if p.changing}
+		{@const c = p.changing}
+		<span class="change">
+			<span class="lab {c.lapsed ? 'crit' : 'warn'}">{c.lapsed ? 'Expired' : 'Pending'}</span>
+			<span>{c.to}</span>
+		</span>
+		<span class="sub">
+			{c.lapsed
+				? `Link sent at ${at(c.sent_at)}, and not used within 24 hours. ${isMe ? 'You still sign' : `${first} still signs`} in with ${p.email}.`
+				: `Link sent at ${at(c.sent_at)} · works until ${at(c.until)}. ${isMe ? 'You sign' : `${first} signs`} in with ${p.email} until ${isMe ? 'you' : 'they'} use it.`}
+		</span>
+		<span class="acts">
+			<button
+				type="button"
+				class="btn sm"
+				onclick={() => changeAgain('POST')}
+				disabled={working || !!unsent || !p.active}>Send again</button
+			>
+			<button type="button" class="btn sm" onclick={() => changeAgain('DELETE')} disabled={working}
+				>Cancel change</button
+			>
+		</span>
+	{/if}
+{/snippet}
+
 {#snippet plain(key: Plain, label: string, caption: string)}
 	<div class="box-row kv">
 		{#if editing === key}
@@ -294,7 +387,7 @@
 			<span class="kv-l">{label}</span>
 			<span class="kv-v"
 				><span>{p[key]} {@render savedMark(key)}</span>
-				{#if key === 'email'}{@render confirmed()}{/if}</span
+				{#if key === 'email'}{@render confirmed()}{@render changeWaiting()}{/if}</span
 			>
 			<span class="end">
 				{#if editing === null}
@@ -383,7 +476,11 @@
 		{@render plain(
 			'email',
 			'Email',
-			'They sign in with this. A new one isn’t confirmed until they use a link sent there.'
+			where === 'active'
+				? 'They sign in with this. A new one takes over once they use the link we email there, and we tell this one.'
+				: where === 'deactivated'
+					? 'They sign in with this if they’re reactivated. A new one isn’t confirmed until they use a link sent there.'
+					: 'They sign in with this. Their invitation goes again, to the new one, and the one sent before stops working.'
 		)}
 	</section>
 
@@ -590,6 +687,19 @@
 		gap: 4px;
 		color: var(--good);
 		font-weight: 600;
+	}
+	.change {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		margin-top: 8px;
+	}
+	.acts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-top: 6px;
 	}
 	.saved {
 		display: inline-flex;

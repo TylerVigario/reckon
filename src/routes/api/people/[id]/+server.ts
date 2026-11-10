@@ -2,8 +2,8 @@ import { and, eq, sql } from 'drizzle-orm';
 import { asUser, type Tx } from '#lib/server/db/index.ts';
 import { account, session, user } from '#lib/server/db/schema/index.ts';
 import { tell } from '#lib/server/email.ts';
-import { cannotSend, issue } from '#lib/server/links.ts';
-import { invitation } from '#lib/server/notices.js';
+import { cannotSend, endChange, issue, unsentBecause } from '#lib/server/links.ts';
+import { emailChange, emailChanging, invitation } from '#lib/server/notices.js';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { OWN_FIELDS, PERSON_FIELDS, parsePersonField } from '#lib/people-fields.ts';
@@ -32,10 +32,8 @@ type Field = keyof typeof COLUMN;
  * One thing about a person at a time.
  *
  * Who they are: their name, and the email they sign in with, which no one else
- * may have. A new address is not confirmed until they use a link sent there
- * (#lib/server/links), and one waiting at the old address stops working;
- * someone yet to choose their first password is sent their invitation again,
- * to the new one. Whether they can sign in: deactivated, they can't, and aren't
+ * may have -- a new one waits to be proven theirs (changeEmail). Whether they
+ * can sign in: deactivated, they can't, and aren't
  * offered work, though everything they did is kept -- and nobody deactivates
  * themselves, which would sign them out of the screen they did it on.
  *
@@ -81,39 +79,100 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		if (value === null) return refuse({ timezone: 'The database does not know that time zone.' });
 	}
 
+	if (name === 'email') return changeEmail(params.id, value as string, locals.user!);
+
 	try {
-		const changed = await asUser(locals.user!.id, async (tx) => {
-			const [was] = await tx
-				.select({ email: user.email })
-				.from(user)
-				.where(eq(user.id, params.id))
-				.for('update');
-			const done = await tx
+		const changed = await asUser(locals.user!.id, (tx) =>
+			tx
 				.update(user)
-				.set({
-					[COLUMN[name]]: value,
-					// Proven was the address before; a new one is not, yet.
-					...(name === 'email' && was && was.email !== value && { emailVerified: false })
-				})
+				.set({ [COLUMN[name]]: value })
 				.where(eq(user.id, params.id))
-				.returning({ id: user.id });
-			if (done.length && name === 'email' && was && was.email !== value)
-				await inviteAgain(tx, params.id, locals.user!);
-			return done;
-		});
+				.returning({ id: user.id })
+		);
 		if (changed.length === 0) return problem('notFound', 404, 'No person with that id.');
 	} catch (e) {
 		const { constraint } = pgError(e);
 		if (constraint === 'someone_keeps_full')
 			return refuse({ [name]: 'Someone has to keep Full. Give it to another person first.' });
-		if (constraint === 'user_email_key')
-			return refuse({ email: 'Someone else signs in with that email.' });
 		const refused = refuseIfTheDatabaseSaidSo(e, [name], 'user');
 		if (refused) return refused;
 		throw e;
 	}
 	return Response.json({ saved: { [name]: value } });
 };
+
+const TAKEN = 'Someone else signs in with that email.';
+
+/**
+ * A NEW ADDRESS for someone. Someone who can sign in -- active, and signed in
+ * before or holding a password of their own -- keeps the one they have until
+ * they use a link sent to the new one, which then becomes theirs, confirmed
+ * (SP 800-63B-4 §4.2.1.2; OWASP's Authentication Cheat Sheet: "Store the
+ * proposed new email address as a pending change"). The address they have now
+ * is told at once: who asked, and for what (ASVS 5.0 6.3.7; SP 800-63B-4
+ * §4.6). A newer change ends one still waiting.
+ *
+ * Anyone else's changes at once, unconfirmed. Someone yet to accept their
+ * invitation is sent it again, at the new address, and using it proves that;
+ * someone deactivated is told nothing, since they sign in to nothing.
+ */
+async function changeEmail(
+	id: string,
+	to: string,
+	me: { id: string; name: string }
+): Promise<Response> {
+	try {
+		return await asUser(me.id, async (tx) => {
+			const [person] = await tx
+				.select({
+					email: user.email,
+					active: user.active,
+					joined: user.lastSignedInAt,
+					temporary: user.temporaryPassword,
+					// "user" outright: Drizzle leaves a column unqualified in a query of one
+					// table, and inside this it would be read as account's own.
+					held: sql<boolean>`exists (select 1 from ${account} where ${account.userId} = "user".id and ${account.providerId} = 'credential')`
+				})
+				.from(user)
+				.where(eq(user.id, id))
+				.for('update');
+			if (!person) return problem('notFound', 404, 'No person with that id.');
+			if (person.email === to) return Response.json({ saved: { email: to } });
+
+			const canSignIn =
+				person.active && (person.joined !== null || (person.held && !person.temporary));
+			if (!canSignIn) {
+				await tx.update(user).set({ email: to, emailVerified: false }).where(eq(user.id, id));
+				await endChange(tx, id);
+				await inviteAgain(tx, id, me);
+				return Response.json({ saved: { email: to } });
+			}
+
+			const missing = cannotSend();
+			if (missing)
+				return refuse({
+					email: `${unsentBecause(missing)} A new address can’t be confirmed without it.`
+				});
+			const [taken] = await tx.select({ id: user.id }).from(user).where(eq(user.email, to));
+			if (taken) return refuse({ email: TAKEN });
+			const by = me.id === id ? null : me.name;
+			const sent = await issue(tx, id, 'change', me.id, to);
+			await tell(
+				tx,
+				id,
+				(them, business) => emailChange(them, business, { by, ...sent }),
+				sent.until
+			);
+			await tell(tx, id, (them, business) =>
+				emailChanging(them, business, { at: new Date(), by, to })
+			);
+			return Response.json({ waiting: { to, until: sent.until } }, { status: 202 });
+		});
+	} catch (e) {
+		if (pgError(e).constraint === 'user_email_key') return refuse({ email: TAKEN });
+		throw e;
+	}
+}
 
 /**
  * Someone yet to choose their first password, whose address was corrected,

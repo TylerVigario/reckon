@@ -2582,6 +2582,16 @@ SELECT must_fail($$
   VALUES ('a1000000-0000-4000-8000-000000000053', 'confirm', sha256('code-4'::bytea), 'invited@example.com', now() + interval '1 hour')
 $$, 'a second confirmation while one waits');
 
+SELECT must_pass($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'change', sha256('code-6'::bytea), 'invited.new@example.com', now() + interval '24 hours')
+$$, 'a change to a new address waiting beside the others, sent to the new one');
+
+SELECT must_fail($$
+  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'change', sha256('code-7'::bytea), 'invited.newer@example.com', now() + interval '1 hour')
+$$, 'a second change while one waits');
+
 SELECT must_fail($$
   UPDATE email_link SET used_at = expires_at + interval '1 second'
    WHERE code_hash = sha256('code-1'::bytea)
@@ -2610,6 +2620,11 @@ SELECT must_pass($$
   INSERT INTO email_message (kind, to_address, subject, body, send_by)
   VALUES ('invitation', 'invited@example.com', 'Kestrel: choose your password', 'Hello', now() + interval '24 hours')
 $$, 'an email carrying an invitation');
+
+SELECT must_pass($$
+  INSERT INTO email_message (kind, to_address, subject, body, send_by)
+  VALUES ('email_changing', 'invited@example.com', 'Kestrel: your sign-in email is changing', 'Hello', now() + interval '7 days')
+$$, 'an email telling an address it is to be changed');
 
 -- A person's links go with them; one they sent outlives them, naming nobody.
 DO $$

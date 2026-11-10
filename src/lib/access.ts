@@ -176,6 +176,7 @@ export const REACH = {
 	'/api/people': 'full',
 	'/api/people/[id]/password': 'full',
 	'/api/people/[id]/invitation': 'full',
+	'/api/people/[id]/email-change': 'full',
 	'/api/roles': 'full',
 	'/api/roles/[id]': 'full',
 	'/api/units': 'full',

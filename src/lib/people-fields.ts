@@ -100,6 +100,18 @@ export type Waiting = {
 };
 
 /**
+ * A change of the address someone signs in with, waiting for them to use the
+ * link sent to the new one (#lib/server/links): the address it is to, when the
+ * link went, until when it works, and whether that has passed.
+ */
+export type Changing = {
+	to: string;
+	sent_at: string;
+	until: string;
+	lapsed: boolean;
+};
+
+/**
  * Where someone stands, as Team labels them: Invited while the link to choose
  * their first password works, Invitation expired once it lapses unused, then
  * Active, and Deactivated when they can no longer sign in at all. Someone
