@@ -11,9 +11,10 @@
  * resets a password there, and each is emailed a link to choose their own
  * (src/lib/server/links.ts). This is for the first person, before anyone can
  * sign in to do that, and for a password when nobody who could is able to, or
- * reckon has no email to send by. `list` says whose password has
- * stopped after a hundred wrong tries in a row (src/lib/server/sign-in-limit.ts),
- * and a new one, set here or on Team, works again.
+ * reckon has no email to send by. `list` says whose password has stopped --
+ * after a hundred wrong tries in a row (src/lib/server/sign-in-limit.ts), or
+ * found in a breach as they signed in (src/lib/server/breach.ts) -- and a new
+ * one, set here or with a link, works again.
  *
  * `add` makes the person and asks for their password straight away; `password`
  * sets a new one, and it is theirs rather than temporary. A password is
@@ -25,10 +26,13 @@
  * whatever is said, since someone has to: the database refuses to leave nobody
  * active on Full, and only someone with Full changes anyone's access.
  *
- * The rule is checked on the first entry, before the second is asked for: typing
- * a password twice only to be told the first was too short is two wasted
- * entries. --insecure lifts the rule, for a development database where the
- * password guards nothing; it still says so when it is used.
+ * The rules are the server's (src/lib/server/password-rules.js): 15 characters
+ * at least, not one of the most common, not seen in a breach, and not made of
+ * the person's or the business's names. They are checked on the first entry,
+ * before the second is asked for: typing a password twice only to be told the
+ * first was too short is two wasted entries. --insecure lifts them, for a
+ * development database where the password guards nothing; it still says so
+ * when it is used.
  *
  * Every existing session for that person is ended, because a password change
  * that leaves old sessions alive has not changed anything for whoever holds one.
@@ -40,6 +44,13 @@
 // First, so .env is read before anything reads what it sets.
 import { database } from './env.mjs';
 import { hash } from '@node-rs/argon2';
+import {
+	MAX_PASSWORD_LENGTH,
+	MIN_PASSWORD_LENGTH,
+	PWNED_PASSWORDS,
+	weakness,
+	wordsAbout
+} from '../src/lib/server/password-rules.js';
 import pg from 'pg';
 import { stdin, stdout } from 'node:process';
 import { EMAIL_CHANNEL, NOTICE_SENDS_FOR, passwordChanged } from '../src/lib/server/notices.js';
@@ -70,8 +81,7 @@ if (
 	process.exit(1);
 }
 
-/** The same rule and parameters as src/lib/server/auth.ts; a sign-in rehashes anything older. */
-const MIN = 12;
+/** The same parameters as src/lib/server/auth.ts; a sign-in rehashes anything older. */
 const ARGON = { algorithm: 2, memoryCost: 19456, timeCost: 2, parallelism: 1 };
 
 /**
@@ -174,24 +184,37 @@ const stop = async (/** @type {string} */ message) => {
 	process.exit(1);
 };
 
+/** What is wrong with a password, said of whoever it is for. */
+const WEAK = {
+	too_long: `${MAX_PASSWORD_LENGTH} characters at most.`,
+	common: 'That is one of the most common passwords.',
+	breached: 'Pwned Passwords has seen that password in a data breach.',
+	about_them: 'That password is made of their name, their email or the business’s.',
+	too_short: `${MIN_PASSWORD_LENGTH} characters at least.`
+};
+
 /**
- * Why a password is refused, or null. Empty is refused even under --insecure:
- * that is not a weak password, it is none.
+ * What is wrong with a password for this person, as the server would find it,
+ * or null.
  *
  * @param {string} p
+ * @param {{ name: string, email: string }} user
  */
-const refusal = (p) =>
-	p.length === 0
-		? 'A password cannot be empty.'
-		: !insecure && p.length < MIN
-			? `Twelve characters at least -- or pass --insecure for a development database.`
-			: null;
+async function weaknessFor(p, user) {
+	const [business] = await q(
+		'select trading_name as "tradingName", short_name as "shortName", email from operator limit 1'
+	);
+	return weakness(p, {
+		about: wordsAbout(user, business),
+		pwned: process.env.PWNED_PASSWORDS_URL?.trim() || PWNED_PASSWORDS
+	});
+}
 
 /**
  * Asks for a password twice and stores its hash as the person's credential
  * account, ending every session they hold.
  *
- * @param {{ id: string, name: string }} user
+ * @param {{ id: string, name: string, email: string }} user
  * @param {{ tell?: boolean }} [options] whether they are told by email, as a
  *   person whose password is changed is; one just added is not
  */
@@ -202,9 +225,18 @@ async function setPassword(user, { tell = false } = {}) {
 
 	/** @type {string} */
 	let first;
+	/** @type {Awaited<ReturnType<typeof weaknessFor>>} */
+	let weak;
 	for (;;) {
 		first = await secret(`Password for ${user.name}: `);
-		const why = refusal(first);
+		// Empty is refused even under --insecure: that is not a weak password, it
+		// is none.
+		weak = first ? await weaknessFor(first, user) : null;
+		const why = !first
+			? 'A password cannot be empty.'
+			: weak && !insecure
+				? `${WEAK[weak]} Or pass --insecure, for a development database.`
+				: null;
 		if (!why) {
 			const again = await secret('Again: ');
 			if (again === first) break;
@@ -216,9 +248,9 @@ async function setPassword(user, { tell = false } = {}) {
 		console.error(why);
 	}
 
-	if (insecure && first.length < MIN)
+	if (weak)
 		console.error(
-			`Insecure: ${first.length} character(s). Fine for a development database, not for one anybody else signs in to.`
+			`Insecure: ${WEAK[weak]} Fine for a development database, not for one anybody else signs in to.`
 		);
 
 	const password = await hash(first, ARGON);
@@ -251,7 +283,7 @@ async function setPassword(user, { tell = false } = {}) {
 		// (src/lib/server/links.ts).
 		await client.query(
 			`delete from email_link
-			  where user_id = $1 and used_at is null and purpose in ('invite', 'reset')`,
+			  where user_id = $1 and used_at is null and purpose in ('invite', 'reset', 'recover')`,
 			[user.id]
 		);
 		// And they are told, as a change anywhere else tells them, once this
@@ -324,7 +356,7 @@ if (command === 'list') {
 				p.active ? 'active' : 'inactive',
 				p.can_sign_in
 					? p.stopped
-						? 'PASSWORD STOPPED, a hundred wrong in a row'
+						? 'PASSWORD STOPPED, until a new one is set'
 						: p.temporary_password
 							? 'temporary password'
 							: 'has a password'
@@ -354,7 +386,7 @@ if (command === 'list') {
 	const [someone] = await q(`select 1 from "user" where active and access = 'full' limit 1`);
 	const access = full || !someone ? 'full' : 'field';
 	const [user] = await q(
-		'insert into "user" (name, email, role_id, access) values ($1, $2, $3, $4) returning id, name',
+		'insert into "user" (name, email, role_id, access) values ($1, $2, $3, $4) returning id, name, email',
 		[name, email, role?.id ?? null, access]
 	);
 	await setPassword(user);
@@ -365,7 +397,9 @@ if (command === 'list') {
 				: 'with Field access: their own work, and what they are paid for it.')
 	);
 } else {
-	const [user] = await q('select id, name from "user" where email = lower($1)', [words[0].trim()]);
+	const [user] = await q('select id, name, email from "user" where email = lower($1)', [
+		words[0].trim()
+	]);
 	if (!user) await stop(`Nobody has the email ${words[0]}.`);
 	const ended = await setPassword(user, { tell: true });
 	console.log(`Set for ${user.name}. ${ended} existing session(s) ended.`);

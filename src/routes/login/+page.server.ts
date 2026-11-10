@@ -5,6 +5,8 @@ import { APIError } from 'better-auth/api';
 import { eq, sql } from 'drizzle-orm';
 import { db, schema } from '#lib/server/db/index.ts';
 import { authHeaders, getAuth, rehashIfDated } from '#lib/server/auth.ts';
+import { seenInABreach, stopBreached } from '#lib/server/breach.ts';
+import { whomToContact } from '#lib/server/whom-to-contact.ts';
 import { settleTry, takeTry } from '#lib/server/sign-in-limit.ts';
 import { browserSignedInAs, signedInHere } from '#lib/server/signed-in-here.ts';
 import { safeNext } from '#lib/safe-next.ts';
@@ -49,6 +51,13 @@ export const actions: Actions = {
 		};
 		const signIn = (given: string) =>
 			getAuth().api.signInEmail({ body: { email, password: given }, headers: authHeaders(event) });
+		// The session a sign-in that is not to open one set in this browser.
+		const unset = () =>
+			// A Secure cookie's name carries __Secure- in front of its own.
+			event.cookies.getAll().forEach(({ name }) => {
+				if (name.replace(/^__Secure-/, '').startsWith('reckon.'))
+					event.cookies.delete(name, { path: '/' });
+			});
 
 		let userId: string;
 		try {
@@ -64,16 +73,20 @@ export const actions: Actions = {
 			// is counted as one.
 			if (signedIn.user.active === false) {
 				await db.delete(schema.session).where(eq(schema.session.userId, userId));
-				// A Secure cookie's name carries __Secure- in front of its own.
-				event.cookies.getAll().forEach(({ name }) => {
-					if (name.replace(/^__Secure-/, '').startsWith('reckon.'))
-						event.cookies.delete(name, { path: '/' });
-				});
+				unset();
 				return await wrong('inactive');
 			}
 		} catch (e) {
 			if (!(e instanceof APIError)) throw e;
 			return await wrong('wrong');
+		}
+		// Right, and in hand: Pwned Passwords is asked whether it has seen it
+		// since it was chosen. One it has stops here, before anything opens, and
+		// they are emailed a link to choose another (#lib/server/breach).
+		if (await seenInABreach(password)) {
+			const breached = await stopBreached(tried, userId);
+			unset();
+			return fail(403, { email, breached, contact: await whomToContact() });
 		}
 		await settleTry(tried, 'right');
 		signedInHere(event.cookies, email);

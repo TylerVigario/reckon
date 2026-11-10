@@ -4,6 +4,8 @@ import {
 	emailChanging,
 	emailConfirmation,
 	invitation,
+	passwordBreached,
+	passwordBreachedUnconfirmed,
 	passwordChanged,
 	passwordRecovery,
 	passwordRecoveryUnconfirmed,
@@ -303,7 +305,9 @@ describe('whom to contact', () => {
 			emailChanging(AVERY, KESTREL, { at: AT, by: 'Sam Ortiz', to: 'a@b.example' }),
 			emailChanging(AVERY, KESTREL, { at: AT, by: null, to: 'a@b.example' }),
 			passwordRecovery(AVERY, KESTREL, { at: AT, link: LINK, until: UNTIL }),
-			passwordRecoveryUnconfirmed(AVERY, KESTREL, { at: AT })
+			passwordRecoveryUnconfirmed(AVERY, KESTREL, { at: AT }),
+			passwordBreached(AVERY, KESTREL, { at: AT, link: LINK, until: UNTIL }),
+			passwordBreachedUnconfirmed(AVERY, KESTREL, { at: AT })
 		])
 			expect(n.body, n.kind).not.toMatch(/with Full/i);
 	});
@@ -319,5 +323,50 @@ describe('whom to contact', () => {
 		expect(contactFor({ tradingName: 'Kestrel Field Services', email: ' ', phone: null })).toBe(
 			'your administrator'
 		);
+	});
+});
+
+describe('a password found in a breach, to a confirmed address', () => {
+	const n = passwordBreached(AVERY, KESTREL, { at: AT, link: LINK, until: UNTIL });
+
+	it('says when it was used, that it has stopped and why, and carries the link', () => {
+		expect(n).toMatchObject({
+			kind: 'password_breached',
+			to: 'avery@kestrel.example',
+			subject: 'Kestrel: choose a new password'
+		});
+		expect(n.body).toContain(
+			"On Monday, November 9, 2026 at 2:05 PM PST, your password was used to sign in to Kestrel Field Services's reckon."
+		);
+		expect(n.body).toContain('It has appeared in a data breach on another site');
+		expect(n.body).toContain('reckon has stopped it working, and signed you out everywhere.');
+		expect(n.body.split('\n\n')).toContain(LINK);
+		expect(n.body).toContain('ask for another with Forgot password? on the sign-in page');
+		expect(n.html).toContain('>Choose a new password</a>');
+	});
+
+	it('says what to do if it was not them, and whom to ask', () => {
+		expect(n.body).toContain("If that wasn't you, someone else has your password");
+		expect(n.body).toContain('If you use it anywhere else, change it there too.');
+		expect(n.body).toContain(
+			'contact Kestrel Field Services at office@kestrel.example or 555-0100.'
+		);
+	});
+});
+
+describe('a password found in a breach, to an address not confirmed', () => {
+	const n = passwordBreachedUnconfirmed(AVERY, KESTREL, { at: AT });
+
+	it('says it has stopped and why, carries no link, and says who can send one', () => {
+		expect(n).toMatchObject({
+			kind: 'password_breached_unconfirmed',
+			to: 'avery@kestrel.example',
+			subject: 'Kestrel: your password has stopped working'
+		});
+		expect(n.body).toContain('It has appeared in a data breach on another site');
+		expect(n.body).not.toContain('/link');
+		expect(n.html).not.toContain('/link');
+		expect(n.body).toContain("This address hasn't been confirmed as yours");
+		expect(n.body).toContain('If you use it anywhere else, change it there too.');
 	});
 });

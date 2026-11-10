@@ -281,6 +281,13 @@
       "when": 1794277684982,
       "tag": "0039_forgot_password_emails_a_link",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794289600163,
+      "tag": "0040_a_password_seen_in_a_breach_stops",
+      "breakpoints": true
     }
   ]
 }

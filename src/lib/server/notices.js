@@ -26,7 +26,9 @@ export const EMAIL_KINDS = /** @type {const} */ ([
 	'email_change',
 	'email_changing',
 	'password_recovery',
-	'password_recovery_unconfirmed'
+	'password_recovery_unconfirmed',
+	'password_breached',
+	'password_breached_unconfirmed'
 ]);
 
 /** @typedef {(typeof EMAIL_KINDS)[number]} EmailKind */
@@ -378,6 +380,78 @@ export function passwordRecoveryUnconfirmed(person, business, { at }) {
 			`On ${when(at, person, business)}, someone asked to choose a new password for the email you sign in to ${theirReckon(business)} with.`,
 			`This address hasn't been confirmed as yours, so reckon can't send a link to choose one here. Contact ${contactFor(business)} to have one sent: using it confirms the address too.`,
 			"If you didn't ask, there is nothing to do: your password hasn't changed."
+		]
+	});
+}
+
+/** What a password found in a breach as someone signed in with it has come to. */
+const breachedAt = (
+	/** @type {Date} */ at,
+	/** @type {Person} */ person,
+	/** @type {Business} */ business
+) =>
+	`On ${when(at, person, business)}, your password was used to sign in to ${theirReckon(business)}. It has appeared in a data breach on another site, so it may be on the lists attackers try. reckon has stopped it working, and signed you out everywhere.`;
+
+/** What to do if the sign-in was not theirs, and about the password elsewhere. */
+const breachedElsewhere =
+	"If that wasn't you, someone else has your password, and it no longer gets them in. If you use it anywhere else, change it there too.";
+
+/**
+ * Their password was used to sign in, right, and Pwned Passwords has seen it
+ * in a breach (#lib/server/breach): it has stopped, and with only a password,
+ * replacing it is recovery (NIST SP 800-63B-4 §4.2.2.1), by this link, to an
+ * address confirmed theirs. Whoever signed in may not be them, so it says what
+ * to do then, and whom to contact (§4.6, #lib/server/contact).
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {Link & { at: Date }} what
+ * @returns {Notice}
+ */
+export function passwordBreached(person, business, { at, link, until }) {
+	return laid(person, business, {
+		kind: 'password_breached',
+		to: person.email,
+		subject: subject(business, 'choose a new password'),
+		heading: 'Choose a new password',
+		blocks: [
+			`Hello ${person.name},`,
+			breachedAt(at, person, business),
+			'Choose a new one at this link:',
+			{ link, label: 'Choose a new password' },
+			lapses(
+				person,
+				business,
+				until,
+				'After that, ask for another with Forgot password? on the sign-in page.'
+			),
+			breachedElsewhere,
+			`If you have any questions, contact ${contactFor(business)}.`
+		]
+	});
+}
+
+/**
+ * As passwordBreached, for an address not yet confirmed theirs: reckon
+ * recovers an account only to an address proven its holder's (§4.2.1.2), so
+ * this carries no link, and says whom to contact for one.
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {{ at: Date }} what
+ * @returns {Notice}
+ */
+export function passwordBreachedUnconfirmed(person, business, { at }) {
+	return laid(person, business, {
+		kind: 'password_breached_unconfirmed',
+		to: person.email,
+		subject: subject(business, 'your password has stopped working'),
+		heading: 'Your password has stopped working',
+		blocks: [
+			`Hello ${person.name},`,
+			breachedAt(at, person, business),
+			`This address hasn't been confirmed as yours, so reckon can't send a link to choose a new one here. Contact ${contactFor(business)} to have one sent: using it confirms the address too.`,
+			breachedElsewhere
 		]
 	});
 }

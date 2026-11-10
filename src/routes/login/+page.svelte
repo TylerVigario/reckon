@@ -8,29 +8,55 @@
 <svelte:head><title>Sign in</title></svelte:head>
 
 <main>
-	<form method="POST">
-		<h1>Sign in</h1>
-		<input type="hidden" name="next" value={page.url.searchParams.get('next') ?? ''} />
-
-		{#if form?.message}<p class="msg">{form.message}</p>{/if}
-
-		<label
-			>Email
-			<input name="email" type="email" autocomplete="username" value={form?.email ?? ''} required />
-		</label>
-		<div class="pw">
-			<label for="password">Password</label>
-			<a class="aside" href={resolve('/forgot-password')}>Forgot password?</a>
-			<input
-				id="password"
-				name="password"
-				type="password"
-				autocomplete="current-password"
-				required
-			/>
+	{#if form && 'breached' in form}
+		<!-- The password was right and Pwned Passwords has seen it: it has stopped (#lib/server/breach). -->
+		<div class="card" role="alert">
+			<h1>Choose a new password</h1>
+			<p class="lede">
+				That password has appeared in a data breach on another site, so it no longer works here.
+				Anywhere you were signed in, you’ve been signed out.
+			</p>
+			<p class="lede">
+				{form.breached === 'sent'
+					? `We’ve emailed ${form.email} a link to choose a new one. It works once, for an hour.`
+					: form.breached === 'unconfirmed'
+						? `Your email hasn’t been confirmed, so we can’t send you a link to choose a new one. Contact ${form.contact} to have one sent.`
+						: `To choose a new one, contact ${form.contact}.`}
+			</p>
+			<p class="lede">If you use it anywhere else, change it there too.</p>
+			<a class="go quiet" href={resolve('/login')}>Back to sign in</a>
 		</div>
-		<button type="submit">Sign in</button>
-	</form>
+	{:else}
+		<form method="POST">
+			<h1>Sign in</h1>
+			<input type="hidden" name="next" value={page.url.searchParams.get('next') ?? ''} />
+
+			{#if form?.message}<p class="msg">{form.message}</p>{/if}
+
+			<label
+				>Email
+				<input
+					name="email"
+					type="email"
+					autocomplete="username"
+					value={form?.email ?? ''}
+					required
+				/>
+			</label>
+			<div class="pw">
+				<label for="password">Password</label>
+				<a class="aside" href={resolve('/forgot-password')}>Forgot password?</a>
+				<input
+					id="password"
+					name="password"
+					type="password"
+					autocomplete="current-password"
+					required
+				/>
+			</div>
+			<button type="submit">Sign in</button>
+		</form>
+	{/if}
 </main>
 
 <style>
@@ -50,8 +76,10 @@
 		place-items: center;
 		padding: 1.5rem;
 	}
-	form {
+	form,
+	.card {
 		width: min(22rem, 100%);
+		box-sizing: border-box;
 		display: grid;
 		gap: 0.9rem;
 		padding: 1.5rem;
@@ -94,14 +122,28 @@
 		background: light-dark(#eff1f4, #14171c);
 		color: inherit;
 	}
-	button {
+	.lede {
+		margin: 0;
+		font-size: 0.88rem;
+		color: light-dark(#5a6472, #a3adbc);
+	}
+	button,
+	.go {
+		display: grid;
+		place-items: center;
 		font: 600 1rem/1 inherit;
 		min-height: 3.2rem;
 		border: 0;
 		border-radius: 8px;
 		background: #273142;
 		color: #fff;
+		text-decoration: none;
 		cursor: pointer;
+	}
+	.go.quiet {
+		background: transparent;
+		color: inherit;
+		border: 1px solid light-dark(#d9dee6, #2f353f);
 	}
 	.msg {
 		margin: 0;

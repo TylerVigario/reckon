@@ -2444,6 +2444,11 @@ SELECT must_fail($$
 $$, 'a try that came out some other way');
 
 SELECT must_pass($$
+  INSERT INTO sign_in_try (page, address, network, email_key, outcome)
+  VALUES ('sign_in', '192.0.2.1', '192.0.2.1/32', 'k', 'breached')
+$$, 'a try with a right password Pwned Passwords has seen, which stopped it');
+
+SELECT must_pass($$
   INSERT INTO sign_in_try (page, address, network, email_key)
   VALUES ('password_change', '192.0.2.1', '192.0.2.1/32', 'k')
 $$, 'a try still being checked, with no outcome yet');

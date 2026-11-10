@@ -17,7 +17,13 @@
 		| { at: 'reading' }
 		| { at: 'wait' }
 		| { at: 'dead' }
-		| { at: 'choose'; purpose: 'invite' | 'reset' | 'recover'; name: string; email: string }
+		| {
+				at: 'choose';
+				purpose: 'invite' | 'reset' | 'recover';
+				name: string;
+				email: string;
+				stopped: boolean;
+		  }
 		| { at: 'saved'; email: string }
 		| { at: 'confirmed'; email: string }
 		| { at: 'change'; name: string; email: string }
@@ -61,6 +67,7 @@
 			purpose: 'invite' | 'reset' | 'confirm' | 'change' | 'recover';
 			name: string;
 			email: string;
+			stopped: boolean;
 		};
 		// A change waits to be asked for: opening the link changes nothing.
 		if (found.purpose === 'change')
@@ -128,7 +135,7 @@
 				{view.purpose === 'reset'
 					? `For ${view.email}. Your old password no longer works.`
 					: view.purpose === 'recover'
-						? `For ${view.email}. Your old password works until you save a new one.`
+						? `For ${view.email}. ${view.stopped ? 'Your old password has stopped working.' : 'Your old password works until you save a new one.'}`
 						: `Choose a password to sign in as ${view.email}.`}
 			</p>
 			{#if refused}<p class="msg" id="why" role="alert">{refused.message}</p>{/if}
@@ -141,10 +148,9 @@
 					type="password"
 					autocomplete="new-password"
 					minlength={data.min}
-					maxlength={data.max}
 					bind:value={password}
 					aria-invalid={refused?.field === 'password' ? 'true' : undefined}
-					aria-describedby={refused?.field === 'password' ? 'why' : 'hint'}
+					aria-describedby={refused?.field === 'password' ? 'why hint' : 'hint'}
 					required
 				/>
 			</label>
@@ -160,7 +166,7 @@
 					required
 				/>
 			</label>
-			<p class="hint" id="hint">At least {data.min} characters.</p>
+			<p class="hint" id="hint">At least {data.min} characters. {data.guidance}</p>
 			<button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save password'}</button>
 		</form>
 	{:else if view.at === 'saved'}

@@ -7,7 +7,8 @@
  *   scripts/user.mjs   the command that adds the first person, before anyone can sign in,
  *                      with what it imports: scripts/env.mjs and
  *                      src/lib/server/db/defaults.js, which it reads its settings with
- *                      and connects by, and the notices it emails
+ *                      and connects by, the notices it emails, and the password
+ *                      rules it holds a password to
  *   package.json       and package-lock.json, as they are here
  *   node_modules/      the production dependencies, from `npm ci --omit dev`
  *   .env.example       what the environment may set

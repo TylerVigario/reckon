@@ -2,13 +2,8 @@ import { fail, redirect } from '@sveltejs/kit';
 import { and, eq, ne } from 'drizzle-orm';
 import { verify } from '@node-rs/argon2';
 import { db, schema } from '#lib/server/db/index.ts';
-import {
-	MAX_PASSWORD_LENGTH,
-	MIN_PASSWORD_LENGTH,
-	authHeaders,
-	getAuth,
-	hashPassword
-} from '#lib/server/auth.ts';
+import { authHeaders, getAuth, hashPassword, weaknessOf } from '#lib/server/auth.ts';
+import { GUIDANCE, MIN_PASSWORD_LENGTH, REFUSED } from '#lib/server/password-rules.js';
 import { tell } from '#lib/server/email.ts';
 import { endPasswordLinks } from '#lib/server/links.ts';
 import { passwordChanged } from '#lib/server/notices.js';
@@ -24,7 +19,7 @@ import type { Actions, PageServerLoad } from './$types';
 // eslint-disable-next-line @typescript-eslint/require-await -- a load is async by contract
 export const load: PageServerLoad = async ({ locals }) => {
 	if (!locals.user!.temporaryPassword) redirect(303, '/');
-	return { email: locals.user!.email, min: MIN_PASSWORD_LENGTH };
+	return { email: locals.user!.email, min: MIN_PASSWORD_LENGTH, guidance: GUIDANCE };
 };
 
 export const actions: Actions = {
@@ -37,16 +32,8 @@ export const actions: Actions = {
 		const password = text(f.get('password'));
 		const confirm = text(f.get('confirm'));
 
-		if (password.length < MIN_PASSWORD_LENGTH)
-			return fail(400, {
-				field: 'password',
-				message: `Enter a password of at least ${MIN_PASSWORD_LENGTH} characters.`
-			});
-		if (password.length > MAX_PASSWORD_LENGTH)
-			return fail(400, {
-				field: 'password',
-				message: `Enter a password of at most ${MAX_PASSWORD_LENGTH} characters.`
-			});
+		const weak = await weaknessOf(password, me);
+		if (weak) return fail(400, { field: 'password', message: REFUSED[weak] });
 		if (confirm !== password)
 			return fail(400, { field: 'confirm', message: 'The passwords don’t match.' });
 
