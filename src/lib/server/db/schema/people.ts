@@ -246,14 +246,18 @@ export const rateLimit = pgTable(
 /**
  * A passkey: a key pair made on someone's phone, computer or security key, of
  * which only the public half is here (#lib/server/auth). The columns are Better
- * Auth's passkey plugin's, as it reads and writes them, but for last_used_at,
- * which is reckon's: when it last signed someone in, for Your profile to show.
+ * Auth's passkey plugin's, as it reads and writes them, but for last_used_at
+ * and last_used_from, which are reckon's: when it last signed someone in, and
+ * the browser and system it did so from ("Chrome on Windows"), for Your
+ * profile to show, so a sign-in that wasn't theirs stands out.
  *
- * device_type is WebAuthn's: a key kept on one device (singleDevice) or synced
- * between someone's devices by their passkey manager (multiDevice), and
- * backed_up is whether it is synced now. aaguid names the kind of
- * authenticator that made it, Google Password Manager or iCloud Keychain, where
- * it says (#lib/passkey-names).
+ * name is what it is called: its passkey manager's name when it is made, else
+ * the browser and system it was made on (#lib/server/passkeys beforeKeeping),
+ * until they rename it. device_type is WebAuthn's: a key kept on one device
+ * (singleDevice) or synced between someone's devices by their passkey manager
+ * (multiDevice), and backed_up is whether it is synced now. aaguid names the
+ * kind of authenticator that made it, Google Password Manager or Windows
+ * Hello, where it says; Apple's say nothing.
  */
 export const passkey = pgTable(
 	'passkey',
@@ -269,7 +273,8 @@ export const passkey = pgTable(
 		transports: text(),
 		createdAt: createdAt(),
 		aaguid: text(),
-		lastUsedAt: tstz()
+		lastUsedAt: tstz(),
+		lastUsedFrom: text()
 	},
 	(t) => [
 		// One credential is one passkey: the plugin does not ask for this itself.
@@ -287,10 +292,10 @@ export const passkey = pgTable(
 
 /**
  * What an emailed link is for: to make a first passkey, on being added on Team
- * or at the command line; to make a new one after losing their way in, sent
- * the same way (a "reset", which ends the ones they had when it is used); to
- * confirm the address one signs in with, asked for on Your profile; or to make
- * a new address the one they sign in with, asked for on Team.
+ * or at the command line; to make a new one for someone who can't sign in,
+ * sent the same way (a "reset", which adds one and ends none); to confirm the
+ * address one signs in with, asked for on Your profile; or to make a new
+ * address the one they sign in with, asked for on Team.
  */
 export const LINK_PURPOSES = ['invite', 'reset', 'confirm', 'change'] as const;
 

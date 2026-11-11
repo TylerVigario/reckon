@@ -97,6 +97,8 @@
 											name="name"
 											value={p.named ? p.label : ''}
 											placeholder={p.keeper ?? ''}
+											required
+											maxlength="100"
 										/>
 									</label>
 									<button type="submit" class="btn sm">Save</button>
@@ -108,13 +110,13 @@
 								<div class="rec-t">{p.label}</div>
 							{/if}
 							<div class="rec-s">
-								{p.keeper && p.named ? `${p.keeper} · ` : ''}{p.synced
+								{p.keeper && p.keeper !== p.label ? `${p.keeper} · ` : ''}{p.synced
 									? 'Synced between your devices'
 									: 'On one device'}
 							</div>
 							<div class="rec-s">
 								Added {when(p.created)} · {p.lastUsed
-									? `Last used ${when(p.lastUsed)}`
+									? `Last used ${when(p.lastUsed)}${p.lastFrom ? `, from ${p.lastFrom}` : ''}`
 									: 'Not used to sign in yet'}
 							</div>
 							{#if form?.message && form.id === p.id}

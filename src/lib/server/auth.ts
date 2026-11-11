@@ -144,8 +144,9 @@ function createAuth() {
 									})
 							},
 							authentication: {
-								afterVerification: async ({ verification, clientData }) =>
+								afterVerification: async ({ ctx, verification, clientData }) =>
 									beforeSigningIn({
+										request: ctx.request,
 										credentialId: clientData.id,
 										userVerified: verification.authenticationInfo.userVerified
 									})

@@ -14,9 +14,11 @@ import { passkeyLabel, passkeyName } from '#lib/server/passkeys.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
- * Your own passkeys: each one's name, where it is kept, when it was made and
- * last used (OWASP's Passkey Security Cheat Sheet: "Show a user-chosen name,
- * creation date, and last-used date"), to name, to remove, and another to add.
+ * Your own passkeys: each one's name, where it is kept, when it was made, and
+ * when and from which browser and system it was last used (OWASP's Passkey
+ * Security Cheat Sheet: "Show a user-chosen name, creation date, and last-used
+ * date"; web.dev: last sign-in details help "identify suspicious sign-ins"),
+ * to rename, to remove, and another to add.
  * As many as someone likes, one for each phone or computer they use (NIST SP
  * 800-63B-4 §4.1.2.1: the CSP "SHALL permit the binding of multiple
  * authenticators").
@@ -37,7 +39,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			aaguid: passkey.aaguid,
 			backedUp: passkey.backedUp,
 			createdAt: passkey.createdAt,
-			lastUsedAt: passkey.lastUsedAt
+			lastUsedAt: passkey.lastUsedAt,
+			lastUsedFrom: passkey.lastUsedFrom
 		})
 		.from(passkey)
 		.where(eq(passkey.userId, locals.user!.id))
@@ -51,7 +54,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			keeper: getAuthenticatorName(p.aaguid ?? undefined) ?? null,
 			synced: p.backedUp,
 			created: p.createdAt.toISOString(),
-			lastUsed: p.lastUsedAt?.toISOString() ?? null
+			lastUsed: p.lastUsedAt?.toISOString() ?? null,
+			lastFrom: p.lastUsedFrom
 		})),
 		full: locals.user!.access === 'full',
 		// Passkeys need SITE_URL: it is the site each is made for (#lib/server/auth).
@@ -74,12 +78,13 @@ async function theirs(userId: string, id: string) {
 }
 
 export const actions: Actions = {
-	/** A passkey named as they like; empty, it goes back to its manager's name. */
+	/** A passkey named as they like: something, since a name is how they tell them apart. */
 	rename: async (event) => {
 		const f = await event.request.formData();
 		const p = await theirs(event.locals.user!.id, text(f.get('id')));
 		if (!p) return fail(404, { id: text(f.get('id')), message: 'That passkey isn’t yours.' });
 		const name = text(f.get('name')).slice(0, 100);
+		if (!name) return fail(400, { id: p.id, message: 'Give it a name.' });
 		await getAuth().api.updatePasskey({
 			body: { id: p.id, name },
 			headers: authHeaders(event)

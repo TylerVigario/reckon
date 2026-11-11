@@ -65,8 +65,14 @@ function jar() {
 	};
 }
 
-/** A browser: its own cookies, and what it asks. */
-function browser() {
+/** What two browsers say they are. */
+const SAFARI_ON_IPHONE =
+	'Mozilla/5.0 (iPhone; CPU iPhone OS 26_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Mobile/15E148 Safari/604.1';
+const EDGE_ON_WINDOWS =
+	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0';
+
+/** A browser: its own cookies, and what it asks -- saying what it is, where given. */
+function browser(/** @type {string} */ userAgent = '') {
 	const cookies = jar();
 	/** @param {string} path @param {RequestInit} [init] */
 	const ask = async (path, init = {}) => {
@@ -76,6 +82,7 @@ function browser() {
 			headers: {
 				origin: base,
 				...PROXY,
+				...(userAgent ? { 'user-agent': userAgent } : {}),
 				...(cookies.header() ? { cookie: cookies.header() } : {}),
 				...(init.headers ?? {})
 			}
@@ -176,7 +183,7 @@ try {
 	const code = invited?.code ?? '';
 
 	const phone = softPasskeys({ origin: base });
-	const r1 = browser();
+	const r1 = browser(SAFARI_ON_IPHONE);
 	const look = await linkAction(r1, 'look', { code });
 	check(look.data?.purpose === 'invite', 'the link is looked up as an invitation');
 
@@ -222,21 +229,72 @@ try {
 		await client.query('select email_verified as verified from "user" where id = $1', [robinId])
 	).rows;
 	check(verified === true, 'using the invitation proves the address theirs');
+	const [{ name: madeAs }] = (
+		await client.query('select name from passkey where user_id = $1', [robinId])
+	).rows;
+	check(
+		madeAs === 'Safari on iPhone',
+		'a passkey whose manager doesn’t say which it is is named for the browser it was made on',
+		String(madeAs)
+	);
 
 	// Signing in with it.
-	const r2 = browser();
+	const r2 = browser(EDGE_ON_WINDOWS);
 	const usedIt = await signInWith(r2, phone);
 	check(
 		usedIt.status === 200 && r2.cookies.signedIn(),
 		'the passkey signs them in',
 		String(usedIt.status)
 	);
-	const [{ last }] = (
-		await client.query('select last_used_at as last from passkey where user_id = $1', [robinId])
+	const [{ last, lastFrom }] = (
+		await client.query(
+			'select last_used_at as last, last_used_from as "lastFrom" from passkey where user_id = $1',
+			[robinId]
+		)
 	).rows;
-	check(!!last, 'and is noted as used');
+	check(
+		!!last && lastFrom === 'Edge on Windows',
+		'and is noted as used, and from which browser',
+		String(lastFrom)
+	);
 	const page = await (await r2.ask('/profile/passkeys')).text();
-	check(page.includes('Last used'), 'Your profile lists it, with when it was last used');
+	check(
+		page.includes('Safari on iPhone') && page.includes('from Edge on Windows'),
+		'Your profile lists it by name, with when and where it was last used'
+	);
+
+	// Renamed as they like, but not to nothing.
+	const [{ id: phoneId }] = (
+		await client.query('select id from passkey where user_id = $1', [robinId])
+	).rows;
+	const rename = async (/** @type {string} */ name) =>
+		JSON.parse(
+			await (
+				await r2.ask('/profile/passkeys?/rename', {
+					method: 'POST',
+					body: new URLSearchParams({ id: phoneId, name }),
+					headers: {
+						'content-type': 'application/x-www-form-urlencoded',
+						'x-sveltekit-action': 'true'
+					}
+				})
+			).text()
+		);
+	const renamed = await rename('Robin’s phone');
+	const [{ name: nowCalled }] = (
+		await client.query('select name from passkey where id = $1', [phoneId])
+	).rows;
+	check(
+		renamed.type === 'success' && nowCalled === 'Robin’s phone',
+		'they rename it',
+		String(nowCalled)
+	);
+	const blank = await rename('  ');
+	check(
+		blank.type === 'failure' && blank.status === 400,
+		'but not to nothing',
+		`${blank.type} ${blank.status}`
+	);
 
 	// Refused where it should be.
 	phone.verifies = false;

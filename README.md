@@ -202,9 +202,12 @@ address it went to is theirs, signs them out everywhere else (OWASP's Passkey
 Security Cheat Sheet: "after recovery, rotate sessions"), and signs them in with
 the new passkey.
 
-**Your profile** lists each passkey: its name, where it is kept, when it was made
-and last used. It names and removes them, and adds another, one for each device,
-or one in a passkey manager that syncs between them; with only one, it says to
+**Your profile** lists each passkey: its name, where it is kept, when it was made,
+and when and from which browser it was last used. A new one is named for its
+passkey manager where it says which ("Google Password Manager"), or else for the
+browser it was made on ("Safari on iPhone"): Apple's never say. It renames and
+removes them, and adds another, one for each device, or one in a passkey manager
+that syncs between them; with only one, it says to
 add another, as NIST and OWASP both advise, so losing one device doesn't lock
 them out. Someone with Full keeps at least one. Adding or removing one tells
 them by email (§4.1.2.1, §4.5), with whom to contact if it was not them.

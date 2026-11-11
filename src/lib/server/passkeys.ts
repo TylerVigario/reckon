@@ -37,8 +37,8 @@ export const NOT_VERIFIED =
 export const LINK_GONE = 'That link no longer works. Ask whoever sent it to send another.';
 
 /**
- * What a passkey is called: the name someone gave it, or its manager's, where
- * it says -- or null, where it has neither.
+ * What a passkey is called: its name -- given when it was made, or since --
+ * or else its manager's, where it says; or null, where it has neither.
  */
 export const passkeyName = (p: { name: string | null; aaguid: string | null }) =>
 	p.name?.trim() || getAuthenticatorName(p.aaguid ?? undefined) || null;
@@ -106,7 +106,14 @@ export async function endPasskeys(tx: Tx, userId: string): Promise<number> {
  * sessions". The passkeys they had are kept: a new link adds one, and ending
  * them is endPasskeys'.
  *
- * Either way they are told, at their address (NIST SP 800-63B-4 §4.1.2.1).
+ * Either way they are told, at their address (NIST SP 800-63B-4 §4.1.2.1),
+ * and it is named, for Your profile: after its passkey manager, where it says
+ * which, or else the browser and system it was made on, "Safari on iPhone"
+ * (web.dev, Help users manage passkeys effectively: "If no matching passkey
+ * provider is found, naming it after the device information based on the
+ * user agent string should be fine"). Apple's never say: they send an
+ * all-zero AAGUID when no attestation is asked for, as none is here. The
+ * plugin keeps the name returned, and they rename it as they like.
  */
 export async function beforeKeeping({
 	request,
@@ -120,16 +127,17 @@ export async function beforeKeeping({
 	userVerified: boolean;
 	aaguid: string | undefined;
 	context: string | null;
-}) {
+}): Promise<{ name?: string }> {
 	if (!userVerified) throw new APIError('FORBIDDEN', { message: NOT_VERIFIED });
 	const added = {
 		name: passkeyName({ name: null, aaguid: aaguid ?? null }),
 		at: new Date(),
 		from: browserName(request?.headers.get('user-agent'))
 	};
+	const named = { name: added.name ?? added.from ?? undefined };
 	if (!context) {
 		await tell(db, userId, (them, business) => passkeyAdded(them, business, added));
-		return;
+		return named;
 	}
 	const kept = await db.transaction(async (tx) => {
 		const link = await usableById(tx, context);
@@ -143,24 +151,30 @@ export async function beforeKeeping({
 	if (!kept) throw new APIError('UNAUTHORIZED', { message: LINK_GONE });
 	// The plugin signs them in with it, there and then.
 	await signedInNow(userId);
+	return named;
 }
 
 /**
  * A passkey just used to sign in, before the session opens: refused unless it
- * checked who was holding it, and noted as used now, for Your profile -- and
- * its person as signed in now, for Team.
+ * checked who was holding it, and noted as used now and from which browser
+ * and system, for Your profile -- and its person as signed in now, for Team.
  */
 export async function beforeSigningIn({
+	request,
 	credentialId,
 	userVerified
 }: {
+	request?: Request;
 	credentialId: string;
 	userVerified: boolean;
 }) {
 	if (!userVerified) throw new APIError('FORBIDDEN', { message: NOT_VERIFIED });
 	const [used] = await db
 		.update(passkey)
-		.set({ lastUsedAt: new Date() })
+		.set({
+			lastUsedAt: new Date(),
+			lastUsedFrom: browserName(request?.headers.get('user-agent'))
+		})
 		.where(eq(passkey.credentialID, credentialId))
 		.returning({ userId: passkey.userId });
 	if (used) await signedInNow(used.userId);

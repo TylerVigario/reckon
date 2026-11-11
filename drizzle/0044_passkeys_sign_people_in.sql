@@ -15,6 +15,7 @@ CREATE TABLE "passkey" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"aaguid" text,
 	"last_used_at" timestamp with time zone,
+	"last_used_from" text,
 	CONSTRAINT "passkey_credential_id_key" UNIQUE("credential_id"),
 	CONSTRAINT "passkey_device_type_check" CHECK ("passkey"."device_type" = ANY (ARRAY['singleDevice', 'multiDevice'])),
 	CONSTRAINT "passkey_counter_not_negative" CHECK ("passkey"."counter" >= 0)
