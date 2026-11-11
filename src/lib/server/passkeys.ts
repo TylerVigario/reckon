@@ -1,6 +1,6 @@
 import { getAuthenticatorName } from '@better-auth/passkey';
 import { APIError } from 'better-auth/api';
-import { eq, sql } from 'drizzle-orm';
+import { and, asc, count, eq, sql } from 'drizzle-orm';
 import { browserName } from '#lib/browser-name.ts';
 import { db, type Tx } from './db/index.ts';
 import { passkey, session, user } from './db/schema/index.ts';
@@ -46,6 +46,38 @@ export const passkeyName = (p: { name: string | null; aaguid: string | null }) =
 /** What a passkey is listed as: its name, or "A passkey". */
 export const passkeyLabel = (p: { name: string | null; aaguid: string | null }) =>
 	passkeyName(p) ?? 'A passkey';
+
+/**
+ * Someone's passkeys, oldest first, as Your profile and Team list them: each
+ * one's name, its passkey manager where it says, whether it is synced, when it
+ * was made, and when and from which browser and system it was last used
+ * (web.dev, Help users manage passkeys effectively).
+ */
+export async function listPasskeys(userId: string) {
+	const rows = await db
+		.select({
+			id: passkey.id,
+			name: passkey.name,
+			aaguid: passkey.aaguid,
+			backedUp: passkey.backedUp,
+			createdAt: passkey.createdAt,
+			lastUsedAt: passkey.lastUsedAt,
+			lastUsedFrom: passkey.lastUsedFrom
+		})
+		.from(passkey)
+		.where(eq(passkey.userId, userId))
+		.orderBy(asc(passkey.createdAt));
+	return rows.map((p) => ({
+		id: p.id,
+		label: passkeyLabel(p),
+		named: !!p.name?.trim(),
+		keeper: getAuthenticatorName(p.aaguid ?? undefined) ?? null,
+		synced: p.backedUp,
+		created: p.createdAt.toISOString(),
+		lastUsed: p.lastUsedAt?.toISOString() ?? null,
+		lastFrom: p.lastUsedFrom
+	}));
+}
 
 /**
  * Whom a passkey made with a link is for: the person the link names, while it
@@ -95,6 +127,28 @@ export async function endPasskeys(tx: Tx, userId: string): Promise<number> {
 		.returning({ id: passkey.id });
 	await tx.delete(session).where(eq(session.userId, userId));
 	return ended.length;
+}
+
+/**
+ * Ends one of someone's passkeys, there and then, for the phone or computer
+ * that holds it being lost or stolen, on Team: as endPasskeys does for all of
+ * them, and for the same reasons, they are signed out everywhere too, since a
+ * session cannot be told by the passkey that opened it. Their others still
+ * work. What it was called, and how many they have left; null if it is not
+ * theirs.
+ */
+export async function endPasskey(tx: Tx, userId: string, passkeyId: string) {
+	const [ended] = await tx
+		.delete(passkey)
+		.where(and(eq(passkey.id, passkeyId), eq(passkey.userId, userId)))
+		.returning({ name: passkey.name, aaguid: passkey.aaguid });
+	if (!ended) return null;
+	await tx.delete(session).where(eq(session.userId, userId));
+	const [{ left }] = await tx
+		.select({ left: count() })
+		.from(passkey)
+		.where(eq(passkey.userId, userId));
+	return { name: passkeyName(ended), left };
 }
 
 /**

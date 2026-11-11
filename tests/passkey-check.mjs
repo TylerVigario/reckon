@@ -356,6 +356,53 @@ try {
 	check((await signInWith(browser(), phone)).status === 200, 'and the one left at home still does');
 	check(!(await signedIn(r2)), 'using it signs them out everywhere else');
 
+	// Team lists their passkeys, and ends one on its own, for the phone or
+	// computer holding it lost: the rest keep working.
+	const [{ id: fullId }] = (
+		await client.query('select id from "user" where email = $1', [fullEmail])
+	).rows;
+	const rp = browser();
+	await signInWith(rp, tablet);
+	const pc = softPasskeys({ origin: base });
+	check((await makeSignedIn(rp, pc)).status === 200, 'they add a third, on Your profile');
+	const tab = await (await full.ask(`/team/${robinId}/passkeys`)).text();
+	check(
+		tab.includes('Robin’s phone') && /\b3\s+passkeys\b/.test(tab),
+		'their Passkeys tab on Team lists them by name'
+	);
+	const [{ id: pcId }] = (
+		await client.query(
+			'select id from passkey where user_id = $1 order by created_at desc limit 1',
+			[robinId]
+		)
+	).rows;
+	const [{ id: ownId }] = (
+		await client.query('select id from passkey where user_id = $1 limit 1', [fullId])
+	).rows;
+	const ownOne = await full.ask(`/api/people/${fullId}/passkeys/${ownId}`, { method: 'DELETE' });
+	check(ownOne.status === 400, 'nobody ends their own on Team', String(ownOne.status));
+	const notTheirs = await full.ask(`/api/people/${robinId}/passkeys/${ownId}`, {
+		method: 'DELETE'
+	});
+	check(notTheirs.status === 404, 'nor someone else’s through theirs', String(notTheirs.status));
+	const one = await full.ask(`/api/people/${robinId}/passkeys/${pcId}`, { method: 'DELETE' });
+	check(
+		one.status === 200 && (await one.json()).left === 2,
+		'someone with Full ends one passkey',
+		String(one.status)
+	);
+	check(
+		(await signInWith(browser(), pc)).status !== 200 &&
+			(await signInWith(browser(), tablet)).status === 200 &&
+			(await signInWith(browser(), phone)).status === 200,
+		'which signs them in no more, while the others still do'
+	);
+	check(!(await signedIn(rp)), 'and signs them out where they were');
+	check(
+		!!(await arrives(relay, robin, ['ended a passkey', 'Your other passkeys still work'])),
+		'and they are told, by email, which, and to sign in with another'
+	);
+
 	// Lost or stolen: every passkey ends, and they are signed out, as it is
 	// sent -- whoever has the phone is out before the link is used.
 	const r4 = browser();
@@ -379,9 +426,6 @@ try {
 	// End their passkeys, on Team, with no link: for one reported lost.
 	const r5 = browser();
 	await signInWith(r5, spare);
-	const [{ id: fullId }] = (
-		await client.query('select id from "user" where email = $1', [fullEmail])
-	).rows;
 	const ownEnd = await full.ask(`/api/people/${fullId}/passkeys`, { method: 'DELETE' });
 	check(ownEnd.status === 400, 'nobody ends their own passkeys on Team', String(ownEnd.status));
 	const ended = await full.ask(`/api/people/${robinId}/passkeys`, { method: 'DELETE' });

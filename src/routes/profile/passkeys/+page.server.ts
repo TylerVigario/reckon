@@ -1,7 +1,6 @@
 import { fail } from '@sveltejs/kit';
-import { getAuthenticatorName } from '@better-auth/passkey';
 import { APIError } from 'better-auth/api';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { SITE_URL } from '$app/env/private';
 import { browserName } from '#lib/browser-name.ts';
 import { safeNext } from '#lib/safe-next.ts';
@@ -10,7 +9,7 @@ import { db } from '#lib/server/db/index.ts';
 import { passkey } from '#lib/server/db/schema/index.ts';
 import { tell } from '#lib/server/email.ts';
 import { passkeyRemoved } from '#lib/server/notices.js';
-import { passkeyLabel, passkeyName } from '#lib/server/passkeys.ts';
+import { listPasskeys, passkeyLabel, passkeyName } from '#lib/server/passkeys.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -32,31 +31,10 @@ import type { Actions, PageServerLoad } from './$types';
  * another device, to make one on this, and ?next is where to go after.
  */
 export const load: PageServerLoad = async ({ locals, url }) => {
-	const rows = await db
-		.select({
-			id: passkey.id,
-			name: passkey.name,
-			aaguid: passkey.aaguid,
-			backedUp: passkey.backedUp,
-			createdAt: passkey.createdAt,
-			lastUsedAt: passkey.lastUsedAt,
-			lastUsedFrom: passkey.lastUsedFrom
-		})
-		.from(passkey)
-		.where(eq(passkey.userId, locals.user!.id))
-		.orderBy(asc(passkey.createdAt));
+	const passkeys = await listPasskeys(locals.user!.id);
 	const offer = url.searchParams.get('offer');
 	return {
-		passkeys: rows.map((p) => ({
-			id: p.id,
-			label: passkeyLabel(p),
-			named: !!p.name?.trim(),
-			keeper: getAuthenticatorName(p.aaguid ?? undefined) ?? null,
-			synced: p.backedUp,
-			created: p.createdAt.toISOString(),
-			lastUsed: p.lastUsedAt?.toISOString() ?? null,
-			lastFrom: p.lastUsedFrom
-		})),
+		passkeys,
 		full: locals.user!.access === 'full',
 		// Passkeys need SITE_URL: it is the site each is made for (#lib/server/auth).
 		available: !!SITE_URL,

@@ -6,6 +6,7 @@ import {
 	invitation,
 	newPasskeyLink,
 	passkeyAdded,
+	passkeyEnded,
 	passkeyRemoved,
 	passkeysEnded
 } from './notices.js';
@@ -361,5 +362,35 @@ describe('passkeys ended', () => {
 			"The passkeys you sign in to Kestrel Field Services's reckon with were ended on Monday"
 		);
 		expect(n.body).toContain(`Contact ${contactFor(KESTREL)} for one`);
+	});
+});
+
+describe('one passkey ended on Team', () => {
+	it('names it, who ended it and when, and that their others still work', () => {
+		const n = passkeyEnded(AVERY, KESTREL, {
+			name: 'Safari on iPhone',
+			at: AT,
+			by: 'Quinn Harper',
+			left: 1
+		});
+		expect(n).toMatchObject({ kind: 'passkey_removed', subject: 'Kestrel: a passkey was ended' });
+		expect(n.body).toContain(
+			"Quinn Harper ended a passkey, Safari on iPhone, on the account you sign in to Kestrel Field Services's reckon with, on Monday, November 9, 2026 at 2:05 PM PST, and you were signed out everywhere, so a lost or stolen phone or computer can't sign in as you."
+		);
+		expect(n.body).toContain('Your other passkey still works: sign in with it.');
+		expect(n.body).toContain(`ask Quinn Harper about it, or contact ${contactFor(KESTREL)}.`);
+	});
+
+	it('with several left, says to sign in with one of them', () => {
+		const n = passkeyEnded(AVERY, KESTREL, { name: null, at: AT, by: 'Quinn Harper', left: 2 });
+		expect(n.body).toContain('Quinn Harper ended a passkey on the account');
+		expect(n.body).toContain('Your other passkeys still work: sign in with one of them.');
+	});
+
+	it('their last, says to ask for a new link', () => {
+		const n = passkeyEnded(AVERY, KESTREL, { name: null, at: AT, by: 'Quinn Harper', left: 0 });
+		expect(n.body).toContain(
+			'It was your last. To sign in again, ask Quinn Harper to send you a new link to make a passkey with.'
+		);
 	});
 });

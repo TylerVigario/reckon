@@ -379,3 +379,32 @@ export function passkeysEnded(person, business, { at, by }) {
 		]
 	});
 }
+
+/**
+ * One of their passkeys was ended on Team, by someone with Full, for the phone
+ * or computer holding it being lost or stolen, and they were signed out
+ * everywhere (#lib/server/passkeys endPasskey). NIST SP 800-63B-4 §4.5:
+ * notification of an invalidation SHOULD follow. With others `left`, they sign
+ * in with one of those; with none, they need a new link.
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {{ name: string | null, at: Date, by: string, left: number }} what
+ * @returns {Notice}
+ */
+export function passkeyEnded(person, business, { name, at, by, left }) {
+	return laid(person, business, {
+		kind: 'passkey_removed',
+		to: person.email,
+		subject: subject(business, 'a passkey was ended'),
+		heading: 'A passkey was ended',
+		blocks: [
+			`Hello ${person.name},`,
+			`${by} ended a passkey${name ? `, ${name},` : ''} on the account you sign in to ${theirReckon(business)} with, on ${when(at, person, business)}, and you were signed out everywhere, so a lost or stolen phone or computer can't sign in as you.`,
+			left
+				? `Your other ${left === 1 ? 'passkey still works: sign in with it' : 'passkeys still work: sign in with one of them'}.`
+				: `It was your last. To sign in again, ask ${by} to send you a new link to make a passkey with.`,
+			`If you didn't expect this, ask ${by} about it${orContact(business)}.`
+		]
+	});
+}

@@ -187,8 +187,10 @@ everywhere as it goes, since a lost authenticator is taken as compromised and
 invalidated promptly (§4.3), and waiting for the link to be used would leave
 whoever has the phone signed in. **End their passkeys**, on Team, does the same
 with no link, for someone who reports one lost while still able to sign in, and
-`node scripts/user.mjs end <email>` does it from the command line. Either way
-they are told by email (§4.5).
+`node scripts/user.mjs end <email>` does it from the command line. A person's
+**Passkeys** tab on Team lists theirs as Your profile does, and ends one alone,
+signing them out everywhere while the rest keep working. Either way they are
+told by email (§4.5).
 
 **A link** is good once, for an hour: making a passkey with it is a way in, so it
 lasts as a credential handed over does. Its code is after the `#`, which a

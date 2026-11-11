@@ -12,7 +12,7 @@ import type { Actions, PageServerLoad } from './$types';
  * The signed-in person's own profile: the zone they keep, and how their dates
  * and figures read. Theirs alone; /api/people refuses these fields for anyone
  * else. Each empty one follows the business's, or the locale's. Their passkeys
- * are on a page of their own beside it, /profile/passkeys.
+ * are the tab beside it, /profile/passkeys (+layout.svelte).
  *
  * And the address they sign in with, and whether it is confirmed theirs: one
  * that is not -- anyone added before invitations were emailed -- they confirm
