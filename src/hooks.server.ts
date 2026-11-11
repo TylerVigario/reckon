@@ -7,12 +7,11 @@ import 'temporal-polyfill/global';
 import { redirect, error } from '@sveltejs/kit';
 import { sequence, type Handle, type ServerInit } from '@sveltejs/kit/hooks';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
-import { eq } from 'drizzle-orm';
 import { SECURE_COOKIES, SITE_URL } from '$app/env/private';
 import { authHeaders, getAuth } from '#lib/server/auth.ts';
 import { googleKey } from '#lib/server/google-key.ts';
 import { startSending } from '#lib/server/email.ts';
-import { db, pool, schema } from '#lib/server/db/index.ts';
+import { pool } from '#lib/server/db/index.ts';
 import { bringUpToDate } from '#lib/server/db/migrate.ts';
 import { building } from '$app/env';
 import { getRequestEvent } from '$app/server';
@@ -122,8 +121,9 @@ const betterAuthRoutes: Handle = async ({ event, resolve }) => {
  * (#lib/server/links).
  */
 const app: Handle = async ({ event, resolve }) => {
-	// A person made inactive is signed out wherever they are, at their next
-	// request, rather than keeping a session until it expires.
+	// Someone made inactive is signed out everywhere as it is done
+	// (api/people/[id]), and refused a session after (#lib/server/passkeys
+	// mayOpenSession); a session that is theirs all the same reaches nothing.
 	const found = await getAuth().api.getSession({ headers: authHeaders(event) });
 	event.locals.user =
 		found && found.user.active !== false
@@ -141,8 +141,6 @@ const app: Handle = async ({ event, resolve }) => {
 				}
 			: null;
 	event.locals.sessionId = event.locals.user ? found!.session.id : null;
-	if (found && found.user.active === false)
-		await db.delete(schema.session).where(eq(schema.session.userId, found.user.id));
 
 	// Whose clocks this request runs on (#lib/server/calendar) -- the
 	// business's, and the person's own, which follows the business's until they

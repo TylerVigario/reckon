@@ -331,9 +331,20 @@ try {
 	void elsewhere;
 
 	await full.ask(`/api/people/${robinId}`, json('PATCH', { fields: { active: 'false' } }));
+	const [{ open }] = (
+		await client.query('select count(*)::int as open from session where user_id = $1', [robinId])
+	).rows;
+	check(open === 0, 'someone made inactive is signed out everywhere as it is done', String(open));
+	const reach = await r2.ask('/api/auth/passkey/generate-register-options');
+	check(
+		reach.status === 401,
+		'so no session of theirs reaches Better Auth’s routes',
+		String(reach.status)
+	);
 	const inactive = await signInWith(browser(), phone);
-	check(inactive.status === 403, 'someone made inactive signs in no more', String(inactive.status));
+	check(inactive.status === 403, 'and they sign in no more', String(inactive.status));
 	await full.ask(`/api/people/${robinId}`, json('PATCH', { fields: { active: 'true' } }));
+	await signInWith(r2, phone);
 
 	// A new link from Team asks whether a phone or computer is lost or stolen,
 	// and takes no answer for granted.

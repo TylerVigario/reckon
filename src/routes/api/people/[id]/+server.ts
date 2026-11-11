@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { asUser, type Tx } from '#lib/server/db/index.ts';
-import { passkey, user } from '#lib/server/db/schema/index.ts';
+import { passkey, session, user } from '#lib/server/db/schema/index.ts';
 import { tell } from '#lib/server/email.ts';
 import { cannotSend, endChange, issue, unsentBecause } from '#lib/server/links.ts';
 import { emailChange, emailChanging, invitation } from '#lib/server/notices.js';
@@ -82,13 +82,18 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	if (name === 'email') return changeEmail(params.id, value as string, locals.user!);
 
 	try {
-		const changed = await asUser(locals.user!.id, (tx) =>
-			tx
+		const changed = await asUser(locals.user!.id, async (tx) => {
+			const rows = await tx
 				.update(user)
 				.set({ [COLUMN[name]]: value })
 				.where(eq(user.id, params.id))
-				.returning({ id: user.id })
-		);
+				.returning({ id: user.id });
+			// Deactivated, they are signed out everywhere in the same step, and
+			// refused a session after (#lib/server/passkeys mayOpenSession).
+			if (rows.length && name === 'active' && value === false)
+				await tx.delete(session).where(eq(session.userId, params.id));
+			return rows;
+		});
 		if (changed.length === 0) return problem('notFound', 404, 'No person with that id.');
 	} catch (e) {
 		const { constraint } = pgError(e);
