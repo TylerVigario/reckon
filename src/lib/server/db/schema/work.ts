@@ -73,7 +73,9 @@ export const timeEntry = pgTable(
 		siteId: uuid()
 	},
 	(t) => [
-		unique('time_entry_client_uuid_key').on(t.clientUuid),
+		// A phone's uuid is its maker's own: a repeat from them finds what they
+		// sent, and nobody else's uuid finds it (#lib/queue).
+		unique('time_entry_created_by_client_uuid_key').on(t.createdBy, t.clientUuid),
 		index('time_entry_by_crew').on(t.crew, t.workedOn),
 		index('time_entry_entity').on(t.entityId, t.workedOn),
 		index('time_entry_site').on(t.siteId),
@@ -216,7 +218,8 @@ export const trip = pgTable(
 		endAddress: text()
 	},
 	(t) => [
-		unique('trip_client_uuid_key').on(t.clientUuid),
+		// The phone's uuid, unique to whoever recorded it, as for time.
+		unique('trip_created_by_client_uuid_key').on(t.createdBy, t.clientUuid),
 		check(
 			'trip_odometer_reads_forward',
 			sql`((${t.odometerStart} IS NULL) = (${t.odometerEnd} IS NULL)) AND ((${t.odometerStart} IS NULL) OR ((${t.odometerStart} >= 0) AND (${t.odometerEnd} >= ${t.odometerStart})))`

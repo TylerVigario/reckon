@@ -98,7 +98,8 @@ export const invoice = pgTable(
 	},
 	(t) => [
 		unique('invoice_number_key').on(t.number),
-		unique('invoice_client_uuid_key').on(t.clientUuid),
+		// The phone's uuid, unique to whoever started the draft (#lib/queue).
+		unique('invoice_created_by_client_uuid_key').on(t.createdBy, t.clientUuid),
 		unique('invoice_public_token_key').on(t.publicToken),
 		index('invoice_entity_status').on(t.entityId, t.status),
 		foreignKey({
@@ -204,7 +205,10 @@ export const invoiceLine = pgTable(
 	},
 	(t) => [
 		unique('invoice_line_invoice_id_seq_key').on(t.invoiceId, t.seq),
-		unique('invoice_line_client_uuid_key').on(t.clientUuid),
+		// The phone's uuid, unique to whoever added the line (#lib/queue). Every
+		// line a phone sends names who added it; a line made here, from time or a
+		// trip, has neither.
+		unique('invoice_line_created_by_client_uuid_key').on(t.createdBy, t.clientUuid),
 		unique('invoice_line_time_entry_id_key').on(t.timeEntryId),
 		unique('invoice_line_trip_leg_id_key').on(t.tripLegId),
 		unique('invoice_line_agreement_period_id_key').on(t.agreementPeriodId),

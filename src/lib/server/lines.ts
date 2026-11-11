@@ -316,22 +316,30 @@ async function collision(
 	};
 }
 
-/** The line a phone already sent, by the uuid it made for it. */
-async function sentBefore(clientUuid: string) {
+/**
+ * The line a phone already sent, by the uuid it made for it: only ever its
+ * maker's, since the uuid is unique to them and another's finds nothing.
+ */
+async function sentBefore(clientUuid: string, userId: string) {
 	const [had] = await db
 		.select({ id: t.invoiceLine.id })
 		.from(t.invoiceLine)
-		.where(eq(t.invoiceLine.clientUuid, clientUuid));
+		.where(and(eq(t.invoiceLine.clientUuid, clientUuid), eq(t.invoiceLine.createdBy, userId)));
 	return had ?? null;
 }
 
 /** A save that failed in the database, said to the person who tried it. */
-async function refused(e: unknown, clientUuid: string, number: string): Promise<Added> {
+async function refused(
+	e: unknown,
+	clientUuid: string,
+	userId: string,
+	number: string
+): Promise<Added> {
 	if (e instanceof Refused) return e.added;
 	const pg = pgError(e);
 	// The same line, sent twice at once: the other copy is in.
-	if (pg.code === '23505' && pg.constraint === 'invoice_line_client_uuid_key') {
-		const had = await sentBefore(clientUuid);
+	if (pg.code === '23505' && pg.constraint === 'invoice_line_created_by_client_uuid_key') {
+		const had = await sentBefore(clientUuid, userId);
 		if (had) return { ok: true, id: had.id };
 	}
 	const gone = pg.code === '23503' ? GONE[pg.constraint ?? ''] : undefined;
@@ -435,7 +443,7 @@ export async function addLine(input: {
 	id?: string;
 	kept?: { bytes: Buffer; type: string } | null;
 }): Promise<Added> {
-	const had = await sentBefore(input.clientUuid);
+	const had = await sentBefore(input.clientUuid, input.userId);
 	if (had) return { ok: true, id: had.id };
 
 	const [draft] = await db
@@ -447,7 +455,14 @@ export async function addLine(input: {
 		})
 		.from(t.invoice)
 		.innerJoin(t.entity, eq(t.entity.id, t.invoice.entityId))
-		.where(or(eq(t.invoice.id, input.invoiceId), eq(t.invoice.clientUuid, input.invoiceId)));
+		// By its id, or by the uuid the phone started it with -- that phone's own
+		// draft, so its maker's.
+		.where(
+			or(
+				eq(t.invoice.id, input.invoiceId),
+				and(eq(t.invoice.clientUuid, input.invoiceId), eq(t.invoice.createdBy, input.userId))
+			)
+		);
 	if (!draft) return { ok: false, status: 404, detail: 'That draft no longer exists.' };
 
 	return input.fields.kind === 'material'
@@ -571,7 +586,7 @@ async function fromTheShelf(
 			input.madeAt
 		);
 	} catch (e) {
-		return refused(e, input.clientUuid, draft.number);
+		return refused(e, input.clientUuid, input.userId, draft.number);
 	}
 }
 
@@ -652,7 +667,7 @@ async function boughtOrPaidFor(
 			input.madeAt
 		);
 	} catch (e) {
-		return refused(e, input.clientUuid, draft.number);
+		return refused(e, input.clientUuid, input.userId, draft.number);
 	}
 }
 

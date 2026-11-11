@@ -208,7 +208,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				})
 				// A repeat is the row already there, returned as if just written.
 				.onConflictDoUpdate({
-					target: timeEntry.clientUuid,
+					target: [timeEntry.createdBy, timeEntry.clientUuid],
 					set: { clientUuid: sql`excluded.client_uuid` }
 				})
 				.returning({
