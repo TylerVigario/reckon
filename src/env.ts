@@ -244,7 +244,7 @@ export const variables = defineEnvVars({
 
 	SITE_URL: {
 		description:
-			"Where reckon is reached, as https://reckon.example.com: the links reckon emails -- an invitation, a password reset, confirming an address -- are built from it, never from the request a link was asked for in (OWASP's Forgot Password Cheat Sheet). https, except to this machine (http://localhost:5173) in development. Unset, nobody can be invited or have their password reset by email.",
+			"Where reckon is reached, as https://reckon.example.com: the links reckon emails -- an invitation, a password reset, confirming an address -- are built from it, never from the request a link was asked for in (OWASP's Forgot Password Cheat Sheet). https, except to this machine (http://localhost:5173) in development. It is also Better Auth's base URL. Unset, nobody can be invited or have their password reset by email, and Better Auth's routes under /api/auth are not mounted.",
 		schema: (value) => {
 			const url = optional(value);
 			if (url === undefined || building) return url;

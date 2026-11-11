@@ -5,9 +5,10 @@
 // Node, without this file.
 import 'temporal-polyfill/global';
 import { redirect, error } from '@sveltejs/kit';
-import type { Handle, ServerInit } from '@sveltejs/kit/hooks';
+import { sequence, type Handle, type ServerInit } from '@sveltejs/kit/hooks';
+import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { eq } from 'drizzle-orm';
-import { SECURE_COOKIES } from '$app/env/private';
+import { SECURE_COOKIES, SITE_URL } from '$app/env/private';
 import { authHeaders, getAuth } from '#lib/server/auth.ts';
 import { googleKey } from '#lib/server/google-key.ts';
 import { startSending } from '#lib/server/email.ts';
@@ -72,6 +73,37 @@ export const init: ServerInit = async () => {
 };
 
 /**
+ * Better Auth's own routes, under /api/auth, mounted as its SvelteKit guide
+ * mounts them -- and only where SITE_URL is set, since that is the only base
+ * URL it is given (#lib/server/auth). Which are served is
+ * #lib/server/auth-paths; each it serves answers before reckon's own routes
+ * are looked at, and with the same headers they get.
+ *
+ * The address it counts and records is the one adapter-node resolved, set as
+ * x-forwarded-for over whatever the client sent, as its ipAddressHeaders
+ * option asks ("list only ones your proxy or server code sets, replacing any
+ * client value").
+ */
+const betterAuthRoutes: Handle = async ({ event, resolve }) => {
+	if (!SITE_URL) return resolve(event);
+	const auth = getAuth();
+	let theirs = false;
+	const response = await svelteKitHandler({
+		event,
+		resolve,
+		building,
+		auth: {
+			options: auth.options,
+			handler: (request) => {
+				theirs = true;
+				return auth.handler(new Request(request, { headers: authHeaders(event) }));
+			}
+		}
+	});
+	return theirs ? secured(event.url, response) : response;
+};
+
+/**
  * One place decides whether a request is allowed: #lib/access says who reaches
  * each route, and a route missing from it does not typecheck. Per-route checks
  * are how a route ends up with none.
@@ -83,7 +115,7 @@ export const init: ServerInit = async () => {
  * sent invoice (#lib/client-link), and where a link reckon emailed opens
  * (#lib/server/links).
  */
-export const handle: Handle = async ({ event, resolve }) => {
+const app: Handle = async ({ event, resolve }) => {
 	// A person made inactive is signed out wherever they are, at their next
 	// request, rather than keeping a session until it expires.
 	const found = await getAuth().api.getSession({ headers: authHeaders(event) });
@@ -169,6 +201,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	return secured(event.url, response);
 };
+
+export const handle = sequence(betterAuthRoutes, app);
 
 /**
  * The headers that cost nothing and are only ever missing by omission, on

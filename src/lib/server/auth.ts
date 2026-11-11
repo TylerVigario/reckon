@@ -8,7 +8,8 @@ import {
 	BETTER_AUTH_SECRET,
 	BETTER_AUTH_SECRET_FILE,
 	PWNED_PASSWORDS_URL,
-	SECURE_COOKIES
+	SECURE_COOKIES,
+	SITE_URL
 } from '$app/env/private';
 import { getRequestEvent } from '$app/server';
 import type { RequestEvent } from '@sveltejs/kit';
@@ -20,6 +21,7 @@ import {
 	wordsAbout
 } from './password-rules.js';
 import { eitherOf } from './secret-file.ts';
+import { CLOSED_AUTH_PATHS } from './auth-paths.ts';
 import type { Access } from '#lib/access.ts';
 
 /**
@@ -27,19 +29,20 @@ import type { Access } from '#lib/access.ts';
  *
  * There is no sign-up: someone with Full adds people on Team, each emailed a
  * link to choose their own password (#lib/server/links), and the first person
- * is added from the command line (scripts/user.mjs). Better Auth's HTTP routes
- * are not mounted -- sign-in and sign-out are form actions calling it
- * directly -- so its own rate limiter never runs: every try at a password is
- * recorded, and limited per address and per email, in ./sign-in-limit.
+ * is added from the command line (scripts/user.mjs).
+ *
+ * Its HTTP routes are mounted under /api/auth, as its SvelteKit guide has it
+ * (hooks.server.ts), and only where SITE_URL says where reckon is: that is its
+ * base URL, never one worked out from a request (GHSA-569q-mpph-wgww). Which of
+ * them are served is #lib/server/auth-paths, and none is yet: signing in and
+ * out are form actions calling it directly, which its rate limiter and
+ * `disabledPaths` do not reach, so every try at a password is recorded, and
+ * limited per address and per email, in ./sign-in-limit.
  *
  * BETTER_AUTH_SECRET signs the session cookie, given as it is or as the file
  * BETTER_AUTH_SECRET_FILE names (#lib/server/secret-file). Without one the
- * server does not start, anywhere, `vite dev` included.
- *
- * Better Auth is given no base URL, because in this application it has none:
- * its routes are not mounted, it is never called over HTTP, and its origin
- * check returns early for a direct call. The one thing a base URL would have
- * decided -- whether the cookie is Secure -- is SECURE_COOKIES, said outright.
+ * server does not start, anywhere, `vite dev` included. Whether the cookie is
+ * Secure is SECURE_COOKIES, said outright, not inferred from the base URL.
  */
 
 /**
@@ -77,9 +80,18 @@ function createAuth() {
 	return betterAuth({
 		secret,
 		database: drizzleAdapter(db, { provider: 'pg', schema }),
-		// Every message passes through but one: at start Better Auth warns that it
-		// has no base URL, which is true and harmless here (see above), and would
-		// send whoever reads the log to set one.
+		// Where reckon is reached, and so what its own routes and origin checks
+		// take as this origin (see above).
+		baseURL: SITE_URL || undefined,
+		// Every route of its own not served (#lib/server/auth-paths).
+		disabledPaths: [...CLOSED_AUTH_PATHS],
+		// Counted in the database, so a restart forgives nothing, and in every
+		// environment, not only where NODE_ENV is production.
+		rateLimit: { enabled: true, storage: 'database' },
+		// Every message passes through but one: without SITE_URL Better Auth warns
+		// that it has no base URL. Its routes are not mounted then, a direct call
+		// needs none, and the email sender already says what SITE_URL is missing
+		// for (#lib/server/email).
 		logger: {
 			log: (level, message, ...args: unknown[]) => {
 				if (level === 'warn' && message.includes('Base URL is not set')) return;
@@ -91,9 +103,16 @@ function createAuth() {
 			useSecureCookies: SECURE_COOKIES,
 			// The tables give every id a database default (uuidv7); this leaves it to them.
 			database: { generateId: false },
-			// Where a session's ip_address comes from -- set by authHeaders() below,
-			// so it is never the client's own word.
-			ipAddress: { ipAddressHeaders: ['x-forwarded-for'] }
+			// Where a session's ip_address and the rate limiter's count come from --
+			// set by authHeaders() below, and by hooks.server.ts for the mounted
+			// routes, to the address adapter-node resolved, so it is never the
+			// client's own word.
+			ipAddress: { ipAddressHeaders: ['x-forwarded-for'] },
+			// Its origin and CSRF checks, on. Left unsaid, Better Auth turns both off
+			// wherever NODE_ENV is test or TEST is set, and its reset route then
+			// redirects anywhere it is asked to.
+			disableOriginCheck: false,
+			disableCSRFCheck: false
 		},
 		emailAndPassword: {
 			enabled: true,
