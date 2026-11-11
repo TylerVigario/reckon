@@ -144,6 +144,23 @@ database, and every page reads it anyway — so a stateless token would save no
 round trip and would cost the thing that matters: a session that can be revoked
 now.
 
+**Its routes are mounted under `/api/auth`, and none is served yet.** They are
+mounted as its SvelteKit guide has it, and only where `SITE_URL` is set: that
+is the only base URL Better Auth is given, never one taken from a request.
+`src/lib/server/auth-paths.ts` lists every route it has as open or closed, and a
+unit test fails on any it doesn't list, so a route a new release adds is looked
+at before it is served. Every closed one answers 404. Signing in and out are
+form actions that call Better Auth directly, which none of this touches. Two
+routes have a parameter in their path, which `disabledPaths` can't name
+(better-auth/better-auth#4843). Until `enabledPaths` lands
+(better-auth/better-auth#11078) they are served, and do nothing here: the reset
+route hands nothing to another origin and reckon issues no token for it, and the
+social callback, with no provider configured, signs nobody in.
+`tests/auth-routes-check.mjs` holds them to that. Its origin and CSRF checks are
+on outright, since left unsaid Better Auth turns both off wherever `NODE_ENV` is
+`test` or `TEST` is set. Its rate limiter counts in the database, so a restart
+forgives nothing.
+
 The cookie is the session's token signed with `BETTER_AUTH_SECRET`, so a copy
 of the table lets nobody in without the secret as well. Passwords are argon2id
 at the OWASP minimum rather than Better Auth's default scrypt, and the hash

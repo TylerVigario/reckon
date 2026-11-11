@@ -248,6 +248,12 @@ jobs:
       - name: Every route answers, signed in
         run: node tests/smoke.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
 
+      - name: Better Auth serves only the routes reckon lists
+        # Each closed route answers 404, and the two disabledPaths cannot name
+        # do nothing here: the reset route hands nothing to another origin, the
+        # social callback signs nobody in (#lib/server/auth-paths).
+        run: node tests/auth-routes-check.mjs "http://127.0.0.1:$PORT"
+
       - name: Each access level reaches what it should, and Field sees its own
         # Before the checks that write, on the seeded business: every route
         # beyond Field is asked of someone with Field and refused.

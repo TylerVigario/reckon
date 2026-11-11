@@ -15,12 +15,14 @@
 
 import { sql } from 'drizzle-orm';
 import {
+	bigint,
 	boolean,
 	check,
 	cidr,
 	foreignKey,
 	index,
 	inet,
+	integer,
 	pgTable,
 	smallint,
 	text,
@@ -233,6 +235,25 @@ export const verification = pgTable(
 		updatedAt: updatedAt()
 	},
 	(t) => [index('verification_by_identifier').on(t.identifier)]
+);
+
+/**
+ * Better Auth's own count of requests to its routes, kept here rather than in
+ * memory so a restart forgives nothing: one row per address and route, how
+ * many it has made in the window, and when the last was, in milliseconds
+ * (#lib/server/auth). What a password sign-in counts is sign_in_try's, since
+ * those are form actions that call Better Auth directly, which it does not
+ * count.
+ */
+export const rateLimit = pgTable(
+	'rate_limit',
+	{
+		id: id(),
+		key: text().notNull(),
+		count: integer().notNull(),
+		lastRequest: bigint({ mode: 'number' }).notNull()
+	},
+	(t) => [unique('rate_limit_key_key').on(t.key)]
 );
 
 /**
