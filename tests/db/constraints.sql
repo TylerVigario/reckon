@@ -2447,94 +2447,89 @@ SELECT must_pass($$
 $$, 'someone on Field made inactive');
 UPDATE "user" SET active = true WHERE id = 'a0a0a0a0-0000-4000-8000-0000000000a2';
 
-\echo '=== 51. a try at a password is recorded where it came from ==='
-
-SELECT must_pass($$
-  INSERT INTO sign_in_try (page, address, network, email_key, outcome)
-  VALUES ('sign_in', '2001:db8:1:2::1', '2001:db8:1:2::/64', 'k', 'wrong')
-$$, 'a try from an address in its network');
+\echo '=== 51. a passkey is one credential, of a kind WebAuthn names, and goes with its person ==='
 
 SELECT must_fail($$
-  INSERT INTO sign_in_try (page, address, network, email_key)
-  VALUES ('sign_in', '2001:db8:1:3::1', '2001:db8:1:2::/64', 'k')
-$$, 'a try from an address outside the network it counts in');
-
-SELECT must_fail($$
-  INSERT INTO sign_in_try (page, address, network, email_key)
-  VALUES ('the_back_door', '192.0.2.1', '192.0.2.1/32', 'k')
-$$, 'a try at a page that tries no password');
-
-SELECT must_fail($$
-  INSERT INTO sign_in_try (page, address, network, email_key, outcome)
-  VALUES ('sign_in', '192.0.2.1', '192.0.2.1/32', 'k', 'maybe')
-$$, 'a try that came out some other way');
+  INSERT INTO account (user_id, account_id, provider_id, password)
+  VALUES ('a0a0a0a0-0000-4000-8000-0000000000a1', 'a0a0a0a0-0000-4000-8000-0000000000a1', 'credential', 'hash')
+$$, 'a password, of which there are none');
 
 SELECT must_pass($$
-  INSERT INTO sign_in_try (page, address, network, email_key, outcome)
-  VALUES ('sign_in', '192.0.2.1', '192.0.2.1/32', 'k', 'breached')
-$$, 'a try with a right password Pwned Passwords has seen, which stopped it');
+  INSERT INTO passkey (public_key, user_id, credential_id, counter, device_type, backed_up)
+  VALUES ('pk', 'a0a0a0a0-0000-4000-8000-0000000000a1', 'cred-1', 0, 'multiDevice', true)
+$$, 'a passkey synced between someone''s devices');
 
-SELECT must_pass($$
-  INSERT INTO sign_in_try (page, address, network, email_key)
-  VALUES ('password_change', '192.0.2.1', '192.0.2.1/32', 'k')
-$$, 'a try still being checked, with no outcome yet');
+SELECT must_fail($$
+  INSERT INTO passkey (public_key, user_id, credential_id, counter, device_type, backed_up)
+  VALUES ('pk', 'a0a0a0a0-0000-4000-8000-0000000000a2', 'cred-1', 0, 'singleDevice', false)
+$$, 'the same credential as a second passkey, someone else''s');
 
--- The record outlives a person taken away, as a log does, naming nobody.
+SELECT must_fail($$
+  INSERT INTO passkey (public_key, user_id, credential_id, counter, device_type, backed_up)
+  VALUES ('pk', 'a0a0a0a0-0000-4000-8000-0000000000a2', 'cred-2', 0, 'cloud', false)
+$$, 'a passkey of a kind WebAuthn does not name');
+
+SELECT must_fail($$
+  INSERT INTO passkey (public_key, user_id, credential_id, counter, device_type, backed_up)
+  VALUES ('pk', 'a0a0a0a0-0000-4000-8000-0000000000a2', 'cred-2', -1, 'singleDevice', false)
+$$, 'a passkey counted below nothing');
+
 DO $$
-DECLARE kept int;
+DECLARE left_over int;
 BEGIN
   INSERT INTO "user" (id, name, email) VALUES
     ('a1000000-0000-4000-8000-000000000051', 'Gone', 'gone@example.com');
-  INSERT INTO sign_in_try (page, address, network, email_key, user_id, outcome)
-  VALUES ('sign_in', '192.0.2.2', '192.0.2.2/32', 'gone', 'a1000000-0000-4000-8000-000000000051', 'right');
+  INSERT INTO passkey (public_key, user_id, credential_id, counter, device_type, backed_up)
+  VALUES ('pk', 'a1000000-0000-4000-8000-000000000051', 'cred-gone', 0, 'singleDevice', false);
   DELETE FROM "user" WHERE id = 'a1000000-0000-4000-8000-000000000051';
-  SELECT count(*) INTO kept FROM sign_in_try WHERE email_key = 'gone' AND user_id IS NULL;
-  IF kept <> 1 THEN
-    RAISE EXCEPTION 'GUARD MISSING: a person taken away took % of their tries with them', 1 - kept;
+  SELECT count(*) INTO left_over FROM passkey WHERE credential_id = 'cred-gone';
+  IF left_over <> 0 THEN
+    RAISE EXCEPTION 'GUARD MISSING: a passkey outlived the person it signed in';
   END IF;
-  RAISE NOTICE '  keeps     a try, naming nobody, once its person is taken away';
+  RAISE NOTICE '  keeps     a passkey only while its person is kept';
 END $$;
+DELETE FROM passkey WHERE credential_id = 'cred-1';
 
 \echo '=== 52. an email says what it said only while it is still to send ==='
 
 SELECT must_pass($$
   INSERT INTO email_message (kind, to_address, subject, body, send_by)
-  VALUES ('password_changed', 'avery@example.com', 'Kestrel: your password was changed', 'Hello', now() + interval '7 days')
+  VALUES ('passkey_added', 'avery@example.com', 'Kestrel: a passkey was added', 'Hello', now() + interval '7 days')
 $$, 'an email waiting to be sent, with what it says');
 
 SELECT must_fail($$
   INSERT INTO email_message (kind, to_address, subject, body, send_by)
-  VALUES ('password_changed', 'avery@example.com', 'Kestrel: your password was changed', NULL, now() + interval '7 days')
+  VALUES ('passkey_added', 'avery@example.com', 'Kestrel: a passkey was added', NULL, now() + interval '7 days')
 $$, 'an email waiting to be sent with nothing to say');
 
 SELECT must_pass($$
   INSERT INTO email_message (kind, to_address, subject, body, send_by, sent_at)
-  VALUES ('password_changed', 'avery@example.com', 'Sent', NULL, now(), now())
+  VALUES ('passkey_added', 'avery@example.com', 'Sent', NULL, now(), now())
 $$, 'an email sent, keeping nothing of what it said');
 
 SELECT must_pass($$
   INSERT INTO email_message (kind, to_address, subject, body, html, send_by)
-  VALUES ('password_changed', 'avery@example.com', 'Kestrel: your password was changed', 'Hello', '<p>Hello</p>', now() + interval '7 days')
+  VALUES ('passkey_added', 'avery@example.com', 'Kestrel: a passkey was added', 'Hello', '<p>Hello</p>', now() + interval '7 days')
 $$, 'an email waiting to be sent, as text and as HTML');
 
 SELECT must_fail($$
   INSERT INTO email_message (kind, to_address, subject, body, html, send_by, sent_at)
-  VALUES ('password_changed', 'avery@example.com', 'Sent', NULL, '<p>Hello</p>', now(), now())
+  VALUES ('passkey_added', 'avery@example.com', 'Sent', NULL, '<p>Hello</p>', now(), now())
 $$, 'an email keeping its HTML without its text');
 
 SELECT must_fail($$
   INSERT INTO email_message (kind, to_address, subject, body, send_by, sent_at)
-  VALUES ('password_changed', 'avery@example.com', 'Sent', 'Hello', now(), now())
+  VALUES ('passkey_added', 'avery@example.com', 'Sent', 'Hello', now(), now())
 $$, 'an email sent, still keeping what it said');
 
 SELECT must_fail($$
   INSERT INTO email_message (kind, to_address, subject, body, send_by, gave_up_at)
-  VALUES ('password_changed', 'avery@example.com', 'Given up', 'Hello', now(), now())
+  VALUES ('passkey_added', 'avery@example.com', 'Given up', 'Hello', now(), now())
 $$, 'an email given up on, still keeping what it said');
 
 SELECT must_fail($$
   INSERT INTO email_message (kind, to_address, subject, send_by, sent_at, gave_up_at)
-  VALUES ('password_changed', 'avery@example.com', 'Both', now(), now(), now())
+  VALUES ('passkey_added', 'avery@example.com', 'Both', now(), now(), now())
 $$, 'an email both sent and given up on');
 
 SELECT must_fail($$
@@ -2544,17 +2539,17 @@ $$, 'an email about something reckon never sends');
 
 SELECT must_fail($$
   INSERT INTO email_message (kind, to_address, subject, body, send_by)
-  VALUES ('password_changed', 'Avery@Example.com', 'Kestrel', 'Hello', now())
+  VALUES ('passkey_added', 'Avery@Example.com', 'Kestrel', 'Hello', now())
 $$, 'an email to an address not lowercased');
 
 SELECT must_fail($$
   INSERT INTO email_message (kind, to_address, subject, body, send_by)
-  VALUES ('password_changed', 'avery@example.com', '  ', 'Hello', now())
+  VALUES ('passkey_added', 'avery@example.com', '  ', 'Hello', now())
 $$, 'an email with no subject');
 
 SELECT must_fail($$
   INSERT INTO email_message (kind, to_address, subject, body, send_by, tries)
-  VALUES ('password_changed', 'avery@example.com', 'Kestrel', 'Hello', now(), -1)
+  VALUES ('passkey_added', 'avery@example.com', 'Kestrel', 'Hello', now(), -1)
 $$, 'an email tried fewer than no times');
 
 -- What was sent outlives the person it was about, naming nobody, until it ages out.
@@ -2564,7 +2559,7 @@ BEGIN
   INSERT INTO "user" (id, name, email) VALUES
     ('a1000000-0000-4000-8000-000000000052', 'Told', 'told@example.com');
   INSERT INTO email_message (kind, user_id, to_address, subject, send_by, sent_at)
-  VALUES ('password_reset', 'a1000000-0000-4000-8000-000000000052', 'told@example.com', 'Told', now(), now());
+  VALUES ('passkey_link', 'a1000000-0000-4000-8000-000000000052', 'told@example.com', 'Told', now(), now());
   DELETE FROM "user" WHERE id = 'a1000000-0000-4000-8000-000000000052';
   SELECT count(*) INTO kept FROM email_message WHERE to_address = 'told@example.com' AND user_id IS NULL;
   IF kept <> 1 THEN
@@ -2573,20 +2568,20 @@ BEGIN
   RAISE NOTICE '  keeps     an email sent, naming nobody, once its person is taken away';
 END $$;
 
-\echo '=== 53. an emailed link works once, for a day at most, one of a kind at a time ==='
+\echo '=== 53. an emailed link works once, for an hour at most, one of a kind at a time ==='
 
 INSERT INTO "user" (id, name, email) VALUES
   ('a1000000-0000-4000-8000-000000000053', 'Invited', 'invited@example.com');
 
 SELECT must_pass($$
   INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
-  VALUES ('a1000000-0000-4000-8000-000000000053', 'invite', sha256('code-1'::bytea), 'invited@example.com', now() + interval '24 hours')
-$$, 'an invitation that works for 24 hours');
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'invite', sha256('code-1'::bytea), 'invited@example.com', now() + interval '1 hour')
+$$, 'an invitation that works for an hour');
 
 SELECT must_fail($$
   INSERT INTO email_link (user_id, purpose, code_hash, sent_to, created_at, expires_at)
-  VALUES ('a1000000-0000-4000-8000-000000000053', 'confirm', sha256('code-2'::bytea), 'invited@example.com', now(), now() + interval '24 hours 1 second')
-$$, 'a link that works for longer than 24 hours');
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'confirm', sha256('code-2'::bytea), 'invited@example.com', now(), now() + interval '1 hour 1 second')
+$$, 'a link that works for longer than an hour');
 
 SELECT must_fail($$
   INSERT INTO email_link (user_id, purpose, code_hash, sent_to, created_at, expires_at)
@@ -2611,12 +2606,12 @@ $$, 'a link sent to an address not lowercased');
 SELECT must_fail($$
   INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
   VALUES ('a1000000-0000-4000-8000-000000000053', 'reset', sha256('code-2'::bytea), 'invited@example.com', now() + interval '1 hour')
-$$, 'a second link to choose a password while one waits');
+$$, 'a second link to make a passkey while one waits');
 
 SELECT must_pass($$
   INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
   VALUES ('a1000000-0000-4000-8000-000000000053', 'confirm', sha256('code-3'::bytea), 'invited@example.com', now() + interval '1 hour')
-$$, 'a confirmation waiting beside a link to choose a password');
+$$, 'a confirmation waiting beside a link to make a passkey');
 
 SELECT must_fail($$
   INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
@@ -2625,7 +2620,7 @@ $$, 'a second confirmation while one waits');
 
 SELECT must_pass($$
   INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
-  VALUES ('a1000000-0000-4000-8000-000000000053', 'change', sha256('code-6'::bytea), 'invited.new@example.com', now() + interval '24 hours')
+  VALUES ('a1000000-0000-4000-8000-000000000053', 'change', sha256('code-6'::bytea), 'invited.new@example.com', now() + interval '1 hour')
 $$, 'a change to a new address waiting beside the others, sent to the new one');
 
 SELECT must_fail($$
@@ -2633,20 +2628,10 @@ SELECT must_fail($$
   VALUES ('a1000000-0000-4000-8000-000000000053', 'change', sha256('code-7'::bytea), 'invited.newer@example.com', now() + interval '1 hour')
 $$, 'a second change while one waits');
 
-SELECT must_pass($$
+SELECT must_fail($$
   INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
   VALUES ('a1000000-0000-4000-8000-000000000053', 'recover', sha256('code-8'::bytea), 'invited@example.com', now() + interval '1 hour')
-$$, 'a recovery waiting beside the others, for an hour');
-
-SELECT must_fail($$
-  INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
-  VALUES ('a1000000-0000-4000-8000-000000000053', 'recover', sha256('code-9'::bytea), 'invited@example.com', now() + interval '30 minutes')
-$$, 'a second recovery while one waits');
-
-SELECT must_fail($$
-  UPDATE email_link SET expires_at = created_at + interval '2 hours'
-   WHERE code_hash = sha256('code-8'::bytea)
-$$, 'a recovery that lasts longer than an hour');
+$$, 'a link to recover a password, which there no longer is');
 
 SELECT must_fail($$
   UPDATE email_link SET used_at = expires_at + interval '1 second'
@@ -2665,7 +2650,7 @@ $$, 'a link used while it works');
 SELECT must_pass($$
   INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
   VALUES ('a1000000-0000-4000-8000-000000000053', 'reset', sha256('code-5'::bytea), 'invited@example.com', now() + interval '1 hour')
-$$, 'a new link to choose a password once the last was used');
+$$, 'a new link to make a passkey once the last was used');
 
 SELECT must_fail($$
   INSERT INTO email_link (user_id, purpose, code_hash, sent_to, expires_at)
@@ -2674,7 +2659,7 @@ $$, 'two links with the same code');
 
 SELECT must_pass($$
   INSERT INTO email_message (kind, to_address, subject, body, send_by)
-  VALUES ('invitation', 'invited@example.com', 'Kestrel: choose your password', 'Hello', now() + interval '24 hours')
+  VALUES ('invitation', 'invited@example.com', 'Kestrel: make your passkey', 'Hello', now() + interval '1 hour')
 $$, 'an email carrying an invitation');
 
 SELECT must_pass($$
@@ -2702,14 +2687,6 @@ BEGIN
   END IF;
   RAISE NOTICE '  keeps     a link only while its person is kept, and its sender only while theirs is';
 END $$;
-
-SELECT must_pass($$
-  INSERT INTO recovery_ask (address, network, email_key) VALUES ('192.0.2.7', '192.0.2.7/32', 'k')
-$$, 'an ask for a new password, by its network and a key of the email asked for');
-
-SELECT must_fail($$
-  INSERT INTO recovery_ask (address, network, email_key) VALUES ('192.0.2.7', '198.51.100.0/24', 'k')
-$$, 'an ask counted against a network it did not come from');
 
 SELECT must_pass($$
   INSERT INTO link_try (address, network) VALUES ('192.0.2.7', '192.0.2.7/32')

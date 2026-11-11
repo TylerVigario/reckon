@@ -6,9 +6,11 @@
  * src/lib/server/auth-paths.test.ts fails on a route in neither -- so a route
  * a new release adds is looked at before it is served, not found later.
  *
- * Nothing is open yet: signing in and out are form actions that call Better
- * Auth directly, which `disabledPaths` does not reach. Passkeys open their
- * routes here.
+ * Open are the four a passkey's ceremonies need the browser to reach: being
+ * asked for one, and answering, to make one and to sign in with one. Listing,
+ * naming and removing passkeys are Your profile's own form actions, which call
+ * the plugin directly, as signing out is:
+ * `disabledPaths` does not reach a direct call.
  *
  * `disabledPaths` matches a path exactly, so a route with a parameter in it
  * cannot be listed: Better Auth closed the issue asking for it as not planned
@@ -19,7 +21,12 @@
  */
 
 /** Served to the browser. */
-export const OPEN_AUTH_PATHS: readonly string[] = [];
+export const OPEN_AUTH_PATHS: readonly string[] = [
+	'/passkey/generate-authenticate-options',
+	'/passkey/generate-register-options',
+	'/passkey/verify-authentication',
+	'/passkey/verify-registration'
+];
 
 /** Answered 404, whatever the method, through `disabledPaths`. */
 export const CLOSED_AUTH_PATHS: readonly string[] = [
@@ -35,6 +42,9 @@ export const CLOSED_AUTH_PATHS: readonly string[] = [
 	'/list-accounts',
 	'/list-sessions',
 	'/ok',
+	'/passkey/delete-passkey',
+	'/passkey/list-user-passkeys',
+	'/passkey/update-passkey',
 	'/refresh-token',
 	'/request-password-reset',
 	'/reset-password',

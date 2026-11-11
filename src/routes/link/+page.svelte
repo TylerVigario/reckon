@@ -4,6 +4,11 @@
 	import { replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import {
+		startRegistration,
+		type PublicKeyCredentialCreationOptionsJSON
+	} from '@simplewebauthn/browser';
+	import { authClient, passkeysWork } from '#lib/auth-client.ts';
 	import type { PageProps } from './$types';
 
 	/**
@@ -17,30 +22,21 @@
 		| { at: 'reading' }
 		| { at: 'wait' }
 		| { at: 'dead' }
-		| {
-				at: 'choose';
-				purpose: 'invite' | 'reset' | 'recover';
-				name: string;
-				email: string;
-				stopped: boolean;
-		  }
-		| { at: 'saved'; email: string }
+		| { at: 'make'; purpose: 'invite' | 'reset'; name: string; email: string }
+		| { at: 'made'; email: string }
 		| { at: 'confirmed'; email: string }
 		| { at: 'change'; name: string; email: string }
 		| { at: 'changed'; email: string }
 		| { at: 'taken'; email: string };
 	let view = $state<View>({ at: 'reading' });
 	let code = '';
-	let password = $state('');
-	let confirm = $state('');
-	let refused = $state<{ field: 'password' | 'confirm'; message: string } | null>(null);
 	let saving = $state(false);
 
 	const business = $derived(page.data.operator?.trading_name?.trim() || 'reckon');
 
 	/** One of the page's actions, posted as a form would be. */
 	async function act(
-		name: 'look' | 'choose' | 'confirm' | 'change',
+		name: 'look' | 'begin' | 'confirm' | 'change',
 		fields: Record<string, string>
 	) {
 		const body = new FormData();
@@ -64,35 +60,55 @@
 		const r = await act('look', { code });
 		if (r?.type !== 'success' || !r.data) return void (view = after(r));
 		const found = r.data as {
-			purpose: 'invite' | 'reset' | 'confirm' | 'change' | 'recover';
+			purpose: 'invite' | 'reset' | 'confirm' | 'change';
 			name: string;
 			email: string;
-			stopped: boolean;
 		};
 		// A change waits to be asked for: opening the link changes nothing.
 		if (found.purpose === 'change')
 			return void (view = { at: 'change', name: found.name, email: found.email });
-		if (found.purpose !== 'confirm')
-			return void (view = { at: 'choose', ...found, purpose: found.purpose });
+		if (found.purpose === 'invite' || found.purpose === 'reset')
+			return void (view = { at: 'make', ...found, purpose: found.purpose });
 		const c = await act('confirm', { code });
 		view = c?.type === 'success' ? { at: 'confirmed', email: found.email } : after(c);
 	});
 
-	async function choose(e: SubmitEvent) {
-		e.preventDefault();
-		if (saving || view.at !== 'choose') return;
-		saving = true;
-		const r = await act('choose', { code, password, confirm });
-		saving = false;
-		if (r?.type === 'success') {
-			view = { at: 'saved', email: view.email };
-			password = confirm = '';
+	/**
+	 * A passkey made with the link: the ceremony's options from the server, the
+	 * passkey made by this phone or computer, and handed to Better Auth, which
+	 * keeps it, uses the link and signs them in (#lib/server/passkeys).
+	 */
+	let making = $state(false);
+	let unmade = $state('');
+	async function make() {
+		if (making || view.at !== 'make') return;
+		const email = view.email;
+		making = true;
+		unmade = '';
+		const r = await act('begin', { code });
+		if (r?.type !== 'success' || !r.data) {
+			making = false;
+			if (!r) return void (unmade = 'Not made — no connection.');
+			return void (view = after(r));
+		}
+		let response;
+		try {
+			response = await startRegistration({
+				optionsJSON: r.data.options as PublicKeyCredentialCreationOptionsJSON
+			});
+		} catch {
+			// Cancelled, or this device could not make one: the link still works.
+			making = false;
 			return;
 		}
-		if (r?.type === 'failure' && r.data?.why === 'password')
-			return void (refused = r.data as { field: 'password' | 'confirm'; message: string });
-		if (!r) return void (refused = { field: 'password', message: 'Not saved — no connection.' });
-		view = after(r);
+		const kept = await authClient.$fetch<unknown>('/passkey/verify-registration', {
+			method: 'POST',
+			body: { response, createSession: true },
+			throw: false
+		});
+		making = false;
+		if (kept.error) return void (unmade = kept.error.message ?? 'That passkey wasn’t kept.');
+		view = { at: 'made', email };
 	}
 
 	async function change(e: SubmitEvent) {
@@ -128,65 +144,47 @@
 
 	{#if view.at === 'reading'}
 		<p class="lede" role="status">Reading your link…</p>
-	{:else if view.at === 'choose'}
-		<form onsubmit={choose} novalidate>
-			<h1>{view.purpose === 'invite' ? `Welcome to ${business}` : 'Choose a new password'}</h1>
-			<p class="lede">
-				{view.purpose === 'reset'
-					? `For ${view.email}. Your old password no longer works.`
-					: view.purpose === 'recover'
-						? `For ${view.email}. ${view.stopped ? 'Your old password has stopped working.' : 'Your old password works until you save a new one.'}`
-						: `Choose a password to sign in as ${view.email}.`}
-			</p>
-			{#if refused}<p class="msg" id="why" role="alert">{refused.message}</p>{/if}
-			<!-- Who it is for, so a password manager saves it against the right sign-in. -->
-			<input type="hidden" name="username" autocomplete="username" value={view.email} />
-			<label
-				>{view.purpose === 'invite' ? 'Password' : 'New password'}
-				<input
-					name="password"
-					type="password"
-					autocomplete="new-password"
-					minlength={data.min}
-					bind:value={password}
-					aria-invalid={refused?.field === 'password' ? 'true' : undefined}
-					aria-describedby={refused?.field === 'password' ? 'why hint' : 'hint'}
-					required
-				/>
-			</label>
-			<label
-				>Confirm password
-				<input
-					name="confirm"
-					type="password"
-					autocomplete="new-password"
-					bind:value={confirm}
-					aria-invalid={refused?.field === 'confirm' ? 'true' : undefined}
-					aria-describedby={refused?.field === 'confirm' ? 'why' : undefined}
-					required
-				/>
-			</label>
-			<p class="hint" id="hint">At least {data.min} characters. {data.guidance}</p>
-			<button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save password'}</button>
-		</form>
-	{:else if view.at === 'saved'}
+	{:else if view.at === 'make'}
 		{@const other = otherHere(view.email)}
-		<div class="card" role="status">
-			<h1>Password saved</h1>
+		<div class="card">
+			<h1>{view.purpose === 'invite' ? `Welcome to ${business}` : 'Make a new passkey'}</h1>
 			<p class="lede">
-				Sign in with {view.email} and the password you just chose. Anywhere you were signed in, you’ve
-				been signed out.
+				{view.purpose === 'invite'
+					? `Make a passkey to sign in as ${view.email}. This phone or computer keeps it, and your fingerprint, face or screen lock unlocks it: there’s no password to choose or remember.`
+					: `For ${view.email}. This phone or computer keeps it, and making it signs you out everywhere else.`}
 			</p>
-			{#if other}
+			{#if unmade}<p class="msg" role="alert">{unmade}</p>{/if}
+			{#if !passkeysWork()}
 				<p class="lede">
-					{other.name} is signed in in this browser, and signs out first.
+					Passkeys can’t be made in this browser. If you opened this link from an email or another
+					app, open it in Chrome or Safari instead.
 				</p>
-				<form class="bare" method="POST" action="/logout">
-					<button type="submit">Sign out, then sign in</button>
-				</form>
 			{:else}
-				<a class="go" href={resolve('/login')}>Sign in</a>
+				{#if other}
+					<p class="lede">{other.name} is signed in in this browser, and is signed out first.</p>
+				{/if}
+				<button type="button" onclick={make} disabled={making}
+					>{making
+						? 'Making it…'
+						: view.purpose === 'invite'
+							? 'Make your passkey'
+							: 'Make a new passkey'}</button
+				>
 			{/if}
+		</div>
+	{:else if view.at === 'made'}
+		<div class="card" role="status">
+			<h1>Passkey made</h1>
+			<p class="lede">
+				You’re signed in as {view.email}. From now on, sign in with this passkey: this phone or
+				computer offers it when you sign in.
+			</p>
+			<p class="lede">
+				Keep more than one, on another phone or computer or a security key, so losing one doesn’t
+				lock you out.
+			</p>
+			<a class="go" href={resolve('/')}>Open reckon</a>
+			<a class="go quiet" href={resolve('/profile/passkeys')}>Your passkeys</a>
 		</div>
 	{:else if view.at === 'confirmed'}
 		<div class="card" role="status">
@@ -233,8 +231,7 @@
 		<div class="card" role="alert">
 			<h1>This link no longer works</h1>
 			<p class="lede">
-				It has been used already, or it has expired. To choose a new password, use Forgot password?
-				on the sign-in page. For anything else, contact {data.contact} to have another sent.
+				It has been used already, or it has expired. To have another sent, contact {data.contact}.
 			</p>
 			<a class="go quiet" href={resolve('/login')}>Sign in</a>
 		</div>
@@ -259,7 +256,7 @@
 		padding: 1.5rem;
 		box-sizing: border-box;
 	}
-	form:not(.bare),
+	form,
 	.card {
 		width: min(22rem, 100%);
 		display: grid;
@@ -269,9 +266,6 @@
 		background: light-dark(#fff, #1d2128);
 		border: 1px solid light-dark(#d9dee6, #2f353f);
 		box-sizing: border-box;
-	}
-	.bare {
-		display: grid;
 	}
 	h1 {
 		margin: 0 0 0.2rem;
@@ -284,29 +278,15 @@
 		font-size: 0.88rem;
 		color: light-dark(#5a6472, #a3adbc);
 	}
-	label {
-		display: grid;
-		gap: 0.35rem;
-		font-size: 0.8rem;
-		color: light-dark(#5a6472, #a3adbc);
-	}
-	input {
-		font: inherit;
-		min-height: 3rem;
-		padding: 0.6rem 0.7rem;
-		border-radius: 8px;
-		border: 1px solid light-dark(#d9dee6, #2f353f);
-		background: light-dark(#eff1f4, #14171c);
-		color: inherit;
-	}
-	input[aria-invalid='true'] {
-		border-color: #b3462e;
-	}
 	button,
 	.go {
 		display: grid;
 		place-items: center;
-		font: 600 1rem/1 inherit;
+		/* The family is the page's: inherit is the whole of a font shorthand or no part of it. */
+		font: inherit;
+		font-size: 1rem;
+		font-weight: 600;
+		line-height: 1;
 		min-height: 3.2rem;
 		border: 0;
 		border-radius: 8px;

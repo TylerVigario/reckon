@@ -57,10 +57,6 @@ export const PROBLEM = {
 		type: '/problems/beyond-access',
 		title: "Beyond what this person's access reaches"
 	},
-	choosePassword: {
-		type: '/problems/choose-password',
-		title: 'Signed in with a temporary password, and yet to choose their own'
-	},
 	emailUnset: {
 		type: '/problems/email-unset',
 		title: 'This sends an email, and reckon cannot send one yet'

@@ -159,13 +159,12 @@ jobs:
       SMTP_PORT: '2525'
       SMTP_SECURITY: none
       SMTP_FROM: reckon@kestrel.example
-      # Where the links it emails go: the server itself, over http, as only an
-      # address on this machine may be.
-      SITE_URL: http://127.0.0.1:5178
-      # Passwords are looked up in the Pwned Passwords stand-in on this machine
-      # (tests/pwned-stand-in.mjs), with a breach of its own, so no check asks
-      # the real one and every check knows which it will call breached.
-      PWNED_PASSWORDS_URL: http://127.0.0.1:5180/range/
+      # Where the links it emails go, and the site each passkey is made for: the
+      # server itself, over http, as only an address on this machine may be. A
+      # host name, as WebAuthn takes no IP address, so every check asks it there.
+      SITE_URL: http://localhost:5178
+      # Where the checks keep the passkeys they sign in with (tests/passkeys.mjs).
+      RECKON_TEST_PASSKEYS: /tmp/reckon-test-passkeys.json
       # Told to stop, adapter-node waits this long (30 seconds unless set) for
       # the browser's connections to close, and one the browser opened ahead
       # of a request it never sent holds the whole wait. Kept short, a server
@@ -193,8 +192,7 @@ jobs:
         run: PGDATABASE=reckon_empty node tests/tax-check.mjs
 
       - name: A mail relay to send to
-        # Before the business is set up: setting a password tells its person by
-        # email, and that is written now and sent once the server starts.
+        # Before the business is set up, so nothing it is to send waits for one.
         run: |
           node tests/smtp-stand-in.mjs &
           for _ in $(seq 1 10); do
@@ -202,17 +200,6 @@ jobs:
             sleep 1
           done
           echo "::error::the relay stand-in never answered"; exit 1
-
-      - name: Pwned Passwords to ask
-        # Before the business is set up: setting a password holds it to the
-        # rules, which ask Pwned Passwords.
-        run: |
-          node tests/pwned-stand-in.mjs &
-          for _ in $(seq 1 10); do
-            curl -sf -o /dev/null http://127.0.0.1:5180/range/00000 && exit 0
-            sleep 1
-          done
-          echo "::error::the Pwned Passwords stand-in never answered"; exit 1
 
       - name: A business to run the checks against
         # The database's default zone is set to one nobody keeps. reckon opens
@@ -223,11 +210,6 @@ jobs:
           psql -q -d postgres -c "ALTER DATABASE reckon_ci SET TimeZone = 'Pacific/Kiritimati'"
           npm run db:migrate
           npm run db:seed
-          printf 'ci-only-password\nci-only-password\n' \
-            | node scripts/user.mjs password avery@kestrel.example
-          # And someone with Field, for what that level reaches.
-          printf 'ci-only-password\nci-only-password\n' \
-            | node scripts/user.mjs password sam@kestrel.example
 
       - name: Start it
         run: |
@@ -239,6 +221,12 @@ jobs:
           done
           echo "::error::the server never answered"; exit 1
 
+      - name: Passkeys for the people the checks act as
+        # As the first person gets theirs: scripts/user.mjs gives an invitation
+        # link, and a passkey is made with it on the link's page. Someone with
+        # Full, and someone with Field, for what that level reaches.
+        run: node tests/passkeys.mjs "http://localhost:$PORT" avery@kestrel.example sam@kestrel.example
+
       - name: The registries and the schema agree
         # Validation has one source of truth for the page and the endpoint --
         # they import the same registry. The database is the third, and this
@@ -246,20 +234,25 @@ jobs:
         run: npm run check:schema
 
       - name: Every route answers, signed in
-        run: node tests/smoke.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/smoke.mjs "http://localhost:$PORT" avery@kestrel.example
 
       - name: Better Auth serves only the routes reckon lists
         # Each closed route answers 404, and the two disabledPaths cannot name
         # do nothing here: the reset route hands nothing to another origin, the
         # social callback signs nobody in (#lib/server/auth-paths).
-        run: node tests/auth-routes-check.mjs "http://127.0.0.1:$PORT"
+        run: node tests/auth-routes-check.mjs "http://localhost:$PORT"
+
+      - name: Passkeys are made with an invitation or a new link, sign in, are refused where they should be, and are removed
+        # Software passkeys, as a phone's would be, against the routes Better
+        # Auth serves. It adds a person and takes them away again.
+        run: node tests/passkey-check.mjs "http://localhost:$PORT" avery@kestrel.example
 
       - name: Each access level reaches what it should, and Field sees its own
         # Before the checks that write, on the seeded business: every route
         # beyond Field is asked of someone with Field and refused.
         run: |
-          node tests/access-check.mjs "http://127.0.0.1:$PORT" \
-            avery@kestrel.example ci-only-password sam@kestrel.example ci-only-password
+          node tests/access-check.mjs "http://localhost:$PORT" \
+            avery@kestrel.example sam@kestrel.example
 
       - name: Every screen renders, with nothing on the console
         # A page can answer 200 with its body already doomed: SvelteKit renders
@@ -285,81 +278,49 @@ jobs:
             cat /tmp/chrome.log
             exit 1
           fi
-          node tests/console-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+          node tests/console-check.mjs "http://localhost:$PORT" avery@kestrel.example
+
+      - name: A passkey is made on the link's page and signs in on the sign-in page, in a browser
+        # In the Chrome started above, with a virtual authenticator of its own.
+        # It adds a person and takes them away again, and leaves the browser
+        # signed out: each check after signs itself in.
+        run: node tests/sign-in-check.mjs "http://localhost:$PORT" avery@kestrel.example
 
       - name: A browser without Temporal gets the polyfill, and keeps it for offline
         # This Chrome has Temporal of its own, so every check above takes the
         # browser's path. This one takes it away before the page runs, as a
         # phone without it would be.
-        run: node tests/temporal-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/temporal-check.mjs "http://localhost:$PORT" avery@kestrel.example
 
       - name: Every write works, and the wrong ones are refused
         # Needs the network: creating a site is a CDTFA lookup, and the check
         # reports that as skipped rather than failed if they cannot be reached.
-        run: node tests/write-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/write-check.mjs "http://localhost:$PORT" avery@kestrel.example
 
       - name: A person's zone comes from their browser, and travel asks first
-        run: node tests/zone-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/zone-check.mjs "http://localhost:$PORT" avery@kestrel.example
 
       - name: Past work takes a start and one other, and fills in the third
-        run: node tests/past-work-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/past-work-check.mjs "http://localhost:$PORT" avery@kestrel.example
 
       - name: Stock is received, with its costs, who paid and its receipt
-        run: node tests/receive-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/receive-check.mjs "http://localhost:$PORT" avery@kestrel.example
 
       - name: Lines are added to a draft, drawn from stock or bought and paid for with receipts
-        run: node tests/lines-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/lines-check.mjs "http://localhost:$PORT" avery@kestrel.example
 
       - name: A trip is recorded, each leg to whoever caused it, and what it pays its vehicle
-        run: node tests/trips-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/trips-check.mjs "http://localhost:$PORT" avery@kestrel.example
 
-      - name: A sign-in replaces a password hash made at older parameters
-        # Every hash the steps above meet was made at today's parameters, so
-        # the replacement could stop and they would all stay green.
-        run: node tests/rehash-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
-
-      - name: Someone added or reset chooses their own password with a link emailed to them, once, within a day, and changes it
+      - name: A person is invited by email and told whenever their passkeys change, and a relay in trouble is tried again or given up on
         # It adds a person and takes them away again, so the checks around it
         # see the business as seeded.
-        run: node tests/password-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
-
-      - name: A person is invited by email and told whenever their password changes, and a relay in trouble is tried again or given up on
-        # After the password check, for the same reason: it adds a person and
-        # takes them away again.
-        run: node tests/email-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/email-check.mjs "http://localhost:$PORT" avery@kestrel.example
 
       - name: A new address for someone who has signed in waits until they use the link sent there, and the old one is told
         # After the email check, for the same reason: it adds people and takes
         # them away again.
-        run: node tests/email-change-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
-
-      - name: Whoever forgot their password is emailed a link, the page answering alike for every address, and a network asking too often waits
-        # After the email change check, for the same reason: it adds people and
-        # takes them away again, and clears what it asked from this machine.
-        run: node tests/forgot-password-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
-
-      - name: A password chosen keeps every rule, and one Pwned Passwords has seen since stops at sign-in and a link to replace it is emailed
-        # After the forgot password check, for the same reason: it adds people
-        # and takes them away again.
-        run: node tests/password-rules-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
-
-      - name: Every try at a password is recorded, and limited per address and per email from the record, however many are sent at once
-        # On a second server, told the visitor's address as a proxy would tell
-        # it, so the check tries from addresses of its own. On the job's server
-        # every request is from 127.0.0.1, and the limit would make every check
-        # after it wait. The record is the database's, so the job's server reads
-        # it too: the check never tries from 127.0.0.1, and its last try at
-        # Avery's password is a right one, so nothing after it waits.
-        run: |
-          PORT=5179 ADDRESS_HEADER=x-real-ip node build &
-          limited=$!
-          for _ in $(seq 1 30); do
-            curl -sf -o /dev/null -H 'x-real-ip: 192.0.2.1' "http://127.0.0.1:5179/login" && break
-            sleep 1
-          done
-          node tests/sign-in-limit-check.mjs "http://127.0.0.1:5179" avery@kestrel.example ci-only-password || failed=$?
-          kill "$limited"
-          exit "${failed:-0}"
+        run: node tests/email-change-check.mjs "http://localhost:$PORT" avery@kestrel.example
 
       - name: It installs, and time and lines on a draft work with the server out of reach
         # Out of reach for real: the server is stopped between the runs, because
@@ -369,7 +330,7 @@ jobs:
         # across, as on a phone. The server comes back with the job's own
         # environment, so the session survives the restart.
         run: |
-          check() { node tests/offline-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password "$1"; }
+          check() { node tests/offline-check.mjs "http://localhost:$PORT" avery@kestrel.example "$1"; }
           check online
           # And it stops when told to, as a service manager expects, rather
           # than waiting to be killed: nothing it starts may keep it running.
@@ -392,11 +353,11 @@ jobs:
 
       - name: Pay is recorded when it is paid, and stands
         # After offline-check, which changes the trip this pays for.
-        run: node tests/pay-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/pay-check.mjs "http://localhost:$PORT" avery@kestrel.example
 
       - name: An invoice is sent with its link
         # Last but one: it sends the draft lines-check made, which the checks before it add to.
-        run: node tests/send-check.mjs "http://127.0.0.1:$PORT" avery@kestrel.example ci-only-password
+        run: node tests/send-check.mjs "http://localhost:$PORT" avery@kestrel.example
 
       - name: Someone with Field walks every screen they are offered, with nothing on the console
         # In a browser of their own, as their own phone would be: the one the
@@ -418,7 +379,7 @@ jobs:
             cat /tmp/chrome-field.log
             exit 1
           fi
-          node tests/console-check.mjs "http://127.0.0.1:$PORT" sam@kestrel.example ci-only-password
+          node tests/console-check.mjs "http://localhost:$PORT" sam@kestrel.example
 
       - name: Stop it
         if: always()

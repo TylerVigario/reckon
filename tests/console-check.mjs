@@ -3,7 +3,7 @@
  * Walks the app in a real browser and fails on anything the console
  * complains about.
  *
- *   node tests/console-check.mjs <base-url> <email> <password>
+ *   node tests/console-check.mjs <base-url> <email>
  *
  * WHY THIS EXISTS, ON TOP OF smoke.mjs. smoke asks every route for a status
  * code, and a page can answer 200 with its body already doomed: SvelteKit
@@ -19,7 +19,8 @@
  * client render, and treats any console error or uncaught exception as a
  * failure.
  */
-const [, , base = 'http://127.0.0.1:5181', email, password] = process.argv;
+import { signIn } from './passkeys.mjs';
+const [, , base = 'http://127.0.0.1:5181', email] = process.argv;
 
 const DEVTOOLS = 'http://127.0.0.1:9222/json';
 
@@ -109,18 +110,22 @@ await send('Emulation.setDeviceMetricsOverride', {
 	mobile: false
 });
 
-await go('/login');
-await evaluate(`(() => {
-  document.querySelector('input[name=email]').value = ${JSON.stringify(email)};
-  document.querySelector('input[name=password]').value = ${JSON.stringify(password)};
-  for (const n of ['email','password'])
-    document.querySelector('input[name='+n+']').dispatchEvent(new Event('input',{bubbles:true}));
-  document.querySelector('form').requestSubmit();
-})()`);
-await settle(2400);
-
-const signedIn = await evaluate(`!document.querySelector('input[name="password"]')`);
-if (!signedIn) {
+// Signed in with the passkey tests/passkeys.mjs gave them, its session handed to the browser.
+{
+	const { name, value } = await signIn(base, email);
+	await send('Network.setCookie', {
+		name,
+		value,
+		url: base,
+		httpOnly: true,
+		sameSite: 'Lax',
+		// A __Secure- cookie must say it is Secure, as Better Auth sets it; Chrome
+		// keeps one for localhost over http, a secure context.
+		secure: name.startsWith('__Secure-')
+	});
+}
+await go('/');
+if ((await evaluate('location.pathname')) === '/login') {
 	console.error('  could not sign in — every check below would pass for the wrong reason');
 	process.exit(1);
 }

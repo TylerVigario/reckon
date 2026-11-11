@@ -50,7 +50,6 @@ export const REACH = {
 	// page, opened by a token nobody can guess, showing that invoice alone --
 	// and where a link reckon emailed opens, by a code nobody can guess.
 	'/login': 'open',
-	'/forgot-password': 'open',
 	'/link': 'open',
 	'/manifest.webmanifest': 'open',
 	'/operator/logo': 'open',
@@ -62,10 +61,8 @@ export const REACH = {
 	'/refused': 'field',
 	'/more': 'field',
 	'/profile': 'field',
-	'/profile/password': 'field',
+	'/profile/passkeys': 'field',
 	'/logout': 'field',
-	// Where someone signed in with a password handed to them chooses their own.
-	'/new-password': 'field',
 	'/api/device': 'field',
 	'/api/reachable': 'field',
 	'/api/offline': 'field',
@@ -175,7 +172,8 @@ export const REACH = {
 	'/settings/units': 'full',
 	'/api/settings': 'full',
 	'/api/people': 'full',
-	'/api/people/[id]/password': 'full',
+	'/api/people/[id]/link': 'full',
+	'/api/people/[id]/passkeys': 'full',
 	'/api/people/[id]/invitation': 'full',
 	'/api/people/[id]/email-change': 'full',
 	'/api/roles': 'full',

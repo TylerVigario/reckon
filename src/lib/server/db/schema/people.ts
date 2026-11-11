@@ -9,9 +9,8 @@
 // zone, and emails are stored lowercased. When its config gains a plugin that
 // adds fields, generate into a scratch file and carry them across.
 //
-// A password is never a column of user. It is account.password, an argon2id
-// hash carrying its own parameters, set by Better Auth through the hash
-// function in #lib/server/auth.
+// There are no passwords: everyone signs in with a passkey (#lib/server/passkeys).
+// account.password is Better Auth's own column, and the database keeps it empty.
 
 import { sql } from 'drizzle-orm';
 import {
@@ -30,7 +29,16 @@ import {
 	uniqueIndex,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { bytea, createdAt, id, lowercaseEmail, oneOf, tstz, updatedAt } from './columns.ts';
+import {
+	bytea,
+	createdAt,
+	id,
+	lowercaseEmail,
+	nonNegative,
+	oneOf,
+	tstz,
+	updatedAt
+} from './columns.ts';
 import { ACCESS } from '../../../access.ts';
 
 /**
@@ -107,30 +115,10 @@ export const user = pgTable(
 		 */
 		access: text({ enum: ACCESS }).default('field').notNull(),
 		/**
-		 * When they last signed in (0032), set by the sign-in form. Null is none
-		 * recorded: they never have, or not since reckon began keeping it.
+		 * When they last signed in (0032), with a passkey (#lib/server/passkeys).
+		 * Null is none recorded: they never have.
 		 */
 		lastSignedInAt: tstz(),
-		/**
-		 * Whether the password they sign in with was handed to them (0033): made
-		 * when someone with Full added them or reset it, and shown once, to give
-		 * them. Until they choose their own, signing in reaches nothing but the
-		 * page where they do (/new-password).
-		 */
-		temporaryPassword: boolean().default(false).notNull(),
-		/**
-		 * When their password was last set (0034): chosen with an emailed link,
-		 * changed, handed over before invitations, or set at the command line.
-		 * Tries before it count against none of theirs (#lib/server/sign-in-limit).
-		 * Null is before reckon kept it.
-		 */
-		passwordSetAt: tstz(),
-		/**
-		 * When their password stopped working, until a new one is set: after a
-		 * hundred wrong tries in a row (0034), or when Pwned Passwords had seen it
-		 * as they signed in with it (0040, #lib/server/breach). Null is working.
-		 */
-		passwordStoppedAt: tstz(),
 		/**
 		 * The zone this person keeps their days in, as Postgres names it. Their
 		 * own timesheet, the day a new entry starts on, and every moment shown to
@@ -208,12 +196,13 @@ export const account = pgTable(
 		accessTokenExpiresAt: tstz(),
 		refreshTokenExpiresAt: tstz(),
 		scope: text(),
-		/** An argon2id hash, carrying its own parameters. Never a password. */
+		/** Better Auth's, for a password: always empty, as there are none. */
 		password: text(),
 		createdAt: createdAt(),
 		updatedAt: updatedAt()
 	},
 	(t) => [
+		check('account_holds_no_password', sql`${t.password} is null`),
 		index('account_by_user').on(t.userId),
 		foreignKey({
 			name: 'account_user_id_fkey',
@@ -241,9 +230,7 @@ export const verification = pgTable(
  * Better Auth's own count of requests to its routes, kept here rather than in
  * memory so a restart forgives nothing: one row per address and route, how
  * many it has made in the window, and when the last was, in milliseconds
- * (#lib/server/auth). What a password sign-in counts is sign_in_try's, since
- * those are form actions that call Better Auth directly, which it does not
- * count.
+ * (#lib/server/auth).
  */
 export const rateLimit = pgTable(
 	'rate_limit',
@@ -257,18 +244,61 @@ export const rateLimit = pgTable(
 );
 
 /**
- * What an emailed link is for: to choose a first password, on being added on
- * Team; to choose a new one, after a reset there; to confirm the address one
- * signs in with, asked for on Your profile; to make a new address the one they
- * sign in with, asked for on Team; or to choose a new password, asked for by
- * whoever forgot theirs, which changes nothing until it is used.
+ * A passkey: a key pair made on someone's phone, computer or security key, of
+ * which only the public half is here (#lib/server/auth). The columns are Better
+ * Auth's passkey plugin's, as it reads and writes them, but for last_used_at,
+ * which is reckon's: when it last signed someone in, for Your profile to show.
+ *
+ * device_type is WebAuthn's: a key kept on one device (singleDevice) or synced
+ * between someone's devices by their passkey manager (multiDevice), and
+ * backed_up is whether it is synced now. aaguid names the kind of
+ * authenticator that made it, Google Password Manager or iCloud Keychain, where
+ * it says (#lib/passkey-names).
  */
-export const LINK_PURPOSES = ['invite', 'reset', 'confirm', 'change', 'recover'] as const;
+export const passkey = pgTable(
+	'passkey',
+	{
+		id: id(),
+		name: text(),
+		publicKey: text().notNull(),
+		userId: uuid().notNull(),
+		credentialID: text('credential_id').notNull(),
+		counter: integer().notNull(),
+		deviceType: text().notNull(),
+		backedUp: boolean().notNull(),
+		transports: text(),
+		createdAt: createdAt(),
+		aaguid: text(),
+		lastUsedAt: tstz()
+	},
+	(t) => [
+		// One credential is one passkey: the plugin does not ask for this itself.
+		unique('passkey_credential_id_key').on(t.credentialID),
+		index('passkey_by_user').on(t.userId),
+		oneOf('passkey_device_type_check', t.deviceType, ['singleDevice', 'multiDevice']),
+		nonNegative('passkey_counter_not_negative', t.counter),
+		foreignKey({
+			name: 'passkey_user_id_fkey',
+			columns: [t.userId],
+			foreignColumns: [user.id]
+		}).onDelete('cascade')
+	]
+);
 
 /**
- * A LINK reckon emailed someone (#lib/server/links), good once, for 24 hours
- * at most: NIST SP 800-63A-4 §3.8 allows a code confirming an email address no
- * longer, and SP 800-63B-4 §4.2.1.2 a recovery code sent by email none. Using
+ * What an emailed link is for: to make a first passkey, on being added on Team
+ * or at the command line; to make a new one after losing their way in, sent
+ * the same way (a "reset", which ends the ones they had when it is used); to
+ * confirm the address one signs in with, asked for on Your profile; or to make
+ * a new address the one they sign in with, asked for on Team.
+ */
+export const LINK_PURPOSES = ['invite', 'reset', 'confirm', 'change'] as const;
+
+/**
+ * A LINK reckon emailed someone (#lib/server/links), good once, for an hour:
+ * NIST SP 800-63A-4 §3.8 allows a code confirming an email address 24 hours,
+ * and SP 800-63B-4 §4.2.1.2 a recovery code sent by email the same, and a link
+ * to make a passkey is a way in, so it lasts as one handed over does. Using
  * one also proves the person reads mail at the address it went to.
  *
  * The code itself is never kept: code_hash is its SHA-256, and the code is 256
@@ -277,10 +307,10 @@ export const LINK_PURPOSES = ['invite', 'reset', 'confirm', 'change', 'recover']
  * -- except a change's, which went to the address they are to sign in with
  * instead, and makes it theirs.
  *
- * A new link for a password ends any other not yet used, as does a new
- * confirmation, a new change, or a new recovery: one of each can be waiting at
- * a time. A recovery's lasts an hour, the rest a day. A link used is kept 90
- * days, the record of a password chosen or an address confirmed or changed.
+ * A new link for a passkey ends any other not yet used, as does a new
+ * confirmation or a new change: one of each can be waiting at a time. A link
+ * used is kept 90 days, the record of a passkey made or an address confirmed
+ * or changed.
  */
 export const emailLink = pgTable(
 	'email_link',
@@ -305,14 +335,14 @@ export const emailLink = pgTable(
 		oneOf('email_link_purpose_check', t.purpose, LINK_PURPOSES),
 		lowercaseEmail('email_link_sent_to_lowercase', t.sentTo),
 		check(
-			'email_link_lasts_a_day_at_most',
-			sql`${t.expiresAt} > ${t.createdAt} and ${t.expiresAt} <= ${t.createdAt} + interval '24 hours'`
+			'email_link_lasts_an_hour_at_most',
+			sql`${t.expiresAt} > ${t.createdAt} and ${t.expiresAt} <= ${t.createdAt} + interval '1 hour'`
 		),
 		check(
 			'email_link_used_while_it_worked',
 			sql`${t.usedAt} is null or ${t.usedAt} between ${t.createdAt} and ${t.expiresAt}`
 		),
-		uniqueIndex('email_link_one_password_link_waiting')
+		uniqueIndex('email_link_one_passkey_link_waiting')
 			.on(t.userId)
 			.where(sql`${t.usedAt} is null and ${t.purpose} in ('invite', 'reset')`),
 		uniqueIndex('email_link_one_confirmation_waiting')
@@ -321,14 +351,6 @@ export const emailLink = pgTable(
 		uniqueIndex('email_link_one_change_waiting')
 			.on(t.userId)
 			.where(sql`${t.usedAt} is null and ${t.purpose} = 'change'`),
-		uniqueIndex('email_link_one_recovery_waiting')
-			.on(t.userId)
-			.where(sql`${t.usedAt} is null and ${t.purpose} = 'recover'`),
-		// A recovery is asked for by someone waiting for it: an hour, not a day.
-		check(
-			'email_link_recovery_lasts_an_hour_at_most',
-			sql`${t.purpose} <> 'recover' or ${t.expiresAt} <= ${t.createdAt} + interval '1 hour'`
-		),
 		index('email_link_by_user').on(t.userId, t.createdAt),
 		foreignKey({
 			name: 'email_link_user_id_fkey',
@@ -362,89 +384,5 @@ export const linkTry = pgTable(
 	(t) => [
 		index('link_try_by_network').on(t.network, t.createdAt),
 		check('link_try_address_in_network', sql`${t.address} <<= ${t.network}`)
-	]
-);
-
-/**
- * Every ask for a link to choose a new password, by someone who forgot theirs:
- * the network it came from, and an HMAC of the email asked for
- * (#lib/server/sign-in-limit emailKey), kept whether or not anyone signs in
- * with it, so the limits say nothing about who does. A network asking too often
- * waits, and an address is sent one email every few minutes at most, so nobody
- * can flood someone's inbox with them (OWASP's Forgot Password Cheat Sheet;
- * ASVS 5.0 2.4.1). Kept a day.
- */
-export const recoveryAsk = pgTable(
-	'recovery_ask',
-	{
-		id: id(),
-		createdAt: createdAt(),
-		address: inet().notNull(),
-		network: cidr().notNull(),
-		emailKey: text().notNull()
-	},
-	(t) => [
-		index('recovery_ask_by_network').on(t.network, t.createdAt),
-		index('recovery_ask_by_email').on(t.emailKey, t.createdAt),
-		check('recovery_ask_address_in_network', sql`${t.address} <<= ${t.network}`)
-	]
-);
-
-/** The page a password was tried at: signing in, or changing one's own. */
-export const TRY_PAGES = ['sign_in', 'password_change'] as const;
-/**
- * How a try came out. Inactive is a right password for someone made inactive,
- * answered and counted as a wrong one; stopped, one not checked, the password
- * having stopped; breached, a right password Pwned Passwords has seen, which
- * stopped it there (#lib/server/breach). A try still being checked, or never
- * finished, has none.
- */
-export const TRY_OUTCOMES = ['right', 'wrong', 'inactive', 'stopped', 'breached'] as const;
-
-/**
- * Every try at a password (0034), and what the limits on them are worked out
- * from (#lib/server/sign-in-limit): per address, per email, and a hundred wrong
- * in a row. A row is written for every email tried, whether or not anyone signs
- * in with it, and kept 90 days.
- *
- * The email as typed is never kept, since a password is sometimes typed in its
- * place: email_key is an HMAC of it, which counts the same, and user_id is whose
- * it was, if anyone's.
- */
-export const signInTry = pgTable(
-	'sign_in_try',
-	{
-		id: id(),
-		createdAt: createdAt(),
-		page: text({ enum: TRY_PAGES }).notNull(),
-		/** The client's address, as adapter-node resolved it. */
-		address: inet().notNull(),
-		/** The network the per-address limit counts it in: an IPv4 address, or an IPv6 /64. */
-		network: cidr().notNull(),
-		/** An HMAC of the email as typed, under a key drawn from the session secret. */
-		emailKey: text().notNull(),
-		userId: uuid(),
-		/**
-		 * The browser, when it has signed in as them: its entry in their
-		 * signed-in-here cookie at the sign-in page, its session when changing a
-		 * password. Its tries are a count of its own. Null is a stranger.
-		 */
-		browser: text(),
-		outcome: text({ enum: TRY_OUTCOMES })
-	},
-	(t) => [
-		index('sign_in_try_by_network').on(t.network, t.createdAt),
-		index('sign_in_try_by_email').on(t.emailKey, t.createdAt),
-		index('sign_in_try_by_user').on(t.userId, t.createdAt),
-		index('sign_in_try_by_time').on(t.createdAt),
-		oneOf('sign_in_try_page_check', t.page, TRY_PAGES),
-		oneOf('sign_in_try_outcome_check', t.outcome, TRY_OUTCOMES),
-		check('sign_in_try_address_in_network', sql`${t.address} <<= ${t.network}`),
-		// The record outlives a person taken away, as a log does, until it ages out.
-		foreignKey({
-			name: 'sign_in_try_user_id_fkey',
-			columns: [t.userId],
-			foreignColumns: [user.id]
-		}).onDelete('set null')
 	]
 );

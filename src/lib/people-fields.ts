@@ -88,9 +88,9 @@ export const NEW_PERSON_FIELDS = {
 };
 
 /**
- * The newest link to choose a password that someone has waiting
- * (#lib/server/links): an invitation, or a reset's. Lapsed once its 24 hours
- * pass, or once the address it went to is no longer theirs.
+ * The newest link to make a passkey with that someone has waiting
+ * (#lib/server/links): an invitation, or a new link. Lapsed once its hour
+ * passes, or once the address it went to is no longer theirs.
  */
 export type Waiting = {
 	purpose: 'invite' | 'reset';
@@ -112,12 +112,11 @@ export type Changing = {
 };
 
 /**
- * Where someone stands, as Team labels them: Invited while the link to choose
- * their first password works, Invitation expired once it lapses unused, then
- * Active, and Deactivated when they can no longer sign in at all. Someone
- * handed a temporary password, before invitations were emailed, is Invited
- * until they first sign in with it; someone with no password who was never
- * sent one -- made by hand, or brought in -- is Not invited.
+ * Where someone stands, as Team labels them: Invited while the link to make
+ * their first passkey works, Invitation expired once it lapses unused, then
+ * Active once they have a passkey or have signed in, and Deactivated when they
+ * can no longer sign in at all. Someone with no passkey who was never sent a
+ * link -- added by hand, or brought in -- is Not invited.
  */
 export const STANDING = {
 	active: { label: 'Active', tone: 'good' },
@@ -129,15 +128,13 @@ export const STANDING = {
 
 export function standing(p: {
 	active: boolean;
-	temporary_password: boolean;
 	last_signed_in_at: Date | string | null;
-	has_password: boolean;
+	has_passkey: boolean;
 	waiting: Waiting | null;
 }): keyof typeof STANDING {
 	if (!p.active) return 'deactivated';
 	if (p.last_signed_in_at !== null) return 'active';
-	if (p.temporary_password) return 'invited';
-	if (p.has_password) return 'active';
+	if (p.has_passkey) return 'active';
 	if (!p.waiting) return 'uninvited';
 	return p.waiting.purpose === 'invite' && !p.waiting.lapsed ? 'invited' : 'expired';
 }

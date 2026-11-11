@@ -3,9 +3,8 @@ import { standing, type Waiting } from './people-fields.ts';
 
 const NEW = {
 	active: true,
-	temporary_password: false,
 	last_signed_in_at: null,
-	has_password: false,
+	has_passkey: false,
 	waiting: null
 };
 const link = (purpose: Waiting['purpose'], lapsed: boolean): Waiting => ({
@@ -16,7 +15,7 @@ const link = (purpose: Waiting['purpose'], lapsed: boolean): Waiting => ({
 });
 
 describe('where someone stands on Team', () => {
-	it('is Invited while the link to choose their first password works', () => {
+	it('is Invited while the link to make their first passkey works', () => {
 		expect(standing({ ...NEW, waiting: link('invite', false) })).toBe('invited');
 	});
 
@@ -24,12 +23,12 @@ describe('where someone stands on Team', () => {
 		expect(standing({ ...NEW, waiting: link('invite', true) })).toBe('expired');
 	});
 
-	it('is Not invited with no password and no invitation ever sent', () => {
+	it('is Not invited with no passkey and no invitation ever sent', () => {
 		expect(standing(NEW)).toBe('uninvited');
 	});
 
-	it('is Active once they have a password, or have signed in', () => {
-		expect(standing({ ...NEW, has_password: true })).toBe('active');
+	it('is Active once they have a passkey, or have signed in', () => {
+		expect(standing({ ...NEW, has_passkey: true })).toBe('active');
 		expect(standing({ ...NEW, last_signed_in_at: '2026-11-09T18:00:00Z' })).toBe('active');
 	});
 
@@ -37,10 +36,6 @@ describe('where someone stands on Team', () => {
 		const joined = { ...NEW, last_signed_in_at: '2026-11-09T18:00:00Z' };
 		expect(standing({ ...joined, waiting: link('reset', false) })).toBe('active');
 		expect(standing({ ...joined, waiting: link('reset', true) })).toBe('active');
-	});
-
-	it('is Invited while a password handed over before invitations is unused', () => {
-		expect(standing({ ...NEW, temporary_password: true, has_password: true })).toBe('invited');
 	});
 
 	it('is Deactivated whatever else is true', () => {

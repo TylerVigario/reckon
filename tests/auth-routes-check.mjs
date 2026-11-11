@@ -5,7 +5,8 @@
  *
  *   node tests/auth-routes-check.mjs <base-url>
  *
- * Every closed route answers 404, by GET and by POST. The two that
+ * Every open route is served, and every closed one answers 404, by GET and by
+ * POST. The two that
  * `disabledPaths` cannot name, having a parameter, do only what
  * UNCLOSED_AUTH_PATHS says: the reset route hands nothing to another origin
  * and has no token to hand, and the social callback reports an error without
@@ -47,7 +48,27 @@ const ask = (/** @type {string} */ method, /** @type {string} */ path) =>
 		body: method === 'POST' ? '{}' : undefined
 	});
 
-check(OPEN_AUTH_PATHS.length === 0, 'no route of Better Auth’s is served to the browser yet');
+// Each open route answers: being asked for a sign-in's ceremony gives one.
+const opened = await Promise.all(
+	OPEN_AUTH_PATHS.map(async (p) => [
+		p,
+		(await ask(p.includes('generate') ? 'GET' : 'POST', p)).status
+	])
+);
+const unanswered = opened.filter(([, status]) => status === 404);
+check(
+	unanswered.length === 0,
+	`each open route is served (${opened.length})`,
+	unanswered.map(([p]) => p).join(', ')
+);
+{
+	const r = await ask('GET', '/passkey/generate-authenticate-options');
+	const options = r.ok ? await r.json() : null;
+	check(
+		typeof options?.challenge === 'string' && options.challenge.length >= 22,
+		'a sign-in’s ceremony comes with a challenge of at least 16 bytes'
+	);
+}
 
 const closed = await Promise.all(
 	CLOSED_AUTH_PATHS.flatMap((p) =>

@@ -6,9 +6,13 @@
  * is only found by a request, so this makes the request. It is not a test of
  * what a page says -- only that asking for it does not fail.
  *
- *   node tests/smoke.mjs http://127.0.0.1:5181 email password
+ *   node tests/smoke.mjs http://localhost:5181 email
+ *
+ * Signed in as `email` with the passkey tests/passkeys.mjs gave them.
  */
-const [, , base, email, password] = process.argv;
+import { signIn } from './passkeys.mjs';
+
+const [, , base, email] = process.argv;
 
 // In production a TLS proxy stands in front, and the server takes the scheme
 // from it. Over plain http this says what that proxy would -- the server is
@@ -17,7 +21,7 @@ const [, , base, email, password] = process.argv;
 /** @type {Record<string, string>} */
 const PROXY = base.startsWith('http:') ? { 'x-forwarded-proto': 'http' } : {};
 if (!base) {
-	console.error('usage: smoke.mjs <base-url> [email] [password]');
+	console.error('usage: smoke.mjs <base-url> [email]');
 	process.exit(2);
 }
 
@@ -115,26 +119,15 @@ const ROUTES = [
 let cookie = '';
 
 if (email) {
-	const body = new URLSearchParams({ email, password: password ?? '', next: '/' });
-	const r = await fetch(base + '/login', {
-		method: 'POST',
-		body,
-		redirect: 'manual',
-		headers: { origin: base, ...PROXY }
-	});
-	cookie = (r.headers.getSetCookie?.() ?? []).map((c) => c.split(';')[0]).join('; ');
-	if (!cookie) {
-		console.error(`  could not sign in (${r.status}) -- every route will read as signed out`);
-		process.exit(1);
-	}
+	cookie = (await signIn(base, email)).cookie;
 
 	// A signed-out request gets the login page back with a 200, so every route
 	// would "answer" while proving nothing. Check that a route behind the wall
 	// actually shows what is behind it before trusting any of the rest.
 	const probe = await fetch(base + '/settings', { headers: { cookie } });
 	const behind = await probe.text();
-	if (probe.status !== 200 || /name="password"/.test(behind)) {
-		console.error('  signed in but still being shown the login page -- is the password set?');
+	if (probe.status !== 200 || /Sign in with a passkey/.test(behind)) {
+		console.error('  signed in but still being shown the login page -- was a passkey enrolled?');
 		process.exit(1);
 	}
 }
@@ -152,26 +145,16 @@ let bad = 0;
 }
 
 // A sign-in link whose next names another site, as a browser reads
-// "/\example.com". Signing in through it, and opening it while signed in,
-// both land at home -- not off the site, and not on an error page.
+// "/\example.com". Opened while signed in, it lands at home -- not off the
+// site, and not on an error page. Signing in through it is the page's own
+// script, which holds next to this site the same way (#lib/safe-next).
 if (email) {
 	const crafted = '/\\example.com/';
-	const signingIn = await fetch(base + '/login', {
-		method: 'POST',
-		body: new URLSearchParams({ email, password: password ?? '', next: crafted }),
-		redirect: 'manual',
-		// As a browser's form post asks: otherwise SvelteKit answers in JSON,
-		// with the redirect described inside a 200.
-		headers: { origin: base, accept: 'text/html', ...PROXY }
-	});
 	const signedIn = await fetch(`${base}/login?next=${encodeURIComponent(crafted)}`, {
 		headers: { cookie, ...PROXY },
 		redirect: 'manual'
 	});
-	for (const [when, r] of /** @type {[string, Response][]} */ ([
-		['signing in', signingIn],
-		['already signed in', signedIn]
-	])) {
+	for (const [when, r] of /** @type {[string, Response][]} */ ([['already signed in', signedIn]])) {
 		const to = new URL(r.headers.get('location') ?? '', base).href;
 		const ok = r.status === 303 && to === new URL('/', base).href;
 		if (!ok) bad++;

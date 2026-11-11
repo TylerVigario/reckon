@@ -179,7 +179,7 @@
 						{:else if form?.confirm}
 							<span class="no" role="alert">{form.confirm}</span>
 						{:else if form?.sent || data.confirmation}
-							A link is on its way there. It works once, for 24 hours.
+							A link is on its way there. It works once, for an hour.
 						{:else if changingNow}
 							Not confirmed.
 						{:else}
@@ -189,7 +189,7 @@
 					{#if me.changing}
 						<div class="rec-s">
 							{me.changing.lapsed
-								? `The change to ${me.changing.to} lapsed: its link wasn’t used within 24 hours. ${data.full ? 'Send another from Team.' : `To have another sent, contact ${data.contact}.`}`
+								? `The change to ${me.changing.to} lapsed: its link wasn’t used within the hour. ${data.full ? 'Send another from Team.' : `To have another sent, contact ${data.contact}.`}`
 								: `Changing to ${me.changing.to}. Use the link sent there, by ${clock(me.changing.until, personalZone())} on ${datedAt(me.changing.until, personalZone())}. Until then you sign in with this one.`}
 						</div>
 					{/if}
@@ -202,10 +202,10 @@
 					</form>
 				{/if}
 			</div>
-			<a class="rec link" href={resolve('/profile/password')}>
+			<a class="rec link" href={resolve('/profile/passkeys')}>
 				<div class="rec-m">
-					<div class="rec-t">Password</div>
-					<div class="rec-s">Change the one you sign in with.</div>
+					<div class="rec-t">Passkeys</div>
+					<div class="rec-s">Sign in with your fingerprint, face or screen lock.</div>
 				</div>
 				<span class="arw" aria-hidden="true">›</span>
 			</a>

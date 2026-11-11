@@ -7,8 +7,7 @@
  *   scripts/user.mjs   the command that adds the first person, before anyone can sign in,
  *                      with what it imports: scripts/env.mjs and
  *                      src/lib/server/db/defaults.js, which it reads its settings with
- *                      and connects by, the notices it emails, and the password
- *                      rules it holds a password to
+ *                      and connects by
  *   package.json       and package-lock.json, as they are here
  *   node_modules/      the production dependencies, from `npm ci --omit dev`
  *   .env.example       what the environment may set
@@ -24,10 +23,8 @@
  * dependencies; they are installed here, from the lockfile, so a host needs
  * Node and nothing else -- no registry to reach, no compiler for anything
  * native -- and every way an install can fail fails in CI, where it stops a
- * release, rather than on the host, where it stops a deploy. The one native
- * dependency, @node-rs/argon2, ships prebuilt binaries in its package, so any
- * glibc linux-x64 host takes the one installed here; that is checked below
- * rather than assumed.
+ * release, rather than on the host, where it stops a deploy. Nothing it
+ * depends on is native.
  *
  *   node scripts/make-release.mjs                  # the version in package.json
  *   node scripts/make-release.mjs --version 1.2.3
@@ -89,25 +86,12 @@ run('npm', ['run', 'build'], { stdio: 'inherit' });
 for (const p of RELEASE_FILES) fs.cpSync(p, path.join(staging, p), { recursive: true });
 
 // The production dependencies, exactly as the lockfile resolved them. No
-// lifecycle script runs: nothing here needs one, and @node-rs/argon2 carries
-// its binaries in the published package rather than fetching them.
+// lifecycle script runs: nothing here needs one.
 console.log('  npm ci --omit dev');
 run('npm', ['ci', '--omit', 'dev', '--ignore-scripts', '--no-audit', '--no-fund'], {
 	cwd: staging,
 	stdio: 'inherit'
 });
-
-// An artifact whose password hashing cannot load is not shipped.
-const native = path.join(staging, 'node_modules/@node-rs/argon2-linux-x64-gnu');
-if (!fs.existsSync(native)) {
-	const got = fs
-		.readdirSync(path.join(staging, 'node_modules/@node-rs'))
-		.filter((d) => d.startsWith('argon2-'));
-	die(
-		`the linux-x64-gnu argon2 binary is missing — the artifact could not hash a password.\n` +
-			`       node_modules/@node-rs holds: ${got.join(', ') || '(nothing)'}`
-	);
-}
 
 // What changed, inside the artifact, so it is known without a path back to the
 // release notes.

@@ -2,7 +2,7 @@
 /**
  * Proves a person's time zone comes from their browser, and that travel asks.
  *
- *   node tests/zone-check.mjs <base-url> <email> <password>
+ *   node tests/zone-check.mjs <base-url> <email>
  *
  * A person's zone is on their user record (#lib/server/calendar). The first
  * time they sign in it is taken from the browser without asking. After that, a
@@ -13,9 +13,10 @@
  * which is all the app asks. Reads the stored zone back through HTTP, from
  * their profile. Puts the person's zone back as it was found.
  */
-const [, , base, email, password] = process.argv;
-if (!base || !email || !password) {
-	console.error('usage: node tests/zone-check.mjs <base-url> <email> <password>');
+import { signIn } from './passkeys.mjs';
+const [, , base, email] = process.argv;
+if (!base || !email) {
+	console.error('usage: node tests/zone-check.mjs <base-url> <email>');
 	process.exit(2);
 }
 
@@ -29,13 +30,7 @@ const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
 };
 
 // HTTP, for setting things up and reading them back.
-const signedIn = await fetch(base + '/login', {
-	method: 'POST',
-	body: new URLSearchParams({ email, password, next: '/' }),
-	redirect: 'manual',
-	headers: { origin: base, accept: 'text/html', ...PROXY }
-});
-const cookie = (signedIn.headers.getSetCookie?.() ?? []).map((c) => c.split(';')[0]).join('; ');
+const { cookie } = await signIn(base, email);
 const team = await (await fetch(base + '/team', { headers: { cookie } })).text();
 const mine = team.split('class="box-row').find((b) => b.includes(email));
 const me = mine && /team\/([0-9a-f-]{36})"/.exec(mine)?.[1];
@@ -126,14 +121,19 @@ try {
 	// Signed in in this browser, as a person whose zone has never been set.
 	await setOwn('');
 	await zone('America/Chicago');
-	await go('/login');
-	if (await evaluate(`!!document.querySelector('input[name=password]')`)) {
-		await evaluate(`(() => {
-			document.querySelector('input[name=email]').value = ${JSON.stringify(email)};
-			document.querySelector('input[name=password]').value = ${JSON.stringify(password)};
-			document.querySelector('form').requestSubmit();
-		})()`);
-		await settle(2500);
+	// Signed in with the passkey tests/passkeys.mjs gave them, its session handed to the browser.
+	{
+		const { name, value } = await signIn(base, email);
+		await send('Network.setCookie', {
+			name,
+			value,
+			url: base,
+			httpOnly: true,
+			sameSite: 'Lax',
+			// A __Secure- cookie must say it is Secure, as Better Auth sets it; Chrome
+			// keeps one for localhost over http, a secure context.
+			secure: name.startsWith('__Secure-')
+		});
 	}
 	await go('/');
 	await settle(1000);

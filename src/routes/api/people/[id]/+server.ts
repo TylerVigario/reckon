@@ -1,6 +1,6 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { asUser, type Tx } from '#lib/server/db/index.ts';
-import { account, session, user } from '#lib/server/db/schema/index.ts';
+import { passkey, user } from '#lib/server/db/schema/index.ts';
 import { tell } from '#lib/server/email.ts';
 import { cannotSend, endChange, issue, unsentBecause } from '#lib/server/links.ts';
 import { emailChange, emailChanging, invitation } from '#lib/server/notices.js';
@@ -105,7 +105,7 @@ const TAKEN = 'Someone else signs in with that email.';
 
 /**
  * A NEW ADDRESS for someone. Someone who can sign in -- active, and signed in
- * before or holding a password of their own -- keeps the one they have until
+ * before or holding a passkey -- keeps the one they have until
  * they use a link sent to the new one, which then becomes theirs, confirmed
  * (SP 800-63B-4 §4.2.1.2; OWASP's Authentication Cheat Sheet: "Store the
  * proposed new email address as a pending change"). The address they have now
@@ -128,10 +128,9 @@ async function changeEmail(
 					email: user.email,
 					active: user.active,
 					joined: user.lastSignedInAt,
-					temporary: user.temporaryPassword,
 					// "user" outright: Drizzle leaves a column unqualified in a query of one
-					// table, and inside this it would be read as account's own.
-					held: sql<boolean>`exists (select 1 from ${account} where ${account.userId} = "user".id and ${account.providerId} = 'credential')`
+					// table, and inside this it would be read as passkey's own.
+					held: sql<boolean>`exists (select 1 from ${passkey} where ${passkey.userId} = "user".id)`
 				})
 				.from(user)
 				.where(eq(user.id, id))
@@ -139,8 +138,7 @@ async function changeEmail(
 			if (!person) return problem('notFound', 404, 'No person with that id.');
 			if (person.email === to) return Response.json({ saved: { email: to } });
 
-			const canSignIn =
-				person.active && (person.joined !== null || (person.held && !person.temporary));
+			const canSignIn = person.active && (person.joined !== null || person.held);
 			if (!canSignIn) {
 				await tx.update(user).set({ email: to, emailVerified: false }).where(eq(user.id, id));
 				await endChange(tx, id);
@@ -185,23 +183,13 @@ async function inviteAgain(tx: Tx, userId: string, me: { id: string; name: strin
 		.select({
 			active: user.active,
 			joined: user.lastSignedInAt,
-			temporary: user.temporaryPassword,
 			// "user" outright: Drizzle leaves a column unqualified in a query of one
-			// table, and inside this it would be read as account's own.
-			held: sql<boolean>`exists (select 1 from ${account} where ${account.userId} = "user".id and ${account.providerId} = 'credential')`
+			// table, and inside this it would be read as passkey's own.
+			held: sql<boolean>`exists (select 1 from ${passkey} where ${passkey.userId} = "user".id)`
 		})
 		.from(user)
 		.where(eq(user.id, userId));
-	if (!person?.active || person.joined || (person.held && !person.temporary)) return;
-	// A temporary password handed over before invitations stops working, as
-	// sending the invitation again on Team stops it (../invitation).
-	if (person.held) {
-		await tx
-			.delete(account)
-			.where(and(eq(account.userId, userId), eq(account.providerId, 'credential')));
-		await tx.update(user).set({ temporaryPassword: false }).where(eq(user.id, userId));
-		await tx.delete(session).where(eq(session.userId, userId));
-	}
+	if (!person?.active || person.joined || person.held) return;
 	const sent = await issue(tx, userId, 'invite', me.id);
 	await tell(
 		tx,

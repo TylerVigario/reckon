@@ -14,7 +14,7 @@ import { problem } from '#lib/server/problem.ts';
  * the new one (../+server.ts changeEmail, #lib/server/links).
  *
  * POST sends its link again, to the same new address: a new link, good once
- * for 24 hours, and the one before it stops working. The address they have now
+ * for an hour, and the one before it stops working. The address they have now
  * was told when the change was asked for, and is not told again.
  */
 export const POST: RequestHandler = async ({ params, locals }) => {

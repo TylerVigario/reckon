@@ -14,10 +14,10 @@ import { readFields } from '#lib/json.ts';
 /**
  * Adds a person -- their name, the email they sign in with, which no one else
  * may have, the role they are paid as or none, and what they reach -- and
- * invites them: an email with a link to choose their own password, good once
- * for 24 hours (#lib/server/links). Whoever adds them never sees a password or
- * the link, so cannot choose one for them (ASVS 5.0 6.4.6). Nobody is added
- * while reckon cannot send it.
+ * invites them: an email with a link to make their first passkey, good once
+ * for an hour (#lib/server/links). Whoever adds them never sees the link, so
+ * cannot make one for them, as ASVS 5.0 6.4.6 has it for a password. Nobody is
+ * added while reckon cannot send it.
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const fields = await readFields(request);

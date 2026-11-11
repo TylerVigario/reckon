@@ -9,7 +9,7 @@
 	import type { RouteId } from '$app/types';
 	import TabIcon, { type Tab } from '#lib/TabIcon.svelte';
 	import { hoursBadge, zoneName } from '#lib/format.ts';
-	import { CLIENT_PAGE, FORGOT_PAGE, LINK_PAGE } from '#lib/client-link.ts';
+	import { CLIENT_PAGE, LINK_PAGE } from '#lib/client-link.ts';
 	import { opens } from '#lib/access.ts';
 	// Primer's shapes, for the screens drawn to it so far (#lib/primer.css).
 	import '#lib/primer.css';
@@ -205,12 +205,11 @@
 	<meta name="theme-color" content={accent || '#1d6f9c'} />
 </svelte:head>
 
-{#if !data.user || CLIENT_PAGE.test(page.url.pathname) || LINK_PAGE.test(page.url.pathname) || FORGOT_PAGE.test(page.url.pathname)}
+{#if !data.user || CLIENT_PAGE.test(page.url.pathname) || LINK_PAGE.test(page.url.pathname)}
 	<!-- Signed out, there is nothing to navigate to. The shell would be a header
 	     and a row of links that all bounce back to here. A client's page is the
 	     client's, whoever opens it, so it is drawn without the shell too, as is
-	     the page an emailed link opens, which is for whoever it was sent to, and
-	     the page asking for one when a password is forgotten. -->
+	     the page an emailed link opens, which is for whoever it was sent to. -->
 	{@render children()}
 {:else}
 	<div class="app">

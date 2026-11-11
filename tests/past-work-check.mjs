@@ -2,7 +2,7 @@
 /**
  * Proves the past-work form takes a start and one other, and fills in the third.
  *
- *   node tests/past-work-check.mjs <base-url> <email> <password>
+ *   node tests/past-work-check.mjs <base-url> <email>
  *
  * Past work is a start, a length and an end (#lib/work-times): a start and a
  * length give the end, a start and an end give the length, and after that a
@@ -16,9 +16,10 @@
  * lengths are the same in whatever zone the person is in. Reads the saved
  * entry back through HTTP, from All entries for that month.
  */
-const [, , base, email, password] = process.argv;
-if (!base || !email || !password) {
-	console.error('usage: node tests/past-work-check.mjs <base-url> <email> <password>');
+import { signIn } from './passkeys.mjs';
+const [, , base, email] = process.argv;
+if (!base || !email) {
+	console.error('usage: node tests/past-work-check.mjs <base-url> <email>');
 	process.exit(2);
 }
 
@@ -61,7 +62,7 @@ const evaluate = async (/** @type {string} */ expression) =>
 /**
  * Runs `fn` in the page with `args` handed to it as values. The function's
  * source is this file's own; nothing is written into it, so no value -- a
- * password, what is typed into a field -- can become code the page runs.
+ * name, what is typed into a field -- can become code the page runs.
  */
 const run = async (/** @type {Function} */ fn, /** @type {unknown[]} */ ...args) => {
 	const page = await send('Runtime.evaluate', { expression: 'globalThis' });
@@ -133,20 +134,19 @@ const shows = async (
 	check(pass, `${what}${pass ? '' : ` (${JSON.stringify(got)})`}`);
 };
 
-await go('/login');
-if (await evaluate(`!!document.querySelector('input[name=password]')`)) {
-	await run(
-		(/** @type {string} */ who, /** @type {string} */ secret) => {
-			const field = (/** @type {string} */ name) =>
-				/** @type {HTMLInputElement} */ (document.querySelector(`input[name=${name}]`));
-			field('email').value = who;
-			field('password').value = secret;
-			document.querySelector('form')?.requestSubmit();
-		},
-		email,
-		password
-	);
-	await settle(2500);
+// Signed in with the passkey tests/passkeys.mjs gave them, its session handed to the browser.
+{
+	const { name, value } = await signIn(base, email);
+	await send('Network.setCookie', {
+		name,
+		value,
+		url: base,
+		httpOnly: true,
+		sameSite: 'Lax',
+		// A __Secure- cookie must say it is Secure, as Better Auth sets it; Chrome
+		// keeps one for localhost over http, a secure context.
+		secure: name.startsWith('__Secure-')
+	});
 }
 await go('/timesheet/manual');
 

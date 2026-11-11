@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Proves reckon sends email (#lib/server/email): a person added on Team is
- * invited by email, and told whenever their password is changed -- chosen with
- * the link, changed on Your profile, set at the command line, reset on Team --
- * and the email goes through the relay as the business, marked as a machine's,
+ * invited by email, and told whenever their passkeys change -- one made with
+ * the link, one removed on Your profile, a new link sent on Team -- and the
+ * email goes through the relay as the business, marked as a machine's,
  * as plain text and as HTML, the text first, a logo carried inside it. A relay
  * that puts a
  * message off has it tried again; one that refuses it for good has it given up
@@ -11,7 +11,7 @@
  * older than 90 days is gone. What a message said is kept only until it is sent.
  * A test from Settings reaches whoever asked for it.
  *
- *   node tests/email-check.mjs <base-url> <full-email> <full-password> [relay-read-back-url]
+ *   node tests/email-check.mjs <base-url> <full-email> [relay-read-back-url]
  *
  * The server is to send to the relay stand-in (tests/smtp-stand-in.mjs), read
  * back at http://127.0.0.1:2526 unless said. Needs the database the server
@@ -21,13 +21,12 @@
 import { database } from '../scripts/env.mjs';
 import { spawnSync } from 'node:child_process';
 import pg from 'pg';
-import { arrives as arrivesAt, linkAction, linkIn } from './relay.mjs';
+import { arrives as arrivesAt, linkIn } from './relay.mjs';
+import { makePasskey, signIn } from './passkeys.mjs';
 
-const [, , base, fullEmail, fullPassword, relay = 'http://127.0.0.1:2526'] = process.argv;
-if (!base || !fullEmail || !fullPassword) {
-	console.error(
-		'usage: node tests/email-check.mjs <base-url> <full-email> <full-password> [relay-read-back-url]'
-	);
+const [, , base, fullEmail, relay = 'http://127.0.0.1:2526'] = process.argv;
+if (!base || !fullEmail) {
+	console.error('usage: node tests/email-check.mjs <base-url> <full-email> [relay-read-back-url]');
 	process.exit(2);
 }
 
@@ -43,20 +42,6 @@ const check = (/** @type {boolean} */ ok, /** @type {string} */ what, detail = '
 	console.log(`  ${ok ? '✓' : '✗'} ${what}`);
 };
 
-const sessionOf = (/** @type {Response} */ r) =>
-	(r.headers.getSetCookie?.() ?? [])
-		.map((c) => c.split(';')[0])
-		.filter((c) => c.includes('session_token='))
-		.join('; ');
-const signIn = async (/** @type {string} */ email, /** @type {string} */ password) =>
-	sessionOf(
-		await fetch(`${base}/login`, {
-			method: 'POST',
-			body: new URLSearchParams({ email, password, next: '/' }),
-			redirect: 'manual',
-			headers: { origin: base, ...PROXY }
-		})
-	);
 const as =
 	(/** @type {string} */ cookie) =>
 	(/** @type {string} */ path, /** @type {RequestInit} */ init = {}) =>
@@ -87,12 +72,7 @@ const rowsAbout = async (/** @type {string} */ userId) =>
 		)
 	).rows;
 
-const fullCookie = await signIn(fullEmail, fullPassword);
-if (!fullCookie) {
-	console.error(`  could not sign in as ${fullEmail}`);
-	process.exit(1);
-}
-const asFull = as(fullCookie);
+const asFull = as((await signIn(base, fullEmail)).cookie);
 const [{ name: fullName }] = (
 	await db.query('select name from "user" where email = $1', [fullEmail.toLowerCase()])
 ).rows;
@@ -115,17 +95,15 @@ try {
 	const made = added.status === 201 ? await added.json() : null;
 	id = made?.id ?? null;
 	if (!id) throw new Error(`nobody was added (${added.status})`);
-	const one = await arrives(email, ['choose your password', `${fullName} added you`]);
+	const one = await arrives(email, ['make your passkey', `${fullName} added you`]);
 	check(!!one, 'adding a person invites them, by email');
 
 	// ------------------------------------------------- told of changes ----
-	const chosen = 'chosen-with-the-link';
-	const code = linkIn(one)?.code ?? '';
-	await linkAction(base, 'choose', { code, password: chosen, confirm: chosen }, PROXY);
-	const asThem = as(await signIn(email, chosen));
+	const joined = await makePasskey(base, linkIn(one)?.code ?? '');
+	const asThem = as(joined?.cookie ?? '');
 	check(
-		!!(await arrives(email, ['your password was changed', 'with a link reckon emailed you'])),
-		'choosing one with the link tells them so'
+		!!joined && !!(await arrives(email, ['a passkey was added'])),
+		'making a passkey with the link tells them so'
 	);
 
 	if (one) {
@@ -159,7 +137,7 @@ try {
 		check(
 			one.text.includes('<title>') &&
 				one.text.includes('role="presentation"') &&
-				one.text.includes('>Choose your password</a>'),
+				one.text.includes('>Make your passkey</a>'),
 			'its HTML is laid out, with the link as a button'
 		);
 		check(
@@ -175,35 +153,42 @@ try {
 		JSON.stringify({ sent: !!row?.sent_at, body: row?.body !== null, html: row?.html !== null })
 	);
 
-	const changed = 'changed-on-their-profile';
-	await asThem('/profile/password', form({ current: chosen, password: changed, confirm: changed }));
-	check(
-		!!(await arrives(email, ['your password was changed', 'on Your profile'])),
-		'changing it on Your profile tells them'
-	);
-
-	const shell = 'set-at-the-command-line';
-	const ran = spawnSync('node', ['scripts/user.mjs', 'password', email], {
-		input: `${shell}\n${shell}\n`,
-		encoding: 'utf8'
+	const [{ id: theirs }] = (await db.query('select id from passkey where user_id = $1', [id])).rows;
+	await asThem('/profile/passkeys?/remove', {
+		...form({ id: theirs }),
+		headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-sveltekit-action': 'true' }
 	});
 	check(
-		ran.status === 0 && !!(await arrives(email, ['at the command line'])),
-		'setting it at the command line tells them, sent by the server',
+		!!(await arrives(email, ['a passkey was removed'])),
+		'removing it on Your profile tells them'
+	);
+
+	const ran = spawnSync('node', ['scripts/user.mjs', 'invite', email], { encoding: 'utf8' });
+	check(
+		ran.status === 0 && /\/link#[A-Za-z0-9_-]{43}/.test(ran.stdout),
+		'the command line gives a new link, printed to hand over',
 		ran.stderr.trim()
 	);
 
-	await asFull(`/api/people/${id}/password`, { method: 'POST' });
+	await asFull(`/api/people/${id}/link`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ lost: false })
+	});
 	check(
-		!!(await arrives(email, ['your password was reset', `${fullName} reset the password`])),
-		'a reset on Team tells them, naming who reset it'
+		!!(await arrives(email, ['a link to make a new passkey', `${fullName} sent you this link`])),
+		'a new link from Team is emailed, naming who sent it'
 	);
 
 	// ----------------------------------------------- a relay in trouble ----
 	const later = `later-${tag}@kestrel.example`;
 	addresses.push(later);
 	await db.query('update "user" set email = $2 where id = $1', [id, later]);
-	await asFull(`/api/people/${id}/password`, { method: 'POST' });
+	await asFull(`/api/people/${id}/link`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ lost: false })
+	});
 	await new Promise((r) => setTimeout(r, 1500));
 	const [putOff] = await rowsAbout(id);
 	check(
@@ -221,12 +206,19 @@ try {
 		[id]
 	);
 	await nudge();
-	check(!!(await arrives(later, ['your password was reset'])), 'and goes when it is tried again');
+	check(
+		!!(await arrives(later, ['a link to make a new passkey'])),
+		'and goes when it is tried again'
+	);
 
 	const never = `never-${tag}@kestrel.example`;
 	addresses.push(never);
 	await db.query('update "user" set email = $2 where id = $1', [id, never]);
-	await asFull(`/api/people/${id}/password`, { method: 'POST' });
+	await asFull(`/api/people/${id}/link`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ lost: false })
+	});
 	await new Promise((r) => setTimeout(r, 1500));
 	const [refused] = await rowsAbout(id);
 	check(
@@ -243,12 +235,12 @@ try {
 	// ------------------------------------------------ time runs out ----
 	await db.query(
 		`insert into email_message (kind, user_id, to_address, subject, body, send_by, next_try_at)
-		 values ('password_changed', $1, $2, 'Too late', 'Hello', now() - interval '1 minute', now() + interval '1 hour')`,
+		 values ('passkey_added', $1, $2, 'Too late', 'Hello', now() - interval '1 minute', now() + interval '1 hour')`,
 		[id, email]
 	);
 	await db.query(
 		`insert into email_message (kind, user_id, to_address, subject, send_by, sent_at, created_at)
-		 values ('password_changed', $1, $2, 'Long ago', now() - interval '91 days', now() - interval '91 days', now() - interval '91 days')`,
+		 values ('passkey_added', $1, $2, 'Long ago', now() - interval '91 days', now() - interval '91 days', now() - interval '91 days')`,
 		[id, email]
 	);
 	await nudge();

@@ -302,6 +302,20 @@
       "when": 1794366580086,
       "tag": "0042_better_auths_routes_are_counted",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1794370233018,
+      "tag": "0043_passwords_go",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1794370234037,
+      "tag": "0044_passkeys_sign_people_in",
+      "breakpoints": true
     }
   ]
 }

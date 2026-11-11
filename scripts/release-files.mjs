@@ -12,16 +12,13 @@ export const RELEASE_FILES = [
 	// What user.mjs reads its settings with, and connects by.
 	'scripts/env.mjs',
 	'src/lib/server/db/defaults.js',
-	// And what it tells a person whose password it sets, laid out as every
+	// And what it tells someone whose passkeys it ends, laid out as every
 	// email is, with the business's logo measured.
 	'src/lib/server/notices.js',
 	'src/lib/server/email-layout.js',
 	'src/lib/server/image-size.js',
 	// And whom it tells them to contact.
 	'src/lib/server/contact.js',
-	// And the rules it holds a password to, with the list of common ones.
-	'src/lib/server/password-rules.js',
-	'src/lib/server/common-passwords.js',
 	'package.json',
 	'package-lock.json',
 	'.env.example',

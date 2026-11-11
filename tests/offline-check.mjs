@@ -2,11 +2,11 @@
 /**
  * Proves the installed app works without a signal.
  *
- *   node tests/offline-check.mjs <base-url> <email> <password> online
+ *   node tests/offline-check.mjs <base-url> <email> online
  *   (stop the server)
- *   node tests/offline-check.mjs <base-url> <email> <password> offline
+ *   node tests/offline-check.mjs <base-url> <email> offline
  *   (start it again)
- *   node tests/offline-check.mjs <base-url> <email> <password> back
+ *   node tests/offline-check.mjs <base-url> <email> back
  *
  * WHY THREE RUNS. Offline is the server being out of reach, so the server is
  * actually stopped between them, rather than the page being told it is offline:
@@ -49,11 +49,10 @@
  *            recorded, its legs worked out on arrival, and Sam's has the change.
  *            Then signs out, which must empty the cache the worker kept.
  */
-const [, , base = 'http://127.0.0.1:5181', email, password, phase] = process.argv;
+import { signIn } from './passkeys.mjs';
+const [, , base = 'http://127.0.0.1:5181', email, phase] = process.argv;
 if (!['online', 'offline', 'back'].includes(phase ?? '')) {
-	console.error(
-		'usage: node tests/offline-check.mjs <base-url> <email> <password> online|offline|back'
-	);
+	console.error('usage: node tests/offline-check.mjs <base-url> <email> online|offline|back');
 	process.exit(2);
 }
 
@@ -270,13 +269,20 @@ const banner = () =>
 const text = () => evaluate(`document.body.textContent.replace(/\\s+/g, ' ')`);
 
 if (phase === 'online') {
-	await go('/login');
-	await evaluate(`(() => {
-		document.querySelector('input[name=email]').value = ${JSON.stringify(email)};
-		document.querySelector('input[name=password]').value = ${JSON.stringify(password)};
-		document.querySelector('form').requestSubmit();
-	})()`);
-	await settle(2400);
+	// Signed in with the passkey tests/passkeys.mjs gave them, its session handed to the browser.
+	{
+		const { name, value } = await signIn(base, email);
+		await send('Network.setCookie', {
+			name,
+			value,
+			url: base,
+			httpOnly: true,
+			sameSite: 'Lax',
+			// A __Secure- cookie must say it is Secure, as Better Auth sets it; Chrome
+			// keeps one for localhost over http, a secure context.
+			secure: name.startsWith('__Secure-')
+		});
+	}
 	await go('/');
 
 	// The worker installs on the first load, then fetches the offline screens

@@ -27,14 +27,20 @@
 	 * ACCESS AND ROLE CHANGE IN A DIALOG that lists each choice and what it
 	 * means, as GitHub's "Change role" does: they change what someone can see
 	 * and how they are paid, and a mis-tap there is not noticed the way a
-	 * misspelt name is. Reset password and Deactivate are in the menu, and ask
-	 * first.
+	 * misspelt name is. Send a new link, End their passkeys and Deactivate are
+	 * in the menu, and ask first.
 	 *
-	 * SIGNING IN is by a link emailed to them (#lib/server/links): an
-	 * invitation, until they choose their first password, then a reset's. The
-	 * line under their name says when the one waiting went and until when it
-	 * works, or that it lapsed, with Resend invitation beside one that did.
-	 * Nobody here sees a password, or the link (ASVS 5.0 6.4.6).
+	 * SIGNING IN is with a passkey, made with a link emailed to them
+	 * (#lib/server/links): an invitation, until they make their first, then a
+	 * new link, for someone who can't sign in, which adds one. Sending it asks
+	 * whether a phone or computer of theirs is lost or stolen, with no answer
+	 * chosen: if one is, every passkey they have ends, and they are signed out
+	 * everywhere, as it goes; if not, theirs keep working, as for a phone left
+	 * at home. End their passkeys does the same with no link, for someone who
+	 * reports one lost (api/people/[id]/passkeys). The line under their name
+	 * says when the link waiting went and until when it works, or that it
+	 * lapsed, with Resend invitation beside one that did. Nobody here sees the
+	 * link (ASVS 5.0 6.4.6).
 	 *
 	 * A NEW ADDRESS for someone who has signed in waits: they keep the one they
 	 * have until they use the link sent to the new one, and the old one is told
@@ -57,7 +63,10 @@
 	let saved = $state<string | null>(null);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 
-	let asking = $state<'access' | 'role' | 'reset' | 'deactivate' | null>(null);
+	type Asking = 'access' | 'role' | 'reset' | 'end' | 'deactivate';
+	let asking = $state<Asking | null>(null);
+	// Whether a phone or computer of theirs is lost or stolen: unanswered until asked.
+	let lost = $state<boolean | null>(null);
 	const at = (t: string | Date) => `${clock(t, personalZone())} on ${datedAt(t, personalZone())}`;
 	let pickAccess = $state<Access>('field');
 	let pickRole = $state('');
@@ -67,7 +76,7 @@
 	type Said = { title: string; detail: string; tone: 'good' | 'crit' };
 	const invitedSaid = (to: string, until: string): Said => ({
 		title: `Invitation sent to ${to}`,
-		detail: `${data.person.name.split(/\s+/)[0]} chooses their password with the link in it. It works once, until ${at(until)}. If it doesn’t reach them, send it again from the menu.`,
+		detail: `${data.person.name.split(/\s+/)[0]} makes their passkey with the link in it. It works once, until ${at(until)}. If it doesn’t reach them, send it again from the menu.`,
 		tone: 'good'
 	});
 	// Someone just added arrives with word that their invitation went (team/new).
@@ -201,9 +210,10 @@
 		node.select();
 	};
 
-	function ask(what: 'access' | 'role' | 'reset' | 'deactivate') {
+	function ask(what: Asking) {
 		pickAccess = p.access;
 		pickRole = p.role_id ?? '';
+		lost = null;
 		askError = '';
 		asking = what;
 	}
@@ -236,10 +246,22 @@
 					};
 	}
 
-	/** Sends a link, a reset's or an invitation's: what went, or why not. */
-	async function sendLink(what: 'password' | 'invitation') {
+	/** Sends a link, a new one to make a passkey with or an invitation: what went, or why not. */
+	async function sendLink(what: 'link' | 'invitation') {
+		// With no passkey, there is none to end.
+		const asked = what === 'link' && p.has_passkey;
+		if (asked && lost === null)
+			return void (askError = 'Say whether a phone or computer of theirs is lost or stolen.');
 		working = true;
-		const r = await fetch(`/api/people/${p.id}/${what}`, { method: 'POST' }).catch(() => null);
+		const r = await fetch(`/api/people/${p.id}/${what}`, {
+			method: 'POST',
+			...(what === 'link'
+				? {
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ lost: asked && lost === true })
+					}
+				: {})
+		}).catch(() => null);
 		working = false;
 		if (!r?.ok) {
 			const problem = r ? await readProblem(r) : null;
@@ -248,26 +270,57 @@
 				: 'Nothing was sent — no connection.';
 			if (asking) return void (askError = why);
 			said = {
-				title: what === 'password' ? 'Not reset' : 'Invitation not sent',
+				title: what === 'link' ? 'New link not sent' : 'Invitation not sent',
 				detail: why,
 				tone: 'crit'
 			};
 			return;
 		}
-		const { sent_to, until } = (await r.json()) as { sent_to: string; until: string };
+		const { sent_to, until, ended } = (await r.json()) as {
+			sent_to: string;
+			until: string;
+			ended?: boolean;
+		};
 		asking = null;
 		said =
 			what === 'invitation'
 				? invitedSaid(sent_to, until)
 				: {
-						title: `Reset link sent to ${sent_to}`,
-						detail: `${first} is signed out everywhere, and their old password no longer works. The link lets them choose a new one, once, until ${at(until)}.`,
+						title: `New link sent to ${sent_to}`,
+						detail: `It lets ${first} make a new passkey, once, until ${at(until)}. ${
+							ended
+								? 'The passkeys they had are ended, and they’re signed out everywhere.'
+								: p.has_passkey
+									? 'The passkeys they have still work.'
+									: ''
+						}`.trim(),
 						tone: 'good'
 					};
 		await refreshAll();
 	}
-	const reset = () => sendLink('password');
+	const reset = () => sendLink('link');
 	const resend = () => sendLink('invitation');
+
+	/** Every passkey they have ended, and they signed out everywhere: what happened, or why not. */
+	async function endTheirs() {
+		working = true;
+		const r = await fetch(`/api/people/${p.id}/passkeys`, { method: 'DELETE' }).catch(() => null);
+		working = false;
+		if (!r?.ok) {
+			const problem = r ? await readProblem(r) : null;
+			askError = problem
+				? (problem.errors?.passkeys ?? problem.detail ?? 'Nothing was ended.')
+				: 'Nothing was ended — no connection.';
+			return;
+		}
+		asking = null;
+		said = {
+			title: `${first}’s passkeys are ended`,
+			detail: `They’re signed out everywhere, and we emailed ${p.email} to say so. To let them sign in again, send them a new link.`,
+			tone: 'good'
+		};
+		await refreshAll();
+	}
 
 	const where = $derived(standing(p));
 	const unsent = $derived(
@@ -288,11 +341,25 @@
 								onselect: (): void => void resend()
 							}
 						: {
-								label: 'Reset password',
-								inactive: isMe ? 'You change your own on Your profile' : unsent,
+								label: 'Send a new link',
+								inactive: isMe ? 'Your own passkeys are on Your profile' : unsent,
 								onselect: (): void => ask('reset')
 							},
 					'divider' as const,
+					...(where === 'active'
+						? [
+								{
+									label: 'End their passkeys',
+									danger: true,
+									inactive: isMe
+										? 'Your own passkeys are on Your profile'
+										: !p.has_passkey
+											? 'They have no passkey'
+											: undefined,
+									onselect: (): void => ask('end')
+								}
+							]
+						: []),
 					{
 						label: 'Deactivate',
 						danger: true,
@@ -338,7 +405,7 @@
 		</span>
 		<span class="sub">
 			{c.lapsed
-				? `Link sent at ${at(c.sent_at)}, and not used within 24 hours. ${isMe ? 'You still sign' : `${first} still signs`} in with ${p.email}.`
+				? `Link sent at ${at(c.sent_at)}, and not used within the hour. ${isMe ? 'You still sign' : `${first} still signs`} in with ${p.email}.`
 				: `Link sent at ${at(c.sent_at)} · works until ${at(c.until)}. ${isMe ? 'You sign' : `${first} signs`} in with ${p.email} until ${isMe ? 'you' : 'they'} use it.`}
 		</span>
 		<span class="acts">
@@ -417,17 +484,15 @@
 			<span class="muted"
 				>Invitation sent at {at(p.waiting.sent_at)} · works until {at(p.waiting.until)}</span
 			>
-		{:else if where === 'invited'}
-			<span class="muted">Handed a temporary password, and yet to sign in with it</span>
 		{:else if where === 'uninvited'}
-			<span class="muted">Has no password, and has never been sent an invitation</span>
+			<span class="muted">Has no passkey, and has never been sent an invitation</span>
 			<button type="button" class="btn sm" onclick={resend} disabled={working || !!unsent}
 				>Send invitation</button
 			>
 		{:else if where === 'expired'}
 			<span class="muted">
 				{p.waiting
-					? `Sent at ${at(p.waiting.sent_at)}, and not used within 24 hours`
+					? `Sent at ${at(p.waiting.sent_at)}, and not used within the hour`
 					: 'No invitation waiting'}
 			</span>
 			<button type="button" class="btn sm" onclick={resend} disabled={working || !!unsent}
@@ -439,19 +504,23 @@
 					? `Last signed in at ${at(p.last_signed_in_at)}`
 					: 'No sign-in recorded'}
 			</span>
-			{#if p.active && p.temporary_password}
-				<span class="muted">Yet to choose their own password</span>
-			{:else if p.active && p.waiting?.purpose === 'reset' && !p.waiting.lapsed}
+			{#if p.active && p.waiting?.purpose === 'reset' && !p.waiting.lapsed}
 				<span class="muted"
-					>Reset link sent at {at(p.waiting.sent_at)} · works until {at(p.waiting.until)}</span
+					>New link sent at {at(p.waiting.sent_at)} · works until {at(p.waiting.until)}</span
 				>
-			{:else if p.active && !p.has_password}
-				<span class="muted">Has no password: their reset link lapsed unused</span>
+			{:else if p.active && !p.has_passkey}
+				{@const lapsed = p.waiting?.purpose === 'reset'}
+				<span class="muted"
+					>{lapsed
+						? 'Has no passkey: their new link lapsed unused'
+						: 'Has no passkey, so can’t sign in'}</span
+				>
 				<button
 					type="button"
 					class="btn sm"
 					onclick={() => ask('reset')}
-					disabled={working || !!unsent || isMe}>Send another</button
+					disabled={working || !!unsent || isMe}
+					>{lapsed ? 'Send another' : 'Send a new link'}</button
 				>
 			{/if}
 		{/if}
@@ -597,17 +666,76 @@
 
 	<Dialog
 		open={asking === 'reset'}
-		title="Reset {first}’s password?"
-		go="Reset password"
-		going="Resetting…"
+		title="Send {first} a new link?"
+		go={lost ? 'End passkeys and send' : 'Send a new link'}
+		going="Sending…"
+		tone={lost ? 'danger' : 'plain'}
 		{working}
 		ongo={reset}
 		onclose={() => (asking = null)}
 	>
 		<p>
-			{first} is signed out everywhere, and their password stops working. We email {p.email} a link to
-			choose a new one, which works once, for 24 hours.
+			We email {p.email} a link to make a new passkey, which works once, for an hour.
 		</p>
+		{#if p.has_passkey}
+			<fieldset class="fc">
+				<legend class="fc-l"
+					>Is a phone or computer with one of their passkeys lost or stolen?</legend
+				>
+				<label class="rad">
+					<input
+						type="radio"
+						name="lost"
+						value="yes"
+						checked={lost === true}
+						onchange={() => ((lost = true), (askError = ''))}
+					/>
+					<span>
+						<span class="rad-t">Yes, end their passkeys</span>
+						<span class="rad-c"
+							>Every passkey {first} has stops working, and they’re signed out everywhere, as the link
+							goes.</span
+						>
+					</span>
+				</label>
+				<label class="rad">
+					<input
+						type="radio"
+						name="lost"
+						value="no"
+						checked={lost === false}
+						onchange={() => ((lost = false), (askError = ''))}
+					/>
+					<span>
+						<span class="rad-t">No, keep their passkeys</span>
+						<span class="rad-c"
+							>They just can’t reach theirs: one left at home still signs them in once they’re back
+							to it.</span
+						>
+					</span>
+				</label>
+			</fieldset>
+		{/if}
+		{#if askError}
+			<p class="fc-e"><Octicon name="alert" />{askError}</p>
+		{/if}
+	</Dialog>
+
+	<Dialog
+		open={asking === 'end'}
+		title="End {first}’s passkeys?"
+		go="End passkeys"
+		going="Ending…"
+		tone="danger"
+		{working}
+		ongo={endTheirs}
+		onclose={() => (asking = null)}
+	>
+		<p>
+			Every passkey {first} has stops working now, and they’re signed out everywhere, so a lost or stolen
+			phone or computer can’t sign in as them. We email {p.email} to say so.
+		</p>
+		<p>They can’t sign in again until you send them a new link.</p>
 		{#if askError}
 			<p class="fc-e"><Octicon name="alert" />{askError}</p>
 		{/if}

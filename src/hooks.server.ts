@@ -64,6 +64,12 @@ export const init: ServerInit = async () => {
 			return 'USD';
 		}
 	});
+	// Allowed, since building and a first start have none, but never quietly:
+	// without it nobody can sign in at all.
+	if (!building && !SITE_URL)
+		console.warn(
+			'SITE_URL is unset: a passkey is made for that site, so nobody can make one or sign in with one. Set it to where reckon is reached.'
+		);
 	// Chosen, and allowed, but never quietly: whoever reads the log should see
 	// that the session token is travelling in the clear.
 	if (!SECURE_COOKIES)
@@ -128,7 +134,6 @@ const app: Handle = async ({ event, resolve }) => {
 					// Anything but Full is Field: a level the app does not know reaches
 					// the least.
 					access: found.user.access === 'full' ? 'full' : 'field',
-					temporaryPassword: found.user.temporaryPassword === true,
 					timezone: found.user.timezone ?? null,
 					locale: found.user.locale ?? null,
 					hourCycle: (found.user.hourCycle as HourCycle | null | undefined) ?? null,
@@ -166,22 +171,6 @@ const app: Handle = async ({ event, resolve }) => {
 		// tell the difference, and queue.ts keeps it.
 		if (path.startsWith('/api/')) error(401, 'sign in first');
 		redirect(303, `/login?next=${encodeURIComponent(event.url.pathname + event.url.search)}`);
-	}
-	// Signed in with a password handed to them, before invitations were emailed,
-	// someone reaches nothing but the page where they choose their own, and
-	// signing out.
-	if (
-		event.locals.user?.temporaryPassword &&
-		need !== 'open' &&
-		event.route.id !== '/new-password' &&
-		event.route.id !== '/logout'
-	) {
-		if (path.startsWith('/api/'))
-			return secured(
-				event.url,
-				problem('choosePassword', 403, 'Choose a password of your own first.')
-			);
-		redirect(303, '/new-password');
 	}
 	// Refused before the route runs, so nothing of it is read or written. An
 	// endpoint says so as every refusal does, for the queue to keep and show; a

@@ -144,115 +144,85 @@ database, and every page reads it anyway — so a stateless token would save no
 round trip and would cost the thing that matters: a session that can be revoked
 now.
 
-**Its routes are mounted under `/api/auth`, and none is served yet.** They are
-mounted as its SvelteKit guide has it, and only where `SITE_URL` is set: that
-is the only base URL Better Auth is given, never one taken from a request.
-`src/lib/server/auth-paths.ts` lists every route it has as open or closed, and a
-unit test fails on any it doesn't list, so a route a new release adds is looked
-at before it is served. Every closed one answers 404. Signing in and out are
-form actions that call Better Auth directly, which none of this touches. Two
-routes have a parameter in their path, which `disabledPaths` can't name
-(better-auth/better-auth#4843). Until `enabledPaths` lands
-(better-auth/better-auth#11078) they are served, and do nothing here: the reset
-route hands nothing to another origin and reckon issues no token for it, and the
-social callback, with no provider configured, signs nobody in.
-`tests/auth-routes-check.mjs` holds them to that. Its origin and CSRF checks are
-on outright, since left unsaid Better Auth turns both off wherever `NODE_ENV` is
-`test` or `TEST` is set. Its rate limiter counts in the database, so a restart
-forgives nothing.
+**Everyone signs in with a passkey, and there are no passwords.** A passkey is
+a key pair a phone, a computer or a security key keeps; the fingerprint, face,
+PIN or screen lock that unlocks it is checked there, and only its public half is
+here. Each one must say it checked who was holding it, made or used, or it is
+refused: a sign-in is then two factors, AAL2 (NIST SP 800-63B-4), which an
+account holding someone's pay needs (SP 800-63A-4 §5.2). A passkey is tied to
+this site, so a look-alike site can't use it, and nothing a mailbox holds signs
+anyone in. Passkeys need `SITE_URL`: it is the site each one is made for, and a
+host name, since WebAuthn takes no IP address.
 
-The cookie is the session's token signed with `BETTER_AUTH_SECRET`, so a copy
-of the table lets nobody in without the secret as well. Passwords are argon2id
-at the OWASP minimum rather than Better Auth's default scrypt, and the hash
-records its own parameters, so raising them later re-hashes on the next sign-in
-rather than locking anyone out.
+**The sign-in page** offers the passkeys the browser holds as the email field is
+filled (autofill), and **Sign in with a passkey** opens the browser's own dialog,
+with a phone's QR code and a security key besides. Nothing about the address
+typed is looked up. Inside an app's own browser, where passkeys can't be used,
+the page says to open it in Chrome or Safari. Signed in with a passkey from
+another device, someone is offered one for the one they are on.
 
-Every try at a password is recorded (`sign_in_try`), and the limits are worked
-out from the record, so a restart forgives nothing. Five tries from one address
-in fifteen minutes and that address waits, however many it sends at once, an
-IPv6 address counting as its /64. Ten wrong in a row at one email, from
-anywhere, and each try at it waits twice as long as the last, from thirty
-seconds to an hour; a browser that has signed in as that person keeps a count of
-its own, so a stranger's tries never make it wait. A hundred wrong in a row stop
-the password until a new one is set, on Team or with `scripts/user.mjs`. Every
-email tried is recorded alike, whether or not anyone signs in with it, as an
-HMAC rather than the email itself, since a password is sometimes typed in its
-place; rows are deleted after 90 days.
-
-There is no sign-up. Someone with Full adds people on Team, and each is emailed
-an invitation: a link to choose their own password. Reset password, on a
-person's page, stops the old one, signs them out everywhere and emails a link to
-choose a new one. Whoever adds or resets someone never sees a password or the
-link, so cannot choose one for them (ASVS 5.0 6.4.6). A link is good once, for
-24 hours, the most NIST SP 800-63B-4 allows a code sent by email; Team says
-when one went and until when it works, and an invitation that lapses is sent
-again from there. The link opens a page outside the app that takes the password
-and then sends them to sign in with it, rather than signing them in. Its code
-is after the `#`, which a browser never sends, so no server, log or `Referer`
-sees it, and only a hash of it is kept; a code that is not one to use, whatever
-the reason, gets the same answer, and a network that tries ten in fifteen
-minutes waits. Anyone changes theirs under Password on Your profile, giving the
-current one first. That browser is given a new session and every other is
-signed out, and a wrong current password counts against the address as a wrong
-sign-in does.
-
-Whoever forgot theirs uses **Forgot password?** on the sign-in page. The page
-answers the same whatever address is given, before anything about it is looked
-up, so it says nothing about who signs in (OWASP's Forgot Password Cheat
-Sheet). An active person's confirmed address is then emailed a link to choose a
-new password, good once for an hour; their password works until it is used, so
-asking locks nobody out. Using it ends every session they had and tells them,
-as any change of password does. An address not yet confirmed is sent an email
-saying so, without a link (NIST SP 800-63B-4 §4.2.1.2 recovers only to a proven
-address), and an unknown or deactivated one nothing. A network asking ten times
-in fifteen minutes waits, and an address is sent one email every five minutes
-at most, both counted whether or not anyone signs in with it.
-
-**A password is 15 characters at least**, each character counted once, as NIST
-SP 800-63B-4 counts them, and is refused, saying why, if it is one of the most
-common, if Have I Been Pwned's Pwned Passwords has seen it in a breach, or if
-it is made of reckon's, the business's or the person's own names (§3.1.1.2).
-That holds wherever one is chosen: with a link, on Your profile, and at the
-command line. Only the first five characters of its SHA-1 leave the server.
-Every sign-in asks Pwned Passwords again, since a password can turn up in a
-breach after it was chosen, and a sign-in is the one moment it is in hand. One
-it has seen by then stops there (§4.3): no session opens, every session they
-had ends, and a confirmed address is emailed the hour's link to choose another,
-saying why; an address not confirmed is told so, without one. Where Pwned
-Passwords cannot be asked, a new password is held to a bundled list of the
-most common ones, a sign-in goes ahead, and the log says so.
-`PWNED_PASSWORDS_URL` names another service answering its range API, such as a
-copy kept on the host with Have I Been Pwned's downloader.
-
-Using a link also proves the address it went to is theirs, and Team says whose
-are confirmed. Anyone added before invitations confirms theirs from Your
-profile, by a link sent there.
-
-A new address for someone who has signed in waits until it is proven theirs:
-they keep signing in with the one they have until they use the link emailed to
-the new one, which then becomes theirs, confirmed (NIST SP 800-63B-4
-§4.2.1.2). The address they have is told when the change is asked for — who
-asked, and for what — with no link in it. Team shows the change Pending, or
-Expired once its link lapses, with Send again and Cancel change; their own
-profile says where the link went. The link's page asks before it changes
-anything, so a mail scanner opening it changes nothing. Someone yet to accept
-their invitation changes at once and is sent it again, at the new address;
-someone deactivated changes at once, unconfirmed, and nobody is emailed.
-
-The first person is added from the command line, since nobody can sign in to
-add them:
+**There is no sign-up.** Someone with Full adds people on Team, and each is
+emailed an invitation: a link to make their passkey with. The first person is
+added from the command line, and given theirs there:
 
 ```bash
 node scripts/user.mjs add you@example.com "Your Name" --role Partner
-node scripts/user.mjs password you@example.com
+node scripts/user.mjs invite you@example.com
 node scripts/user.mjs list
 ```
 
-It prompts for the password rather than taking an argument — a password in
-`history` or in `ps` is a password given away — and ends every existing session
-for that person, because a password change that leaves old sessions alive has
-changed nothing for whoever holds one. A password set there is theirs, not
-temporary.
+`add` prints the person's invitation link, to open on the phone or computer they
+will use; `invite` gives a link again, an invitation for someone yet to make a
+passkey or, for someone who can't sign in, a new link. Someone with Full sends a
+new link from Team the same way. Recovery is so by design: the business knows
+its people (§4.2.1, recovery through someone who can vouch for them), and the
+one with Full who has lost everything has the server.
+
+**A new link adds a passkey, and ends none**: someone who can't sign in may have
+left their phone at home, not lost it, and recovery is binding a new
+authenticator (§4.2), not invalidating the old. Team asks, every time one is
+sent, whether a phone or computer of theirs is lost or stolen, with no answer
+chosen; if one is, every passkey they have ends and they are signed out
+everywhere as it goes, since a lost authenticator is taken as compromised and
+invalidated promptly (§4.3), and waiting for the link to be used would leave
+whoever has the phone signed in. **End their passkeys**, on Team, does the same
+with no link, for someone who reports one lost while still able to sign in, and
+`node scripts/user.mjs end <email>` does it from the command line. Either way
+they are told by email (§4.5).
+
+**A link** is good once, for an hour: making a passkey with it is a way in, so it
+lasts as a credential handed over does. Its code is after the `#`, which a
+browser never sends, so no server, log or `Referer` sees it, and only a hash of
+it is kept; a code that is not one to use, whatever the reason, gets the same
+answer, and a network that tries ten in fifteen minutes waits. Team says when one
+went and until when it works, and one that lapses is sent again from there. The
+link's page asks the passkey plugin for the ceremony itself, server to server,
+naming the link by its id, so the code goes no further. Using it proves the
+address it went to is theirs, signs them out everywhere else (OWASP's Passkey
+Security Cheat Sheet: "after recovery, rotate sessions"), and signs them in with
+the new passkey.
+
+**Your profile** lists each passkey: its name, where it is kept, when it was made
+and last used. It names and removes them, and adds another, one for each device,
+or one in a passkey manager that syncs between them; with only one, it says to
+add another, as NIST and OWASP both advise, so losing one device doesn't lock
+them out. Someone with Full keeps at least one. Adding or removing one tells
+them by email (§4.1.2.1, §4.5), with whom to contact if it was not them.
+
+Using a link also proves the address it went to is theirs, and Team says whose
+are confirmed. Anyone else confirms theirs from Your profile, by a link sent
+there.
+
+A new address for someone who has signed in waits until it is proven theirs:
+the one they have stays theirs until they use the link emailed to the new one,
+which then becomes theirs, confirmed (NIST SP 800-63B-4 §4.2.1.2). The address
+they have is told when the change is asked for — who asked, and for what — with
+no link in it. Team shows the change Pending, or Expired once its link lapses,
+with Send again and Cancel change; their own profile says where the link went.
+The link's page asks before it changes anything, so a mail scanner opening it
+changes nothing. Someone yet to accept their invitation changes at once and is
+sent it again, at the new address; someone deactivated changes at once,
+unconfirmed, and nobody is emailed.
 
 Each person has an access level, apart from the role they are paid in. **Full**
 reaches everything, and is the only level that bills or pays. **Field** reaches
@@ -262,19 +232,30 @@ at, and their own pay, to read. Someone added at the command line has Field
 unless `--full` is given; the first person has Full whatever is said, since the
 database keeps someone active on Full. After that, everything about a person is
 changed on Team, by someone with Full: their name and email, their access, the
-role they are paid as, a reset of their password, and whether they sign in.
-Deactivated, they can't, and aren't offered work; everything they did is kept,
-and they can be reactivated. Team also says when each person last signed in,
-and who is Invited, or whose invitation expired unused.
+role they are paid as, a new link, and whether they sign in. Deactivated, they
+can't, and aren't offered work; everything they did is kept, and they can be
+reactivated. Team also says when each person last signed in, and who is
+Invited, or whose invitation expired unused.
 
-The password is held to the same rules, checked on the first entry rather than
-after the second. On a development database, `--insecure` lifts them and says
-so:
+**Better Auth's routes are mounted under `/api/auth`**, as its SvelteKit guide
+has it, and only where `SITE_URL` is set: that is the only base URL Better Auth
+is given, never one taken from a request. `src/lib/server/auth-paths.ts` lists
+every route it has as open or closed, and a unit test fails on any it doesn't
+list, so a route a new release adds is looked at before it is served. Open are
+the four a passkey's ceremonies need; every closed one answers 404. Listing,
+naming and removing passkeys, and signing out, are form actions that call it
+directly. Two routes have a parameter in their path, which `disabledPaths`
+can't name (better-auth/better-auth#4843). Until `enabledPaths` lands
+(better-auth/better-auth#11078) they are served, and do nothing here: the reset
+route hands nothing to another origin and reckon issues no token for it, and the
+social callback, with no provider configured, signs nobody in.
+`tests/auth-routes-check.mjs` holds them to that. Its origin and CSRF checks are
+on outright, since left unsaid Better Auth turns both off wherever `NODE_ENV` is
+`test` or `TEST` is set. Its rate limiter counts in the database, so a restart
+forgives nothing.
 
-```bash
-node scripts/user.mjs password avery@kestrel.example --insecure   # the seeded owner, Full
-node scripts/user.mjs password sam@kestrel.example --insecure     # an employee, Field
-```
+The cookie is the session's token signed with `BETTER_AUTH_SECRET`, so a copy
+of the table lets nobody in without the secret as well.
 
 **`BETTER_AUTH_SECRET` must be set when the server runs**, 32 characters at
 least, or it will not start, under `npm run dev` too. Left to itself Better Auth would sign with a default
@@ -310,16 +291,15 @@ provider and every mail server takes mail that way, so whatever is behind the
 relay is the operator's choice, and nothing in reckon is tied to one. Unset, it
 sends nothing.
 
-It sends an invitation to someone added on Team, a link to choose a new password
-after a reset there, a link to confirm an address, asked for on Your profile,
-a link to a new address asked for on Team, with word to the old one, and a link
-to choose a new password, asked for by whoever forgot theirs — each
-built from `SITE_URL`, never from the address a request came in
-on (OWASP's Forgot Password Cheat Sheet), and sent only while its link still
-works. And it tells a person whenever their password is changed — chosen with a
-link, changed on Your profile, set with `scripts/user.mjs` — saying when, in
-their own zone, and who to ask if it was not them. Without `SMTP_HOST` and
-`SITE_URL` nobody can be invited, and Team says which is missing.
+It sends an invitation to someone added on Team, a new link to make a passkey
+with, sent from Team, a link to confirm an address, asked for on Your profile,
+and a link to a new address asked for on Team, with word to the old one — each
+built from `SITE_URL`, never from the address a request came in on (OWASP's
+Forgot Password Cheat Sheet), and sent only while its link still works. And it
+tells a person whenever a passkey is added to or removed from their account,
+saying which, when, in their own zone, from which browser, and who to ask if it
+was not them. Without `SMTP_HOST` and `SITE_URL` nobody can be invited by email,
+and Team says which is missing.
 
 Every message goes as plain text and as HTML, the text first (RFC 2046), both
 laid out from the same words by one layout written by hand
@@ -407,8 +387,8 @@ into the artifact, which makes it one build per deployment.
 
 **Behind any proxy, say where the visitor is.** The process has one client —
 the proxy — so without `ADDRESS_HEADER` every visitor has the proxy's address:
-the per-address sign-in limit becomes one limit for everyone, five wrong
-passwords from anyone lock everyone out, and every session records the proxy.
+Better Auth's rate limit and the wrong codes a link page counts become one
+count for everyone, and every session records the proxy.
 Name a header the proxy sets from the connection. One it overwrites, like an
 `X-Real-IP` set from the connection's address, needs nothing else.
 `X-Forwarded-For` is one a client can start, so it also needs `XFF_DEPTH`: the
@@ -425,7 +405,7 @@ nothing else.
 | ------------------ | ---------------------------------------------------------- |
 | `build/`           | the application; `node build` runs it                      |
 | `drizzle/`         | the migrations, which the application applies as it starts |
-| `scripts/user.mjs` | adds the first person, and sets a password from the shell  |
+| `scripts/user.mjs` | adds the first person, and gives a link to make a passkey  |
 | `node_modules/`    | the production dependencies, from `npm ci --omit dev`      |
 | `package.json`     | and `package-lock.json`, as they are in the repository     |
 | `RELEASE`          | the version, the commit, and the Node it was built with    |
@@ -475,8 +455,7 @@ server and the commands stop and say which, in development too.
 | `SMTP_CA_FILE`                   | the system's      | the authorities to trust for its certificate, for one a private authority issued                                                                                                  |
 | `SMTP_HELO_NAME`                 | this machine's    | the name it greets the relay with, where the relay asks for a real one                                                                                                            |
 | `SMTP_FROM`                      | —                 | the address email comes from; needed with `SMTP_HOST`                                                                                                                             |
-| `SITE_URL`                       | unset             | where the links reckon emails go, https://reckon.example.com: https except to this machine. Unset, nobody can be invited or reset by email                                        |
-| `PWNED_PASSWORDS_URL`            | Pwned Passwords   | where a password is looked up among those seen in breaches, by the first five characters of its SHA-1: another service answering its range API, a copy on this host say           |
+| `SITE_URL`                       | unset             | where reckon is reached, https://reckon.example.com: the links it emails, and the site each passkey is made for. https except to this machine. Unset, nobody can make a passkey   |
 
 **Two keys, because a Google API key carries exactly one application
 restriction.** It can be restricted to HTTP referrers _or_ to IP addresses,

@@ -12,7 +12,7 @@
 	/**
 	 * Adding a person, as a Primer form: each label above its field, what it
 	 * means below, and Add and invite at the bottom with Cancel beside it. They
-	 * are emailed a link to choose their own password; whoever adds them lands
+	 * are emailed a link to make their first passkey; whoever adds them lands
 	 * on their page, which says it went and until when it works. Where reckon
 	 * can't send email, a warning says why in place of the form, since nobody
 	 * is added who can't be invited.
@@ -72,14 +72,15 @@
 				<p class="banner-t">Email isn’t set up, so nobody can be invited</p>
 				<p class="banner-d">
 					{#if data.cannotSend === 'SMTP_HOST'}
-						Adding someone emails them a link to choose their password, and reckon has no relay to
-						send it through: <code>SMTP_HOST</code> is unset.
+						Adding someone emails them a link to make their passkey, and reckon has no relay to send
+						it through: <code>SMTP_HOST</code> is unset. Whoever runs reckon sets it where reckon is
+						installed. Until then, <code>scripts/user.mjs</code> on the server adds someone and prints
+						their link, to hand to them.
 					{:else}
-						Adding someone emails them a link to choose their password, and reckon has no address to
-						build it from: <code>SITE_URL</code> is unset.
+						Adding someone emails them a link to make their passkey, and reckon has no address to
+						build it from: <code>SITE_URL</code> is unset. Whoever runs reckon sets it where reckon is
+						installed.
 					{/if}
-					Whoever runs reckon sets it where reckon is installed. Until then, a password can be set on
-					the server with <code>scripts/user.mjs</code>.
 				</p>
 				<p class="banner-d">
 					<a href={resolve('/settings/integrations')}>Email, on Integrations</a>
@@ -163,7 +164,7 @@
 					<p class="fc-e"><Octicon name="alert" />{problem}</p>
 				{:else}
 					<p class="note">
-						We email them a link to choose their password. It works once, for 24 hours.
+						We email them a link to make their passkey. It works once, for an hour.
 					</p>
 				{/if}
 			</div>

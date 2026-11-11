@@ -11,12 +11,12 @@ import {
 const LINK = 'https://reckon.example.com/link#Mm9e7oVwq1Kp0bNcQkR3sT4uV5wX6yZ7aB8cD9eF0gH';
 const email = (look = {}) =>
 	laidOut({
-		subject: 'Kestrel: choose your password',
+		subject: 'Kestrel: make your passkey',
 		heading: 'Welcome to Kestrel Field Services',
 		blocks: [
 			{ text: 'Hello Rowan <Pike>,' },
-			{ text: 'Choose the password you’ll sign in with, at this link:' },
-			{ link: LINK, label: 'Choose your password' },
+			{ text: 'Make the passkey you’ll sign in with, at this link:' },
+			{ link: LINK, label: 'Make your passkey' },
 			{ text: 'It works once.' }
 		],
 		look: { name: 'Kestrel & Co', email: 'office@kestrel.example', ...look }
@@ -27,12 +27,12 @@ describe('an email laid out', () => {
 		const { text, html } = email();
 		expect(text.split('\n\n')).toEqual([
 			'Hello Rowan <Pike>,',
-			'Choose the password you’ll sign in with, at this link:',
+			'Make the passkey you’ll sign in with, at this link:',
 			LINK,
 			'It works once.',
 			'— Kestrel & Co · office@kestrel.example'
 		]);
-		expect(html).toContain('Choose the password you’ll sign in with, at this link:');
+		expect(html).toContain('Make the passkey you’ll sign in with, at this link:');
 		expect(html).toContain('It works once.');
 	});
 
@@ -47,9 +47,9 @@ describe('an email laid out', () => {
 		const { html } = email();
 		expect(html).toMatch(/<html lang="en" dir="ltr"/);
 		expect(html).toMatch(
-			/<div role="article" aria-roledescription="email" aria-label="Kestrel: choose your password" lang="en" dir="ltr"/
+			/<div role="article" aria-roledescription="email" aria-label="Kestrel: make your passkey" lang="en" dir="ltr"/
 		);
-		expect(html).toContain('<title>Kestrel: choose your password</title>');
+		expect(html).toContain('<title>Kestrel: make your passkey</title>');
 		expect(html).toContain('<h1 ');
 	});
 
@@ -62,7 +62,7 @@ describe('an email laid out', () => {
 
 	it('draws a link as a button saying where it goes, with the address spelled out under it', () => {
 		const { html } = email();
-		expect(html).toContain('>Choose your password</a>');
+		expect(html).toContain('>Make your passkey</a>');
 		expect(html).toContain(`>${LINK}</a>`);
 		// Both, the button and the address under it: counted as text, not as a pattern.
 		expect(html.split(`href="${LINK}"`)).toHaveLength(3);

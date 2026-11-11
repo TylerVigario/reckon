@@ -37,8 +37,10 @@
 	},
 	"devDependencies": {
 		"@better-auth/core": "^1.7.18",
+		"@better-auth/passkey": "^1.7.18",
 		"@commitlint/cli": "^21.2.4",
 		"@eslint/js": "^10.0.1",
+		"@simplewebauthn/browser": "^13.3.0",
 		"@sveltejs/adapter-node": "^6.0.1",
 		"@sveltejs/kit": "^3.1.1",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
@@ -68,7 +70,7 @@
 		"vitest": "^5.1.0"
 	},
 	"dependencies": {
-		"@node-rs/argon2": "^2.2.2",
+		"@simplewebauthn/server": "^13.3.3",
 		"nodemailer": "^10.4.0",
 		"pg": "^8.23.1",
 		"pgpass": "^1.0.6"
