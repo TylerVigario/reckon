@@ -144,6 +144,16 @@ database, and every page reads it anyway — so a stateless token would save no
 round trip and would cost the thing that matters: a session that can be revoked
 now.
 
+**Someone stays signed in, as GitHub keeps them:** until two weeks without use,
+each use carrying it on. ASVS 5.0 leaves the limits to the risk, and GitHub
+keeps people signed in and checks where the harm is; so the checks are there
+instead: a lost phone's passkeys are ended on Team, someone deactivated is
+signed out everywhere as it is done, and signing in again is one touch of a
+passkey. Two weeks is over 20 hours, so WCAG 2.2.1 asks no warning before it.
+An overall limit besides, however much a session is used (NIST SP 800-63B-4
+§2.2.3, ASVS 5.0 7.3.2), is Better Auth's to give, and it has none yet
+([better-auth/better-auth#10405](https://github.com/better-auth/better-auth/issues/10405)).
+
 **Everyone signs in with a passkey, and there are no passwords.** A passkey is
 a key pair a phone, a computer or a security key keeps; the fingerprint, face,
 PIN or screen lock that unlocks it is checked there, and only its public half is

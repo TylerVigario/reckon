@@ -247,6 +247,11 @@ jobs:
         # Auth serves. It adds a person and takes them away again.
         run: node tests/passkey-check.mjs "http://localhost:$PORT" avery@kestrel.example
 
+      - name: A session lasts until two weeks unused
+        # Its dates moved back in the database, as the weeks passing would
+        # leave them; only the sessions it opens are touched.
+        run: node tests/session-check.mjs "http://localhost:$PORT" avery@kestrel.example
+
       - name: Each access level reaches what it should, and Field sees its own
         # Before the checks that write, on the seeded business: every route
         # beyond Field is asked of someone with Field and refused.
