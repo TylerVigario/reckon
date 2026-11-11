@@ -227,6 +227,17 @@ check(!linked(fullMore, '/reports/pay').size, 'Full reaches pay through the repo
 		'an invoice that has gone out does not open for Field',
 		opened.map((r) => r.status).join(', ')
 	);
+	// Nor through the page that adds a line, fixing a refused one or not.
+	const adding = await Promise.all(
+		sent.flatMap((id) => [asField(`/invoices/${id}/add`), asField(`/invoices/${id}/add?fix=1`)])
+	);
+	check(
+		adding.every((r) => r.status === 404),
+		'nor does its page for adding a line, ?fix or not',
+		adding.map((r) => r.status).join(', ')
+	);
+	const fixing = await asFull(`/invoices/${sent[0]}/add?fix=1`);
+	check(fixing.status === 200, 'Full still opens it to fix a refused line', String(fixing.status));
 }
 
 // Trips: the ones they drove, this month and the two before it.
