@@ -108,6 +108,19 @@ SELECT must_fail($$
           'b5000000-0000-4000-8000-000000000055')
 $$, 'the same entry retried after a timeout');
 
+-- The uuid is its maker's own: one from someone else's phone neither finds
+-- the first entry nor is refused as if it were it.
+SELECT must_pass($$
+  INSERT INTO time_entry (client_uuid, worked_on, seconds, crew, worked_by, created_by,
+                          entity_id, site_id, service_id)
+  VALUES ('a1000000-0000-4000-8000-000000000001','2026-08-24',60 * 60,'one',
+          'a0a0a0a0-0000-4000-8000-0000000000a2','a0a0a0a0-0000-4000-8000-0000000000a2',
+          '44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333',
+          'b5000000-0000-4000-8000-000000000055')
+$$, 'the same uuid from someone else, as an entry of their own');
+DELETE FROM time_entry WHERE client_uuid = 'a1000000-0000-4000-8000-000000000001'
+   AND created_by = 'a0a0a0a0-0000-4000-8000-0000000000a2';
+
 \echo ''
 \echo '=== 2. who worked an hour is not who entered it ==='
 
@@ -1819,17 +1832,30 @@ $$, 'a way of costing stock nobody named');
 
 SELECT must_pass($$
   INSERT INTO invoice_line (client_uuid, invoice_id, seq, kind, description, qty, unit, unit_price,
-                            amount, bought_from)
+                            amount, bought_from, created_by)
   VALUES ('39393939-0000-4000-8000-000000000001', '7777eeee-7777-7777-7777-777777777737', 60,
-          'paid_for', 'Low-voltage permit', 1, 'each', 35.00, 35.00, 'City of Woodland')
+          'paid_for', 'Low-voltage permit', 1, 'each', 35.00, 35.00, 'City of Woodland',
+          'a0a0a0a0-0000-4000-8000-0000000000a2')
 $$, 'a permit added on a phone');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (client_uuid, invoice_id, seq, kind, description, qty, unit, unit_price,
-                            amount, bought_from)
+                            amount, bought_from, created_by)
   VALUES ('39393939-0000-4000-8000-000000000001', '7777eeee-7777-7777-7777-777777777737', 61,
-          'paid_for', 'Low-voltage permit', 1, 'each', 35.00, 35.00, 'City of Woodland')
+          'paid_for', 'Low-voltage permit', 1, 'each', 35.00, 35.00, 'City of Woodland',
+          'a0a0a0a0-0000-4000-8000-0000000000a2')
 $$, 'the same permit, sent again after a timeout');
+
+-- The uuid is its maker's own, as for time.
+SELECT must_pass($$
+  INSERT INTO invoice_line (client_uuid, invoice_id, seq, kind, description, qty, unit, unit_price,
+                            amount, bought_from, created_by)
+  VALUES ('39393939-0000-4000-8000-000000000001', '7777eeee-7777-7777-7777-777777777737', 61,
+          'paid_for', 'Bucket truck', 1, 'each', 90.00, 90.00, 'Valley Rentals',
+          'a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'the same uuid from someone else, as a line of their own');
+DELETE FROM invoice_line WHERE client_uuid = '39393939-0000-4000-8000-000000000001'
+   AND created_by = 'a0a0a0a0-0000-4000-8000-0000000000a1';
 
 \echo ''
 \echo '=== 40. a draft started on a phone, and a line moved off one that went out ==='

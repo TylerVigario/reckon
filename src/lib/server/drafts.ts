@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { asUser, db, type Tx } from './db/index.ts';
 import * as t from './db/schema/index.ts';
 import { pgError, type Errors } from './field-errors.ts';
@@ -49,12 +49,15 @@ export async function startIn(
 	return made;
 }
 
-/** The draft a phone started, by the uuid it made for it. */
-export async function startedOnPhone(clientUuid: string) {
+/**
+ * The draft a phone started, by the uuid it made for it: only ever its
+ * maker's, since the uuid is unique to them and another's finds nothing.
+ */
+export async function startedOnPhone(clientUuid: string, userId: string) {
 	const [had] = await db
 		.select({ id: t.invoice.id, number: t.invoice.number })
 		.from(t.invoice)
-		.where(eq(t.invoice.clientUuid, clientUuid));
+		.where(and(eq(t.invoice.clientUuid, clientUuid), eq(t.invoice.createdBy, userId)));
 	return had ?? null;
 }
 
@@ -70,7 +73,7 @@ export async function startDraft(input: {
 	clientUuid?: string | null;
 }): Promise<Started> {
 	if (input.clientUuid) {
-		const had = await startedOnPhone(input.clientUuid);
+		const had = await startedOnPhone(input.clientUuid, input.userId);
 		if (had) return { ok: true, ...had };
 	}
 	try {
@@ -80,8 +83,12 @@ export async function startDraft(input: {
 		if (e instanceof NoOperator) return no('Name the business in Settings first.');
 		const pg = pgError(e);
 		// The same draft, arriving twice at once: the other copy is in.
-		if (pg.code === '23505' && pg.constraint === 'invoice_client_uuid_key' && input.clientUuid) {
-			const had = await startedOnPhone(input.clientUuid);
+		if (
+			pg.code === '23505' &&
+			pg.constraint === 'invoice_created_by_client_uuid_key' &&
+			input.clientUuid
+		) {
+			const had = await startedOnPhone(input.clientUuid, input.userId);
 			if (had) return { ok: true, ...had };
 		}
 		if (pg.code === '23503') return no('That client no longer exists.');

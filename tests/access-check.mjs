@@ -373,6 +373,27 @@ const entry = (/** @type {Record<string, unknown>} */ extra) => ({
 		`${team.status} ${refused?.status}`
 	);
 	if (teamId) await asFull(`/api/time/${teamId}`, { method: 'DELETE' });
+
+	// The uuid a phone makes is its maker's own: sent by anyone else, it
+	// neither hands back what the first one made nor is taken for it.
+	const shared = uuid();
+	const first = await asFull(
+		'/api/time',
+		send('POST', entry({ client_uuid: shared, crew: 'one', worked_by: full, minutes: 45 }))
+	);
+	const firstId = first.ok ? (await first.json()).id : null;
+	const again = await asField(
+		'/api/time',
+		send('POST', entry({ client_uuid: shared, crew: 'one', worked_by: me }))
+	);
+	const theirs = again.ok ? await again.json() : null;
+	check(
+		!!firstId && !!theirs?.id && theirs.id !== firstId && theirs.seconds === 30 * 60,
+		"someone else's uuid gives Field an entry of their own, not the other's",
+		`${first.status} ${again.status} ${theirs?.id === firstId ? 'the same entry' : ''}`
+	);
+	if (theirs?.id) await asField(`/api/time/${theirs.id}`, { method: 'DELETE' });
+	if (firstId) await asFull(`/api/time/${firstId}`, { method: 'DELETE' });
 }
 
 // Lines: added to a draft, and changed or taken off only by whoever added them.

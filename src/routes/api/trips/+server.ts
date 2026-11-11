@@ -24,7 +24,8 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 		.where(
 			and(
 				eq(t.trip.clientUuid, uuid.toLowerCase()),
-				fieldOnly(locals) ? eq(t.trip.createdBy, locals.user!.id) : undefined
+				// The phone's uuid is its maker's own (#lib/queue).
+				eq(t.trip.createdBy, locals.user!.id)
 			)
 		);
 	return found
@@ -52,14 +53,16 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			const [row] = await tx
 				.insert(t.trip)
 				.values({ ...tripColumns(trip), clientUuid: trip.clientUuid, createdBy: locals.user!.id })
-				.onConflictDoNothing({ target: t.trip.clientUuid })
+				.onConflictDoNothing({ target: [t.trip.createdBy, t.trip.clientUuid] })
 				.returning({ id: t.trip.id });
 			// A repeat is the trip already there, answered as if just written.
 			if (!row) {
 				const [was] = await tx
 					.select({ id: t.trip.id })
 					.from(t.trip)
-					.where(eq(t.trip.clientUuid, trip.clientUuid));
+					.where(
+						and(eq(t.trip.clientUuid, trip.clientUuid), eq(t.trip.createdBy, locals.user!.id))
+					);
 				return { id: was.id, repeat: true };
 			}
 			await writeStops(tx, row.id, trip, worked.legs, worked.serviceId);

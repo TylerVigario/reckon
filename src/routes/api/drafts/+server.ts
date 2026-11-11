@@ -23,10 +23,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 };
 
 /** The draft a phone started, by the uuid it made for it, once it has arrived. */
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, locals }) => {
 	const clientUuid = url.searchParams.get('client_uuid') ?? '';
 	if (!UUID.test(clientUuid)) return refuse({ client_uuid: 'The uuid the phone made for it.' });
-	const had = await startedOnPhone(clientUuid);
+	const had = await startedOnPhone(clientUuid, locals.user!.id);
 	if (!had) return problem('notFound', 404, 'No draft has arrived with that uuid.');
 	return Response.json(had, { headers: { 'cache-control': 'no-store' } });
 };

@@ -44,7 +44,8 @@ export const personPayment = pgTable(
 		createdAt: createdAt()
 	},
 	(t) => [
-		unique('person_payment_client_uuid_key').on(t.clientUuid),
+		// The phone's uuid, unique to whoever recorded the payment (#lib/queue).
+		unique('person_payment_created_by_client_uuid_key').on(t.createdBy, t.clientUuid),
 		// What an item names as its payment must be its own person's.
 		unique('person_payment_id_user_id_key').on(t.id, t.userId),
 		index('person_payment_by_person').on(t.userId, t.paidOn),

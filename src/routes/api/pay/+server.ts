@@ -139,14 +139,19 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					clientUuid: clientUuid!,
 					createdBy: locals.user!.id
 				})
-				.onConflictDoNothing({ target: t.personPayment.clientUuid })
+				.onConflictDoNothing({ target: [t.personPayment.createdBy, t.personPayment.clientUuid] })
 				.returning({ id: t.personPayment.id });
 			// A repeat is the payment already there, answered as if just written.
 			if (!row) {
 				const [was] = await tx
 					.select({ id: t.personPayment.id })
 					.from(t.personPayment)
-					.where(eq(t.personPayment.clientUuid, clientUuid!));
+					.where(
+						and(
+							eq(t.personPayment.clientUuid, clientUuid!),
+							eq(t.personPayment.createdBy, locals.user!.id)
+						)
+					);
 				return { id: was.id, repeat: true };
 			}
 			const rows = [

@@ -625,8 +625,8 @@ move it — to TCP, to another machine, or to a managed service.
 **Capture works offline.** Time, a draft's lines and changes to them, a draft
 started on site, and a trip recorded or changed are written to the browser first
 and sent when there is a connection. Each new thing carries a `client_uuid` made
-on the phone under a unique index, so a retry returns the row that already
-exists. A trip's miles the phone could only estimate take Google's route when it
+on the phone, unique to whoever made it, so a retry returns the row they already
+sent, and the same uuid from anyone else is a row of their own. A trip's miles the phone could only estimate take Google's route when it
 arrives.
 
 **It installs as an app, and opens without a signal.** A phone offers to add
