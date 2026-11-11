@@ -4,6 +4,7 @@ import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { formTerms } from '#lib/server/lines.ts';
 import { UUID } from '#lib/field-rules.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -14,8 +15,12 @@ import type { PageServerLoad } from './$types';
  * no signal: the client's sites and their rates, and the rest (formTerms). The
  * line itself is written on the phone and sent by the queue (#lib/queue), so
  * there is no form action.
+ *
+ * Someone with Field adds only to a draft, as the draft's own page says
+ * (#lib/access): an invoice that has gone out is not found for them, ?fix or
+ * not, so its number and client stay with Full.
  */
-export const load: PageServerLoad = async ({ params, url }) => {
+export const load: PageServerLoad = async ({ params, url, locals }) => {
 	if (!UUID.test(params.id)) error(404, 'no such invoice');
 	const [draft] = await db
 		.select({
@@ -29,7 +34,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		.from(t.invoice)
 		.innerJoin(t.entity, eq(t.entity.id, t.invoice.entityId))
 		.where(eq(t.invoice.id, params.id));
-	if (!draft) error(404, 'no such invoice');
+	if (!draft || (fieldOnly(locals) && draft.status !== 'draft')) error(404, 'no such invoice');
 	// A draft that has gone out takes no lines -- except one being fixed after
 	// the server refused it, which on arrival starts a new draft for the client.
 	if (draft.status !== 'draft' && !url.searchParams.has('fix'))
