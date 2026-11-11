@@ -4,12 +4,11 @@ import {
 	emailChanging,
 	emailConfirmation,
 	invitation,
-	passwordBreached,
-	passwordBreachedUnconfirmed,
-	passwordChanged,
-	passwordRecovery,
-	passwordRecoveryUnconfirmed,
-	passwordResetLink
+	newPasskeyLink,
+	passkeyAdded,
+	passkeyEnded,
+	passkeyRemoved,
+	passkeysEnded
 } from './notices.js';
 import { contactFor } from './contact.js';
 
@@ -29,44 +28,33 @@ const KESTREL = {
 };
 const AT = new Date('2026-11-09T22:05:00Z');
 
-describe('a password changed', () => {
-	it('is told to them, saying when in their own zone and words, and where', () => {
-		const n = passwordChanged(AVERY, KESTREL, { at: AT, on: 'profile' });
-		expect(n).toMatchObject({
-			kind: 'password_changed',
-			to: 'avery@kestrel.example',
-			subject: 'Kestrel: your password was changed'
-		});
+describe('a notice', () => {
+	const added = { name: 'Google Password Manager', at: AT, from: null };
+
+	it('is told to them, saying when in their own zone and words', () => {
+		const n = passkeyAdded(AVERY, KESTREL, added);
 		expect(n.body).toContain('Hello Avery Lind,');
 		expect(n.body).toContain('Monday, November 9, 2026 at 2:05 PM PST');
-		expect(n.body).toContain('on Your profile');
-	});
-
-	it('says what to do if it was not them: contact the business, by the way it is reached', () => {
-		const n = passwordChanged(AVERY, KESTREL, { at: AT, on: 'command_line' });
-		expect(n.body).toContain(
-			'Contact Kestrel Field Services at office@kestrel.example or 555-0100 to have it reset.'
-		);
 		expect(n.body).not.toContain('Full access');
 	});
 
 	it('follows the business’s zone and locale where they have none, and reckon’s name where it has none', () => {
-		const n = passwordChanged(
+		const n = passkeyAdded(
 			{ name: 'Sam Ortega', email: 'sam@kestrel.example' },
 			{ timezone: 'UTC', locale: 'en-GB' },
-			{ at: AT, on: 'chosen' }
+			added
 		);
-		expect(n.subject).toBe('reckon: your password was changed');
+		expect(n.subject).toBe('reckon: a passkey was added');
 		expect(n.body).toMatch(/9 November 2026 at 22:05 UTC/);
 		expect(n.body).toContain('sign in to reckon with');
-		expect(n.body).toContain('Contact your administrator to have it reset.');
+		expect(n.body).toContain('Contact your administrator to have it ended.');
 	});
 
 	it('still reads in a zone or locale it does not know', () => {
-		const n = passwordChanged(
+		const n = passkeyAdded(
 			{ ...AVERY, timezone: 'Nowhere/Atlantis', locale: 'xx-invalid-!!' },
 			KESTREL,
-			{ at: AT, on: 'profile' }
+			added
 		);
 		expect(n.body).toContain('2026');
 	});
@@ -75,13 +63,6 @@ describe('a password changed', () => {
 const LINK = 'https://reckon.example.com/link#Mm9e7oVwq1Kp0bNcQkR3sT4uV5wX6yZ7aB8cD9eF0gH';
 const UNTIL = new Date('2026-11-10T22:05:00Z');
 
-describe('a password chosen with an emailed link', () => {
-	it('says so, as any change of password is told', () => {
-		const n = passwordChanged(AVERY, KESTREL, { at: AT, on: 'link' });
-		expect(n.body).toContain('with a link reckon emailed you');
-	});
-});
-
 describe('an invitation', () => {
 	const n = invitation(AVERY, KESTREL, { by: 'Quinn Harper', link: LINK, until: UNTIL });
 
@@ -89,10 +70,16 @@ describe('an invitation', () => {
 		expect(n).toMatchObject({
 			kind: 'invitation',
 			to: 'avery@kestrel.example',
-			subject: 'Kestrel: choose your password'
+			subject: 'Kestrel: make your passkey'
 		});
 		expect(n.body).toContain("Quinn Harper added you to Kestrel Field Services's reckon.");
 		expect(n.body.split('\n\n')).toContain(LINK);
+	});
+
+	it('says what a passkey is, and that there is no password', () => {
+		expect(n.body).toContain(
+			'your phone or computer keeps it, and your fingerprint, face or screen lock unlocks it, so there is no password to choose or remember.'
+		);
 	});
 
 	it('says until when it works, in their own zone, and that it works once', () => {
@@ -105,23 +92,39 @@ describe('an invitation', () => {
 	});
 });
 
-describe('a password reset on Team', () => {
-	const n = passwordResetLink(AVERY, KESTREL, {
+describe('a new link sent on Team', () => {
+	const n = newPasskeyLink(AVERY, KESTREL, {
 		at: AT,
 		by: 'Quinn Harper',
+		ended: false,
 		link: LINK,
 		until: UNTIL
 	});
 
-	it('names who reset it, that the old one stopped, and carries the link', () => {
+	it('names who sent it, says their passkeys still work, and carries the link', () => {
 		expect(n).toMatchObject({
-			kind: 'password_reset_link',
-			subject: 'Kestrel: your password was reset'
+			kind: 'passkey_link',
+			subject: 'Kestrel: a link to make a new passkey'
 		});
-		expect(n.body).toContain('Quinn Harper reset the password');
-		expect(n.body).toContain('signed you out everywhere. Your old password no longer works.');
+		expect(n.body).toContain('Quinn Harper sent you this link on');
+		expect(n.body).toContain('The passkeys you have still work.');
+		expect(n.body).not.toContain('ended');
 		expect(n.body.split('\n\n')).toContain(LINK);
 		expect(n.body).not.toContain('temporary');
+	});
+
+	it('sent for a phone or computer lost or stolen, says their passkeys were ended as it went', () => {
+		const lost = newPasskeyLink(AVERY, KESTREL, {
+			at: AT,
+			by: 'Quinn Harper',
+			ended: true,
+			link: LINK,
+			until: UNTIL
+		});
+		expect(lost.body).toContain(
+			"The passkeys you had were ended as it was sent, and you were signed out everywhere, so a lost or stolen phone or computer can't sign in as you."
+		);
+		expect(lost.body).not.toContain('still work');
 	});
 
 	it('says what to do if they did not expect it, and how to reach the business', () => {
@@ -216,12 +219,19 @@ describe('a change of address, to the old one', () => {
 describe('every notice', () => {
 	const UNTIL_ = new Date('2026-11-10T22:05:00Z');
 	const all = [
-		passwordChanged(AVERY, KESTREL, { at: AT, on: 'link' }),
+		passkeyAdded(AVERY, KESTREL, { name: 'iCloud Keychain', at: AT, from: 'Safari on iPhone' }),
 		invitation(AVERY, KESTREL, { by: 'Sam Ortiz', link: LINK, until: UNTIL_ }),
-		passwordResetLink(AVERY, KESTREL, { at: AT, by: 'Sam Ortiz', link: LINK, until: UNTIL_ }),
+		newPasskeyLink(AVERY, KESTREL, {
+			at: AT,
+			by: 'Sam Ortiz',
+			ended: false,
+			link: LINK,
+			until: UNTIL_
+		}),
 		emailConfirmation(AVERY, KESTREL, { link: LINK, until: UNTIL_ }),
 		emailChange(AVERY, KESTREL, { by: 'Sam Ortiz', link: LINK, until: UNTIL_, to: 'a@b.example' }),
-		emailChanging(AVERY, KESTREL, { at: AT, by: 'Sam Ortiz', to: 'a@b.example' })
+		emailChanging(AVERY, KESTREL, { at: AT, by: 'Sam Ortiz', to: 'a@b.example' }),
+		passkeysEnded(AVERY, KESTREL, { at: AT, by: 'Sam Ortiz' })
 	];
 
 	it('goes as HTML as well as text, its subject the title and every paragraph in both', () => {
@@ -246,68 +256,32 @@ describe('every notice', () => {
 	});
 
 	it('draws each link as a button saying where it goes', () => {
-		expect(all[1].html).toContain('>Choose your password</a>');
-		expect(all[2].html).toContain('>Choose a new password</a>');
+		expect(all[1].html).toContain('>Make your passkey</a>');
+		expect(all[2].html).toContain('>Make a new passkey</a>');
 		expect(all[3].html).toContain('>Confirm your email</a>');
 		expect(all[4].html).toContain('>Confirm your new email</a>');
-	});
-});
-
-describe('a forgotten password, to a confirmed address', () => {
-	const n = passwordRecovery(AVERY, KESTREL, { at: AT, link: LINK, until: UNTIL });
-
-	it('carries the link, saying when it was asked for, and that nothing has changed', () => {
-		expect(n).toMatchObject({
-			kind: 'password_recovery',
-			to: 'avery@kestrel.example',
-			subject: 'Kestrel: choose a new password'
-		});
-		expect(n.body).toContain('On Monday, November 9, 2026 at 2:05 PM PST, someone asked');
-		expect(n.body.split('\n\n')).toContain(LINK);
-		expect(n.body).toContain("Until it's used, your password stays as it is.");
-		expect(n.html).toContain('>Choose a new password</a>');
-	});
-
-	it('says that whoever did not ask can ignore it, and whom to tell if more come', () => {
-		expect(n.body).toContain("If you didn't ask, you can ignore this email");
-		expect(n.body).toContain(
-			'If more keep coming, contact Kestrel Field Services at office@kestrel.example or 555-0100.'
-		);
-	});
-});
-
-describe('a forgotten password, to an address not confirmed', () => {
-	const n = passwordRecoveryUnconfirmed(AVERY, KESTREL, { at: AT });
-
-	it('carries no link, and says who can send one', () => {
-		expect(n).toMatchObject({
-			kind: 'password_recovery_unconfirmed',
-			to: 'avery@kestrel.example',
-			subject: 'Kestrel: choosing a new password'
-		});
-		expect(n.body).not.toContain('/link');
-		expect(n.html).not.toContain('/link');
-		expect(n.body).toContain("This address hasn't been confirmed as yours");
-		expect(n.body).toContain(
-			'Contact Kestrel Field Services at office@kestrel.example or 555-0100 to have one sent: using it confirms the address too.'
-		);
 	});
 });
 
 describe('whom to contact', () => {
 	it('is never a level of access, in any email reckon sends', () => {
 		for (const n of [
-			passwordChanged(AVERY, KESTREL, { at: AT, on: 'profile' }),
+			passkeyAdded(AVERY, KESTREL, { name: null, at: AT, from: null }),
+			passkeyRemoved(AVERY, KESTREL, { name: null, at: AT, from: null }),
 			invitation(AVERY, KESTREL, { by: 'Quinn Harper', link: LINK, until: UNTIL }),
-			passwordResetLink(AVERY, KESTREL, { at: AT, by: 'Quinn Harper', link: LINK, until: UNTIL }),
+			newPasskeyLink(AVERY, KESTREL, {
+				at: AT,
+				by: 'Quinn Harper',
+				ended: true,
+				link: LINK,
+				until: UNTIL
+			}),
 			emailConfirmation(AVERY, KESTREL, { link: LINK, until: UNTIL }),
 			emailChange(AVERY, KESTREL, { by: 'Sam Ortiz', link: LINK, until: UNTIL, to: 'a@b.example' }),
 			emailChanging(AVERY, KESTREL, { at: AT, by: 'Sam Ortiz', to: 'a@b.example' }),
 			emailChanging(AVERY, KESTREL, { at: AT, by: null, to: 'a@b.example' }),
-			passwordRecovery(AVERY, KESTREL, { at: AT, link: LINK, until: UNTIL }),
-			passwordRecoveryUnconfirmed(AVERY, KESTREL, { at: AT }),
-			passwordBreached(AVERY, KESTREL, { at: AT, link: LINK, until: UNTIL }),
-			passwordBreachedUnconfirmed(AVERY, KESTREL, { at: AT })
+			passkeysEnded(AVERY, KESTREL, { at: AT, by: 'Quinn Harper' }),
+			passkeysEnded(AVERY, KESTREL, { at: AT, by: null })
 		])
 			expect(n.body, n.kind).not.toMatch(/with Full/i);
 	});
@@ -326,47 +300,97 @@ describe('whom to contact', () => {
 	});
 });
 
-describe('a password found in a breach, to a confirmed address', () => {
-	const n = passwordBreached(AVERY, KESTREL, { at: AT, link: LINK, until: UNTIL });
-
-	it('says when it was used, that it has stopped and why, and carries the link', () => {
-		expect(n).toMatchObject({
-			kind: 'password_breached',
-			to: 'avery@kestrel.example',
-			subject: 'Kestrel: choose a new password'
-		});
-		expect(n.body).toContain(
-			"On Monday, November 9, 2026 at 2:05 PM PST, your password was used to sign in to Kestrel Field Services's reckon."
-		);
-		expect(n.body).toContain('It has appeared in a data breach on another site');
-		expect(n.body).toContain('reckon has stopped it working, and signed you out everywhere.');
-		expect(n.body.split('\n\n')).toContain(LINK);
-		expect(n.body).toContain('ask for another with Forgot password? on the sign-in page');
-		expect(n.html).toContain('>Choose a new password</a>');
+describe('a passkey added', () => {
+	const n = passkeyAdded(AVERY, KESTREL, {
+		name: 'Google Password Manager',
+		at: AT,
+		from: 'Chrome on Android'
 	});
 
-	it('says what to do if it was not them, and whom to ask', () => {
-		expect(n.body).toContain("If that wasn't you, someone else has your password");
-		expect(n.body).toContain('If you use it anywhere else, change it there too.');
+	it('names the passkey, when and where from, in their own zone', () => {
+		expect(n).toMatchObject({
+			kind: 'passkey_added',
+			to: 'avery@kestrel.example',
+			subject: 'Kestrel: a passkey was added'
+		});
 		expect(n.body).toContain(
-			'contact Kestrel Field Services at office@kestrel.example or 555-0100.'
+			"A passkey, Google Password Manager, was added to the account you sign in to Kestrel Field Services's reckon with, on Monday, November 9, 2026 at 2:05 PM PST, from Chrome on Android."
+		);
+	});
+
+	it('says whom to contact if it was not them', () => {
+		expect(n.body).toContain(`Contact ${contactFor(KESTREL)} to have it ended.`);
+	});
+
+	it('leaves one with no name, and no manager that says, unnamed', () => {
+		expect(passkeyAdded(AVERY, KESTREL, { name: null, at: AT, from: null }).body).toContain(
+			"A passkey was added to the account you sign in to Kestrel Field Services's reckon with, on Monday, November 9, 2026 at 2:05 PM PST. It can sign you in from now on."
 		);
 	});
 });
 
-describe('a password found in a breach, to an address not confirmed', () => {
-	const n = passwordBreachedUnconfirmed(AVERY, KESTREL, { at: AT });
+describe('a passkey removed', () => {
+	it('names the passkey and when, and whom to contact', () => {
+		const n = passkeyRemoved(AVERY, KESTREL, { name: 'iCloud Keychain', at: AT, from: null });
+		expect(n).toMatchObject({ kind: 'passkey_removed', subject: 'Kestrel: a passkey was removed' });
+		expect(n.body).toContain(
+			"A passkey, iCloud Keychain, was removed from the account you sign in to Kestrel Field Services's reckon with, on Monday, November 9, 2026 at 2:05 PM PST. It no longer signs you in."
+		);
+		expect(n.body).toContain(`Contact ${contactFor(KESTREL)}.`);
+	});
+});
 
-	it('says it has stopped and why, carries no link, and says who can send one', () => {
+describe('passkeys ended', () => {
+	it('on Team, names who ended them and when, and whom to ask for a new link', () => {
+		const n = passkeysEnded(AVERY, KESTREL, { at: AT, by: 'Quinn Harper' });
 		expect(n).toMatchObject({
-			kind: 'password_breached_unconfirmed',
-			to: 'avery@kestrel.example',
-			subject: 'Kestrel: your password has stopped working'
+			kind: 'passkeys_ended',
+			subject: 'Kestrel: your passkeys were ended'
 		});
-		expect(n.body).toContain('It has appeared in a data breach on another site');
-		expect(n.body).not.toContain('/link');
-		expect(n.html).not.toContain('/link');
-		expect(n.body).toContain("This address hasn't been confirmed as yours");
-		expect(n.body).toContain('If you use it anywhere else, change it there too.');
+		expect(n.body).toContain(
+			"Quinn Harper ended the passkeys you sign in to Kestrel Field Services's reckon with on Monday, November 9, 2026 at 2:05 PM PST, and you were signed out everywhere, so a lost or stolen phone or computer can't sign in as you."
+		);
+		expect(n.body).toContain(
+			'To sign in again, ask Quinn Harper to send you a new link to make a passkey with.'
+		);
+		expect(n.body).toContain(`ask Quinn Harper about it, or contact ${contactFor(KESTREL)}.`);
+	});
+
+	it('from the command line, names nobody, and says whom to contact', () => {
+		const n = passkeysEnded(AVERY, KESTREL, { at: AT, by: null });
+		expect(n.body).toContain(
+			"The passkeys you sign in to Kestrel Field Services's reckon with were ended on Monday"
+		);
+		expect(n.body).toContain(`Contact ${contactFor(KESTREL)} for one`);
+	});
+});
+
+describe('one passkey ended on Team', () => {
+	it('names it, who ended it and when, and that their others still work', () => {
+		const n = passkeyEnded(AVERY, KESTREL, {
+			name: 'Safari on iPhone',
+			at: AT,
+			by: 'Quinn Harper',
+			left: 1
+		});
+		expect(n).toMatchObject({ kind: 'passkey_removed', subject: 'Kestrel: a passkey was ended' });
+		expect(n.body).toContain(
+			"Quinn Harper ended a passkey, Safari on iPhone, on the account you sign in to Kestrel Field Services's reckon with, on Monday, November 9, 2026 at 2:05 PM PST, and you were signed out everywhere, so a lost or stolen phone or computer can't sign in as you."
+		);
+		expect(n.body).toContain('Your other passkey still works: sign in with it.');
+		expect(n.body).toContain(`ask Quinn Harper about it, or contact ${contactFor(KESTREL)}.`);
+	});
+
+	it('with several left, says to sign in with one of them', () => {
+		const n = passkeyEnded(AVERY, KESTREL, { name: null, at: AT, by: 'Quinn Harper', left: 2 });
+		expect(n.body).toContain('Quinn Harper ended a passkey on the account');
+		expect(n.body).toContain('Your other passkeys still work: sign in with one of them.');
+	});
+
+	it('their last, says to ask for a new link', () => {
+		const n = passkeyEnded(AVERY, KESTREL, { name: null, at: AT, by: 'Quinn Harper', left: 0 });
+		expect(n.body).toContain(
+			'It was your last. To sign in again, ask Quinn Harper to send you a new link to make a passkey with.'
+		);
 	});
 });

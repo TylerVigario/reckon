@@ -4,38 +4,36 @@
  *
  *   node scripts/user.mjs list
  *   node scripts/user.mjs add avery@example.com "Avery Quinn" [--role Partner] [--full]
- *   node scripts/user.mjs password avery@example.com [--insecure]
+ *   node scripts/user.mjs invite avery@example.com
+ *   node scripts/user.mjs end avery@example.com
  *
  * There is no sign-up: an open registration form on an invoicing system is a
- * liability rather than a feature. Someone with Full adds people on Team, and
- * resets a password there, and each is emailed a link to choose their own
- * (src/lib/server/links.ts). This is for the first person, before anyone can
- * sign in to do that, and for a password when nobody who could is able to, or
- * reckon has no email to send by. `list` says whose password has stopped --
- * after a hundred wrong tries in a row (src/lib/server/sign-in-limit.ts), or
- * found in a breach as they signed in (src/lib/server/breach.ts) -- and a new
- * one, set here or with a link, works again.
+ * liability rather than a feature. Everyone signs in with a passkey, made with
+ * a link (src/lib/server/passkeys.ts). Someone with Full adds people on Team,
+ * and each is emailed theirs; this is for the first person, before anyone can
+ * sign in to do that, and for anyone else, when nobody who could is able to or
+ * reckon has no email to send by.
  *
- * `add` makes the person and asks for their password straight away; `password`
- * sets a new one, and it is theirs rather than temporary. A password is
- * prompted for rather than passed as an argument, so it never reaches shell
- * history or the process list.
+ * `add` makes the person and gives a link to make their first passkey with.
+ * `invite` gives a link again: an invitation, for someone yet to make one, or
+ * a new link, for someone who can't sign in -- the only one with Full, say --
+ * which adds a passkey and ends none. Either is printed here, to hand to them
+ * or to open yourself, and works once, for an hour; whoever has it can make a
+ * passkey for that person, so it goes to nobody else. A newer link ends any
+ * earlier one still waiting.
+ *
+ * `end` ends every passkey someone has and signs them out everywhere, for a
+ * phone or computer of theirs that is lost or stolen, as Team's End their
+ * passkeys does (src/lib/server/passkeys.ts endPasskeys), and emails them to
+ * say so. They sign in again with a link from `invite`.
  *
  * Someone added has Field access -- the work they do, and what they are paid
  * for it -- unless --full gives them everything. The first person has Full
  * whatever is said, since someone has to: the database refuses to leave nobody
  * active on Full, and only someone with Full changes anyone's access.
  *
- * The rules are the server's (src/lib/server/password-rules.js): 15 characters
- * at least, not one of the most common, not seen in a breach, and not made of
- * the person's or the business's names. They are checked on the first entry,
- * before the second is asked for: typing a password twice only to be told the
- * first was too short is two wasted entries. --insecure lifts them, for a
- * development database where the password guards nothing; it still says so
- * when it is used.
- *
- * Every existing session for that person is ended, because a password change
- * that leaves old sessions alive has not changed anything for whoever holds one.
+ * SITE_URL must be set, as it is for the server: a link begins with it, and a
+ * passkey is made for that site.
  *
  * Plain JavaScript, so a release can run it with no build step. It connects as
  * the server does, from the same settings (#lib/server/db/defaults): .env in
@@ -43,135 +41,33 @@
  */
 // First, so .env is read before anything reads what it sets.
 import { database } from './env.mjs';
-import { hash } from '@node-rs/argon2';
-import {
-	MAX_PASSWORD_LENGTH,
-	MIN_PASSWORD_LENGTH,
-	PWNED_PASSWORDS,
-	weakness,
-	wordsAbout
-} from '../src/lib/server/password-rules.js';
+import { createHash, randomBytes } from 'node:crypto';
 import pg from 'pg';
-import { stdin, stdout } from 'node:process';
-import { EMAIL_CHANNEL, NOTICE_SENDS_FOR, passwordChanged } from '../src/lib/server/notices.js';
 import { mailableLogo } from '../src/lib/server/email-layout.js';
+import { EMAIL_CHANNEL, NOTICE_SENDS_FOR, passkeysEnded } from '../src/lib/server/notices.js';
 
 const USAGE = `usage:
   node scripts/user.mjs list
-  node scripts/user.mjs add <email> <name> [--role <role>] [--full] [--insecure]
-  node scripts/user.mjs password <email> [--insecure]`;
+  node scripts/user.mjs add <email> <name> [--role <role>] [--full]
+  node scripts/user.mjs invite <email>
+  node scripts/user.mjs end <email>`;
 
 const [command, ...rest] = process.argv.slice(2);
-const insecure = rest.includes('--insecure');
 const full = rest.includes('--full');
 const roleAt = rest.indexOf('--role');
 const roleName = roleAt === -1 ? null : rest[roleAt + 1];
 const words = rest.filter((a, i) => !a.startsWith('--') && (roleAt === -1 || i !== roleAt + 1));
-const unknown = rest.filter(
-	(a) => a.startsWith('--') && a !== '--insecure' && a !== '--role' && a !== '--full'
-);
-const wanted = { list: 0, add: 2, password: 1 }[command ?? ''];
+const unknown = rest.filter((a) => a.startsWith('--') && a !== '--role' && a !== '--full');
+const wanted = { list: 0, add: 2, invite: 1, end: 1 }[command ?? ''];
 if (
 	wanted === undefined ||
 	words.length !== wanted ||
 	unknown.length ||
-	(roleAt !== -1 && !roleName)
+	(roleAt !== -1 && !roleName) ||
+	(command !== 'add' && (full || roleAt !== -1))
 ) {
 	console.error(USAGE);
 	process.exit(1);
-}
-
-/** The same parameters as src/lib/server/auth.ts; a sign-in rehashes anything older. */
-const ARGON = { algorithm: 2, memoryCost: 19456, timeCost: 2, parallelism: 1 };
-
-/**
- * Prompts without echoing. A password on screen is a password over a shoulder.
- *
- * Raw mode: the keys are read directly, so nothing typed is echoed.
- */
-/** @type {Promise<string[]> | null} */
-let piped = null;
-
-// Anything typed or pasted past the Enter that ended the last prompt. A paste
-// delivers both passwords in one chunk, and without this the second prompt
-// would be answered by whatever was left of the first -- or by nothing.
-let carry = '';
-
-/**
- * @param {string} prompt
- * @returns {Promise<string>}
- */
-function secret(prompt) {
-	return new Promise((resolve, reject) => {
-		stdout.write(prompt);
-
-		const take = (/** @type {string} */ text) => {
-			const i = text.search(/[\r\n]/);
-			if (i === -1) return null;
-			carry = text.slice(i + 1).replace(/^[\r\n]/, '');
-			return text.slice(0, i);
-		};
-
-		const ready = take(carry);
-		if (ready !== null) {
-			stdout.write('\n');
-			return resolve(ready);
-		}
-
-		// Piped input has no keys to read raw. stdin can only be drained once,
-		// and there are two prompts, so it is read whole and handed out a line
-		// at a time -- otherwise the second prompt waits on a stream that ended.
-		if (!stdin.isTTY) {
-			piped ??= new Promise((res) => {
-				let buf = '';
-				stdin.setEncoding('utf8');
-				stdin.on('data', (/** @type {string} */ d) => (buf += d));
-				stdin.on('end', () => res(buf.split('\n')));
-			});
-			void piped.then((lines) => {
-				stdout.write('\n');
-				resolve(lines.shift() ?? '');
-			});
-			return;
-		}
-
-		const wasRaw = stdin.isRaw;
-		stdin.setRawMode(true);
-		stdin.resume();
-		stdin.setEncoding('utf8');
-
-		let buf = carry;
-		carry = '';
-		const done = (/** @type {(v: any) => void} */ fn, /** @type {string | Error} */ arg) => {
-			stdin.removeListener('data', onData);
-			stdin.setRawMode(wasRaw);
-			stdin.pause();
-			stdout.write('\n');
-			fn(arg);
-		};
-
-		const onData = (/** @type {string} */ chunk) => {
-			for (let i = 0; i < chunk.length; i++) {
-				const ch = chunk[i];
-				if (ch === '\r' || ch === '\n' || ch === '\u0004') {
-					// Whatever came after the Enter belongs to the next prompt.
-					carry = chunk.slice(i + 1).replace(/^[\r\n]/, '');
-					return done(resolve, buf);
-				}
-				if (ch === '\u0003') return done(reject, new Error('cancelled'));
-				if (ch === '\u007f' || ch === '\b') {
-					buf = buf.slice(0, -1);
-					continue;
-				}
-				// Ignore escape sequences -- an arrow key should not land in a
-				// password as three characters nobody typed.
-				if (ch === '\u001b') return;
-				buf += ch;
-			}
-		};
-
-		stdin.on('data', onData);
-	});
 }
 
 const pool = new pg.Pool({ ...database(), max: 1 });
@@ -184,147 +80,121 @@ const stop = async (/** @type {string} */ message) => {
 	process.exit(1);
 };
 
-/** What is wrong with a password, said of whoever it is for. */
-const WEAK = {
-	too_long: `${MAX_PASSWORD_LENGTH} characters at most.`,
-	common: 'That is one of the most common passwords.',
-	breached: 'Pwned Passwords has seen that password in a data breach.',
-	about_them: 'That password is made of their name, their email or the business’s.',
-	too_short: `${MIN_PASSWORD_LENGTH} characters at least.`
-};
-
-/**
- * What is wrong with a password for this person, as the server would find it,
- * or null.
- *
- * @param {string} p
- * @param {{ name: string, email: string }} user
- */
-async function weaknessFor(p, user) {
-	const [business] = await q(
-		'select trading_name as "tradingName", short_name as "shortName", email from operator limit 1'
-	);
-	return weakness(p, {
-		about: wordsAbout(user, business),
-		pwned: process.env.PWNED_PASSWORDS_URL?.trim() || PWNED_PASSWORDS
-	});
+/** Where reckon is reached, as the server reads SITE_URL: its origin alone. */
+function siteUrl() {
+	const url = process.env.SITE_URL?.trim();
+	if (!url || !URL.canParse(url)) return null;
+	return new URL(url).origin;
 }
 
 /**
- * Asks for a password twice and stores its hash as the person's credential
- * account, ending every session they hold.
+ * A link for `user` to make a passkey with, as src/lib/server/links.ts makes
+ * one: 32 random bytes, of which only the SHA-256 is kept, good once for an
+ * hour, ending any other of its kind waiting. An invitation for someone yet to
+ * make a passkey, else a new link.
  *
- * @param {{ id: string, name: string, email: string }} user
- * @param {{ tell?: boolean }} [options] whether they are told by email, as a
- *   person whose password is changed is; one just added is not
+ * @param {{ id: string, email: string }} user
  */
-async function setPassword(user, { tell = false } = {}) {
-	// A terminal can be asked again; piped input has only the lines it was
-	// given, so there a refusal ends it -- still before the second line is read.
-	const retry = stdin.isTTY;
-
-	/** @type {string} */
-	let first;
-	/** @type {Awaited<ReturnType<typeof weaknessFor>>} */
-	let weak;
-	for (;;) {
-		first = await secret(`Password for ${user.name}: `);
-		// Empty is refused even under --insecure: that is not a weak password, it
-		// is none.
-		weak = first ? await weaknessFor(first, user) : null;
-		const why = !first
-			? 'A password cannot be empty.'
-			: weak && !insecure
-				? `${WEAK[weak]} Or pass --insecure, for a development database.`
-				: null;
-		if (!why) {
-			const again = await secret('Again: ');
-			if (again === first) break;
-			if (!retry) await stop('They differ. Nothing changed.');
-			console.error('They differ. Once more.');
-			continue;
-		}
-		if (!retry) await stop(`${why} Nothing changed.`);
-		console.error(why);
-	}
-
-	if (weak)
-		console.error(
-			`Insecure: ${WEAK[weak]} Fine for a development database, not for one anybody else signs in to.`
+async function linkFor(user) {
+	const site = siteUrl();
+	if (!site)
+		await stop(
+			'SITE_URL is unset: a link begins with it, and a passkey is made for that site. Set it as the server has it.'
 		);
-
-	const password = await hash(first, ARGON);
+	const [{ held }] = await q(
+		`select exists (select 1 from passkey where user_id = $1)
+		     or (select last_signed_in_at is not null from "user" where id = $1) as held`,
+		[user.id]
+	);
+	const purpose = held ? 'reset' : 'invite';
+	const code = randomBytes(32).toString('base64url');
 	const client = await pool.connect();
 	try {
 		await client.query('begin');
-		const { rowCount } = await client.query(
-			`update account set password = $2, updated_at = now()
-			  where user_id = $1 and provider_id = 'credential'`,
-			[user.id, password]
-		);
-		// A password account names its person by their own id, as Better Auth's do.
-		if (!rowCount)
-			await client.query(
-				`insert into account (user_id, account_id, provider_id, password)
-				 values ($1::uuid, $1::text, 'credential', $2)`,
-				[user.id, password]
-			);
-		// Typed here, it is not one handed over to be replaced; and it is new, so
-		// none of the old one's tries count against it, and it works
-		// (src/lib/server/sign-in-limit.ts).
-		await client.query(
-			`update "user" set temporary_password = false, password_set_at = now(),
-			        password_stopped_at = null
-			  where id = $1`,
-			[user.id]
-		);
-		const gone = await client.query('delete from session where user_id = $1', [user.id]);
-		// A link to choose a password still waiting would undo this one
-		// (src/lib/server/links.ts).
 		await client.query(
 			`delete from email_link
-			  where user_id = $1 and used_at is null and purpose in ('invite', 'reset', 'recover')`,
+			  where user_id = $1 and used_at is null and purpose in ('invite', 'reset')`,
 			[user.id]
 		);
-		// And they are told, as a change anywhere else tells them, once this
-		// commits (src/lib/server/email.ts): by the server, which sends it.
-		if (tell) {
-			const [them] = (
-				await client.query('select name, email, timezone, locale from "user" where id = $1', [
-					user.id
-				])
-			).rows;
-			const [business] = (
-				await client.query(
-					`select trading_name as "tradingName", short_name as "shortName", email, phone,
-					        timezone, locale, accent_colour as "accentColour", logo,
-					        logo_media_type as "logoMediaType"
-					   from operator limit 1`
-				)
-			).rows;
-			const { logo, logoMediaType, ...rest } = business ?? {};
-			const notice = passwordChanged(
-				them,
-				{ ...rest, logo: mailableLogo(logo, logoMediaType) },
-				{ at: new Date(), on: 'command_line' }
-			);
+		const [{ until }] = (
 			await client.query(
-				`insert into email_message (kind, user_id, to_address, subject, body, html, send_by)
-				 values ($1, $2, $3, $4, $5, $6, now() + $7::interval)`,
-				[
-					notice.kind,
-					user.id,
-					notice.to,
-					notice.subject,
-					notice.body,
-					notice.html,
-					NOTICE_SENDS_FOR
-				]
-			);
-			await client.query('select pg_notify($1, $2)', [EMAIL_CHANNEL, '']);
-		}
+				`insert into email_link (user_id, purpose, code_hash, sent_to, expires_at)
+				 values ($1, $2, $3, $4, now() + interval '1 hour')
+				 returning expires_at as until`,
+				[user.id, purpose, createHash('sha256').update(code).digest(), user.email]
+			)
+		).rows;
 		await client.query('commit');
-		return gone.rowCount ?? 0;
+		return { purpose, link: `${site}/link#${code}`, until: /** @type {Date} */ (until) };
+	} catch (e) {
+		await client.query('rollback');
+		throw e;
+	} finally {
+		client.release();
+	}
+}
+
+/** Says what a link is, and prints it. */
+function hand(
+	/** @type {{ name: string, email: string }} */ user,
+	/** @type {Awaited<ReturnType<typeof linkFor>>} */ { purpose, link, until }
+) {
+	console.log(
+		purpose === 'invite'
+			? `${user.name} makes their first passkey with this link:`
+			: `${user.name} makes a new passkey with this link:`
+	);
+	console.log(`\n  ${link}\n`);
+	console.log(
+		`It works once, until ${until.toLocaleString()}. Whoever has it can make a passkey for ${user.name}: give it to them alone, or open it yourself if it is yours.`
+	);
+	if (purpose === 'reset')
+		console.log(
+			`The passkeys they have still work. If a phone or computer with one is lost or stolen, end them: node scripts/user.mjs end ${user.email}`
+		);
+}
+
+/**
+ * Ends every passkey `user` has and signs them out everywhere, as
+ * src/lib/server/passkeys.ts endPasskeys does, and tells them once it commits
+ * (src/lib/server/email.ts tell): written here, and sent by the server. How
+ * many passkeys there were.
+ *
+ * @param {{ id: string }} user
+ */
+async function endPasskeys(user) {
+	const client = await pool.connect();
+	try {
+		await client.query('begin');
+		const { rowCount } = await client.query('delete from passkey where user_id = $1', [user.id]);
+		await client.query('delete from session where user_id = $1', [user.id]);
+		const [them] = (
+			await client.query('select name, email, timezone, locale from "user" where id = $1', [
+				user.id
+			])
+		).rows;
+		const [business] = (
+			await client.query(
+				`select trading_name as "tradingName", short_name as "shortName", email, phone,
+				        timezone, locale, accent_colour as "accentColour", logo,
+				        logo_media_type as "logoMediaType"
+				   from operator limit 1`
+			)
+		).rows;
+		const { logo, logoMediaType, ...rest } = business ?? {};
+		const notice = passkeysEnded(
+			them,
+			{ ...rest, logo: mailableLogo(logo, logoMediaType) },
+			{ at: new Date(), by: null }
+		);
+		await client.query(
+			`insert into email_message (kind, user_id, to_address, subject, body, html, send_by)
+			 values ($1, $2, $3, $4, $5, $6, now() + $7::interval)`,
+			[notice.kind, user.id, notice.to, notice.subject, notice.body, notice.html, NOTICE_SENDS_FOR]
+		);
+		await client.query('select pg_notify($1, $2)', [EMAIL_CHANNEL, '']);
+		await client.query('commit');
+		return rowCount ?? 0;
 	} catch (e) {
 		await client.query('rollback');
 		throw e;
@@ -335,11 +205,8 @@ async function setPassword(user, { tell = false } = {}) {
 
 if (command === 'list') {
 	const people = await q(`
-		select u.email, u.name, r.name as role, u.access, u.active, u.temporary_password,
-		       u.password_stopped_at is not null as stopped,
-		       exists (select 1 from account a
-		                where a.user_id = u.id and a.provider_id = 'credential'
-		                  and a.password is not null) as can_sign_in,
+		select u.email, u.name, r.name as role, u.access, u.active,
+		       (select count(*) from passkey p where p.user_id = u.id)::int as passkeys,
 		       (select count(*) from session s where s.user_id = u.id and s.expires_at > now())::int
 		         as sessions
 		  from "user" u left join role r on r.id = u.role_id
@@ -354,13 +221,7 @@ if (command === 'list') {
 				p.role ?? 'no role',
 				p.access === 'full' ? 'Full' : 'Field',
 				p.active ? 'active' : 'inactive',
-				p.can_sign_in
-					? p.stopped
-						? 'PASSWORD STOPPED, until a new one is set'
-						: p.temporary_password
-							? 'temporary password'
-							: 'has a password'
-					: 'NO PASSWORD',
+				p.passkeys ? `${p.passkeys} passkey(s)` : 'NO PASSKEY',
 				`${p.sessions} session(s)`
 			].join(' · ')
 		);
@@ -368,6 +229,10 @@ if (command === 'list') {
 	const [email, name] = [words[0].trim().toLowerCase(), words[1].trim()];
 	if (!/^[^\s@]+@[^\s@]+$/.test(email)) await stop(`${words[0]} is not an email address.`);
 	if (!name) await stop('A name is needed.');
+	if (!siteUrl())
+		await stop(
+			'SITE_URL is unset: a link begins with it, and a passkey is made for that site. Set it as the server has it.'
+		);
 	/** @type {{ id: string, name: string } | null} */
 	let role = null;
 	if (roleName) {
@@ -380,7 +245,7 @@ if (command === 'list') {
 	const [taken] = await q('select 1 from "user" where email = $1', [email]);
 	if (taken)
 		await stop(
-			`${email} is already somebody. To change their password: node scripts/user.mjs password ${email}`
+			`${email} is already somebody. To give them a link: node scripts/user.mjs invite ${email}`
 		);
 	// The first person has Full whether or not it was asked for.
 	const [someone] = await q(`select 1 from "user" where active and access = 'full' limit 1`);
@@ -389,20 +254,33 @@ if (command === 'list') {
 		'insert into "user" (name, email, role_id, access) values ($1, $2, $3, $4) returning id, name, email',
 		[name, email, role?.id ?? null, access]
 	);
-	await setPassword(user);
 	console.log(
 		`Added ${user.name}${role ? ` as ${role.name}` : ', with no role -- they sign in and are not paid'}, ` +
 			(access === 'full'
 				? `with Full access${full ? '' : ', as the first'}.`
 				: 'with Field access: their own work, and what they are paid for it.')
 	);
-} else {
-	const [user] = await q('select id, name, email from "user" where email = lower($1)', [
+	hand(user, await linkFor(user));
+} else if (command === 'invite') {
+	const [user] = await q('select id, name, email, active from "user" where email = lower($1)', [
 		words[0].trim()
 	]);
 	if (!user) await stop(`Nobody has the email ${words[0]}.`);
-	const ended = await setPassword(user, { tell: true });
-	console.log(`Set for ${user.name}. ${ended} existing session(s) ended.`);
+	if (!user.active) await stop(`${user.name} is deactivated. Reactivate them on Team first.`);
+	hand(user, await linkFor(user));
+} else {
+	const [user] = await q(
+		`select id, name, email,
+		        exists (select 1 from passkey where user_id = "user".id) as keyed
+		   from "user" where email = lower($1)`,
+		[words[0].trim()]
+	);
+	if (!user) await stop(`Nobody has the email ${words[0]}.`);
+	if (!user.keyed) await stop(`${user.name} has no passkey to end.`);
+	const ended = await endPasskeys(user);
+	console.log(
+		`${user.name}'s ${ended === 1 ? 'passkey is' : `${ended} passkeys are`} ended, and they are signed out everywhere. They are emailed to say so. To sign in again they need a new link: node scripts/user.mjs invite ${user.email}`
+	);
 }
 
 await pool.end();

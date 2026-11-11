@@ -4,7 +4,6 @@ vi.mock('$app/env', () => ({ building: false }));
 vi.mock('$app/env/private', () => ({
 	BETTER_AUTH_SECRET: 'a-secret-for-these-tests-and-nothing-else',
 	BETTER_AUTH_SECRET_FILE: undefined,
-	PWNED_PASSWORDS_URL: undefined,
 	SECURE_COOKIES: true,
 	SITE_URL: 'https://reckon.kestrel.example'
 }));

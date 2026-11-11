@@ -2,7 +2,7 @@
 /**
  * Exercises everything that WRITES, and checks what it wrote.
  *
- *   node tests/write-check.mjs <base-url> <email> <password>
+ *   node tests/write-check.mjs <base-url> <email>
  *
  * WHY THIS EXISTS. smoke.mjs asks every route for a status code and
  * console-check.mjs walks every screen -- both only ever GET. If
@@ -16,7 +16,9 @@
  * It is not clean. It leaves an entry it posted, the settings and terms it
  * saved, and the site it closed, so run it against a scratch database.
  */
-const [, , base = 'http://127.0.0.1:5181', email, password] = process.argv;
+import { signIn } from './passkeys.mjs';
+
+const [, , base = 'http://localhost:5181', email] = process.argv;
 
 // In production a TLS proxy stands in front, and the server takes the scheme
 // from it. Over plain http this says what that proxy would -- the server is
@@ -28,20 +30,7 @@ const PROXY = base.startsWith('http:') ? { 'x-forwarded-proto': 'http' } : {};
 let passed = 0;
 const failures = [];
 
-const login = async () => {
-	const body = new URLSearchParams({ email, password: password ?? '', next: '/' });
-	const r = await fetch(`${base}/login`, {
-		method: 'POST',
-		body,
-		redirect: 'manual',
-		headers: { origin: base, ...PROXY }
-	});
-	const cookie = (r.headers.getSetCookie?.() ?? []).map((c) => c.split(';')[0]).join('; ');
-	if (!cookie) throw new Error(`could not sign in (${r.status})`);
-	return cookie;
-};
-
-const cookie = await login();
+const { cookie } = await signIn(base, email);
 const H = { cookie, 'content-type': 'application/json', origin: base, ...PROXY };
 
 /**

@@ -3,7 +3,9 @@
  * Proves what each access level reaches (#lib/access), signed in as someone
  * with Full and someone with Field.
  *
- *   node tests/access-check.mjs <base-url> <full-email> <full-password> <field-email> <field-password>
+ *   node tests/access-check.mjs <base-url> <full-email> <field-email>
+ *
+ * Each signed in with the passkey tests/passkeys.mjs gave them.
  *
  * Every route Field does not reach is refused to them before it runs -- a
  * screen turned away to /refused, an endpoint answered with a 403 problem
@@ -21,12 +23,11 @@
  * leaves nothing it made.
  */
 import { REACH } from '../src/lib/access.ts';
+import { signIn } from './passkeys.mjs';
 
-const [, , base, fullEmail, fullPassword, fieldEmail, fieldPassword] = process.argv;
-if (!base || !fullEmail || !fullPassword || !fieldEmail || !fieldPassword) {
-	console.error(
-		'usage: node tests/access-check.mjs <base-url> <full-email> <full-password> <field-email> <field-password>'
-	);
+const [, , base, fullEmail, fieldEmail] = process.argv;
+if (!base || !fullEmail || !fieldEmail) {
+	console.error('usage: node tests/access-check.mjs <base-url> <full-email> <field-email>');
 	process.exit(2);
 }
 
@@ -44,21 +45,6 @@ const check = (/** @type {boolean} */ ok, /** @type {string} */ what, detail = '
 	console.log(`  ${ok ? '✓' : '✗'} ${what}`);
 };
 
-const signIn = async (/** @type {string} */ email, /** @type {string} */ password) => {
-	const r = await fetch(`${base}/login`, {
-		method: 'POST',
-		body: new URLSearchParams({ email, password, next: '/' }),
-		redirect: 'manual',
-		headers: { origin: base, ...PROXY }
-	});
-	const cookie = (r.headers.getSetCookie?.() ?? []).map((c) => c.split(';')[0]).join('; ');
-	if (!cookie) {
-		console.error(`  could not sign in as ${email} (${r.status})`);
-		process.exit(1);
-	}
-	return cookie;
-};
-
 /** @typedef {(path: string, init?: RequestInit) => Promise<Response>} Ask */
 const as = (/** @type {string} */ cookie) =>
 	/** @type {Ask} */ (
@@ -69,8 +55,8 @@ const as = (/** @type {string} */ cookie) =>
 				headers: { cookie, origin: base, ...PROXY, ...(init.headers ?? {}) }
 			})
 	);
-const asFull = as(await signIn(fullEmail, fullPassword));
-const asField = as(await signIn(fieldEmail, fieldPassword));
+const asFull = as((await signIn(base, fullEmail)).cookie);
+const asField = as((await signIn(base, fieldEmail)).cookie);
 
 const page = async (/** @type {Ask} */ ask, /** @type {string} */ path) => (await ask(path)).text();
 const send = (/** @type {string} */ method, /** @type {unknown} */ body) => ({
@@ -154,10 +140,7 @@ const uuid = () => crypto.randomUUID();
 				need === 'field' &&
 				!route.startsWith('/api/') &&
 				!route.includes('[') &&
-				route !== '/logout' &&
-				// Only for someone signed in with a password handed to them;
-				// password-check walks it.
-				route !== '/new-password'
+				route !== '/logout'
 		)
 		.map(([route]) => route);
 	/** @type {string[]} */

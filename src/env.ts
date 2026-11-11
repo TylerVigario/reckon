@@ -1,7 +1,6 @@
 import { defineEnvVars } from '@sveltejs/kit/env';
 import { building } from '$app/env';
 import { readSecretFile } from '#lib/server/secret-file.ts';
-import { PWNED_PASSWORDS } from '#lib/server/password-rules.js';
 
 /**
  * Everything the application reads from its environment, once.
@@ -103,17 +102,6 @@ export const variables = defineEnvVars({
 			if (value === 'true') return true;
 			if (value === 'false') return false;
 			throw new Error(`SECURE_COOKIES must be true or false, not '${value}'.`);
-		}
-	},
-
-	PWNED_PASSWORDS_URL: {
-		description:
-			"Where a password is looked up among those seen in breaches, by the first five characters of its SHA-1 (#lib/server/password-rules): each new one, and each one signed in with. Have I Been Pwned's Pwned Passwords unless set; another service answering its range API -- a copy kept on this host, say -- is named by its …/range/ URL.",
-		schema: (value) => {
-			const url = optional(value) ?? PWNED_PASSWORDS;
-			if (!URL.canParse(url) || !['https:', 'http:'].includes(new URL(url).protocol))
-				throw new Error(`PWNED_PASSWORDS_URL is an http or https URL, not '${url}'.`);
-			return url;
 		}
 	},
 
@@ -244,7 +232,7 @@ export const variables = defineEnvVars({
 
 	SITE_URL: {
 		description:
-			"Where reckon is reached, as https://reckon.example.com: the links reckon emails -- an invitation, a password reset, confirming an address -- are built from it, never from the request a link was asked for in (OWASP's Forgot Password Cheat Sheet). https, except to this machine (http://localhost:5173) in development. It is also Better Auth's base URL. Unset, nobody can be invited or have their password reset by email, and Better Auth's routes under /api/auth are not mounted.",
+			"Where reckon is reached, as https://reckon.example.com: the links reckon emails -- an invitation, a new link to make a passkey with, confirming an address -- are built from it, never from the request a link was asked for in (OWASP's Forgot Password Cheat Sheet), and it is the site each passkey is made for, so a host name, never an IP address. https, except to this machine (http://localhost:5173) in development. It is also Better Auth's base URL. Unset, nobody can make a passkey, so nobody can sign in, and Better Auth's routes under /api/auth are not mounted.",
 		schema: (value) => {
 			const url = optional(value);
 			if (url === undefined || building) return url;

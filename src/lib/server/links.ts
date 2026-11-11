@@ -2,19 +2,21 @@ import { createHash, randomBytes } from 'node:crypto';
 import { and, count, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { SITE_URL } from '$app/env/private';
 import { db, type Tx } from './db/index.ts';
-import { account, emailLink, linkTry, user, type LINK_PURPOSES } from './db/schema/index.ts';
+import { emailLink, linkTry, passkey, user, type LINK_PURPOSES } from './db/schema/index.ts';
 import type { Changing, Waiting } from '#lib/people-fields.ts';
 import { mailer } from './email.ts';
-import { placeOf } from './sign-in-limit.ts';
+import { placeOf } from './network.ts';
 
 /**
- * LINKS reckon emails (email_link): an invitation to choose a first password,
- * a reset's link to choose a new one, a link confirming the address one signs
- * in with, one making a new address the one they sign in with, and one to
- * choose a new password, asked for by whoever forgot theirs. Each carries a
- * code, and is good once, for 24 hours at most -- the most NIST SP 800-63A-4
- * §3.8 and SP 800-63B-4 §4.2.1.2 allow a code sent by email -- and a
- * recovery's for an hour.
+ * LINKS reckon emails (email_link): an invitation to make a first passkey, a
+ * new link to make one with after the old are lost (a "reset"), a link
+ * confirming the address one signs in with, and one making a new address the
+ * one they sign in with. Each carries a code, and is good once, for an hour.
+ * NIST SP 800-63A-4 §3.8 and SP 800-63B-4 §4.2.1.2 allow a code sent by email
+ * at most 24 hours; an invitation or a new link now lets whoever opens it first
+ * make a passkey for that account, so it lasts as long as a credential handed
+ * over does -- Microsoft Entra's Temporary Access Pass defaults to an hour --
+ * and another is one click on Team.
  *
  * THE CODE is 32 random bytes, written in base64url: 256 bits, past the 112
  * NIST asks of any secret (SP 800-63B-4 §3.2.12). Only its SHA-256 is kept, so
@@ -41,17 +43,12 @@ import { placeOf } from './sign-in-limit.ts';
 
 export type Purpose = (typeof LINK_PURPOSES)[number];
 
-/**
- * How long a link works, in minutes: a day, the most NIST allows a code sent by
- * email -- an invitation or a reset waits in an inbox for whenever it is read.
- * A recovery is asked for by someone waiting for it, so it has an hour.
- */
+/** How long a link works, in minutes: an hour, every one (see above). */
 export const LINK_MINUTES = {
-	invite: 24 * 60,
-	reset: 24 * 60,
-	confirm: 24 * 60,
-	change: 24 * 60,
-	recover: 60
+	invite: 60,
+	reset: 60,
+	confirm: 60,
+	change: 60
 } as const satisfies Record<Purpose, number>;
 
 /** A code as a link carries it: 32 bytes of base64url, unpadded. */
@@ -73,19 +70,15 @@ export const unsentBecause = (missing: 'SMTP_HOST' | 'SITE_URL') =>
 		? 'Email isn’t set up: SMTP_HOST is unset, so reckon has no relay to send it through.'
 		: 'Email isn’t set up: SITE_URL is unset, so reckon has no address to build the link from.';
 
-/**
- * The purposes a link that sets a password has: an invitation or a reset's, one
- * of which waits at a time, and a recovery's, which waits beside them.
- */
-const SETS_PASSWORD = ['invite', 'reset'] as const;
+/** The purposes a link that makes a passkey has: an invitation or a new link, one at a time. */
+export const MAKES_PASSKEY = ['invite', 'reset'] as const;
 
 /** What else a link ends when it is issued: any other of its kind still waiting. */
 const ALIKE = {
-	invite: SETS_PASSWORD,
-	reset: SETS_PASSWORD,
+	invite: MAKES_PASSKEY,
+	reset: MAKES_PASSKEY,
 	confirm: ['confirm'],
-	change: ['change'],
-	recover: ['recover']
+	change: ['change']
 } as const satisfies Record<Purpose, readonly Purpose[]>;
 
 /**
@@ -177,6 +170,37 @@ export async function usable(tx: Tx, code: string): Promise<Usable | null> {
 	return found ?? null;
 }
 
+/**
+ * The link to make a passkey with -- an invitation or a new one sent on Team --
+ * by its id, if it can be used now, held for the rest of the transaction as
+ * usable() holds one. The id is not a secret: it is only ever taken from
+ * reckon's own code, which has looked the code up first (#lib/server/passkeys).
+ */
+export async function usableById(tx: Tx, id: string): Promise<Usable | null> {
+	const [found] = await tx
+		.select({
+			id: emailLink.id,
+			purpose: emailLink.purpose,
+			userId: emailLink.userId,
+			name: user.name,
+			email: emailLink.sentTo
+		})
+		.from(emailLink)
+		.innerJoin(user, eq(user.id, emailLink.userId))
+		.where(
+			and(
+				eq(emailLink.id, id),
+				isNull(emailLink.usedAt),
+				gt(emailLink.expiresAt, sql`now()`),
+				eq(user.active, true),
+				eq(user.email, emailLink.sentTo),
+				inArray(emailLink.purpose, [...MAKES_PASSKEY])
+			)
+		)
+		.for('update', { of: [emailLink, user] });
+	return found ?? null;
+}
+
 /** Marks a link used, and the address it went to proven theirs. */
 export async function used(tx: Tx, link: Usable): Promise<void> {
 	await tx
@@ -187,18 +211,18 @@ export async function used(tx: Tx, link: Usable): Promise<void> {
 }
 
 /**
- * Ends any link to choose a password that `userId` has waiting, once they have
- * chosen one some other way, or with another link: a link still working after
- * a change would undo it (OWASP's Forgot Password Cheat Sheet).
+ * Ends any link to make a passkey that `userId` has waiting, once they have
+ * made one with another: a link still working after would undo it (OWASP's
+ * Forgot Password Cheat Sheet).
  */
-export async function endPasswordLinks(tx: Tx, userId: string): Promise<void> {
+export async function endPasskeyLinks(tx: Tx, userId: string): Promise<void> {
 	await tx
 		.delete(emailLink)
 		.where(
 			and(
 				eq(emailLink.userId, userId),
 				isNull(emailLink.usedAt),
-				inArray(emailLink.purpose, [...SETS_PASSWORD, 'recover'])
+				inArray(emailLink.purpose, [...MAKES_PASSKEY])
 			)
 		);
 }
@@ -225,16 +249,14 @@ export async function missed(address: string): Promise<void> {
 
 /**
  * What Team reads of each person's signing in, as columns of a select from
- * user: whether they have a password, and the newest link to choose one they
- * have waiting (#lib/people-fields Waiting). The person is named as "user"
+ * user: whether they have a passkey, and the newest link to make one they have
+ * waiting (#lib/people-fields Waiting). The person is named as "user"
  * outright: Drizzle leaves a column unqualified in a query of one table, and
  * inside these it would be read as the inner table's own.
  */
 export const signingIn = {
-	has_password: sql<boolean>`exists (
-		select 1 from ${account}
-		 where ${account.userId} = "user".id and ${account.providerId} = 'credential'
-		   and ${account.password} is not null)`,
+	has_passkey: sql<boolean>`exists (
+		select 1 from ${passkey} where ${passkey.userId} = "user".id)`,
 	waiting: sql<Waiting | null>`(
 		select json_build_object(
 			'purpose', l.purpose,

@@ -9,7 +9,7 @@
  * makes the new address the one they sign in with, confirmed, once. Someone
  * deactivated changes at once, and nobody is emailed.
  *
- *   node tests/email-change-check.mjs <base-url> <full-email> <full-password> [relay-read-back-url]
+ *   node tests/email-change-check.mjs <base-url> <full-email> [relay-read-back-url]
  *
  * The server sends to the relay stand-in (tests/smtp-stand-in.mjs), read back
  * at http://127.0.0.1:2526 unless said, with SITE_URL the base url. Over HTTP,
@@ -20,11 +20,12 @@
 import { database } from '../scripts/env.mjs';
 import pg from 'pg';
 import { arrives, inbox, linkAction, linkIn } from './relay.mjs';
+import { makePasskey, signIn, signInWith } from './passkeys.mjs';
 
-const [, , base, fullEmail, fullPassword, relay = 'http://127.0.0.1:2526'] = process.argv;
-if (!base || !fullEmail || !fullPassword) {
+const [, , base, fullEmail, relay = 'http://127.0.0.1:2526'] = process.argv;
+if (!base || !fullEmail) {
 	console.error(
-		'usage: node tests/email-change-check.mjs <base-url> <full-email> <full-password> [relay-read-back-url]'
+		'usage: node tests/email-change-check.mjs <base-url> <full-email> [relay-read-back-url]'
 	);
 	process.exit(2);
 }
@@ -42,21 +43,6 @@ const check = (/** @type {boolean} */ ok, /** @type {string} */ what, detail = '
 	else failures.push(detail ? `${what}: ${detail}` : what);
 	console.log(`  ${ok ? '✓' : '✗'} ${what}`);
 };
-
-/** The session cookie a sign-in sets, or '' when it was refused. */
-const signIn = async (/** @type {string} */ email, /** @type {string} */ password) =>
-	(
-		await fetch(`${base}/login`, {
-			method: 'POST',
-			body: new URLSearchParams({ email, password, next: '/' }),
-			redirect: 'manual',
-			headers: { origin: base, ...PROXY }
-		})
-	).headers
-		.getSetCookie()
-		.map((c) => c.split(';')[0])
-		.filter((c) => c.includes('session_token='))
-		.join('; ');
 
 /** @typedef {(path: string, init?: RequestInit) => Promise<Response>} Ask */
 const as = (/** @type {string} */ cookie) =>
@@ -76,7 +62,7 @@ const send = (/** @type {string} */ method, /** @type {unknown} */ body) => ({
 
 /** One of the link page's actions, as its page posts it. */
 const act = (
-	/** @type {'look' | 'choose' | 'confirm' | 'change'} */ name,
+	/** @type {'look' | 'begin' | 'confirm' | 'change'} */ name,
 	/** @type {Record<string, string>} */ fields
 ) => linkAction(base, name, fields, PROXY);
 /** Every code an email has carried so far, so each one asked for is a new one. */
@@ -108,12 +94,7 @@ await db.connect();
 /** Whose network the server sees these checks come from: this machine. */
 const HERE = '127.0.0.1/32';
 
-const fullCookie = await signIn(fullEmail, fullPassword);
-if (!fullCookie) {
-	console.error(`  could not sign in as ${fullEmail}`);
-	process.exit(1);
-}
-const asFull = as(fullCookie);
+const asFull = as((await signIn(base, fullEmail)).cookie);
 const [{ name: fullName }] = (
 	await db.query('select name from "user" where email = $1', [fullEmail.toLowerCase()])
 ).rows;
@@ -128,7 +109,6 @@ const other = `ellis-${tag}@kestrel.example`;
 /** @type {string[]} */
 const made = [];
 const addresses = [first, second, third, taken, fourth, fifth, other];
-const password = 'rowan-chose-this-one';
 const emailOf = async (/** @type {string} */ id) =>
 	(await db.query('select email, email_verified from "user" where id = $1', [id])).rows[0];
 const changeTo = (/** @type {string} */ id, /** @type {string} */ address) =>
@@ -143,11 +123,11 @@ try {
 	const id = added.status === 201 ? (await added.json()).id : null;
 	if (!id) throw new Error(`nobody was added (${added.status}), so nothing after it can be asked`);
 	made.push(id);
-	const invite = await codeFor(first, ['choose your password']);
-	const chose = await act('choose', { code: invite, password, confirm: password });
-	if (chose.type !== 'success') throw new Error('they could not choose a password');
-	const theirCookie = await signIn(first, password);
-	check(!!theirCookie, 'someone who has chosen a password signs in');
+	const invite = await codeFor(first, ['make your passkey']);
+	const joined = await makePasskey(base, invite);
+	if (!joined) throw new Error('they could not make a passkey');
+	const theirCookie = joined.cookie;
+	check(!!theirCookie, 'someone who has made a passkey is signed in');
 
 	// ----------------------------------------------------- asked for ----
 	const asked = await changeTo(id, second);
@@ -166,8 +146,10 @@ try {
 	const toOld = await arrives(relay, first, ['your sign-in email is changing', second, fullName]);
 	check(!!toOld, 'the address they have is told, with the new one and who asked');
 	check(!!toOld && !linkIn(toOld), 'and carries no link');
-	check(!!(await signIn(first, password)), 'they still sign in with the address they have');
-	check(!(await signIn(second, password)), 'and not yet with the new one');
+	check(
+		!!(await signInWith(base, joined.keys)),
+		'their passkey still signs them in while it waits'
+	);
 
 	const theirPage = await (await asFull(`/team/${id}`)).text();
 	check(
@@ -182,8 +164,8 @@ try {
 		looked.type === 'success' && looked.text.includes('change') && looked.text.includes(second),
 		'its code says it is a change, and to what'
 	);
-	const chosen = await act('choose', { code: secondCode, password, confirm: password });
-	check(chosen.type === 'failure', 'a change’s link does not choose a password');
+	const begun = await act('begin', { code: secondCode });
+	check(begun.type === 'failure', 'a change’s link does not make a passkey');
 	const confirmed = await act('confirm', { code: secondCode });
 	check(confirmed.type === 'failure', 'nor only confirm an address');
 
@@ -257,8 +239,10 @@ try {
 		'using the link makes the new address theirs, confirmed',
 		`${used.type} ${JSON.stringify(now)}`
 	);
-	check(!!(await signIn(fourth, password)), 'they sign in with it');
-	check(!(await signIn(first, password)), 'and no longer with the old one');
+	check(
+		!!(await signInWith(base, joined.keys)),
+		'their passkey signs them in, whatever the address'
+	);
 	check((await act('change', { code: fourthCode })).type === 'failure', 'the link works once');
 	const stillIn = await as(theirCookie)('/profile');
 	check(

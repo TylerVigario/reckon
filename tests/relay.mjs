@@ -60,7 +60,7 @@ export function linkIn(/** @type {Taken | null} */ m) {
  */
 export async function linkAction(
 	/** @type {string} */ base,
-	/** @type {'look' | 'choose' | 'confirm' | 'change'} */ name,
+	/** @type {'look' | 'begin' | 'confirm' | 'change'} */ name,
 	/** @type {Record<string, string>} */ fields,
 	/** @type {Record<string, string>} */ headers = {}
 ) {

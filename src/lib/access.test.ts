@@ -14,11 +14,10 @@ describe('who reaches a route', () => {
 		for (const r of routes) expect(reaches('field', REACH[r])).toBe(REACH[r] !== 'full');
 	});
 
-	it('opens without signing in only the sign-in page and forgot password, what they use, the client link and an emailed one', () => {
+	it('opens without signing in only the sign-in page, what it uses, the client link and an emailed one', () => {
 		expect(needing('open')).toEqual(
 			[
 				'/login',
-				'/forgot-password',
 				'/link',
 				'/manifest.webmanifest',
 				'/operator/logo',
@@ -37,9 +36,8 @@ describe('who reaches a route', () => {
 				'/refused',
 				'/more',
 				'/profile',
-				'/profile/password',
+				'/profile/passkeys',
 				'/logout',
-				'/new-password',
 				'/api/device',
 				'/api/reachable',
 				'/api/offline',

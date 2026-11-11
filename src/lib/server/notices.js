@@ -12,23 +12,16 @@
 import { contactFor, reachOf } from './contact.js';
 import { laidOut } from './email-layout.js';
 
-/**
- * What an email is about, as kept on each (email_message.kind). password_reset
- * is a reset that handed over a temporary password, before reset sent a link
- * (password_reset_link); it is kept for the rows that say so.
- */
+/** What an email is about, as kept on each (email_message.kind). */
 export const EMAIL_KINDS = /** @type {const} */ ([
-	'password_changed',
-	'password_reset',
 	'invitation',
-	'password_reset_link',
+	'passkey_link',
 	'email_confirmation',
 	'email_change',
 	'email_changing',
-	'password_recovery',
-	'password_recovery_unconfirmed',
-	'password_breached',
-	'password_breached_unconfirmed'
+	'passkey_added',
+	'passkey_removed',
+	'passkeys_ended'
 ]);
 
 /** @typedef {(typeof EMAIL_KINDS)[number]} EmailKind */
@@ -41,14 +34,6 @@ export const NOTICE_SENDS_FOR = '7 days';
  * sent at once (#lib/server/email): the table's own name.
  */
 export const EMAIL_CHANNEL = 'email_message';
-
-/**
- * Where a password was changed by its owner: on Your profile, on the page they
- * chose it on after signing in with one handed to them, with a link reckon
- * emailed them, or at the server's command line.
- *
- * @typedef {'profile' | 'chosen' | 'link' | 'command_line'} ChangedOn
- */
 
 /**
  * @typedef {object} Person
@@ -76,13 +61,6 @@ export const EMAIL_CHANNEL = 'email_message';
  *
  * @typedef {{ kind: EmailKind, to: string, subject: string, body: string, html: string }} Notice
  */
-
-const WHERE = {
-	profile: 'on Your profile',
-	chosen: 'when you chose it, after signing in with one handed to you',
-	link: 'with a link reckon emailed you',
-	command_line: 'at the command line on the server reckon runs on'
-};
 
 /** The business's name, or nothing before it has one. */
 const named = (/** @type {Business} */ business) => business.tradingName?.trim() || null;
@@ -155,29 +133,6 @@ const subject = (/** @type {Business} */ business, /** @type {string} */ what) =
 	`${business.shortName?.trim() || named(business) || 'reckon'}: ${what}`;
 
 /**
- * Their password was changed by them.
- *
- * @param {Person} person
- * @param {Business} business
- * @param {{ at: Date, on: ChangedOn }} what
- * @returns {Notice}
- */
-export function passwordChanged(person, business, { at, on }) {
-	return laid(person, business, {
-		kind: 'password_changed',
-		to: person.email,
-		subject: subject(business, 'your password was changed'),
-		heading: 'Your password was changed',
-		blocks: [
-			`Hello ${person.name},`,
-			`The password you sign in to ${theirReckon(business)} with was changed on ${when(at, person, business)}, ${WHERE[on]}.`,
-			'If that was you, there is nothing more to do.',
-			`If it wasn't, someone else has your password. Contact ${contactFor(business)} to have it reset.`
-		]
-	});
-}
-
-/**
  * The link an email carries, and until when it works (#lib/server/links). It
  * opens a page that does nothing until it is used, and is good once.
  *
@@ -193,8 +148,8 @@ const lapses = (
 ) => `It works once, until ${when(until, person, business)}. ${then}`;
 
 /**
- * They were added on Team, by someone with Full, and choose their password
- * with the link. Using it confirms the address is theirs.
+ * They were added on Team, by someone with Full, and make their passkey with
+ * the link. Using it confirms the address is theirs.
  *
  * @param {Person} person
  * @param {Business} business
@@ -205,12 +160,12 @@ export function invitation(person, business, { by, link, until }) {
 	return laid(person, business, {
 		kind: 'invitation',
 		to: person.email,
-		subject: subject(business, 'choose your password'),
+		subject: subject(business, 'make your passkey'),
 		heading: `Welcome to ${named(business) ?? 'reckon'}`,
 		blocks: [
 			`Hello ${person.name},`,
-			`${by} added you to ${theirReckon(business)}. Choose the password you'll sign in with, at this link:`,
-			{ link, label: 'Choose your password' },
+			`${by} added you to ${theirReckon(business)}. You sign in with a passkey: your phone or computer keeps it, and your fingerprint, face or screen lock unlocks it, so there is no password to choose or remember. Make yours at this link, on the phone or computer you'll use reckon on:`,
+			{ link, label: 'Make your passkey' },
 			lapses(person, business, until, `If it lapses, ask ${by} to send another.`),
 			`You sign in with this address, ${person.email}.`,
 			`If you weren't expecting this, nothing happens unless the link is used. Ask ${by} about it${orContact(business)}.`
@@ -219,25 +174,28 @@ export function invitation(person, business, { by, link, until }) {
 }
 
 /**
- * Their password was reset on Team, by someone with Full: it no longer works,
- * they were signed out everywhere, and they choose a new one with the link.
+ * They were sent a new link on Team, by someone with Full, to make a passkey
+ * with. A person who can't sign in gets back in so (NIST SP 800-63B-4 §4.2.1,
+ * recovery through someone who knows them). The passkeys they had still work,
+ * unless whoever sent it said one was lost or stolen, and `ended` them as it
+ * went (#lib/server/passkeys endPasskeys).
  *
  * @param {Person} person
  * @param {Business} business
- * @param {Link & { at: Date, by: string }} what
+ * @param {Link & { at: Date, by: string, ended: boolean }} what
  * @returns {Notice}
  */
-export function passwordResetLink(person, business, { at, by, link, until }) {
+export function newPasskeyLink(person, business, { at, by, ended, link, until }) {
 	return laid(person, business, {
-		kind: 'password_reset_link',
+		kind: 'passkey_link',
 		to: person.email,
-		subject: subject(business, 'your password was reset'),
-		heading: 'Your password was reset',
+		subject: subject(business, 'a link to make a new passkey'),
+		heading: 'Make a new passkey',
 		blocks: [
 			`Hello ${person.name},`,
-			`${by} reset the password you sign in to ${theirReckon(business)} with on ${when(at, person, business)}, and signed you out everywhere. Your old password no longer works. Choose a new one at this link:`,
-			{ link, label: 'Choose a new password' },
-			lapses(person, business, until, `If it lapses, ask ${by} to reset it again.`),
+			`${by} sent you this link on ${when(at, person, business)}, to make a new passkey to sign in to ${theirReckon(business)} with. ${ended ? "The passkeys you had were ended as it was sent, and you were signed out everywhere, so a lost or stolen phone or computer can't sign in as you." : 'The passkeys you have still work.'} Make it on the phone or computer you'll use reckon on:`,
+			{ link, label: 'Make a new passkey' },
+			lapses(person, business, until, `If it lapses, ask ${by} to send another.`),
 			`If you didn't expect this, ask ${by} about it${orContact(business)}.`
 		]
 	});
@@ -263,7 +221,7 @@ export function emailConfirmation(person, business, { link, until }) {
 			`You asked ${theirReckon(business)} to confirm that ${person.email} is yours. Confirm it at this link:`,
 			{ link, label: 'Confirm your email' },
 			lapses(person, business, until, 'If it lapses, ask for another on Your profile.'),
-			`If you didn't ask, someone else is signed in as you. Change your password on Your profile, or contact ${contactFor(business)} to have it reset.`
+			`If you didn't ask, someone else is signed in as you. Contact ${contactFor(business)}: they can sign you out everywhere and send you a new link to make a passkey with.`
 		]
 	});
 }
@@ -324,134 +282,129 @@ export function emailChanging(person, business, { at, by, to }) {
 			'If you expected this, there is nothing more to do.',
 			by
 				? `If you didn't, ask ${by} to cancel it${orContact(business)}.`
-				: `If you didn't, someone else is signed in as you. Cancel it on Team and change your password on Your profile, or contact ${contactFor(business)} to have it reset.`
+				: `If you didn't, someone else is signed in as you. Cancel it on Team, or contact ${contactFor(business)}: they can sign you out everywhere and send you a new link to make a passkey with.`
+		]
+	});
+}
+
+/** "A passkey, iCloud Keychain," where it is named, and "A passkey" where not. */
+const aPasskey = (/** @type {string | null} */ name) =>
+	name ? `A passkey, ${name},` : 'A passkey';
+
+/**
+ * Where a passkey is kept and when, for a notice to name it: what its passkey
+ * manager calls itself, where it says, and the browser it was used from.
+ *
+ * @typedef {{ name: string | null, at: Date, from: string | null }} PasskeyEvent
+ */
+
+/**
+ * A passkey was added to their account: by them on Your profile, or with a
+ * link. NIST SP 800-63B-4 §4.1.2.1: "When an authenticator is added, the CSP
+ * SHALL notify the subscriber via a mechanism independent of the transaction".
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {PasskeyEvent} what
+ * @returns {Notice}
+ */
+export function passkeyAdded(person, business, { name, at, from }) {
+	return laid(person, business, {
+		kind: 'passkey_added',
+		to: person.email,
+		subject: subject(business, 'a passkey was added'),
+		heading: 'A passkey was added',
+		blocks: [
+			`Hello ${person.name},`,
+			`${aPasskey(name)} was added to the account you sign in to ${theirReckon(business)} with, on ${when(at, person, business)}${from ? `, from ${from}` : ''}. It can sign you in from now on.`,
+			'If that was you, there is nothing more to do.',
+			`If it wasn't, someone else can sign in as you. Contact ${contactFor(business)} to have it ended.`
 		]
 	});
 }
 
 /**
- * Someone asked, on the sign-in page, to choose a new password for this
- * address, which is confirmed theirs: the link lets them, and their password
- * stays as it is until it is used (OWASP's Forgot Password Cheat Sheet: "Do not
- * make a change to the account until a valid token is presented"). Whoever
- * asked may not be them, so it says what to do if they did not.
+ * A passkey was removed from their account, by them on Your profile. NIST SP
+ * 800-63B-4 §4.5: notification of an invalidation SHOULD follow.
  *
  * @param {Person} person
  * @param {Business} business
- * @param {Link & { at: Date }} what
+ * @param {PasskeyEvent} what
  * @returns {Notice}
  */
-export function passwordRecovery(person, business, { at, link, until }) {
+export function passkeyRemoved(person, business, { name, at, from }) {
 	return laid(person, business, {
-		kind: 'password_recovery',
+		kind: 'passkey_removed',
 		to: person.email,
-		subject: subject(business, 'choose a new password'),
-		heading: 'Choose a new password',
+		subject: subject(business, 'a passkey was removed'),
+		heading: 'A passkey was removed',
 		blocks: [
 			`Hello ${person.name},`,
-			`On ${when(at, person, business)}, someone asked to choose a new password for the email you sign in to ${theirReckon(business)} with. Choose one at this link:`,
-			{ link, label: 'Choose a new password' },
-			lapses(person, business, until, "Until it's used, your password stays as it is."),
-			`If you didn't ask, you can ignore this email: nothing changes unless the link is used. If more keep coming, contact ${contactFor(business)}.`
+			`${aPasskey(name)} was removed from the account you sign in to ${theirReckon(business)} with, on ${when(at, person, business)}${from ? `, from ${from}` : ''}. It no longer signs you in.`,
+			'If that was you, there is nothing more to do.',
+			`If it wasn't, someone else has been signed in as you. Contact ${contactFor(business)}.`
 		]
 	});
 }
 
 /**
- * Someone asked to choose a new password for this address, which is not yet
- * confirmed theirs: reckon recovers an account only to an address proven its
- * holder's (NIST SP 800-63B-4 §4.2.1.2), so this carries no link, and says whom
- * to contact for one (#lib/server/contact): a link sent from Team confirms the
- * address as it is used.
+ * Every passkey they had was ended, and they were signed out everywhere, for
+ * a phone or computer lost or stolen: on Team, by someone with Full, or from
+ * the command line where `by` is null (#lib/server/passkeys endPasskeys). NIST
+ * SP 800-63B-4 §4.5: notification of an invalidation SHOULD follow. A new link
+ * sent as they were ended says so itself (newPasskeyLink).
  *
  * @param {Person} person
  * @param {Business} business
- * @param {{ at: Date }} what
+ * @param {{ at: Date, by: string | null }} what
  * @returns {Notice}
  */
-export function passwordRecoveryUnconfirmed(person, business, { at }) {
+export function passkeysEnded(person, business, { at, by }) {
 	return laid(person, business, {
-		kind: 'password_recovery_unconfirmed',
+		kind: 'passkeys_ended',
 		to: person.email,
-		subject: subject(business, 'choosing a new password'),
-		heading: 'Choosing a new password',
+		subject: subject(business, 'your passkeys were ended'),
+		heading: 'Your passkeys were ended',
 		blocks: [
 			`Hello ${person.name},`,
-			`On ${when(at, person, business)}, someone asked to choose a new password for the email you sign in to ${theirReckon(business)} with.`,
-			`This address hasn't been confirmed as yours, so reckon can't send a link to choose one here. Contact ${contactFor(business)} to have one sent: using it confirms the address too.`,
-			"If you didn't ask, there is nothing to do: your password hasn't changed."
-		]
-	});
-}
-
-/** What a password found in a breach as someone signed in with it has come to. */
-const breachedAt = (
-	/** @type {Date} */ at,
-	/** @type {Person} */ person,
-	/** @type {Business} */ business
-) =>
-	`On ${when(at, person, business)}, your password was used to sign in to ${theirReckon(business)}. It has appeared in a data breach on another site, so it may be on the lists attackers try. reckon has stopped it working, and signed you out everywhere.`;
-
-/** What to do if the sign-in was not theirs, and about the password elsewhere. */
-const breachedElsewhere =
-	"If that wasn't you, someone else has your password, and it no longer gets them in. If you use it anywhere else, change it there too.";
-
-/**
- * Their password was used to sign in, right, and Pwned Passwords has seen it
- * in a breach (#lib/server/breach): it has stopped, and with only a password,
- * replacing it is recovery (NIST SP 800-63B-4 §4.2.2.1), by this link, to an
- * address confirmed theirs. Whoever signed in may not be them, so it says what
- * to do then, and whom to contact (§4.6, #lib/server/contact).
- *
- * @param {Person} person
- * @param {Business} business
- * @param {Link & { at: Date }} what
- * @returns {Notice}
- */
-export function passwordBreached(person, business, { at, link, until }) {
-	return laid(person, business, {
-		kind: 'password_breached',
-		to: person.email,
-		subject: subject(business, 'choose a new password'),
-		heading: 'Choose a new password',
-		blocks: [
-			`Hello ${person.name},`,
-			breachedAt(at, person, business),
-			'Choose a new one at this link:',
-			{ link, label: 'Choose a new password' },
-			lapses(
-				person,
-				business,
-				until,
-				'After that, ask for another with Forgot password? on the sign-in page.'
-			),
-			breachedElsewhere,
-			`If you have any questions, contact ${contactFor(business)}.`
+			`${by ? `${by} ended the passkeys you sign in to ${theirReckon(business)} with` : `The passkeys you sign in to ${theirReckon(business)} with were ended`} on ${when(at, person, business)}, and you were signed out everywhere, so a lost or stolen phone or computer can't sign in as you.`,
+			...(by
+				? [
+						`To sign in again, ask ${by} to send you a new link to make a passkey with.`,
+						`If you didn't expect this, ask ${by} about it${orContact(business)}.`
+					]
+				: [
+						`To sign in again, you need a new link to make a passkey with. Contact ${contactFor(business)} for one, or about this if you didn't expect it.`
+					])
 		]
 	});
 }
 
 /**
- * As passwordBreached, for an address not yet confirmed theirs: reckon
- * recovers an account only to an address proven its holder's (§4.2.1.2), so
- * this carries no link, and says whom to contact for one.
+ * One of their passkeys was ended on Team, by someone with Full, for the phone
+ * or computer holding it being lost or stolen, and they were signed out
+ * everywhere (#lib/server/passkeys endPasskey). NIST SP 800-63B-4 §4.5:
+ * notification of an invalidation SHOULD follow. With others `left`, they sign
+ * in with one of those; with none, they need a new link.
  *
  * @param {Person} person
  * @param {Business} business
- * @param {{ at: Date }} what
+ * @param {{ name: string | null, at: Date, by: string, left: number }} what
  * @returns {Notice}
  */
-export function passwordBreachedUnconfirmed(person, business, { at }) {
+export function passkeyEnded(person, business, { name, at, by, left }) {
 	return laid(person, business, {
-		kind: 'password_breached_unconfirmed',
+		kind: 'passkey_removed',
 		to: person.email,
-		subject: subject(business, 'your password has stopped working'),
-		heading: 'Your password has stopped working',
+		subject: subject(business, 'a passkey was ended'),
+		heading: 'A passkey was ended',
 		blocks: [
 			`Hello ${person.name},`,
-			breachedAt(at, person, business),
-			`This address hasn't been confirmed as yours, so reckon can't send a link to choose a new one here. Contact ${contactFor(business)} to have one sent: using it confirms the address too.`,
-			breachedElsewhere
+			`${by} ended a passkey${name ? `, ${name},` : ''} on the account you sign in to ${theirReckon(business)} with, on ${when(at, person, business)}, and you were signed out everywhere, so a lost or stolen phone or computer can't sign in as you.`,
+			left
+				? `Your other ${left === 1 ? 'passkey still works: sign in with it' : 'passkeys still work: sign in with one of them'}.`
+				: `It was your last. To sign in again, ask ${by} to send you a new link to make a passkey with.`,
+			`If you didn't expect this, ask ${by} about it${orContact(business)}.`
 		]
 	});
 }

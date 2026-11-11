@@ -442,7 +442,7 @@ export function startSending(): void {
 		);
 	else if (!SITE_URL)
 		console.warn(
-			'SITE_URL is unset: reckon has no address to build a link from, so nobody can be invited or have their password reset by email.'
+			'SITE_URL is unset: reckon has no address to build a link from, so nobody can be invited or sent a new link by email.'
 		);
 	else {
 		// Chosen, and allowed, but never quietly (RFC 8314 §5.2).

@@ -29,8 +29,8 @@ VALUES ('Kestrel Field Services','KFS', true, 'America/Los_Angeles', 'us_ca',
 -- who takes some of the field work. One person in each of the three roles the
 -- schema starts every operator with. Avery has Full access, and Sam and
 -- Jordan Field: their own work, and what they are paid for it. None of them
--- can sign in until given a password:
--- node scripts/user.mjs password avery@kestrel.example
+-- can sign in until they make a passkey, with the link this prints:
+-- node scripts/user.mjs invite avery@kestrel.example
 INSERT INTO "user" (id, name, email, active, role_id, access) VALUES
   ('c41b2fab-5b71-4954-bb86-1bc803daf7ee','Avery Lind','avery@kestrel.example', true,
    (SELECT id FROM role WHERE name = 'Partner'), 'full'),

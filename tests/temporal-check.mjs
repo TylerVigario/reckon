@@ -3,7 +3,7 @@
  * Proves a browser without Temporal gets the polyfill, works, and keeps it for
  * offline -- and that one with Temporal never fetches it.
  *
- *   node tests/temporal-check.mjs <base-url> <email> <password>
+ *   node tests/temporal-check.mjs <base-url> <email>
  *
  * The browser CI and development use has Temporal of its own, so nothing else
  * here ever takes the path a phone without it takes (hooks.client.ts). This
@@ -14,9 +14,10 @@
  * is installed by then, and its cache of the app's files is what is checked.
  * Leaves the browser as it found it.
  */
-const [, , base, email, password] = process.argv;
-if (!base || !email || !password) {
-	console.error('usage: node tests/temporal-check.mjs <base-url> <email> <password>');
+import { signIn } from './passkeys.mjs';
+const [, , base, email] = process.argv;
+if (!base || !email) {
+	console.error('usage: node tests/temporal-check.mjs <base-url> <email>');
 	process.exit(2);
 }
 
@@ -110,14 +111,19 @@ const check = (/** @type {boolean} */ pass, /** @type {string} */ what) =>
 let removal;
 try {
 	// Signed in, in the browser as it is.
-	await go('/login');
-	if (await evaluate(`!!document.querySelector('input[name=password]')`)) {
-		await evaluate(`(() => {
-			document.querySelector('input[name=email]').value = ${JSON.stringify(email)};
-			document.querySelector('input[name=password]').value = ${JSON.stringify(password)};
-			document.querySelector('form').requestSubmit();
-		})()`);
-		await settle(2500);
+	// Signed in with the passkey tests/passkeys.mjs gave them, its session handed to the browser.
+	{
+		const { name, value } = await signIn(base, email);
+		await send('Network.setCookie', {
+			name,
+			value,
+			url: base,
+			httpOnly: true,
+			sameSite: 'Lax',
+			// A __Secure- cookie must say it is Secure, as Better Auth sets it; Chrome
+			// keeps one for localhost over http, a secure context.
+			secure: name.startsWith('__Secure-')
+		});
 	}
 	await go('/');
 	const own = await temporal();

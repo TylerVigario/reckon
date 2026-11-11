@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { enhance } from '$app/forms';
-	import Top from '#lib/Top.svelte';
 	import Setting from '#lib/Setting.svelte';
 	import { parsePersonField } from '#lib/people-fields.ts';
 	import { parseDeviceField } from '#lib/device-fields.ts';
@@ -18,7 +17,6 @@
 		weekStartOf
 	} from '#lib/locales.ts';
 	import type { PageProps } from './$types';
-	import { resolve } from '$app/paths';
 
 	let { data, form }: PageProps = $props();
 
@@ -92,140 +90,129 @@
 	}
 </script>
 
-<Top title="Your profile" sub={data.user?.name ?? ''} back={resolve('/more')} backLabel="More" />
-
-<div class="pad">
-	<div class="sec">
-		<div class="sec-h"><h2>How dates and figures read</h2></div>
-		<div class="rows inset">
-			{#if offer}
-				<div class="offer">
-					<span>Your browser is set to {localeName(offer)}.</span>
-					<button type="button" class="btn sm" disabled={taking} onclick={takeBrowser}
-						>Use {localeName(offer)}</button
-					>
-				</div>
-			{/if}
-			<Setting
-				name="locale"
-				label="Locale"
-				value={me.locale ?? ''}
-				options={localeOptions(me.locale, "The business's")}
-				hint={(current) => {
-					const own = ownName(current || data.businessLocale);
-					const named = current
-						? own
-							? `${own}. `
-							: ''
-						: `Following the business's: ${localeName(data.businessLocale)}${own ? `, ${own}` : ''}. `;
-					return `${named}The language dates are written in, the order of day and month, and the separators in figures.`;
-				}}
-				{endpoint}
-				validate={parsePersonField}
-				onsaved={redraw}
-			/>
-			<Setting
-				name="hour_cycle"
-				label="Time format"
-				value={me.hour_cycle ?? ''}
-				options={clocks}
-				{endpoint}
-				validate={parsePersonField}
-				onsaved={redraw}
-			/>
-			<Setting
-				name="week_start"
-				label="First day of the week"
-				value={me.week_start === null ? '' : String(me.week_start)}
-				options={weeks}
-				hint="Where All entries begins each week."
-				{endpoint}
-				validate={parsePersonField}
-				onsaved={redraw}
-			/>
-		</div>
+<div class="sec">
+	<div class="sec-h"><h2>How dates and figures read</h2></div>
+	<div class="rows inset">
+		{#if offer}
+			<div class="offer">
+				<span>Your browser is set to {localeName(offer)}.</span>
+				<button type="button" class="btn sm" disabled={taking} onclick={takeBrowser}
+					>Use {localeName(offer)}</button
+				>
+			</div>
+		{/if}
+		<Setting
+			name="locale"
+			label="Locale"
+			value={me.locale ?? ''}
+			options={localeOptions(me.locale, "The business's")}
+			hint={(current) => {
+				const own = ownName(current || data.businessLocale);
+				const named = current
+					? own
+						? `${own}. `
+						: ''
+					: `Following the business's: ${localeName(data.businessLocale)}${own ? `, ${own}` : ''}. `;
+				return `${named}The language dates are written in, the order of day and month, and the separators in figures.`;
+			}}
+			{endpoint}
+			validate={parsePersonField}
+			onsaved={redraw}
+		/>
+		<Setting
+			name="hour_cycle"
+			label="Time format"
+			value={me.hour_cycle ?? ''}
+			options={clocks}
+			{endpoint}
+			validate={parsePersonField}
+			onsaved={redraw}
+		/>
+		<Setting
+			name="week_start"
+			label="First day of the week"
+			value={me.week_start === null ? '' : String(me.week_start)}
+			options={weeks}
+			hint="Where All entries begins each week."
+			{endpoint}
+			validate={parsePersonField}
+			onsaved={redraw}
+		/>
 	</div>
+</div>
 
-	<div class="sec">
-		<div class="sec-h"><h2>Your clock</h2></div>
-		<div class="rows inset">
-			<Setting
-				name="timezone"
-				label="Time zone"
-				value={me.timezone ?? ''}
-				options={zoneOptions(me.timezone, `The business's — ${zoneName(data.businessZone)}`)}
-				hint={me.timezone
-					? 'Your own, on every device. A phone in another zone asks before changing it.'
-					: 'Set from your browser when you first sign in.'}
-				{endpoint}
-				validate={parsePersonField}
-				onsaved={redraw}
-			/>
-		</div>
+<div class="sec">
+	<div class="sec-h"><h2>Your clock</h2></div>
+	<div class="rows inset">
+		<Setting
+			name="timezone"
+			label="Time zone"
+			value={me.timezone ?? ''}
+			options={zoneOptions(me.timezone, `The business's — ${zoneName(data.businessZone)}`)}
+			hint={me.timezone
+				? 'Your own, on every device. A phone in another zone asks before changing it.'
+				: 'Set from your browser when you first sign in.'}
+			{endpoint}
+			validate={parsePersonField}
+			onsaved={redraw}
+		/>
 	</div>
+</div>
 
-	<div class="sec">
-		<div class="sec-h"><h2>Signing in</h2></div>
-		<div class="rows">
-			<!-- The address they sign in with, and whether it's proven theirs: by a
-			     link sent there (#lib/server/links). Changed on Team. -->
-			<div class="rec email">
-				<div class="rec-m">
-					<div class="rec-t">Email</div>
-					<div class="rec-s">
-						{me.email} ·
-						{#if me.email_verified || form?.confirmed}
-							<span class="ok">Confirmed</span>
-						{:else if form?.confirm}
-							<span class="no" role="alert">{form.confirm}</span>
-						{:else if form?.sent || data.confirmation}
-							A link is on its way there. It works once, for 24 hours.
-						{:else if changingNow}
-							Not confirmed.
-						{:else}
-							Not confirmed yet. Confirm it’s yours so reckon can reach you there.
-						{/if}
-					</div>
-					{#if me.changing}
-						<div class="rec-s">
-							{me.changing.lapsed
-								? `The change to ${me.changing.to} lapsed: its link wasn’t used within 24 hours. ${data.full ? 'Send another from Team.' : `To have another sent, contact ${data.contact}.`}`
-								: `Changing to ${me.changing.to}. Use the link sent there, by ${clock(me.changing.until, personalZone())} on ${datedAt(me.changing.until, personalZone())}. Until then you sign in with this one.`}
-						</div>
+<div class="sec">
+	<div class="sec-h"><h2>Signing in</h2></div>
+	<div class="rows">
+		<!-- The address they sign in with, and whether it's proven theirs: by a
+		     link sent there (#lib/server/links). Changed on Team. -->
+		<div class="rec email">
+			<div class="rec-m">
+				<div class="rec-t">Email</div>
+				<div class="rec-s">
+					{me.email} ·
+					{#if me.email_verified || form?.confirmed}
+						<span class="ok">Confirmed</span>
+					{:else if form?.confirm}
+						<span class="no" role="alert">{form.confirm}</span>
+					{:else if form?.sent || data.confirmation}
+						A link is on its way there. It works once, for an hour.
+					{:else if changingNow}
+						Not confirmed.
+					{:else}
+						Not confirmed yet. Confirm it’s yours so reckon can reach you there.
 					{/if}
 				</div>
-				{#if !me.email_verified && !form?.confirmed && !changingNow}
-					<form method="POST" action="?/confirm" use:enhance>
-						<button type="submit" class="btn sm"
-							>{form?.sent || data.confirmation ? 'Send again' : 'Confirm email'}</button
-						>
-					</form>
+				{#if me.changing}
+					<div class="rec-s">
+						{me.changing.lapsed
+							? `The change to ${me.changing.to} lapsed: its link wasn’t used within the hour. ${data.full ? 'Send another from Team.' : `To have another sent, contact ${data.contact}.`}`
+							: `Changing to ${me.changing.to}. Use the link sent there, by ${clock(me.changing.until, personalZone())} on ${datedAt(me.changing.until, personalZone())}. Until then you sign in with this one.`}
+					</div>
 				{/if}
 			</div>
-			<a class="rec link" href={resolve('/profile/password')}>
-				<div class="rec-m">
-					<div class="rec-t">Password</div>
-					<div class="rec-s">Change the one you sign in with.</div>
-				</div>
-				<span class="arw" aria-hidden="true">›</span>
-			</a>
+			{#if !me.email_verified && !form?.confirmed && !changingNow}
+				<form method="POST" action="?/confirm" use:enhance>
+					<button type="submit" class="btn sm"
+						>{form?.sent || data.confirmation ? 'Send again' : 'Confirm email'}</button
+					>
+				</form>
+			{/if}
 		</div>
 	</div>
+</div>
 
-	<div class="sec">
-		<div class="sec-h"><h2>On this device</h2></div>
-		<div class="rows inset">
-			<Setting
-				name="theme"
-				label="Theme"
-				value={data.theme ?? ''}
-				options={themes}
-				hint="This device only. Each device you sign in on keeps its own."
-				endpoint="/api/device"
-				validate={parseDeviceField}
-				onsaved={redraw}
-			/>
-		</div>
+<div class="sec">
+	<div class="sec-h"><h2>On this device</h2></div>
+	<div class="rows inset">
+		<Setting
+			name="theme"
+			label="Theme"
+			value={data.theme ?? ''}
+			options={themes}
+			hint="This device only. Each device you sign in on keeps its own."
+			endpoint="/api/device"
+			validate={parseDeviceField}
+			onsaved={redraw}
+		/>
 	</div>
 </div>
 
