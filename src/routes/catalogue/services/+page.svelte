@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import UnderlineNav from '#lib/UnderlineNav.svelte';
+	import { catalogueTabs } from '#lib/section-tabs.ts';
 	import { dated, increment } from '#lib/format.ts';
 	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { paysWhat } from '#lib/pay-words.ts';
@@ -71,18 +73,14 @@
 	}
 </script>
 
-<Top
-	title="Services"
-	sub="What is sold, and what it costs"
-	back={resolve('/more')}
-	backLabel="More"
->
+<Top title="Catalogue" sub="What can go on a line" back={resolve('/more')} backLabel="More">
 	{#snippet actions()}
-		<a class="btn sm pri" href={resolve('/services/new')}>New service</a>
+		<a class="btn sm pri" href={resolve('/catalogue/services/new')}>New service</a>
 	{/snippet}
 </Top>
 
 <div class="pad">
+	<div class="primer"><UnderlineNav label="Catalogue" items={catalogueTabs('services')} /></div>
 	{#if data.services.length === 0}
 		<p class="none">No services yet.</p>
 	{/if}
@@ -98,7 +96,7 @@
 							class="rec link"
 							class:gone={!s.active}
 							class:warn={s.active && !p && s.covered.length === 0}
-							href={resolve('/services/[id]', { id: s.id })}
+							href={resolve('/catalogue/services/[id]', { id: s.id })}
 						>
 							<div class="rec-m">
 								<div class="rec-t">{s.name}</div>

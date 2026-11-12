@@ -133,18 +133,24 @@
 	] satisfies { href: RouteId; label: string; ic: Tab }[];
 
 	// The rail flattens what the tab bar nests: on a screen with room, More is
-	// not a place, it is four more rows.
+	// not a place, it is four more rows. A section with tabs is opened on its
+	// first (#lib/section-tabs), and lit on any of them.
 	const rail = [
 		{ href: '/', label: 'Today', count: () => counts.drafts },
 		{ href: '/timesheet', label: 'Time', count: () => hours(counts.monthSeconds) },
 		{ href: '/trips', label: 'Trips', count: () => null },
 		{ href: '/invoices', label: 'Invoices', count: () => counts.drafts },
-		{ href: '/catalogue', label: 'Catalogue', count: () => null },
+		{ href: '/catalogue/materials', at: '/catalogue', label: 'Catalogue', count: () => null },
 		{ href: '/clients', label: 'Entities', count: () => counts.entities },
 		{ href: '/team', label: 'Team', count: () => null },
-		{ href: '/reports', label: 'Reports', count: () => null },
+		{ href: '/reports/pay', at: '/reports', label: 'Reports', count: () => null },
 		{ href: '/settings', label: 'Settings', count: () => null }
-	] satisfies { href: RouteId; label: string; count: () => string | number | null | undefined }[];
+	] satisfies {
+		href: RouteId;
+		at?: string;
+		label: string;
+		count: () => string | number | null | undefined;
+	}[];
 
 	// Each section is offered only where it opens for this person (#lib/access);
 	// someone with Field has their own pay in place of the reports.
@@ -170,7 +176,7 @@
 		'/catalogue',
 		'/clients',
 		'/team',
-		'/services',
+		'/reports',
 		'/settings',
 		'/profile'
 	];
@@ -179,12 +185,7 @@
 	// neither of their tabs.
 	const UNDER_TODAY = ['/unbilled'];
 	const here = $derived((href: string) => {
-		if (href === '/more')
-			return (
-				UNDER_MORE.some((p) => page.url.pathname.startsWith(p)) ||
-				// Their own pay is reached from More.
-				(access === 'field' && page.url.pathname.startsWith('/reports/pay'))
-			);
+		if (href === '/more') return UNDER_MORE.some((p) => page.url.pathname.startsWith(p));
 		if (href === '/')
 			return page.url.pathname === '/' || UNDER_TODAY.some((p) => page.url.pathname.startsWith(p));
 		return page.url.pathname.startsWith(href);
@@ -223,7 +224,10 @@
 			<nav class="rail-nav" aria-label="Sections">
 				{#each railShown as r (r.href)}
 					{@const n = r.count()}
-					<a href={resolve(r.href)} aria-current={here(r.href) ? 'page' : undefined}>
+					<a
+						href={resolve(r.href)}
+						aria-current={here(('at' in r && r.at) || r.href) ? 'page' : undefined}
+					>
 						{r.label}{#if n !== null && n !== undefined}<span class="cnt">{n}</span>{/if}
 					</a>
 				{/each}

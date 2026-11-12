@@ -52,6 +52,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	return {
 		clients: fieldOnly(locals) ? clients.map((x) => ({ ...x, owed: null })) : clients,
-		counts: { contacts: String(contacts.n) }
+		// For Entities' other tab.
+		counts: { contacts: contacts.n }
 	};
 };

@@ -6,13 +6,15 @@ import { businessToday } from '#lib/server/calendar.ts';
 import { owed, paymentsTo } from '#lib/server/pay.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
-import type { PageServerLoad } from './$types';
+import type { LayoutServerLoad } from './$types';
 
 /**
- * One person: what they are owed, piece by piece, and every payment made to
- * them. Someone with Field opens only their own, to read (#lib/access).
+ * One person's pay, as both its tabs head it: what they are owed, piece by
+ * piece, and every payment made to them -- Owed corrects a payment already
+ * made, Paid lists them. Someone with Field opens only their own, to read
+ * (#lib/access).
  */
-export const load: PageServerLoad = async ({ params, locals }) => {
+export const load: LayoutServerLoad = async ({ params, locals }) => {
 	if (!UUID.test(params.person)) error(404, 'Nobody with that id.');
 	if (fieldOnly(locals) && params.person !== locals.user!.id) error(404, 'Nobody with that id.');
 	const [person] = await db

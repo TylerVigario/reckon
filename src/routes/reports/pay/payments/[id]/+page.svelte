@@ -33,7 +33,7 @@
 <Top
 	title="Paid {p.person}"
 	sub="{dated(p.paid_on)} · {p.how.toLowerCase()}"
-	back={resolve('/reports/pay/[person]', { person: p.user_id })}
+	back={resolve('/reports/pay/[person]/paid', { person: p.user_id })}
 	backLabel={p.person.split(' ')[0]}
 />
 

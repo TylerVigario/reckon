@@ -2,6 +2,8 @@
 	import { Decimal } from '#lib/decimal.ts';
 	import { currencyPlaces } from '#lib/currency.ts';
 	import Top from '#lib/Top.svelte';
+	import UnderlineNav from '#lib/UnderlineNav.svelte';
+	import { reportTabs } from '#lib/section-tabs.ts';
 	import { pct, rateParts } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
@@ -13,9 +15,11 @@
 	// gap is the Reg 1701 credit -- tax already paid to the supplier on goods
 	// that were then resold -- and showing the two figures without it side by
 	// side reads as an error rather than a rule.
-	const credit = $derived(Decimal.from(data.owed.charged).sub(data.due).toFixed(currencyPlaces()));
+	const credit = $derived(
+		data.fy ? Decimal.from(data.owed.charged).sub(data.due).toFixed(currencyPlaces()) : null
+	);
 	const stillHeld = $derived(
-		Decimal.from(data.due).sub(data.owed.remitted).toFixed(currencyPlaces())
+		data.fy ? Decimal.from(data.due).sub(data.owed.remitted).toFixed(currencyPlaces()) : null
 	);
 
 	const filing = (f: {
@@ -60,178 +64,190 @@
 			.join(' ') + ` · ${d.sites} ${d.sites === 1 ? 'site' : 'sites'}`;
 </script>
 
-<Top
-	title="Schedule A"
-	sub="Measure and deduction by district"
-	back={resolve('/reports')}
-	backLabel="Reports"
-/>
+<Top title="Reports" back={resolve('/more')} backLabel="More" />
 
 <div class="pad">
-	<div class="sec">
-		<div class="sec-h">
-			<h2>{data.fy.label}</h2>
-			<span class="sp"></span>
-			<div class="sec">
-				<div class="sec-h">
-					<h2>What is owed</h2>
-					<span class="sp"></span>
-					<span class="chip">Collected for somebody else</span>
-				</div>
-				<div class="rows">
-					<div class="rec">
-						<div class="rec-m">
-							<div class="rec-t">Collected from clients</div>
-							<div class="rec-s">{shares(data.owed)}</div>
-							{#if data.owed.estimated_lines}
-								<div class="rec-c">
-									<span class="chip warn">
-										<span class="dot"></span>{data.owed.estimated_lines} line{data.owed
-											.estimated_lines === 1
-											? ''
-											: 's'} split by the earliest rate on record
-									</span>
-								</div>
-							{/if}
-						</div>
-						<div class="rec-n"><span class="rec-v">{money(data.owed.charged)}</span></div>
+	<div class="primer"><UnderlineNav label="Reports" items={reportTabs('schedule-a')} /></div>
+
+	{#if !data.fy}
+		<div class="sec">
+			<div class="rows">
+				<a class="rec link warn" href={resolve('/settings/tax')}>
+					<div class="rec-m">
+						<div class="rec-t">Schedule A needs the filing year</div>
+						<div class="rec-s">Set the month the filing year ends in, on Settings › Tax</div>
 					</div>
-					{#if Number(credit) > 0}
-						<div class="rec">
-							<div class="rec-m">
-								<div class="rec-t">Tax already paid on goods resold</div>
-								<div class="rec-s">
-									Reg 1701: it came off the measure above, so it is not owed twice
-								</div>
-							</div>
-							<div class="rec-n"><span class="rec-v mut">−{money(credit)}</span></div>
-						</div>
-					{/if}
-					<div class="rec">
-						<div class="rec-m">
-							<div class="rec-t">Owed on the return</div>
-							<div class="rec-s">The figure the districts above come to</div>
-						</div>
-						<div class="rec-n"><span class="rec-v">{money(data.due)}</span></div>
-					</div>
-					{#each data.owed.filings as f (f.id)}
-						<div class="rec">
-							<div class="rec-m">
-								<div class="rec-t">Handed to CDTFA</div>
-								<div class="rec-s">{filing(f)}</div>
-							</div>
-							<div class="rec-n"><span class="rec-v mut">−{money(f.amount)}</span></div>
-						</div>
-					{:else}
-						<div class="rec">
-							<div class="rec-m">
-								<div class="rec-t"><span class="lt">Nothing handed over yet</span></div>
-								<div class="rec-s">No return recorded as filed for this year</div>
-							</div>
-							<div class="rec-n"><span class="rec-v mut">{money(0)}</span></div>
-						</div>
-					{/each}
-					<div class="rec tot" class:warn={Number(stillHeld) > 0}>
-						<div class="rec-m">
-							<div class="rec-t">Still held</div>
-							<div class="rec-s">Not the business's money to spend</div>
-						</div>
-						<div class="rec-n"><span class="rec-v">{money(stillHeld)}</span></div>
-					</div>
-				</div>
+					<span class="arw" aria-hidden="true">›</span>
+				</a>
 			</div>
-
-			{#if data.unchecked.length}
-				<span class="chip warn">
-					<span class="dot"></span>{data.unchecked.length} rate{data.unchecked.length === 1
-						? ''
-						: 's'} over 90 days old
-				</span>
-			{:else}
-				<span class="chip good"><span class="dot"></span>Every rate asked for recently</span>
-			{/if}
 		</div>
-		<div class="rows">
-			{#each data.districts as d (d.area + d.rate_pct)}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t">{d.area}</div>
-						<div class="rec-s">{rate(d)}</div>
-						<div class="rec-s">{basis(d)}</div>
-					</div>
-					<div class="rec-n">
-						<span class="rec-v">{money(d.tax)}</span>
-						<span class="rec-x">net {money(d.net)}</span>
-					</div>
-				</div>
-			{:else}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t"><span class="lt">No districts</span></div>
-						<div class="rec-s">
-							Nothing sent this year was taxed, so there is nothing to allocate
-						</div>
-					</div>
-				</div>
-			{/each}
-			{#if data.districts.length}
-				<div class="rec tot">
-					<div class="rec-m"><div class="rec-t">Tax due</div></div>
-					<div class="rec-n"><span class="rec-v">{money(data.due)}</span></div>
-				</div>
-			{/if}
-		</div>
-	</div>
-
-	{#if data.unchecked.length}
+	{:else}
 		<div class="sec">
 			<div class="sec-h">
-				<h2>Rates worth re-asking about</h2>
+				<h2>{data.fy.label}</h2>
 				<span class="sp"></span>
-				<span class="chip warn"><span class="dot"></span>Over 90 days old</span>
+				<div class="sec">
+					<div class="sec-h">
+						<h2>What is owed</h2>
+						<span class="sp"></span>
+						<span class="chip">Collected for somebody else</span>
+					</div>
+					<div class="rows">
+						<div class="rec">
+							<div class="rec-m">
+								<div class="rec-t">Collected from clients</div>
+								<div class="rec-s">{shares(data.owed)}</div>
+								{#if data.owed.estimated_lines}
+									<div class="rec-c">
+										<span class="chip warn">
+											<span class="dot"></span>{data.owed.estimated_lines} line{data.owed
+												.estimated_lines === 1
+												? ''
+												: 's'} split by the earliest rate on record
+										</span>
+									</div>
+								{/if}
+							</div>
+							<div class="rec-n"><span class="rec-v">{money(data.owed.charged)}</span></div>
+						</div>
+						{#if Number(credit) > 0}
+							<div class="rec">
+								<div class="rec-m">
+									<div class="rec-t">Tax already paid on goods resold</div>
+									<div class="rec-s">
+										Reg 1701: it came off the measure above, so it is not owed twice
+									</div>
+								</div>
+								<div class="rec-n"><span class="rec-v mut">−{money(credit)}</span></div>
+							</div>
+						{/if}
+						<div class="rec">
+							<div class="rec-m">
+								<div class="rec-t">Owed on the return</div>
+								<div class="rec-s">The figure the districts above come to</div>
+							</div>
+							<div class="rec-n"><span class="rec-v">{money(data.due)}</span></div>
+						</div>
+						{#each data.owed.filings as f (f.id)}
+							<div class="rec">
+								<div class="rec-m">
+									<div class="rec-t">Handed to CDTFA</div>
+									<div class="rec-s">{filing(f)}</div>
+								</div>
+								<div class="rec-n"><span class="rec-v mut">−{money(f.amount)}</span></div>
+							</div>
+						{:else}
+							<div class="rec">
+								<div class="rec-m">
+									<div class="rec-t"><span class="lt">Nothing handed over yet</span></div>
+									<div class="rec-s">No return recorded as filed for this year</div>
+								</div>
+								<div class="rec-n"><span class="rec-v mut">{money(0)}</span></div>
+							</div>
+						{/each}
+						<div class="rec tot" class:warn={Number(stillHeld) > 0}>
+							<div class="rec-m">
+								<div class="rec-t">Still held</div>
+								<div class="rec-s">Not the business's money to spend</div>
+							</div>
+							<div class="rec-n"><span class="rec-v">{money(stillHeld)}</span></div>
+						</div>
+					</div>
+				</div>
+
+				{#if data.unchecked.length}
+					<span class="chip warn">
+						<span class="dot"></span>{data.unchecked.length} rate{data.unchecked.length === 1
+							? ''
+							: 's'} over 90 days old
+					</span>
+				{:else}
+					<span class="chip good"><span class="dot"></span>Every rate asked for recently</span>
+				{/if}
 			</div>
 			<div class="rows">
-				{#each data.unchecked as u (u.client + u.site)}
-					<a class="rec link warn" href={resolve('/clients/[id]/sites/[site]', u.at)}>
+				{#each data.districts as d (d.area + d.rate_pct)}
+					<div class="rec">
 						<div class="rec-m">
-							<div class="rec-t">{u.site}</div>
-							<div class="rec-s">{u.client} · {u.why}</div>
+							<div class="rec-t">{d.area}</div>
+							<div class="rec-s">{rate(d)}</div>
+							<div class="rec-s">{basis(d)}</div>
 						</div>
-						<span class="arw" aria-hidden="true">›</span>
-					</a>
+						<div class="rec-n">
+							<span class="rec-v">{money(d.tax)}</span>
+							<span class="rec-x">net {money(d.net)}</span>
+						</div>
+					</div>
+				{:else}
+					<div class="rec">
+						<div class="rec-m">
+							<div class="rec-t"><span class="lt">No districts</span></div>
+							<div class="rec-s">
+								Nothing sent this year was taxed, so there is nothing to allocate
+							</div>
+						</div>
+					</div>
+				{/each}
+				{#if data.districts.length}
+					<div class="rec tot">
+						<div class="rec-m"><div class="rec-t">Tax due</div></div>
+						<div class="rec-n"><span class="rec-v">{money(data.due)}</span></div>
+					</div>
+				{/if}
+			</div>
+		</div>
+
+		{#if data.unchecked.length}
+			<div class="sec">
+				<div class="sec-h">
+					<h2>Rates worth re-asking about</h2>
+					<span class="sp"></span>
+					<span class="chip warn"><span class="dot"></span>Over 90 days old</span>
+				</div>
+				<div class="rows">
+					{#each data.unchecked as u (u.client + u.site)}
+						<a class="rec link warn" href={resolve('/clients/[id]/sites/[site]', u.at)}>
+							<div class="rec-m">
+								<div class="rec-t">{u.site}</div>
+								<div class="rec-s">{u.client} · {u.why}</div>
+							</div>
+							<span class="arw" aria-hidden="true">›</span>
+						</a>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<div class="sec">
+			<div class="sec-h">
+				<h2>Lines at an overridden rate</h2>
+				<span class="sp"></span>
+				{#if data.overrides.length}
+					<span class="chip warn"><span class="dot"></span>{data.overrides.length} this period</span
+					>
+				{:else}
+					<span class="chip good"><span class="dot"></span>None this period</span>
+				{/if}
+			</div>
+			<div class="rows">
+				{#each data.overrides as o, i (o.invoice + i)}
+					<div class="rec warn">
+						<div class="rec-m">
+							<div class="rec-t">{o.invoice} · {o.description}</div>
+							<div class="rec-s">{o.reason ?? 'No reason recorded'}</div>
+						</div>
+						<div class="rec-n"><span class="rec-v">{pct(o.rate_pct)}</span></div>
+					</div>
+				{:else}
+					<div class="rec">
+						<div class="rec-m">
+							<div class="rec-t">Nothing overridden</div>
+							<div class="rec-s">Every taxed line took its rate from the site it was worked at</div>
+						</div>
+						<div class="rec-n"><span class="rec-v mut">0</span></div>
+					</div>
 				{/each}
 			</div>
 		</div>
 	{/if}
-
-	<div class="sec">
-		<div class="sec-h">
-			<h2>Lines at an overridden rate</h2>
-			<span class="sp"></span>
-			{#if data.overrides.length}
-				<span class="chip warn"><span class="dot"></span>{data.overrides.length} this period</span>
-			{:else}
-				<span class="chip good"><span class="dot"></span>None this period</span>
-			{/if}
-		</div>
-		<div class="rows">
-			{#each data.overrides as o, i (o.invoice + i)}
-				<div class="rec warn">
-					<div class="rec-m">
-						<div class="rec-t">{o.invoice} · {o.description}</div>
-						<div class="rec-s">{o.reason ?? 'No reason recorded'}</div>
-					</div>
-					<div class="rec-n"><span class="rec-v">{pct(o.rate_pct)}</span></div>
-				</div>
-			{:else}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t">Nothing overridden</div>
-						<div class="rec-s">Every taxed line took its rate from the site it was worked at</div>
-					</div>
-					<div class="rec-n"><span class="rec-v mut">0</span></div>
-				</div>
-			{/each}
-		</div>
-	</div>
 </div>

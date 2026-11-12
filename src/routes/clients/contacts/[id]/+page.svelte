@@ -6,6 +6,7 @@
 	import { readProblem } from '#lib/json.ts';
 	import { refreshAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { clientOpens } from '#lib/section-tabs.ts';
 	import { tick } from 'svelte';
 	import type { PageProps } from './$types';
 
@@ -172,7 +173,7 @@
 	<section class="box" aria-labelledby="for-h">
 		<div class="box-h"><h2 class="box-t" id="for-h">Clients</h2></div>
 		{#each data.clients as c (c.slug)}
-			<a class="box-row" href={resolve('/clients/[id]', { id: c.slug })}>
+			<a class="box-row" href={clientOpens(c.slug, data.user?.access)}>
 				<span class="who">
 					<span class="n">{c.name}</span>
 					{#if c.sites.length}<span class="sub">At {names(c.sites)}</span>{/if}

@@ -10,6 +10,7 @@
 	import type { PageProps } from './$types';
 	import { readJson, readProblem } from '#lib/json.ts';
 	import { resolve } from '$app/paths';
+	import { clientOpens } from '#lib/section-tabs.ts';
 	import AddressField from '#lib/AddressField.svelte';
 	import type { Resolved } from '#lib/google.ts';
 
@@ -193,7 +194,7 @@
 	sub="{s.client} · {pct(s.rate_pct)}"
 	trail={[
 		{ href: resolve('/clients'), label: 'Entities' },
-		{ href: resolve('/clients/[id]', { id: s.client_slug }), label: s.client },
+		{ href: clientOpens(s.client_slug, data.user?.access), label: s.client },
 		{ href: resolve('/clients/[id]/sites', { id: s.client_slug }), label: 'Sites' }
 	]}
 />

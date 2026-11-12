@@ -69,9 +69,11 @@ describe('who reaches a route', () => {
 				'/clients/contacts',
 				'/clients/contacts/[id]',
 				'/clients/[id]',
+				'/clients/[id]/contacts',
 				'/clients/[id]/sites',
 				'/clients/[id]/sites/[site]',
 				'/reports/pay/[person]',
+				'/reports/pay/[person]/paid',
 				'/reports/pay/payments/[id]'
 			].sort()
 		);

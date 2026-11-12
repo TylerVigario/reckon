@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
 	import UnderlineNav from '#lib/UnderlineNav.svelte';
+	import { teamTabs } from '#lib/section-tabs.ts';
 	import { ACCESS_WORDS } from '#lib/access.ts';
 	import { STANDING, standing } from '#lib/people-fields.ts';
 	import { resolve } from '$app/paths';
@@ -33,10 +34,7 @@
 <div class="pad primer">
 	<UnderlineNav
 		label="Team"
-		items={[
-			{ href: resolve('/team'), label: 'People', count: data.people.length, current: true },
-			{ href: resolve('/team/roles'), label: 'Roles', count: data.roles, current: false }
-		]}
+		items={teamTabs('people', { people: data.people.length, roles: data.roles })}
 	/>
 
 	<section class="box" aria-labelledby="people-h">

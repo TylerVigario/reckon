@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import UnderlineNav from '#lib/UnderlineNav.svelte';
+	import { clientOpens, entityTabs } from '#lib/section-tabs.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -17,24 +19,20 @@
 />
 
 <div class="pad">
-	<div class="sec">
-		<div class="rows">
-			<a class="rec link" href={resolve('/clients/contacts')}>
-				<div class="rec-m">
-					<div class="rec-t">Contacts</div>
-					<div class="rec-s">People, who cross clients and sites both</div>
-				</div>
-				<div class="rec-n"><span class="rec-v mut">{data.counts.contacts}</span></div>
-				<span class="arw" aria-hidden="true">›</span>
-			</a>
-		</div>
+	<div class="primer">
+		<UnderlineNav
+			label="Entities"
+			items={entityTabs('clients', {
+				clients: data.clients.length,
+				contacts: data.counts.contacts
+			})}
+		/>
 	</div>
 
 	<div class="sec">
-		<div class="sec-h"><h2>Clients</h2></div>
 		<div class="rows">
 			{#each data.clients as c (c.id)}
-				<a class="rec link" href={resolve('/clients/[id]', { id: c.slug })} class:gone={!c.active}>
+				<a class="rec link" href={clientOpens(c.slug, data.user?.access)} class:gone={!c.active}>
 					<div class="rec-m">
 						<div class="rec-t">
 							{c.name}{#if !c.active}<span class="lt"> · inactive</span>{/if}

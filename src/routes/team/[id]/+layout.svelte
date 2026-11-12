@@ -3,7 +3,7 @@
 	import ActionMenu from '#lib/ActionMenu.svelte';
 	import Dialog from '#lib/Dialog.svelte';
 	import Octicon from '#lib/Octicon.svelte';
-	import UnderlineNav from '#lib/UnderlineNav.svelte';
+	import RecordHead from '#lib/RecordHead.svelte';
 	import { STANDING, standing } from '#lib/people-fields.ts';
 	import { readProblem } from '#lib/json.ts';
 	import { clock, datedAt } from '#lib/format.ts';
@@ -253,55 +253,55 @@
 </Top>
 
 <div class="pad primer">
-	<div class="state">
-		<span class="lab {STANDING[where].tone}">{STANDING[where].label}</span>
-		{#if where === 'invited' && p.waiting}
-			<span class="muted"
-				>Invitation sent at {at(p.waiting.sent_at)} · works until {at(p.waiting.until)}</span
-			>
-		{:else if where === 'uninvited'}
-			<span class="muted">Has no passkey, and has never been sent an invitation</span>
-			<button type="button" class="btn sm" onclick={resend} disabled={working || !!unsent}
-				>Send invitation</button
-			>
-		{:else if where === 'expired'}
-			<span class="muted">
-				{p.waiting
-					? `Sent at ${at(p.waiting.sent_at)}, and not used within the hour`
-					: 'No invitation waiting'}
-			</span>
-			<button type="button" class="btn sm" onclick={resend} disabled={working || !!unsent}
-				>Resend invitation</button
-			>
-		{:else}
-			<span class="muted">
-				{p.last_signed_in_at
-					? `Last signed in at ${at(p.last_signed_in_at)}`
-					: 'No sign-in recorded'}
-			</span>
-			{#if p.active && p.waiting?.purpose === 'reset' && !p.waiting.lapsed}
+	<RecordHead label="{p.name}’s record" {tabs}>
+		{#snippet state()}
+			<span class="lab {STANDING[where].tone}">{STANDING[where].label}</span>
+			{#if where === 'invited' && p.waiting}
 				<span class="muted"
-					>New link sent at {at(p.waiting.sent_at)} · works until {at(p.waiting.until)}</span
+					>Invitation sent at {at(p.waiting.sent_at)} · works until {at(p.waiting.until)}</span
 				>
-			{:else if p.active && !p.has_passkey}
-				{@const lapsed = p.waiting?.purpose === 'reset'}
-				<span class="muted"
-					>{lapsed
-						? 'Has no passkey: their new link lapsed unused'
-						: 'Has no passkey, so can’t sign in'}</span
+			{:else if where === 'uninvited'}
+				<span class="muted">Has no passkey, and has never been sent an invitation</span>
+				<button type="button" class="btn sm" onclick={resend} disabled={working || !!unsent}
+					>Send invitation</button
 				>
-				<button
-					type="button"
-					class="btn sm"
-					onclick={() => ask('reset')}
-					disabled={working || !!unsent || isMe}
-					>{lapsed ? 'Send another' : 'Send a new link'}</button
+			{:else if where === 'expired'}
+				<span class="muted">
+					{p.waiting
+						? `Sent at ${at(p.waiting.sent_at)}, and not used within the hour`
+						: 'No invitation waiting'}
+				</span>
+				<button type="button" class="btn sm" onclick={resend} disabled={working || !!unsent}
+					>Resend invitation</button
 				>
+			{:else}
+				<span class="muted">
+					{p.last_signed_in_at
+						? `Last signed in at ${at(p.last_signed_in_at)}`
+						: 'No sign-in recorded'}
+				</span>
+				{#if p.active && p.waiting?.purpose === 'reset' && !p.waiting.lapsed}
+					<span class="muted"
+						>New link sent at {at(p.waiting.sent_at)} · works until {at(p.waiting.until)}</span
+					>
+				{:else if p.active && !p.has_passkey}
+					{@const lapsed = p.waiting?.purpose === 'reset'}
+					<span class="muted"
+						>{lapsed
+							? 'Has no passkey: their new link lapsed unused'
+							: 'Has no passkey, so can’t sign in'}</span
+					>
+					<button
+						type="button"
+						class="btn sm"
+						onclick={() => ask('reset')}
+						disabled={working || !!unsent || isMe}
+						>{lapsed ? 'Send another' : 'Send a new link'}</button
+					>
+				{/if}
 			{/if}
-		{/if}
-	</div>
-
-	<UnderlineNav label="{p.name}’s record" items={tabs} />
+		{/snippet}
+	</RecordHead>
 
 	{#if said}
 		<div class="banner {said.tone}" role="status">
@@ -415,12 +415,3 @@
 		</p>
 	</Dialog>
 </div>
-
-<style>
-	.state {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 8px 12px;
-	}
-</style>

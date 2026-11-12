@@ -1,5 +1,6 @@
 import { hours } from '#lib/format.ts';
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
+import { resolve } from '$app/paths';
 import { and, eq, gte, isNull, or, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday, personalDay } from '#lib/server/calendar.ts';
@@ -9,31 +10,30 @@ import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { findClient } from '#lib/server/find.ts';
 import { loadAgreements, usedThisMonth } from '#lib/server/valuation/load.ts';
 import { hoursOf } from '#lib/server/valuation/misc.ts';
-import { rateIsStale } from '#lib/server/stale.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
- * One client: what they owe, what they have agreed to, where they are, and
- * who to ask for and send the invoices to.
+ * A client's Details: how they are billed, what they have agreed to, their
+ * credit and tax, and their recent invoices. What they owe heads every tab
+ * (+layout); where they are is Sites, and who to ask for, Contacts.
  *
  * No tax rate: a rate is a site's, not the client's, and shown on the site.
  * A client is not a place -- two clients can work at one address, and one
- * client can work in two districts. The Sites row says when one is old.
+ * client can work in two districts.
  *
  * Someone with Field reads where a client is, to work there, and nothing of
- * what they owe, have agreed to or been invoiced (#lib/access).
+ * what they owe, have agreed to or been invoiced (#lib/access), so for them a
+ * client opens on Sites.
  */
 export const load: PageServerLoad = async ({ params, locals }) => {
+	if (fieldOnly(locals)) redirect(307, resolve('/clients/[id]/sites', { id: params.id }));
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
 	const owing = balances(rounding, places);
 	const { id } = await findClient(params.id);
 	const e = t.entity;
-	const ec = t.entityContact;
-	const c = t.contact;
 	const cn = t.creditNote;
 	const ca = t.creditApplication;
-	const stale = rateIsStale(t.site.areaVerifiedOn, businessToday());
 
 	const {
 		rows: [client]
@@ -49,16 +49,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		tax_exempt: boolean;
 		certificate: string | null;
 		expires_on: string | null;
-		contact: string | null;
-		owed: string;
-		out: string;
 		credit: string;
 	}>(sql`
-		with owing as (
-			select entity_id, sum(owed) as owed, count(*) filter (where owed > 0) as out
-			  from ${owing} b
-			 where status = 'sent' group by entity_id
-		)
 		select ${e.id} as id, ${e.slug} as slug, ${e.name} as name, ${e.active} as active,
 		       ${e}.xmin::text as version,
 		       ${e.termsDays} as terms,
@@ -66,10 +58,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		       ${e.paymentMethod} as payment_method, ${e.taxExempt} as tax_exempt,
 		       ${e.exemptionCertificate} as certificate,
 		       ${e.exemptionExpiresOn}::text as expires_on,
-		       (select ${c.name} from ${ec} join ${c} on ${c.id} = ${ec.contactId}
-		         where ${ec.entityId} = ${e.id} and ${ec.isPrimary} limit 1) as contact,
-		       round(coalesce(o.owed, 0), ${places}::int)::text as owed,
-		       coalesce(o.out, 0)::text as out,
 		       -- Notes and what has been applied from them, each added up on its
 		       -- own: joined first, a note applied twice would count twice.
 		       ((select coalesce(sum(${cn.amount}), 0) from ${cn} where ${cn.entityId} = ${e.id})
@@ -77,28 +65,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		             from ${ca} join ${cn} on ${cn.id} = ${ca.creditNoteId}
 		            where ${cn.entityId} = ${e.id}))::text as credit
 		  from ${e}
-		  left join owing o on o.entity_id = ${e.id}
 		 where ${e.id} = ${id}`);
 
 	if (!client) error(404, 'no such client');
 
-	const active = and(eq(t.site.entityId, id), eq(t.site.active, true));
 	const today = businessToday();
-	const [[sites], running, recent, contacts] = await Promise.all([
-		// The client page says how many places and roughly where; the sites page
-		// says everything else, because a client's terms and its addresses are
-		// two subjects.
-		db
-			.select({
-				n: sql<number>`count(*)::int`,
-				towns: sql<
-					string | null
-				>`string_agg(distinct coalesce(${t.site.city}, ${t.site.label}), ', ')`,
-				unchecked: sql<number>`(count(*) filter (where ${stale}))::int`,
-				miles: sql<string | null>`max(${t.site.roundTripMiles})::text`
-			})
-			.from(t.site)
-			.where(active),
+	const [running, recent] = await Promise.all([
 		db
 			.select({
 				id: t.agreement.id,
@@ -127,31 +99,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				 order by coalesce(${t.invoice.sentAt}, ${t.invoice.createdAt}) desc
 				 limit 5`
 			)
-			.then((r) => r.rows),
-		// The client's people, each opening their own page, where their details
-		// are changed; and which of them the invoices go to.
-		db
-			.execute<{
-				id: string;
-				name: string;
-				email: string | null;
-				phone: string | null;
-				bills: boolean;
-				sites: string[];
-			}>(
-				sql`
-				select ${c.id} as id, ${c.name} as name, ${c.email} as email, ${c.phone} as phone,
-				       ${ec.isPrimary} as bills,
-				       coalesce((select array_agg(${t.site.label} order by ${t.site.label})
-				                   from ${t.siteContact}
-				                   join ${t.site} on ${t.site.id} = ${t.siteContact.siteId}
-				                  where ${t.siteContact.contactId} = ${c.id}
-				                    and ${t.siteContact.entityId} = ${ec.entityId}), '{}') as sites
-				  from ${ec}
-				  join ${c} on ${c.id} = ${ec.contactId}
-				 where ${ec.entityId} = ${id}
-				 order by ${c.name}`
-			)
 			.then((r) => r.rows)
 	]);
 
@@ -177,18 +124,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		return parts.length ? parts.map((p) => `${p.name} ${p.text}`).join(', ') : null;
 	};
 
-	if (fieldOnly(locals))
-		return {
-			client: { ...client, owed: null, out: null, credit: null },
-			sites,
-			contacts: contacts.map((x) => ({ ...x, bills: false })),
-			agreements: [],
-			recent: []
-		};
 	return {
 		client,
-		sites,
-		contacts,
 		agreements: running.map((r) => {
 			const a = agreements.find((x) => x.id === r.id)!;
 			return {

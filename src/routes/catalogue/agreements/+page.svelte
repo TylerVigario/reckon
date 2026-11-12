@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { hours } from '#lib/format.ts';
 	import Top from '#lib/Top.svelte';
+	import UnderlineNav from '#lib/UnderlineNav.svelte';
+	import { catalogueTabs } from '#lib/section-tabs.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -18,22 +20,24 @@
 		i === 'monthly' ? '/mo' : i === 'annually' ? '/yr' : i === 'quarterly' ? '/qtr' : '/wk';
 </script>
 
-<Top
-	title="Agreements"
-	sub="{money(data.recurring)} a month"
-	back={resolve('/catalogue')}
-	backLabel="Catalogue"
->
+<Top title="Catalogue" sub="What can go on a line" back={resolve('/more')} backLabel="More">
 	{#snippet actions()}
 		<a class="btn sm pri" href={resolve('/catalogue/agreements/new')}>New agreement</a>
 	{/snippet}
 </Top>
 
 <div class="pad">
+	<div class="primer"><UnderlineNav label="Catalogue" items={catalogueTabs('agreements')} /></div>
 	{#each [{ head: '', list: data.live }, { head: 'Ended', list: data.ended }] as group (group.head)}
 		{#if group.list.length}
 			<div class="sec">
-				{#if group.head}<div class="sec-h"><h2>{group.head}</h2></div>{/if}
+				<div class="sec-h">
+					<h2>{group.head || 'Running'}</h2>
+					{#if !group.head}
+						<span class="sp"></span>
+						<span class="chip">{money(data.recurring)} a month</span>
+					{/if}
+				</div>
 				<div class="rows">
 					{#each group.list as a (a.id)}
 						<a

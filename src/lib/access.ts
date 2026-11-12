@@ -103,11 +103,13 @@ export const REACH = {
 	'/clients/contacts': 'field',
 	'/clients/contacts/[id]': 'field',
 	'/clients/[id]': 'field',
+	'/clients/[id]/contacts': 'field',
 	'/clients/[id]/sites': 'field',
 	'/clients/[id]/sites/[site]': 'field',
 
 	// Their own pay, to read.
 	'/reports/pay/[person]': 'field',
+	'/reports/pay/[person]/paid': 'field',
 	'/reports/pay/payments/[id]': 'field',
 
 	// Everything else: billing, pay, prices, the catalogue, people and settings.
@@ -142,10 +144,10 @@ export const REACH = {
 	'/api/agreements': 'full',
 	'/api/agreements/[id]': 'full',
 	'/api/agreements/[id]/coverage/[service]': 'full',
-	'/services': 'full',
-	'/services/[id]': 'full',
-	'/services/[id]/history': 'full',
-	'/services/new': 'full',
+	'/catalogue/services': 'full',
+	'/catalogue/services/[id]': 'full',
+	'/catalogue/services/[id]/history': 'full',
+	'/catalogue/services/new': 'full',
 	'/api/services': 'full',
 	'/api/services/[id]': 'full',
 	'/api/services/[id]/prices': 'full',
@@ -155,6 +157,7 @@ export const REACH = {
 	'/reports': 'full',
 	'/reports/pay': 'full',
 	'/reports/retainers': 'full',
+	'/reports/non-billable': 'full',
 	'/reports/schedule-a': 'full',
 	'/api/pay': 'full',
 	'/team': 'full',

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { fixed, percent, quantity } from '#lib/format.ts';
 	import Top from '#lib/Top.svelte';
+	import UnderlineNav from '#lib/UnderlineNav.svelte';
+	import { catalogueTabs } from '#lib/section-tabs.ts';
 	import { unitPrice } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -10,18 +12,14 @@
 	const basis = $derived(data.costing === 'average' ? 'average' : 'oldest');
 </script>
 
-<Top
-	title="Materials"
-	sub="Cost and tax stored apart"
-	back={resolve('/catalogue')}
-	backLabel="Catalogue"
->
+<Top title="Catalogue" sub="What can go on a line" back={resolve('/more')} backLabel="More">
 	{#snippet actions()}
 		<a class="btn sm pri" href={resolve('/catalogue/materials/receive')}>Receive stock</a>
 	{/snippet}
 </Top>
 
 <div class="pad">
+	<div class="primer"><UnderlineNav label="Catalogue" items={catalogueTabs('materials')} /></div>
 	<div class="sec">
 		<div class="sec-h">
 			<h2>Stock on hand</h2>
