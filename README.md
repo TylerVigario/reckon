@@ -426,6 +426,15 @@ nothing else.
 | `RELEASE`          | the version, the commit, and the Node it was built with    |
 | `MANIFEST.sha256`  | every file's digest, so what is installed can be checked   |
 
+**The production dependencies are what stays out of the bundle.** adapter-node
+bundles everything into `build/` but them (_"Bundle everything except
+production dependencies"_), and Node loads them from `node_modules/` as they
+are published. One is there though reckon never imports it: SimpleWebAuthn's
+server library, which Better Auth's passkey plugin uses. Its certificate
+reader, `@peculiar/x509`, imports `reflect-metadata` and then `tsyringe`, which
+refuses to load without it. Rolldown, bundling, doesn't promise that order, and
+has run `tsyringe` first and failed the build; Node keeps it.
+
 Run it from its own directory — a service unit's `WorkingDirectory` — since the
 migrations are read from `drizzle/` there. A deploy is a backup of the database,
 the release unpacked, and the server restarted: it brings the database up to
