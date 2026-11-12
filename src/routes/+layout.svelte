@@ -1,8 +1,13 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import { browser } from '$app/env';
+	import { setOwner } from '#lib/owner.ts';
+	import { claimUnownedTimers } from '#lib/timers.ts';
 	import { page, updated } from '$app/state';
 	import { afterNavigate, invalidateAll } from '$app/navigation';
-	import { flush } from '#lib/queue.ts';
+	import { claimUnowned, flush } from '#lib/queue.ts';
+	import Dialog from '#lib/Dialog.svelte';
+	import { beforeSigningOut, signingOut, signOutAnyway, stay } from '#lib/sign-out.svelte.ts';
 	import { warm } from '#lib/warm.ts';
 	import type { LayoutProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -15,6 +20,13 @@
 	import '#lib/primer.css';
 
 	let { data, children }: LayoutProps = $props();
+
+	// Whose unsent work this phone shows and sends (#lib/owner): said now,
+	// before anything on the page reads the queue, and again as it changes.
+	if (browser) setOwner(untrack(() => data.user?.id ?? null));
+	$effect(() => {
+		if (browser) setOwner(data.user?.id ?? null);
+	});
 
 	// The operator may set the one hue; the palette below is what it falls back
 	// to, and an operator who has chosen a colour gets theirs.
@@ -47,11 +59,15 @@
 			void navigator.serviceWorker
 				.register('/service-worker.js', { type: 'module' })
 				.catch(() => {});
-		if (!data.user || !navigator.onLine) return;
-		// Whatever the capture queue still holds goes now. A page opened with a
-		// signal never hears the browser say it is back online, so without this an
-		// entry recorded offline would wait for the next one to carry it.
-		void flush().catch(() => {});
+		if (!data.user) return;
+		// Anything left from before the queue named its maker is theirs.
+		claimUnownedTimers();
+		const claimed = claimUnowned().catch(() => {});
+		if (!navigator.onLine) return;
+		// Whatever the capture queue still holds of theirs goes now. A page opened
+		// with a signal never hears the browser say it is back online, so without
+		// this an entry recorded offline would wait for the next one to carry it.
+		void claimed.then(() => flush()).catch(() => {});
 		warm();
 	});
 
@@ -239,7 +255,7 @@
 					>
 				{/if}
 			</nav>
-			<form class="rail-foot" method="POST" action="/logout">
+			<form class="rail-foot" method="POST" action="/logout" onsubmit={beforeSigningOut}>
 				<a
 					class="me"
 					href={resolve('/profile')}
@@ -287,6 +303,31 @@
 			{/each}
 		</nav>
 	</div>
+
+	<Dialog
+		open={signingOut.form !== null}
+		title="Sign out with work still on this phone?"
+		go="Sign out"
+		ongo={signOutAnyway}
+		onclose={stay}
+	>
+		<p>
+			{#if signingOut.waiting}
+				{signingOut.waiting}
+				{signingOut.waiting === 1 ? 'thing' : 'things'} you recorded on this phone
+				{signingOut.waiting === 1 ? 'hasn’t' : 'haven’t'} reached reckon yet.
+			{/if}
+			{#if signingOut.timers}
+				{signingOut.timers}
+				{signingOut.timers === 1 ? 'timer is' : 'timers are'} still running.
+			{/if}
+		</p>
+		<p>
+			{#if signingOut.waiting}It stays on this phone, and goes the next time you sign in on it.{/if}
+			{#if signingOut.timers}A timer keeps running until you stop it.{/if}
+			Nobody else who signs in here sees any of it.
+		</p>
+	</Dialog>
 {/if}
 
 <style>

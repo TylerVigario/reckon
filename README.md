@@ -773,6 +773,18 @@ on the phone, unique to whoever made it, so a retry returns the row they already
 sent, and the same uuid from anyone else is a row of their own. A trip's miles the phone could only estimate take Google's route when it
 arrives.
 
+**Unsent work is its maker's, and nothing deletes it.** What waits on a phone —
+an entry, a line, a draft, a change, a trip, a running timer — is stamped with
+whoever recorded it, shown only to them, and sent only under their session,
+whenever they next sign in there (`src/lib/owner.ts`). Someone else signing in
+on the same phone never sees or sends it, and a change to a line or trip that
+someone else has one waiting for is refused rather than written over theirs.
+Signing out leaves it where it is, and says so first when anything is waiting;
+only a person's own Discard lets something go. So the phone's own storage
+holds work that has not reached the server yet — the one thing ASVS 5.0 14.3.3
+asks browser storage not to hold — because recording it where there is no
+signal is the point, and dropping it would lose hours recorded nowhere else.
+
 **It installs as an app, and opens without a signal.** A phone offers to add
 it to the home screen: named for the business, in its colour, with its logo as
 the icon where the logo is fit to be one (square, and an SVG or a PNG of 512px

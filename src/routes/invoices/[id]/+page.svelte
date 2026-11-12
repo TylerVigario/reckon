@@ -12,6 +12,7 @@
 		enqueueChange,
 		flush,
 		linesHeld,
+		notKept,
 		waitingCount,
 		type QueuedChange,
 		type QueuedLine
@@ -52,8 +53,8 @@
 		// database cannot store.
 		try {
 			await enqueueChange({ ...$state.snapshot(q.change), act: 'restore' }, true);
-		} catch {
-			stored = 'This phone would not save that, so the line is not put back yet.';
+		} catch (e) {
+			stored = notKept(e, 'This phone would not save that, so the line is not put back yet.');
 			return;
 		}
 		await send();

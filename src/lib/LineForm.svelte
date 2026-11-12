@@ -10,6 +10,7 @@
 		enqueueLine,
 		findLine,
 		flush,
+		notKept,
 		waitingCount,
 		type QueuedLine
 	} from '#lib/queue.ts';
@@ -320,8 +321,8 @@
 					tax_rate_pct: line.taxRatePct
 				}
 			});
-		} catch {
-			why = 'This phone would not save the change, so it is not made.';
+		} catch (e) {
+			why = notKept(e, 'This phone would not save the change, so it is not made.');
 			saving = false;
 			return;
 		}

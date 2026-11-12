@@ -1,6 +1,7 @@
 import { PROBLEM_MEDIA_TYPE, type ProblemBody } from './problem.ts';
 import type { Conflict } from './line-conflict.ts';
 import type { TripDraft } from './trip/draft.ts';
+import { currentOwner } from './owner.ts';
 
 /**
  * The capture queue.
@@ -45,6 +46,13 @@ import type { TripDraft } from './trip/draft.ts';
  * trip as /api/trips takes it, the form as it was filled in, so Fix opens it
  * again, and what the trips list shows of it meanwhile. A change names the trip
  * it changes, and a second change before the first has gone takes its place.
+ *
+ * EACH IS ITS MAKER'S (#lib/owner). Everything written here is stamped with
+ * whoever was signed in to make it, and only they see it, send it, or let it
+ * go -- whenever they next sign in on this phone. Someone else signed in here
+ * never does, and signing out leaves it where it is. A change to a line or a
+ * trip someone else has one waiting for is refused rather than written over
+ * theirs.
  */
 const DB = 'reckon';
 const STORE = 'queue';
@@ -98,6 +106,8 @@ export type Refusal = {
 
 export type Queued = {
 	entry: Entry;
+	/** Who made it (#lib/owner). Absent only on what was queued before it said. */
+	owner?: string;
 	/** Epoch ms, when it was written on this phone. The queue posts in this order. */
 	queued_at: number;
 	/** Set once the server refuses it. A refused entry is not posted again until it is fixed. */
@@ -119,6 +129,36 @@ function isEntry(e: unknown): e is Entry {
 		typeof r.service_id === 'string' &&
 		typeof r.created_by === 'string'
 	);
+}
+
+/** Said when someone else on this phone has a change waiting for the same line or trip. */
+export const SOMEONE_ELSES =
+	'Someone else signed in on this phone has a change to this waiting. It goes when they next sign in here.';
+
+/**
+ * What to say when the phone would not keep something: that someone else's is
+ * waiting for the same line or trip, where that was why, or else `otherwise`.
+ */
+export const notKept = (e: unknown, otherwise: string) =>
+	e instanceof Error && e.message === SOMEONE_ELSES ? SOMEONE_ELSES : otherwise;
+
+/** Who is making it: the person signed in. Signed out, nothing is kept for nobody. */
+function maker(): string {
+	const id = currentOwner();
+	if (!id) throw new Error('Nobody is signed in on this phone to keep it for.');
+	return id;
+}
+
+/** The rows of whoever is signed in; none, signed out. */
+function mine<Q extends { owner?: string }>(rows: Q[]): Q[] {
+	const id = currentOwner();
+	return id ? rows.filter((q) => q.owner === id) : [];
+}
+
+/** A row, if it is the signed-in person's. */
+function ifMine<Q extends { owner?: string }>(q: Q | undefined): Q | undefined {
+	const id = currentOwner();
+	return id && q?.owner === id ? q : undefined;
 }
 
 let opening: Promise<IDBDatabase> | null = null;
@@ -241,12 +281,13 @@ function keep() {
  */
 export async function enqueue(e: Entry): Promise<void> {
 	keep();
-	await tx('readwrite', (s) => s.put({ entry: e, queued_at: Date.now() } satisfies Queued));
+	const owner = maker();
+	await tx('readwrite', (s) => s.put({ entry: e, queued_at: Date.now(), owner } satisfies Queued));
 }
 
 async function all(): Promise<Queued[]> {
 	const rows = (await tx<Queued[]>('readonly', (s) => s.getAll())) ?? [];
-	return rows.sort((a, b) => a.queued_at - b.queued_at);
+	return mine(rows).sort((a, b) => a.queued_at - b.queued_at);
 }
 
 /** What is waiting to send, and what the server refused, oldest first. */
@@ -259,13 +300,59 @@ export async function held(): Promise<{ waiting: number; refused: Queued[] }> {
 }
 
 /** One queued entry, to be fixed. */
-export function find(client_uuid: string): Promise<Queued | undefined> {
-	return tx<Queued>('readonly', (s) => s.get(client_uuid));
+export async function find(client_uuid: string): Promise<Queued | undefined> {
+	return ifMine(await tx<Queued>('readonly', (s) => s.get(client_uuid)));
+}
+
+/**
+ * Lets go of one of the signed-in person's: only ever their decision, made on
+ * purpose. Anyone else's stays.
+ */
+function discardIn(store: Store, key: string): Promise<unknown> {
+	const id = currentOwner();
+	return tx(
+		'readwrite',
+		(s) => {
+			const got = s.get(key);
+			got.onsuccess = () => {
+				if (id && (got.result as { owner?: string } | undefined)?.owner === id) s.delete(key);
+			};
+		},
+		store
+	);
+}
+
+/** Whether someone else's is waiting under `key`, which writing this would replace. */
+async function someoneElses(store: Store, key: string): Promise<boolean> {
+	const had = await tx<{ owner?: string }>('readonly', (s) => s.get(key), store);
+	return !!had && had.owner !== maker();
+}
+
+/**
+ * Work queued on this phone before the queue named its maker is the first
+ * person's to sign in here after: whose it was went unrecorded, and until then
+ * it went under whoever was signed in. Nothing is dropped.
+ */
+export async function claimUnowned(): Promise<void> {
+	const id = currentOwner();
+	if (!id) return;
+	for (const store of [STORE, LINES, DRAFTS, CHANGES, TRIPS] as const)
+		await tx(
+			'readwrite',
+			(s) => {
+				const rows = s.getAll();
+				rows.onsuccess = () => {
+					for (const row of rows.result as { owner?: string }[])
+						if (!row.owner) s.put({ ...row, owner: id });
+				};
+			},
+			store
+		);
 }
 
 /** Lets go of an entry. Only ever a person's decision, made on purpose. */
 export async function discard(client_uuid: string): Promise<void> {
-	await tx('readwrite', (s) => s.delete(client_uuid));
+	await discardIn(STORE, client_uuid);
 }
 
 /**
@@ -474,6 +561,8 @@ export type ShownLine = {
 
 export type QueuedLine = {
 	line: LineEntry;
+	/** Who made it (#lib/owner). Absent only on what was queued before it said. */
+	owner?: string;
 	/** Epoch ms, when it was written on this phone. Lines post in this order. */
 	queued_at: number;
 	refused?: Refusal;
@@ -498,16 +587,17 @@ function formOf(l: LineEntry): FormData {
  */
 export async function enqueueLine(l: LineEntry): Promise<void> {
 	keep();
+	const owner = maker();
 	await tx(
 		'readwrite',
-		(s) => s.put({ line: l, queued_at: Date.now() } satisfies QueuedLine),
+		(s) => s.put({ line: l, queued_at: Date.now(), owner } satisfies QueuedLine),
 		LINES
 	);
 }
 
 async function allLines(): Promise<QueuedLine[]> {
 	const rows = (await tx<QueuedLine[]>('readonly', (s) => s.getAll(), LINES)) ?? [];
-	return rows.sort((a, b) => a.queued_at - b.queued_at);
+	return mine(rows).sort((a, b) => a.queued_at - b.queued_at);
 }
 
 /** Every line on this phone, waiting or refused, oldest first; or one draft's. */
@@ -517,13 +607,13 @@ export async function linesHeld(invoiceId?: string): Promise<QueuedLine[]> {
 }
 
 /** One queued line, to be fixed. */
-export function findLine(client_uuid: string): Promise<QueuedLine | undefined> {
-	return tx<QueuedLine>('readonly', (s) => s.get(client_uuid), LINES);
+export async function findLine(client_uuid: string): Promise<QueuedLine | undefined> {
+	return ifMine(await tx<QueuedLine>('readonly', (s) => s.get(client_uuid), LINES));
 }
 
 /** Lets go of a line. Only ever a person's decision, made on purpose. */
 export async function discardLine(client_uuid: string): Promise<void> {
-	await tx('readwrite', (s) => s.delete(client_uuid), LINES);
+	await discardIn(LINES, client_uuid);
 }
 
 /**
@@ -540,6 +630,8 @@ export type DraftEntry = {
 
 export type QueuedDraft = {
 	draft: DraftEntry;
+	/** Who made it (#lib/owner). Absent only on what was queued before it said. */
+	owner?: string;
 	queued_at: number;
 	refused?: Refusal;
 };
@@ -547,30 +639,32 @@ export type QueuedDraft = {
 /** Writes a draft. Resolves once it is committed. */
 export async function enqueueDraft(d: DraftEntry): Promise<void> {
 	keep();
+	const owner = maker();
 	await tx(
 		'readwrite',
-		(s) => s.put({ draft: d, queued_at: Date.now() } satisfies QueuedDraft),
+		(s) => s.put({ draft: d, queued_at: Date.now(), owner } satisfies QueuedDraft),
 		DRAFTS
 	);
 }
 
 async function allDrafts(): Promise<QueuedDraft[]> {
 	const rows = (await tx<QueuedDraft[]>('readonly', (s) => s.getAll(), DRAFTS)) ?? [];
-	return rows.sort((a, b) => a.queued_at - b.queued_at);
+	return mine(rows).sort((a, b) => a.queued_at - b.queued_at);
 }
 
 /** Every draft started on this phone and not yet arrived, oldest first. */
 export const draftsHeld = allDrafts;
 
 /** One draft started on this phone, while it waits. */
-export function findDraft(client_uuid: string): Promise<QueuedDraft | undefined> {
-	return tx<QueuedDraft>('readonly', (s) => s.get(client_uuid), DRAFTS);
+export async function findDraft(client_uuid: string): Promise<QueuedDraft | undefined> {
+	return ifMine(await tx<QueuedDraft>('readonly', (s) => s.get(client_uuid), DRAFTS));
 }
 
 /** Lets go of a draft started here, and of the lines on it. A person's decision. */
 export async function discardDraft(client_uuid: string): Promise<void> {
+	if (!(await findDraft(client_uuid))) return;
 	for (const q of await linesHeld(client_uuid)) await discardLine(q.line.client_uuid);
-	await tx('readwrite', (s) => s.delete(client_uuid), DRAFTS);
+	await discardIn(DRAFTS, client_uuid);
 }
 
 /**
@@ -596,6 +690,8 @@ export type ChangeEntry = {
 
 export type QueuedChange = {
 	change: ChangeEntry;
+	/** Who made it (#lib/owner). Absent only on what was queued before it said. */
+	owner?: string;
 	queued_at: number;
 	refused?: Refusal;
 };
@@ -627,18 +723,21 @@ function sendChange(c: ChangeEntry): Promise<Response> {
  */
 export async function enqueueChange(c: ChangeEntry, fresh = false): Promise<void> {
 	keep();
+	const owner = maker();
+	if (await someoneElses(CHANGES, c.line_id)) throw new Error(SOMEONE_ELSES);
 	const had = fresh ? undefined : await findChange(c.line_id);
 	const began = had && !had.refused ? { version: had.change.version, base: had.change.base } : {};
 	await tx(
 		'readwrite',
-		(s) => s.put({ change: { ...c, ...began }, queued_at: Date.now() } satisfies QueuedChange),
+		(s) =>
+			s.put({ change: { ...c, ...began }, queued_at: Date.now(), owner } satisfies QueuedChange),
 		CHANGES
 	);
 }
 
 async function allChanges(): Promise<QueuedChange[]> {
 	const rows = (await tx<QueuedChange[]>('readonly', (s) => s.getAll(), CHANGES)) ?? [];
-	return rows.sort((a, b) => a.queued_at - b.queued_at);
+	return mine(rows).sort((a, b) => a.queued_at - b.queued_at);
 }
 
 /** Every change on this phone, waiting or run into something, oldest first; or one draft's. */
@@ -648,13 +747,13 @@ export async function changesHeld(invoiceId?: string): Promise<QueuedChange[]> {
 }
 
 /** The change waiting for one line. */
-export function findChange(line_id: string): Promise<QueuedChange | undefined> {
-	return tx<QueuedChange>('readonly', (s) => s.get(line_id), CHANGES);
+export async function findChange(line_id: string): Promise<QueuedChange | undefined> {
+	return ifMine(await tx<QueuedChange>('readonly', (s) => s.get(line_id), CHANGES));
 }
 
 /** Lets go of a change. A person's decision. */
 export async function discardChange(line_id: string): Promise<void> {
-	await tx('readwrite', (s) => s.delete(line_id), CHANGES);
+	await discardIn(CHANGES, line_id);
 }
 
 /**
@@ -675,6 +774,8 @@ export type TripEntry = {
 
 export type QueuedTrip = {
 	trip: TripEntry;
+	/** Who made it (#lib/owner). Absent only on what was queued before it said. */
+	owner?: string;
 	queued_at: number;
 	refused?: Refusal;
 };
@@ -682,28 +783,34 @@ export type QueuedTrip = {
 /** Writes a trip, in place of any waiting under the same key. Resolves once it is committed. */
 export async function enqueueTrip(trip: TripEntry): Promise<void> {
 	keep();
-	await tx('readwrite', (s) => s.put({ trip, queued_at: Date.now() } satisfies QueuedTrip), TRIPS);
+	const owner = maker();
+	if (await someoneElses(TRIPS, trip.key)) throw new Error(SOMEONE_ELSES);
+	await tx(
+		'readwrite',
+		(s) => s.put({ trip, queued_at: Date.now(), owner } satisfies QueuedTrip),
+		TRIPS
+	);
 }
 
 async function allTrips(): Promise<QueuedTrip[]> {
 	const rows = (await tx<QueuedTrip[]>('readonly', (s) => s.getAll(), TRIPS)) ?? [];
-	return rows.sort((a, b) => a.queued_at - b.queued_at);
+	return mine(rows).sort((a, b) => a.queued_at - b.queued_at);
 }
 
 /** Every trip recorded or changed on this phone and not yet arrived, oldest first. */
 export const tripsHeld = allTrips;
 
 /** One trip waiting on this phone. */
-export function findTrip(key: string): Promise<QueuedTrip | undefined> {
-	return tx<QueuedTrip>('readonly', (s) => s.get(key), TRIPS);
+export async function findTrip(key: string): Promise<QueuedTrip | undefined> {
+	return ifMine(await tx<QueuedTrip>('readonly', (s) => s.get(key), TRIPS));
 }
 
 /** Lets go of a trip, or a change to one. A person's decision. */
 export async function discardTrip(key: string): Promise<void> {
-	await tx('readwrite', (s) => s.delete(key), TRIPS);
+	await discardIn(TRIPS, key);
 }
 
-/** Everything on this phone waiting to send -- time, drafts, lines, changes and trips -- leaving out what was refused. */
+/** Everything of the signed-in person's waiting to send -- time, drafts, lines, changes and trips -- leaving out what was refused. */
 export async function waitingCount(): Promise<number> {
 	const [time, drafts, lines, changes, trips] = await Promise.all([
 		held(),
