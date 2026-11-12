@@ -18,8 +18,7 @@ export type SecurityEvent = (typeof SECURITY_EVENTS)[number];
  * Each event's level in the log, as OWASP's Logging Vocabulary sets it, its
  * CRITICAL being pino's error. Where it names none, its nearest: a passkey as
  * its authn_token_created and authn_token_revoked, a link the same, a link that
- * no longer works as a failed sign-in, an access review as authz_admin -- "all
- * activity by privileged users".
+ * no longer works as a failed sign-in.
  */
 const LEVEL: Record<SecurityEvent, 'info' | 'warn' | 'error'> = {
 	authn_login_success: 'info',
@@ -37,8 +36,7 @@ const LEVEL: Record<SecurityEvent, 'info' | 'warn' | 'error'> = {
 	authz_change: 'warn',
 	user_archived: 'warn',
 	user_restored: 'warn',
-	authz_fail: 'error',
-	access_reviewed: 'warn'
+	authz_fail: 'error'
 };
 
 /** What each says, for a person to read: the Security log's words, and the log line's. */
@@ -58,8 +56,7 @@ export const SAYS: Record<SecurityEvent, string> = {
 	authz_change: 'Access changed',
 	user_archived: 'Made inactive',
 	user_restored: 'Made active again',
-	authz_fail: 'Refused, for lack of access',
-	access_reviewed: 'Access reviewed'
+	authz_fail: 'Refused, for lack of access'
 };
 
 /** Where a request came from, and who was signed in to make it. */

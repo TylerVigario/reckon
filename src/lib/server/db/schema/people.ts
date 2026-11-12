@@ -396,8 +396,7 @@ export const linkTry = pgTable(
 /**
  * What happened to how someone signs in and what they can reach, each named
  * as OWASP's Logging Vocabulary names it, and in its style where it has no
- * name: it has none for a passkey, a link, someone made active again, or
- * Team's access marked reviewed
+ * name: it has none for a passkey, a link, or someone made active again
  * (#lib/server/events). Closed, so the README's list of them is the list.
  */
 export const SECURITY_EVENTS = [
@@ -416,8 +415,7 @@ export const SECURITY_EVENTS = [
 	'authz_change',
 	'user_archived',
 	'user_restored',
-	'authz_fail',
-	'access_reviewed'
+	'authz_fail'
 ] as const;
 
 /**

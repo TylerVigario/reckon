@@ -311,12 +311,12 @@ can't, and aren't offered work; everything they did is kept, and they can be
 reactivated. Team also says when each person last signed in, and who is
 Invited, or whose invitation expired unused.
 
-**Team is where access is reviewed.** Each person's row says when they last
-signed in, their passkeys and where each is kept, and how many sessions they
-have open; under the list is when access was last marked reviewed, and by whom.
-Someone with Full looks, then marks it, and that is a row of the security log
-(SOC 2 CC6.2 and CC6.3; PCI DSS 7.2.4 asks every six months). Nothing reminds
-anyone: ASVS 5.0 asks for no review at all, and the date is there to see.
+**Team shows what anyone checking access reads.** Each person's row says when
+they last signed in, their passkeys and where each is kept, and how many
+sessions they have open; the security log says what changed and who changed
+it. Reviewing access is the business's to do, by looking there (SOC 2 CC6.2
+and CC6.3): reckon keeps no record that someone looked, as GitHub keeps none of
+its own.
 
 **Better Auth's routes are mounted under `/api/auth`**, as its SvelteKit guide
 has it, and only where `SITE_URL` is set: that is the only base URL Better Auth
@@ -525,7 +525,6 @@ which the server does every day; someone in it is made inactive, never deleted.
 | `authz_change`                                               | their access changed, from and to                                                      |
 | `user_archived`, `user_restored`                             | made inactive, or active again                                                         |
 | `authz_fail`                                                 | refused for lack of access, by route — answered 403, or as not found                   |
-| `access_reviewed`                                            | Team's access marked reviewed, by whoever looked                                       |
 
 How long the log is kept, and copying it to another machine so that a breach
 of this one cannot change it (16.4.3), are the host's: journald's settings, and
