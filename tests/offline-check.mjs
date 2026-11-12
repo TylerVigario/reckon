@@ -48,9 +48,15 @@
  *            meanwhile, is put back with its change. The trip arrives as it was
  *            recorded, its legs worked out on arrival, and Sam's has the change.
  *            Then signs out, which must empty the cache the worker kept.
+ *
+ *   back, with `other` -- someone else's email -- first has them sign in on the
+ *            same phone before `email` is back: none of what was recorded
+ *            offline is shown to them or sent under their session (#lib/owner).
+ *            A timer of theirs keeps running through signing out, which says so
+ *            first, and is never shown to `email` or stopped by them.
  */
 import { signIn } from './passkeys.mjs';
-const [, , base = 'http://127.0.0.1:5181', email, phase] = process.argv;
+const [, , base = 'http://127.0.0.1:5181', email, phase, other] = process.argv;
 if (!['online', 'offline', 'back'].includes(phase ?? '')) {
 	console.error('usage: node tests/offline-check.mjs <base-url> <email> online|offline|back');
 	process.exit(2);
@@ -415,7 +421,8 @@ if (phase === 'offline') {
 					service_id: crypto.randomUUID(),
 					ended_at: new Date(Date.parse(q.entry.started_at) + 80 * 60_000).toISOString()
 				},
-				queued_at: q.queued_at + 1
+				queued_at: q.queued_at + 1,
+				owner: q.owner
 			});
 			store.transaction.oncomplete = () => done(true);
 		};
@@ -705,9 +712,83 @@ if (phase === 'offline') {
 	);
 }
 
+/** The browser's session cookie for the app, to hand back later. */
+const sessionNow = async () =>
+	/** @type {{ name: string, value: string }[]} */ (
+		(await send('Network.getCookies', { urls: [base] })).result.cookies
+	).find((c) => /session_token$/.test(c.name));
+/** Puts a session in the browser, as the sign-in page would. */
+const useSession = (/** @type {{ name: string, value: string }} */ { name, value }) =>
+	send('Network.setCookie', {
+		name,
+		value,
+		url: base,
+		httpOnly: true,
+		sameSite: 'Lax',
+		secure: name.startsWith('__Secure-')
+	});
+
+if (phase === 'back' && other) {
+	// SOMEONE ELSE ON THIS PHONE, before the one who recorded it all is back.
+	const recorded = (await queued()) ?? [];
+	const theirs = await sessionNow();
+	await useSession(await signIn(base, other));
+	await go('/timesheet');
+	await settle(2500);
+	const still = (await queued()) ?? [];
+	check(
+		recorded.length > 0 &&
+			still.length === recorded.length &&
+			still.every((q) => q.refused === null),
+		`someone else signed in on this phone sends none of what was recorded offline (${still.length} of ${recorded.length} kept, unsent)`
+	);
+	check(!/waiting to send/.test(await text()), 'nor is shown it');
+
+	// A timer of theirs, then signing out with it running: asked first, and it
+	// keeps running.
+	await go('/timesheet/start');
+	await evaluate(`(() => {
+		const s = document.querySelector('#s-service');
+		s.value = [...s.options].find((o) => o.value)?.value ?? '';
+		s.dispatchEvent(new Event('change', { bubbles: true }));
+		document.querySelector('button.tog.on')?.click();
+	})()`);
+	await settle(300);
+	await click('Start the clock');
+	await settle(1500);
+	check((await stored('reckon.running')) === 1, 'they start a timer, which runs on the phone');
+	await evaluate(`document.querySelector('form[action="/logout"]')?.requestSubmit()`);
+	await settle(1000);
+	const asked = await evaluate(
+		`document.querySelector('dialog[open]')?.textContent?.replace(/\\s+/g, ' ') ?? ''`
+	);
+	check(
+		/1 timer is still running/.test(asked) &&
+			/Nobody else who signs in here sees any of it/.test(asked),
+		'signing out with it running says so first'
+	);
+	await evaluate(
+		`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent.trim() === 'Sign out')?.click()`
+	);
+	await settle(2500);
+	check(
+		(await evaluate('location.pathname')) === '/login' && (await stored('reckon.running')) === 1,
+		'and once they say so, they are signed out, the timer still running on the phone'
+	);
+	if (theirs) await useSession(theirs);
+}
+
 if (phase === 'back') {
 	await go('/timesheet');
 	await settle(2500);
+	if (other)
+		check(
+			(await stored('reckon.running')) === 1 &&
+				!(await evaluate(
+					`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Stop')`
+				)),
+			'back, the one who recorded it never sees the other’s timer, nor stops it'
+		);
 	const left = (await queued()) ?? [];
 	check(
 		left.length === 1 && left[0].refused !== null,

@@ -7,7 +7,7 @@
 	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { paysWhat } from '#lib/pay-words.ts';
 	import OfflineBanner from '#lib/OfflineBanner.svelte';
-	import { enqueueTrip, findTrip, flush, waitingCount } from '#lib/queue.ts';
+	import { enqueueTrip, findTrip, flush, notKept, waitingCount } from '#lib/queue.ts';
 	import { warm } from '#lib/warm.ts';
 	import { onMount } from 'svelte';
 	import { sum } from '#lib/decimal.ts';
@@ -418,9 +418,9 @@
 					miles: driven?.toString() ?? ''
 				}
 			});
-		} catch {
+		} catch (e) {
 			saving = false;
-			return (why = 'This phone would not save the trip, so it is not saved.');
+			return (why = notKept(e, 'This phone would not save the trip, so it is not saved.'));
 		}
 		// A few seconds for the server to take it; no longer, so a phone with a
 		// weak signal is not left waiting on a page that has done its part.

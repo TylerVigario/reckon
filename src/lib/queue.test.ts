@@ -25,6 +25,7 @@ const sentId = (init: RequestInit) => (JSON.parse(init.body as string) as Entry)
 
 let store: Map<string, string>;
 let q: typeof import('./queue.ts');
+let owner: typeof import('./owner.ts');
 
 /** A fresh database, and a fresh module that has never opened it. */
 async function fresh(old: Map<string, string> = new Map(), setItem = true) {
@@ -39,6 +40,9 @@ async function fresh(old: Map<string, string> = new Map(), setItem = true) {
 	// test's queue into the next.
 	vi.resetModules();
 	q = await import('./queue.ts');
+	// Avery is signed in, unless a test says otherwise (#lib/owner).
+	owner = await import('./owner.ts');
+	owner.setOwner('avery');
 }
 
 beforeEach(() => fresh());
@@ -198,6 +202,8 @@ describe('moving from localStorage', () => {
 		await fresh(
 			new Map([['reckon.queue', JSON.stringify([entry('older'), entry('newer'), { bad: 1 }])]])
 		);
+		// Queued before the queue named its maker: the first to sign in after's.
+		await q.claimUnowned();
 		const order: string[] = [];
 		vi.stubGlobal('fetch', (_: string, init: RequestInit) => {
 			order.push(sentId(init));
@@ -317,6 +323,8 @@ describe('a phone that queued before lines', () => {
 		vi.stubGlobal('indexedDB', factory);
 		vi.resetModules();
 		q = await import('./queue.ts');
+		(await import('./owner.ts')).setOwner('avery');
+		await q.claimUnowned();
 		expect((await q.held()).waiting).toBe(1);
 		await q.enqueueLine(line('permit'));
 		expect(await q.linesHeld()).toHaveLength(1);
@@ -519,5 +527,80 @@ describe('a trip recorded or changed on the phone', () => {
 		vi.stubGlobal('fetch', () => Promise.reject(new TypeError('Failed to fetch')));
 		await q.flush();
 		expect((await q.tripsHeld()).length).toBe(1);
+	});
+});
+
+describe('whose it is', () => {
+	const change = (line_id: string): ChangeEntry => ({
+		line_id,
+		invoice_id: 'd',
+		act: 'change',
+		version: 1,
+		base: { description: 'Low-voltage permit' },
+		fields: { description: 'Low-voltage permit, renewed' },
+		made_at: '2026-03-14T17:00:00.000Z',
+		shown: {
+			kind: 'paid_for',
+			description: 'Low-voltage permit, renewed',
+			detail: '',
+			qty: '1',
+			unit: 'each',
+			unit_price: '35.0000',
+			amount: '35.00',
+			taxable: false,
+			tax_rate_pct: '0'
+		}
+	});
+
+	it('is its maker’s alone: someone else signed in here neither sees it nor sends it', async () => {
+		await q.enqueue(entry('averys'));
+		await q.enqueueLine(line('averys-line'));
+		owner.setOwner('sam');
+		const sent: string[] = [];
+		vi.stubGlobal('fetch', (url: string) => {
+			sent.push(url);
+			return answer(201);
+		});
+		expect((await q.held()).waiting).toBe(0);
+		expect(await q.linesHeld()).toHaveLength(0);
+		expect(await q.find('averys')).toBeUndefined();
+		expect(await q.waitingCount()).toBe(0);
+		expect(await q.flush()).toEqual({ sent: 0, refused: 0 });
+		expect(sent).toEqual([]);
+		// Nor lets it go.
+		await q.discard('averys');
+		owner.setOwner('avery');
+		expect((await q.held()).waiting).toBe(1);
+		expect(await q.waitingCount()).toBe(2);
+	});
+
+	it('waits through signing out, and goes when its maker is back', async () => {
+		await q.enqueue(entry('averys'));
+		owner.setOwner(null);
+		expect((await q.held()).waiting).toBe(0);
+		const sent: string[] = [];
+		vi.stubGlobal('fetch', (_: string, init: RequestInit) => {
+			sent.push(sentId(init));
+			return answer(201);
+		});
+		expect(await q.flush()).toEqual({ sent: 0, refused: 0 });
+		owner.setOwner('avery');
+		expect(await q.flush()).toEqual({ sent: 1, refused: 0 });
+		expect(sent).toEqual(['averys']);
+	});
+
+	it('is kept for nobody signed out: there is no one to keep it for', async () => {
+		owner.setOwner(null);
+		await expect(q.enqueue(entry('nobodys'))).rejects.toThrow('Nobody is signed in');
+	});
+
+	it('refuses a change over someone else’s waiting for the same line, rather than replace it', async () => {
+		await q.enqueueChange(change('l1'));
+		owner.setOwner('sam');
+		await expect(q.enqueueChange(change('l1'))).rejects.toThrow(q.SOMEONE_ELSES);
+		owner.setOwner('avery');
+		expect((await q.findChange('l1'))?.change.fields.description).toBe(
+			'Low-voltage permit, renewed'
+		);
 	});
 });

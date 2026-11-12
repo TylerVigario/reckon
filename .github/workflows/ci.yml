@@ -387,7 +387,7 @@ jobs:
         # across, as on a phone. The server comes back with the job's own
         # environment, so the session survives the restart.
         run: |
-          check() { node tests/offline-check.mjs "http://localhost:$PORT" avery@kestrel.example "$1"; }
+          check() { node tests/offline-check.mjs "http://localhost:$PORT" avery@kestrel.example "$@"; }
           check online
           # And it stops when told to, as a service manager expects, rather
           # than waiting to be killed: nothing it starts may keep it running.
@@ -406,7 +406,9 @@ jobs:
             curl -sf -o /dev/null "http://127.0.0.1:$PORT/login" && break
             sleep 1
           done
-          check back
+          # Sam signs in on the same phone first: none of Avery's offline work
+          # is shown to them or sent, and their timer outlasts signing out.
+          check back sam@kestrel.example
 
       - name: Pay is recorded when it is paid, and stands
         # After offline-check, which changes the trip this pays for.

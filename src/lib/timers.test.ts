@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toEntry, type Running } from './timers.ts';
 import { secondsOf } from './queue.ts';
 
@@ -64,5 +64,63 @@ describe('toEntry', () => {
 		const team = toEntry(timer({ crew: 'team', crew_ids: ['a', 'b'] }), 'me', 'UTC');
 		expect(team.crew_ids).toEqual(['a', 'b']);
 		expect(toEntry(timer({ crew_ids: ['a', 'b'] }), 'me', 'UTC').crew_ids).toBeUndefined();
+	});
+});
+
+describe('whose timer it is', () => {
+	let kept: Map<string, string>;
+	let t: typeof import('./timers.ts');
+	let owner: typeof import('./owner.ts');
+	const job = {
+		crew: 'one' as const,
+		worked_by: 'a',
+		entity_id: null,
+		site_id: null,
+		service_id: 'v',
+		billable: true,
+		note: null
+	};
+
+	beforeEach(async () => {
+		kept = new Map();
+		vi.stubGlobal('localStorage', {
+			getItem: (k: string) => kept.get(k) ?? null,
+			setItem: (k: string, v: string) => void kept.set(k, v),
+			removeItem: (k: string) => void kept.delete(k)
+		});
+		vi.resetModules();
+		t = await import('./timers.ts');
+		owner = await import('./owner.ts');
+		owner.setOwner('avery');
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('runs for its starter alone, and someone else’s timers are kept as they are', () => {
+		const [averys] = t.start(job);
+		owner.setOwner('sam');
+		expect(t.running()).toEqual([]);
+		t.start(job);
+		t.drop(averys.id);
+		expect(t.running()).toHaveLength(1);
+		owner.setOwner('avery');
+		expect(t.running().map((r) => r.id)).toEqual([averys.id]);
+	});
+
+	it('keeps running through signing out', () => {
+		t.start(job);
+		owner.setOwner(null);
+		expect(t.running()).toEqual([]);
+		owner.setOwner('avery');
+		expect(t.running()).toHaveLength(1);
+	});
+
+	it('started before it named its starter, is the next person’s to sign in here', () => {
+		kept.set('reckon.running', JSON.stringify([{ ...job, id: 'old', started_at: 1 }]));
+		expect(t.running()).toEqual([]);
+		t.claimUnownedTimers();
+		expect(t.running().map((r) => r.id)).toEqual(['old']);
 	});
 });

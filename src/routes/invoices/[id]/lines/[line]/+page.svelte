@@ -8,6 +8,7 @@
 		enqueueChange,
 		findChange,
 		flush,
+		notKept,
 		waitingCount,
 		type ChangeEntry,
 		type QueuedChange
@@ -131,8 +132,8 @@
 		try {
 			await enqueueChange($state.snapshot(change), true);
 			return true;
-		} catch {
-			why = 'This phone would not save that, so nothing is decided yet.';
+		} catch (e) {
+			why = notKept(e, 'This phone would not save that, so nothing is decided yet.');
 			return false;
 		}
 	}
@@ -205,8 +206,8 @@
 					tax_rate_pct: l.tax_rate_pct
 				}
 			});
-		} catch {
-			why = 'This phone would not save that, so the line is still on.';
+		} catch (e) {
+			why = notKept(e, 'This phone would not save that, so the line is still on.');
 			confirming = false;
 			return;
 		}

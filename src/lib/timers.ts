@@ -1,5 +1,6 @@
 import { todayIn } from './format.ts';
 import type { Entry } from './queue.ts';
+import { currentOwner } from './owner.ts';
 
 /**
  * Timers that are still running.
@@ -14,6 +15,9 @@ import type { Entry } from './queue.ts';
  *
  * A running timer is not a record. Nothing reaches time_entry until it stops,
  * and stopping turns it into an entry on the same queue as everything else.
+ *
+ * Each is its starter's (#lib/owner): only they see it, stop it or move it,
+ * whenever they next sign in on this phone, and signing out stops none.
  */
 const KEY = 'reckon.running';
 
@@ -31,9 +35,12 @@ export type Running = {
 	service_id: string;
 	billable: boolean;
 	note: string | null;
+	/** Who started it (#lib/owner). Absent only on one started before it said. */
+	owner?: string;
 };
 
-function read(): Running[] {
+/** Every timer on this phone, whoever's. */
+function readAll(): Running[] {
 	try {
 		const v: unknown = JSON.parse(localStorage.getItem(KEY) ?? '[]');
 		if (!Array.isArray(v)) return [];
@@ -55,6 +62,18 @@ function read(): Running[] {
 	}
 }
 
+/** The signed-in person's timers; none, signed out. */
+function read(): Running[] {
+	const id = currentOwner();
+	return id ? readAll().filter((t) => t.owner === id) : [];
+}
+
+/** Writes the signed-in person's timers, keeping everyone else's as they are. */
+function writeMine(list: Running[]) {
+	const id = currentOwner();
+	write([...readAll().filter((t) => t.owner !== id), ...list]);
+}
+
 function write(list: Running[]) {
 	try {
 		localStorage.setItem(KEY, JSON.stringify(list));
@@ -67,15 +86,27 @@ export function running(): Running[] {
 	return read().sort((a, b) => a.started_at - b.started_at);
 }
 
-export function start(t: Omit<Running, 'id' | 'started_at'>): Running[] {
-	const now = read();
-	write([...now, { ...t, id: crypto.randomUUID(), started_at: Date.now() }]);
+export function start(t: Omit<Running, 'id' | 'started_at' | 'owner'>): Running[] {
+	const owner = currentOwner();
+	if (!owner) throw new Error('Nobody is signed in on this phone to start it for.');
+	writeMine([...read(), { ...t, id: crypto.randomUUID(), started_at: Date.now(), owner }]);
 	return running();
 }
 
 export function drop(id: string): Running[] {
-	write(read().filter((t) => t.id !== id));
+	writeMine(read().filter((t) => t.id !== id));
 	return running();
+}
+
+/**
+ * Timers started before they named their starter are the first person's to
+ * sign in here after, as their entries are (#lib/queue claimUnowned).
+ */
+export function claimUnownedTimers() {
+	const id = currentOwner();
+	if (!id) return;
+	const all = readAll();
+	if (all.some((t) => !t.owner)) write(all.map((t) => (t.owner ? t : { ...t, owner: id })));
 }
 
 /**
@@ -88,7 +119,7 @@ export function moveStart(id: string, startedAt: number, now = Date.now()): Runn
 	if (!(startedAt < now)) return null;
 	const list = read();
 	if (!list.some((t) => t.id === id)) return null;
-	write(list.map((t) => (t.id === id ? { ...t, started_at: startedAt } : t)));
+	writeMine(list.map((t) => (t.id === id ? { ...t, started_at: startedAt } : t)));
 	return running();
 }
 

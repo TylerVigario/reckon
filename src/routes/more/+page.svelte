@@ -3,6 +3,7 @@
 	import Top from '#lib/Top.svelte';
 	import { resolve } from '$app/paths';
 	import type { RouteId } from '$app/types';
+	import { beforeSigningOut } from '#lib/sign-out.svelte.ts';
 	import { opens } from '#lib/access.ts';
 
 	const op = $derived(page.data.operator);
@@ -95,7 +96,7 @@
 		</div>
 	</div>
 
-	<form class="out" method="POST" action="/logout">
+	<form class="out" method="POST" action="/logout" onsubmit={beforeSigningOut}>
 		<span>Signed in as {page.data.user?.name}{field ? ' · Field' : ''}</span>
 		<button type="submit">Sign out</button>
 	</form>
