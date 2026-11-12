@@ -23,8 +23,8 @@
 	title="History"
 	sub="Every price and pay rule {data.service.name} has had"
 	trail={[
-		{ href: resolve('/services'), label: 'Services' },
-		{ href: resolve('/services/[id]', { id: data.service.id }), label: data.service.name }
+		{ href: resolve('/catalogue/services'), label: 'Services' },
+		{ href: resolve('/catalogue/services/[id]', { id: data.service.id }), label: data.service.name }
 	]}
 />
 

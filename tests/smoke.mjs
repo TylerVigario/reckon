@@ -63,17 +63,23 @@ const DETAIL = [
 		pick: (h) => first(h, /\/catalogue\/agreements\/([0-9a-f-]{36})"/g)
 	},
 	{
-		list: '/services',
-		path: (id) => `/services/${id}`,
-		pick: (h) => first(h, /\/services\/([0-9a-f-]{36})"/g)
+		list: '/catalogue/services',
+		path: (id) => `/catalogue/services/${id}`,
+		pick: (h) => first(h, /\/catalogue\/services\/([0-9a-f-]{36})"/g)
 	},
 	{
-		list: '/services',
-		path: (id) => `/services/${id}/history`,
-		pick: (h) => first(h, /\/services\/([0-9a-f-]{36})"/g)
+		list: '/catalogue/services',
+		path: (id) => `/catalogue/services/${id}/history`,
+		pick: (h) => first(h, /\/catalogue\/services\/([0-9a-f-]{36})"/g)
 	},
 	{ list: '/clients', path: (id) => `/clients/${id}`, pick: aClient },
 	{ list: '/clients', path: (id) => `/clients/${id}/sites`, pick: aClient },
+	{ list: '/clients', path: (id) => `/clients/${id}/contacts`, pick: aClient },
+	{
+		list: '/reports/pay',
+		path: (id) => `/reports/pay/${id}/paid`,
+		pick: (h) => first(h, /\/reports\/pay\/([0-9a-f-]{36})"/g)
+	},
 	{ list: '/clients', path: (id) => `/clients/${id}/sites/new`, pick: aClient },
 	{
 		list: '/clients/harbor-light-dental/sites',
@@ -100,12 +106,13 @@ const ROUTES = [
 	'/catalogue/materials',
 	'/catalogue/agreements',
 	'/catalogue/agreements/new',
-	'/services',
-	'/services/new',
+	'/catalogue/services',
+	'/catalogue/services/new',
 	'/reports',
 	'/reports/schedule-a',
 	'/reports/pay',
 	'/reports/retainers',
+	'/reports/non-billable',
 	'/team',
 	'/team/roles',
 	'/settings',

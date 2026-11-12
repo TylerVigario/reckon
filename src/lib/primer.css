@@ -111,11 +111,15 @@
 	background: var(--accent-wash);
 }
 
-/* Primer's UnderlineNav: the views of one section, the current one underlined. */
+/* Primer's UnderlineNav: the views of one section, the current one underlined.
+   The row's line is an inset shadow, as Primer draws it, so the current tab's
+   underline covers it from inside the row. Drawn as a border, the tabs had to
+   hang 1px below the row to cover it, and a row that scrolls sideways then
+   scrolls up and down by that pixel too, with a scrollbar to say so. */
 .primer .unav {
 	display: flex;
 	gap: 8px;
-	border-bottom: 1px solid var(--line);
+	box-shadow: inset 0 -1px 0 var(--line);
 	overflow-x: auto;
 }
 .primer .unav a {
@@ -124,7 +128,7 @@
 	gap: 8px;
 	min-height: 48px;
 	padding: 0 8px;
-	margin-bottom: -1px;
+	white-space: nowrap;
 	color: var(--ink-2);
 	text-decoration: none;
 	border-bottom: 2px solid transparent;
@@ -136,6 +140,69 @@
 	color: var(--ink);
 	font-weight: 600;
 	border-bottom-color: var(--accent);
+}
+
+/* Primer's NavList: a settings menu down the side, the current one marked. */
+.primer .navlist {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.primer .navlist a {
+	position: relative;
+	display: flex;
+	align-items: center;
+	min-height: 32px;
+	padding: 0 8px;
+	border-radius: 6px;
+	color: var(--ink);
+	text-decoration: none;
+}
+.primer .navlist a:hover {
+	background: var(--sunken);
+}
+.primer .navlist a[aria-current='page'] {
+	font-weight: 600;
+	background: var(--sunken);
+}
+.primer .navlist a[aria-current='page']::after {
+	content: '';
+	position: absolute;
+	left: -8px;
+	top: 6px;
+	bottom: 6px;
+	width: 4px;
+	border-radius: 6px;
+	background: var(--accent);
+}
+
+/* Primer's SegmentedControl: one list's scopes, the one shown pressed in. */
+.primer .seg {
+	display: inline-flex;
+	align-self: flex-start;
+	padding: 2px;
+	border-radius: 6px;
+	background: var(--sunken);
+}
+.primer .seg a {
+	display: inline-flex;
+	align-items: center;
+	min-height: 32px;
+	padding: 0 12px;
+	border: 1px solid transparent;
+	border-radius: 5px;
+	color: var(--ink-2);
+	text-decoration: none;
+	white-space: nowrap;
+}
+.primer .seg a[aria-current='page'] {
+	color: var(--ink);
+	font-weight: 600;
+	background: var(--surface);
+	border-color: var(--line);
 }
 
 .primer .fc {
@@ -349,7 +416,8 @@
 
 @media (pointer: coarse) {
 	.primer .ti,
-	.primer .btn {
+	.primer .btn,
+	.primer .seg a {
 		min-height: 44px;
 	}
 	/* iOS zooms into a field set smaller than this. */

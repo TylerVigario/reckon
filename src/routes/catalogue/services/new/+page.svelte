@@ -50,14 +50,14 @@
 			saying = 'Saved, but the server did not say where it went.';
 			return;
 		}
-		await goto(resolve('/services/[id]', { id: made.id }));
+		await goto(resolve('/catalogue/services/[id]', { id: made.id }));
 	}
 </script>
 
 <Top
 	title="New service"
 	sub="Priced on the next screen"
-	back={resolve('/services')}
+	back={resolve('/catalogue/services')}
 	backLabel="Services"
 />
 

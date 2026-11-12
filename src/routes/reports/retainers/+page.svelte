@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { hours, percent } from '#lib/format.ts';
 	import Top from '#lib/Top.svelte';
+	import UnderlineNav from '#lib/UnderlineNav.svelte';
+	import { reportTabs } from '#lib/section-tabs.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -21,14 +23,10 @@
 				: `${hours(m.hours_used, 'allotted')} used, nothing included`;
 </script>
 
-<Top
-	title="Retainer meter"
-	sub="What each retainer covered, this month and last"
-	back={resolve('/reports')}
-	backLabel="Reports"
-/>
+<Top title="Reports" back={resolve('/more')} backLabel="More" />
 
 <div class="pad">
+	<div class="primer"><UnderlineNav label="Reports" items={reportTabs('retainers')} /></div>
 	{#each data.months as mo (mo.period.start)}
 		<div class="sec">
 			<div class="sec-h"><h2>{mo.period.label}</h2></div>

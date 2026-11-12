@@ -1,27 +1,6 @@
-import { fiscalYear, lastFullMonth } from '#lib/server/periods.ts';
-import { scheduleA, payOwed, retainerMeter, nonBillable } from '#lib/server/reports.ts';
+import { redirect } from '@sveltejs/kit';
+import { resolve } from '$app/paths';
 import type { PageServerLoad } from './$types';
 
-/**
- * The index carries each report's headline figure, computed by the same
- * function the report itself uses. A summary computed a second way is a bug
- * that takes a year to find, and it is found by an outside party.
- */
-export const load: PageServerLoad = async () => {
-	const [fy, month] = await Promise.all([fiscalYear(), lastFullMonth()]);
-	const [a, pay, meter, given] = await Promise.all([
-		fy ? scheduleA(fy) : Promise.resolve(null),
-		payOwed(month),
-		retainerMeter(month),
-		nonBillable(month)
-	]);
-
-	return {
-		fy,
-		month,
-		scheduleA: a && { due: a.due },
-		pay: { due: pay.due },
-		meter: { charged: meter.charged },
-		given
-	};
-};
+/** The reports open on their first tab (#lib/section-tabs). */
+export const load: PageServerLoad = () => redirect(307, resolve('/reports/pay'));

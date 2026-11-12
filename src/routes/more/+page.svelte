@@ -14,9 +14,9 @@
 	// list, so a row with nowhere to go is a type error.
 	const menu = [
 		{
-			href: '/catalogue',
+			href: '/catalogue/materials',
 			title: 'Catalogue',
-			sub: 'Services, materials and recurring agreements'
+			sub: 'Materials, services and recurring agreements'
 		},
 		{ href: '/clients', title: 'Entities', sub: 'Who you invoice, and where the work happens' },
 		{
@@ -24,7 +24,11 @@
 			title: 'Team',
 			sub: 'Who signs in, what they reach, and the roles they are paid as'
 		},
-		{ href: '/reports', title: 'Reports', sub: 'Schedule A, pay and the retainer meter' },
+		{
+			href: '/reports/pay',
+			title: 'Reports',
+			sub: 'Pay, the retainer meter, time given away and Schedule A'
+		},
 		{
 			href: '/settings',
 			title: 'Settings',

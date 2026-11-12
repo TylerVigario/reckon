@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
 	import UnderlineNav from '#lib/UnderlineNav.svelte';
+	import { teamTabs } from '#lib/section-tabs.ts';
 	import ActionMenu from '#lib/ActionMenu.svelte';
 	import Dialog from '#lib/Dialog.svelte';
 	import Octicon from '#lib/Octicon.svelte';
@@ -178,10 +179,7 @@
 <div class="pad primer">
 	<UnderlineNav
 		label="Team"
-		items={[
-			{ href: resolve('/team'), label: 'People', count: data.people, current: false },
-			{ href: resolve('/team/roles'), label: 'Roles', count: data.roles.length, current: true }
-		]}
+		items={teamTabs('roles', { people: data.people, roles: data.roles.length })}
 	/>
 
 	{#if said}
@@ -250,7 +248,7 @@
 
 	<p class="note">
 		A role is who someone is paid as. What it pays for each kind of work is set on
-		<a href={resolve('/services')}>each service</a>.
+		<a href={resolve('/catalogue/services')}>each service</a>.
 	</p>
 
 	<Dialog

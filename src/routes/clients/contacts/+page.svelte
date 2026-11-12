@@ -1,18 +1,29 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import UnderlineNav from '#lib/UnderlineNav.svelte';
+	import { entityTabs } from '#lib/section-tabs.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 	let { data }: PageProps = $props();
 </script>
 
 <Top
-	title="Contacts"
-	sub="People cross entities and locations both"
-	back={resolve('/clients')}
-	backLabel="Entities"
+	title="Entities"
+	sub="The three things, and none owns another"
+	back={resolve('/more')}
+	backLabel="More"
 />
 
 <div class="pad">
+	<div class="primer">
+		<UnderlineNav
+			label="Entities"
+			items={entityTabs('contacts', {
+				clients: data.counts.clients,
+				contacts: data.contacts.length
+			})}
+		/>
+	</div>
 	<div class="sec">
 		<div class="rows">
 			{#each data.contacts as c (c.id)}

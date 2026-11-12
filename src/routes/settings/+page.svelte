@@ -3,7 +3,7 @@
 	import { unitPrice } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
-	import type { RouteId } from '$app/types';
+	import { SETTINGS_PAGES } from '#lib/settings-pages.ts';
 
 	let { data }: PageProps = $props();
 	const o = $derived(data.operator);
@@ -23,48 +23,30 @@
 		monthly: 'filed monthly'
 	};
 	const units = $derived(data.counts.units);
-	const pages = $derived([
-		{
-			href: '/settings/business',
-			title: 'Business',
-			status: o?.trading_name ?? 'Not named yet'
-		},
-		{
-			href: '/settings/invoicing',
-			title: 'Invoicing',
-			status: `Net ${o?.default_terms_days ?? 30} · numbered ${o?.invoice_number_format ?? 'INV-0000'}`
-		},
-		{
-			href: '/settings/tax',
-			title: 'Tax',
-			status: [
-				TAX[o?.tax_rule_set ?? 'none'] ?? o?.tax_rule_set,
-				o?.tax_rule_set === 'us_ca' && o.filing_basis ? FILED[o.filing_basis] : null
-			]
-				.filter(Boolean)
-				.join(' · ')
-		},
-		{
-			href: '/settings/travel',
-			title: 'Travel',
-			status: [
-				data.counts.mileage ? `${unitPrice(data.counts.mileage)} a mile` : 'No mileage rate yet',
-				data.counts.vehicles ? count(data.counts.vehicles, 'vehicle') : null
-			]
-				.filter(Boolean)
-				.join(' · ')
-		},
-		{
-			href: '/settings/units',
-			title: 'Units',
-			status: units.length > 4 ? count(units.length, 'unit') : units.join(', ') || 'None yet'
-		},
-		{
-			href: '/settings/integrations',
-			title: 'Integrations',
-			status: data.counts.integrations ? `${data.counts.integrations} connected` : 'None connected'
-		}
-	] satisfies { href: RouteId; title: string; status: string }[]);
+	const status = $derived<Record<(typeof SETTINGS_PAGES)[number]['route'], string>>({
+		'/settings/business': o?.trading_name ?? 'Not named yet',
+		'/settings/invoicing': `Net ${o?.default_terms_days ?? 30} · numbered ${o?.invoice_number_format ?? 'INV-0000'}`,
+		'/settings/tax': [
+			TAX[o?.tax_rule_set ?? 'none'] ?? o?.tax_rule_set,
+			o?.tax_rule_set === 'us_ca' && o.filing_basis ? FILED[o.filing_basis] : null
+		]
+			.filter(Boolean)
+			.join(' · '),
+		'/settings/travel': [
+			data.counts.mileage ? `${unitPrice(data.counts.mileage)} a mile` : 'No mileage rate yet',
+			data.counts.vehicles ? count(data.counts.vehicles, 'vehicle') : null
+		]
+			.filter(Boolean)
+			.join(' · '),
+		'/settings/units':
+			units.length > 4 ? count(units.length, 'unit') : units.join(', ') || 'None yet',
+		'/settings/integrations': data.counts.integrations
+			? `${data.counts.integrations} connected`
+			: 'None connected'
+	});
+	const pages = $derived(
+		SETTINGS_PAGES.map((p) => ({ href: p.route, title: p.title, status: status[p.route] }))
+	);
 </script>
 
 <Top

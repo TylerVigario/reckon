@@ -431,7 +431,7 @@
 		<p class="fc-e"><Octicon name="alert" />{askError}</p>
 	{/if}
 	<p class="note">
-		What each role pays for each kind of work is set on <a href={resolve('/services')}
+		What each role pays for each kind of work is set on <a href={resolve('/catalogue/services')}
 			>each service</a
 		>.
 	</p>

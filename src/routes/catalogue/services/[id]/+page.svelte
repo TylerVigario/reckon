@@ -143,7 +143,7 @@
 		problem = '';
 		const r = await fetch(endpoint, { method: 'DELETE' }).catch(() => null);
 		if (r?.ok) {
-			await goto(resolve('/services'));
+			await goto(resolve('/catalogue/services'));
 			return;
 		}
 		deleting = 'idle';
@@ -180,7 +180,7 @@
 	);
 </script>
 
-<Top title={s.name} sub={terms} back={resolve('/services')} backLabel="Services">
+<Top title={s.name} sub={terms} back={resolve('/catalogue/services')} backLabel="Services">
 	{#snippet actions()}
 		{#if unused}
 			<button
@@ -471,7 +471,7 @@
 
 			{#if data.earlier}
 				<div class="rows">
-					<a class="rec link" href={resolve('/services/[id]/history', { id: s.id })}>
+					<a class="rec link" href={resolve('/catalogue/services/[id]/history', { id: s.id })}>
 						<div class="rec-m">
 							<div class="rec-t"><span class="lt">Earlier prices and pay rules</span></div>
 							<div class="rec-s">{data.earlier} no longer in force</div>

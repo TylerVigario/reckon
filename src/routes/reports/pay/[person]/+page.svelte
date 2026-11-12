@@ -1,5 +1,4 @@
 <script lang="ts">
-	import Top from '#lib/Top.svelte';
 	import Ask from '#lib/Ask.svelte';
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -10,6 +9,11 @@
 	import { sum } from '#lib/decimal.ts';
 	import { PAID_AS_ORDER, PAID_AS_WORDS, type PaidAs } from '#lib/pay-words.ts';
 	import type { PageProps } from './$types';
+	/**
+	 * Owed, the first of someone's pay tabs (+layout): what they are owed,
+	 * piece by piece, and for someone with Full, the payment that pays it --
+	 * or a correction to one already made. Someone with Field reads their own.
+	 */
 	let { data }: PageProps = $props();
 	// Someone with Field opens only their own, to read (#lib/access).
 	const field = $derived(data.user?.access === 'field');
@@ -17,7 +21,6 @@
 	const HOW = ['Bank transfer', 'Cash', 'Check', 'Other'];
 	// Made once, so a payment sent twice is one payment.
 	const clientUuid = crypto.randomUUID();
-	const an = (word: string) => (/^[aeiou]/i.test(word) ? `an ${word}` : `a ${word}`);
 
 	// What can be paid: a figure, and what it pays. Everything that can starts
 	// ticked; what no rule pays, or a role has not said what it pays, cannot be.
@@ -60,7 +63,6 @@
 		...(data.items.some((i) => i.paidAs === null) ? [null] : [])
 	]);
 	const total = $derived(sum(picked.map((i) => i.amount)).add(correction ?? '0'));
-	const owedNow = $derived(sum(data.items.map((i) => i.amount)));
 	// "$149.25 guaranteed payments · $24.95 reimbursed"
 	const totalSaid = $derived(
 		groups
@@ -68,8 +70,6 @@
 			.map((as) => `${money(partOf(as).toString())} ${PAID_AS_WORDS[as].money}`)
 			.join(' · ')
 	);
-	const partsSaid = (ps: { paid_as: PaidAs; total: string }[]) =>
-		ps.map((x) => `${money(x.total)} ${PAID_AS_WORDS[x.paid_as].money}`).join(', ');
 
 	// A payment stands once recorded (0026), so the button asks first, and only
 	// of a payment that could be recorded: what it lacks is said before that.
@@ -117,319 +117,254 @@
 	}
 </script>
 
-{#snippet paidBefore()}
-	{#if data.payments.length}
+{#if field}
+	<!-- Someone with Field reads their own pay, and records nothing (#lib/access). -->
+	{#each groups as as (as)}
 		<div class="sec">
-			<div class="sec-h"><h2>Paid before</h2></div>
+			<div class="sec-h">
+				<h2>
+					{#if as === 'reimbursement'}For the vehicle
+						<span class="lt">· a reimbursement</span>{:else if as}{PAID_AS_WORDS[as]
+							.heading}{:else}Paid as — <span class="lt">not said</span>{/if}
+				</h2>
+			</div>
 			<div class="rows">
-				{#each data.payments as p (p.id)}
-					<a class="rec link" href={resolve('/reports/pay/payments/[id]', { id: p.id })}>
+				{#each data.items.filter((i) => i.paidAs === as) as i (i.kind + i.id)}
+					<div class="rec" class:warn={i.amount === null}>
 						<div class="rec-m">
-							<div class="rec-t">{dated(p.paid_on)}</div>
-							<div class="rec-s">
-								{[
-									p.how,
-									partsSaid(p.parts),
-									`${p.items} ${p.items === 1 ? 'item' : 'items'}`,
-									p.note
-								]
-									.filter(Boolean)
-									.join(' · ')}
-							</div>
+							<div class="rec-t">{i.place} · {day(i.day)}</div>
+							<div class="rec-s">{i.said}</div>
 						</div>
-						<div class="rec-n"><span class="rec-v">{money(p.total)}</span></div>
-						<span class="arw" aria-hidden="true">›</span>
-					</a>
+						<div class="rec-n">
+							<span class="rec-v" class:mut={i.amount === null}
+								>{i.amount === null ? '—' : money(i.amount)}</span
+							>
+						</div>
+					</div>
 				{/each}
 			</div>
 		</div>
-	{/if}
-{/snippet}
-
-{#if field}
-	<!-- Someone with Field reads their own pay, and records nothing (#lib/access). -->
-	<Top
-		title="Your pay"
-		sub={[
-			data.items.length ? `${money(owedNow.toString())} owed` : 'Nothing owed',
-			data.person.role ? `as ${an(data.person.role)}` : null
-		]
-			.filter(Boolean)
-			.join(' · ')}
-		back={resolve('/more')}
-		backLabel="More"
-	/>
-
-	<div class="pad">
-		{#each groups as as (as)}
-			<div class="sec">
-				<div class="sec-h">
-					<h2>
-						{#if as === 'reimbursement'}For the vehicle
-							<span class="lt">· a reimbursement</span>{:else if as}{PAID_AS_WORDS[as]
-								.heading}{:else}Paid as — <span class="lt">not said</span>{/if}
-					</h2>
+	{:else}
+		<div class="sec">
+			<div class="rows">
+				<div class="rec">
+					<div class="rec-m">
+						<div class="rec-t"><span class="lt">Nothing owed</span></div>
+						<div class="rec-s">Every piece of your work is in a payment</div>
+					</div>
 				</div>
-				<div class="rows">
-					{#each data.items.filter((i) => i.paidAs === as) as i (i.kind + i.id)}
-						<div class="rec" class:warn={i.amount === null}>
+			</div>
+		</div>
+	{/each}
+
+	<p class="none">
+		What you are owed, worked out from your time and trips. A payment is recorded by someone with
+		Full when it is made, and a figure that looks wrong is theirs to correct.
+	</p>
+{:else}
+	{#each groups as as (as)}
+		<div class="sec">
+			<div class="sec-h">
+				<h2>
+					{#if as === 'reimbursement'}For the vehicle
+						<span class="lt">· a reimbursement</span>{:else if as}{PAID_AS_WORDS[as]
+							.heading}{:else}Paid as — <span class="lt">not said</span>{/if}
+				</h2>
+			</div>
+			<div class="rows">
+				{#each data.items.filter((i) => i.paidAs === as) as i (i.kind + i.id)}
+					{@const key = `${i.kind}:${i.id}`}
+					{#if !payable(i)}
+						<div class="rec warn">
 							<div class="rec-m">
 								<div class="rec-t">{i.place} · {day(i.day)}</div>
 								<div class="rec-s">{i.said}</div>
 							</div>
 							<div class="rec-n">
-								<span class="rec-v" class:mut={i.amount === null}
-									>{i.amount === null ? '—' : money(i.amount)}</span
-								>
+								<span class="rec-v mut">{i.amount === null ? '—' : money(i.amount)}</span>
 							</div>
-						</div>
-					{/each}
-				</div>
-			</div>
-		{:else}
-			<div class="sec">
-				<div class="rows">
-					<div class="rec">
-						<div class="rec-m">
-							<div class="rec-t"><span class="lt">Nothing owed</span></div>
-							<div class="rec-s">Every piece of your work is in a payment</div>
-						</div>
-					</div>
-				</div>
-			</div>
-		{/each}
-
-		{@render paidBefore()}
-
-		<p class="none">
-			What you are owed, worked out from your time and trips. A payment is recorded by someone with
-			Full when it is made, and a figure that looks wrong is theirs to correct.
-		</p>
-	</div>
-{:else}
-	<Top
-		title="Pay {data.person.name}"
-		sub={[
-			data.items.length ? `${money(owedNow.toString())} owed` : 'Nothing owed',
-			data.person.role ? `as ${an(data.person.role)}` : null
-		]
-			.filter(Boolean)
-			.join(' · ')}
-		back={resolve('/reports/pay')}
-		backLabel="Pay"
-	/>
-
-	<div class="pad">
-		{#each groups as as (as)}
-			<div class="sec">
-				<div class="sec-h">
-					<h2>
-						{#if as === 'reimbursement'}For the vehicle
-							<span class="lt">· a reimbursement</span>{:else if as}{PAID_AS_WORDS[as]
-								.heading}{:else}Paid as — <span class="lt">not said</span>{/if}
-					</h2>
-				</div>
-				<div class="rows">
-					{#each data.items.filter((i) => i.paidAs === as) as i (i.kind + i.id)}
-						{@const key = `${i.kind}:${i.id}`}
-						{#if !payable(i)}
-							<div class="rec warn">
-								<div class="rec-m">
-									<div class="rec-t">{i.place} · {day(i.day)}</div>
-									<div class="rec-s">{i.said}</div>
-								</div>
-								<div class="rec-n">
-									<span class="rec-v mut">{i.amount === null ? '—' : money(i.amount)}</span>
-								</div>
-							</div>
-						{:else}
-							<label class="rec tickable">
-								<input
-									type="checkbox"
-									checked={ticked.includes(key)}
-									onchange={() => toggle(key)}
-								/>
-								<div class="rec-m">
-									<div class="rec-t">{i.place} · {day(i.day)}</div>
-									<div class="rec-s">{i.said}</div>
-								</div>
-								<div class="rec-n"><span class="rec-v">{money(i.amount)}</span></div>
-							</label>
-						{/if}
-					{/each}
-					{#if as && correcting && correctOf === as}
-						<div class="rec acc">
-							<div class="rec-m">
-								<div class="rec-t">
-									A correction to {dated(
-										data.payments.find((p) => p.id === correctTo)?.paid_on ?? ''
-									)}
-								</div>
-								<div class="rec-s">{correctWhy || 'Why, below'}</div>
-							</div>
-							<div class="rec-n">
-								<span class="rec-v">{correction ? money(correction) : '—'}</span>
-							</div>
-						</div>
-					{/if}
-					{#if as}
-						<div class="rec sub">
-							<div class="rec-m">
-								<div class="rec-t">
-									{as === 'reimbursement' ? 'Reimbursed' : PAID_AS_WORDS[as].heading}
-								</div>
-							</div>
-							<div class="rec-n"><span class="rec-v">{money(partOf(as).toString())}</span></div>
 						</div>
 					{:else}
-						<div class="rec">
+						<label class="rec tickable">
+							<input type="checkbox" checked={ticked.includes(key)} onchange={() => toggle(key)} />
 							<div class="rec-m">
-								<div class="rec-s">
-									{data.person.role
-										? `${data.person.role} does not say what it is paid as. Say it on Team, under Roles, and this can be paid.`
-										: 'They hold no role, so nothing says what their work is paid as. Give them one on Team, and this can be paid.'}
-								</div>
+								<div class="rec-t">{i.place} · {day(i.day)}</div>
+								<div class="rec-s">{i.said}</div>
+							</div>
+							<div class="rec-n"><span class="rec-v">{money(i.amount)}</span></div>
+						</label>
+					{/if}
+				{/each}
+				{#if as && correcting && correctOf === as}
+					<div class="rec acc">
+						<div class="rec-m">
+							<div class="rec-t">
+								A correction to {dated(
+									data.payments.find((p) => p.id === correctTo)?.paid_on ?? ''
+								)}
+							</div>
+							<div class="rec-s">{correctWhy || 'Why, below'}</div>
+						</div>
+						<div class="rec-n">
+							<span class="rec-v">{correction ? money(correction) : '—'}</span>
+						</div>
+					</div>
+				{/if}
+				{#if as}
+					<div class="rec sub">
+						<div class="rec-m">
+							<div class="rec-t">
+								{as === 'reimbursement' ? 'Reimbursed' : PAID_AS_WORDS[as].heading}
 							</div>
 						</div>
-					{/if}
-				</div>
-			</div>
-		{:else}
-			<div class="sec">
-				<div class="rows">
+						<div class="rec-n"><span class="rec-v">{money(partOf(as).toString())}</span></div>
+					</div>
+				{:else}
 					<div class="rec">
 						<div class="rec-m">
-							<div class="rec-t"><span class="lt">Nothing owed</span></div>
-							<div class="rec-s">Every piece of their work is in a payment</div>
+							<div class="rec-s">
+								{data.person.role
+									? `${data.person.role} does not say what it is paid as. Say it on Team, under Roles, and this can be paid.`
+									: 'They hold no role, so nothing says what their work is paid as. Give them one on Team, and this can be paid.'}
+							</div>
 						</div>
 					</div>
-				</div>
-			</div>
-		{/each}
-
-		<div class="rows">
-			{#if data.payments.length && !correcting}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t"><span class="lt">A correction</span></div>
-						<div class="rec-s">To a payment already made, plus or minus, with why</div>
-					</div>
-					<div class="rec-n">
-						<button type="button" class="btn sm" onclick={() => (correcting = true)}>Add</button>
-					</div>
-				</div>
-			{/if}
-			<div class="rec tot">
-				<div class="rec-m">
-					<div class="rec-t">This payment</div>
-					{#if totalSaid}<div class="rec-s">{totalSaid}</div>{/if}
-				</div>
-				<div class="rec-n"><span class="rec-v">{money(total.toString())}</span></div>
+				{/if}
 			</div>
 		</div>
+	{:else}
+		<div class="sec">
+			<div class="rows">
+				<div class="rec">
+					<div class="rec-m">
+						<div class="rec-t"><span class="lt">Nothing owed</span></div>
+						<div class="rec-s">Every piece of their work is in a payment</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	{/each}
 
-		{#if correcting}
-			<div class="sec">
-				<div class="sec-h"><h2>The correction</h2></div>
-				<div class="rows form">
-					<div class="duo">
-						<div class="fld">
-							<label for="c-to">To</label>
-							<select id="c-to" class="inp" bind:value={correctTo} onchange={pickPayment}>
-								{#each data.payments as p (p.id)}
-									<option value={p.id}>{dated(p.paid_on)} · {money(p.total)} · {p.how}</option>
-								{/each}
-							</select>
-						</div>
-						<div class="fld">
-							<label for="c-of">Of</label>
-							<select id="c-of" class="inp" bind:value={correctOf}>
-								{#each parts as x (x.paid_as)}
-									<option value={x.paid_as}>
-										Its {x.paid_as === 'reimbursement'
-											? 'reimbursement'
-											: PAID_AS_WORDS[x.paid_as].money}, {money(x.total)}
-									</option>
-								{/each}
-							</select>
-						</div>
-					</div>
-					<div class="duo">
-						<div class="fld">
-							<label for="c-amount">Amount</label>
-							<input
-								id="c-amount"
-								class="inp"
-								inputmode="decimal"
-								placeholder="-19.00"
-								bind:value={correctAmount}
-							/>
-						</div>
-						<div class="fld">
-							<label for="c-why">Why</label>
-							<input id="c-why" class="inp" bind:value={correctWhy} />
-						</div>
-					</div>
-					<button type="button" class="btn sm gho" onclick={() => (correcting = false)}
-						>No correction</button
-					>
+	<div class="rows">
+		{#if data.payments.length && !correcting}
+			<div class="rec">
+				<div class="rec-m">
+					<div class="rec-t"><span class="lt">A correction</span></div>
+					<div class="rec-s">To a payment already made, plus or minus, with why</div>
+				</div>
+				<div class="rec-n">
+					<button type="button" class="btn sm" onclick={() => (correcting = true)}>Add</button>
 				</div>
 			</div>
 		{/if}
+		<div class="rec tot">
+			<div class="rec-m">
+				<div class="rec-t">This payment</div>
+				{#if totalSaid}<div class="rec-s">{totalSaid}</div>{/if}
+			</div>
+			<div class="rec-n"><span class="rec-v">{money(total.toString())}</span></div>
+		</div>
+	</div>
 
-		<div class="rows form">
-			<div class="duo">
-				<div class="fld">
-					<label for="p-day">Paid on</label>
-					<input id="p-day" class="inp" type="date" max={data.today} bind:value={paidOn} />
+	{#if correcting}
+		<div class="sec">
+			<div class="sec-h"><h2>The correction</h2></div>
+			<div class="rows form">
+				<div class="duo">
+					<div class="fld">
+						<label for="c-to">To</label>
+						<select id="c-to" class="inp" bind:value={correctTo} onchange={pickPayment}>
+							{#each data.payments as p (p.id)}
+								<option value={p.id}>{dated(p.paid_on)} · {money(p.total)} · {p.how}</option>
+							{/each}
+						</select>
+					</div>
+					<div class="fld">
+						<label for="c-of">Of</label>
+						<select id="c-of" class="inp" bind:value={correctOf}>
+							{#each parts as x (x.paid_as)}
+								<option value={x.paid_as}>
+									Its {x.paid_as === 'reimbursement'
+										? 'reimbursement'
+										: PAID_AS_WORDS[x.paid_as].money}, {money(x.total)}
+								</option>
+							{/each}
+						</select>
+					</div>
 				</div>
-				<div class="fld">
-					<label for="p-how">How</label>
-					<select id="p-how" class="inp" bind:value={how}>
-						{#each HOW as h (h)}<option value={h}>{h}</option>{/each}
-					</select>
+				<div class="duo">
+					<div class="fld">
+						<label for="c-amount">Amount</label>
+						<input
+							id="c-amount"
+							class="inp"
+							inputmode="decimal"
+							placeholder="-19.00"
+							bind:value={correctAmount}
+						/>
+					</div>
+					<div class="fld">
+						<label for="c-why">Why</label>
+						<input id="c-why" class="inp" bind:value={correctWhy} />
+					</div>
 				</div>
+				<button type="button" class="btn sm gho" onclick={() => (correcting = false)}
+					>No correction</button
+				>
+			</div>
+		</div>
+	{/if}
+
+	<div class="rows form">
+		<div class="duo">
+			<div class="fld">
+				<label for="p-day">Paid on</label>
+				<input id="p-day" class="inp" type="date" max={data.today} bind:value={paidOn} />
 			</div>
 			<div class="fld">
-				<label for="p-note">Note</label>
-				<input
-					id="p-note"
-					class="inp"
-					placeholder="What it was for, as the bank says it"
-					bind:value={note}
-				/>
+				<label for="p-how">How</label>
+				<select id="p-how" class="inp" bind:value={how}>
+					{#each HOW as h (h)}<option value={h}>{h}</option>{/each}
+				</select>
 			</div>
-			{#if why}<p class="why bad">{why}</p>{/if}
-			{#if confirming}
-				<Ask
-					keep="Not yet"
-					go="Record it"
-					going="Recording…"
-					working={saving}
-					onkeep={() => (confirming = false)}
-					ongo={record}
-				>
-					<p>
-						Record {money(total.toString())} paid to {data.person.name} on {dated(
-							paidOn
-						)}?{totalSaid ? ` ${totalSaid}.` : ''}
-					</p>
-					<p>
-						A payment stands once recorded. What it covers can no longer be changed or removed, and
-						a mistake is put right by a correction on a later payment.
-					</p>
-				</Ask>
-			{:else}
-				<button class="btn pri blk" type="button" onclick={ask}>Record the payment</button>
-			{/if}
-			<p class="aside">
-				reckon records the payment; it does not send money. Each item keeps what it pays now, the
-				rule that set it and what it was paid as, so a later change to a rule or a role moves only
-				what is still owed.
-			</p>
 		</div>
-
-		{@render paidBefore()}
+		<div class="fld">
+			<label for="p-note">Note</label>
+			<input
+				id="p-note"
+				class="inp"
+				placeholder="What it was for, as the bank says it"
+				bind:value={note}
+			/>
+		</div>
+		{#if why}<p class="why bad">{why}</p>{/if}
+		{#if confirming}
+			<Ask
+				keep="Not yet"
+				go="Record it"
+				going="Recording…"
+				working={saving}
+				onkeep={() => (confirming = false)}
+				ongo={record}
+			>
+				<p>
+					Record {money(total.toString())} paid to {data.person.name} on {dated(paidOn)}?{totalSaid
+						? ` ${totalSaid}.`
+						: ''}
+				</p>
+				<p>
+					A payment stands once recorded. What it covers can no longer be changed or removed, and a
+					mistake is put right by a correction on a later payment.
+				</p>
+			</Ask>
+		{:else}
+			<button class="btn pri blk" type="button" onclick={ask}>Record the payment</button>
+		{/if}
+		<p class="aside">
+			reckon records the payment; it does not send money. Each item keeps what it pays now, the rule
+			that set it and what it was paid as, so a later change to a rule or a role moves only what is
+			still owed.
+		</p>
 	</div>
 {/if}
 

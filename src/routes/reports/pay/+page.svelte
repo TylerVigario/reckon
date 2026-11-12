@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import UnderlineNav from '#lib/UnderlineNav.svelte';
+	import { reportTabs } from '#lib/section-tabs.ts';
 	import { dated, day, hours, miles } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import { PAID_AS_WORDS, type PaidAs } from '#lib/pay-words.ts';
@@ -82,14 +84,10 @@
 			.join(' · ');
 </script>
 
-<Top
-	title="Pay"
-	sub="{data.month.label} · resolved per job, per day"
-	back={resolve('/reports')}
-	backLabel="Reports"
-/>
+<Top title="Reports" back={resolve('/more')} backLabel="More" />
 
 <div class="pad">
+	<div class="primer"><UnderlineNav label="Reports" items={reportTabs('pay')} /></div>
 	{#each groups as g (g.as)}
 		<div class="sec">
 			<div class="sec-h">

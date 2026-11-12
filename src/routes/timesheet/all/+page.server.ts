@@ -11,7 +11,8 @@ import type { PageServerLoad } from './$types';
 
 /**
  * Every entry in a month, by the week it was worked: for someone with Field,
- * every one they worked (#lib/access).
+ * every one they worked (#lib/access); for someone with Full, everyone's, or
+ * their own.
  *
  * Each is priced the way an invoice line will be: the most specific price row
  * that had taken effect on the day the work happened, never today's. A rate
@@ -24,6 +25,10 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 	const day = businessToday();
 	const from = /^\d{4}-(0[1-9]|1[0-2])$/.test(asked) ? `${asked}-01` : `${day.slice(0, 8)}01`;
 	const to = Temporal.PlainDate.from(from).add({ months: 1 }).toString();
+	// Someone with Field has only their own. Someone with Full has everyone's,
+	// or with ?who=yours their own: what they worked, and team work they were on.
+	const field = fieldOnly(locals);
+	const yours = field || url.searchParams.get('who') === 'yours';
 
 	const u = alias(t.user, 'u');
 	const [entries, [operator]] = await Promise.all([
@@ -51,7 +56,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 				and(
 					gte(t.timeEntry.workedOn, from),
 					lt(t.timeEntry.workedOn, to),
-					fieldOnly(locals) ? theirWork(locals.user!.id) : undefined
+					yours ? theirWork(locals.user!.id) : undefined
 				)
 			)
 			.orderBy(desc(t.timeEntry.workedOn), desc(t.timeEntry.createdAt), desc(t.timeEntry.id)),
@@ -105,7 +110,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		w.rows.push(r);
 	}
 
-	return { weeks, totals };
+	return { weeks, totals, who: field ? null : yours ? ('yours' as const) : ('everyone' as const) };
 };
 
 /**

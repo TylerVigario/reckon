@@ -1,12 +1,26 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import Segmented from '#lib/Segmented.svelte';
 	import { day, secondsAsHours, workedTimes, names } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 
 	let { data }: PageProps = $props();
+
+	// The month asked for, kept as the scope changes.
+	const month = $derived(page.url.searchParams.get('month'));
+	const scoped = (who: 'everyone' | 'yours') => {
+		const query = [
+			month ? `month=${encodeURIComponent(month)}` : null,
+			who === 'yours' ? 'who=yours' : null
+		]
+			.filter(Boolean)
+			.join('&');
+		return query ? resolve(`/timesheet/all?${query}`) : resolve('/timesheet/all');
+	};
 
 	const sub = $derived(
 		[
@@ -29,6 +43,17 @@
 />
 
 <div class="pad">
+	{#if data.who}
+		<div class="primer">
+			<Segmented
+				label="Whose entries"
+				items={[
+					{ href: scoped('everyone'), label: 'Everyone’s', current: data.who === 'everyone' },
+					{ href: scoped('yours'), label: 'Yours', current: data.who === 'yours' }
+				]}
+			/>
+		</div>
+	{/if}
 	{#each data.weeks as w (w.week)}
 		<div class="sec">
 			<div class="sec-h"><h2>Week of {day(w.week)}</h2></div>

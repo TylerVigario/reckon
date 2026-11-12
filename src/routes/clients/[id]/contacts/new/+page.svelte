@@ -14,11 +14,11 @@
 	 * label above its field, the one that must be filled in marked with an
 	 * asterisk, and Add contact at the bottom with Cancel beside it. They can
 	 * be who the client's invoices go to from the start; with nobody yet, that
-	 * is ticked already. Adding them goes back to the client, where they are
-	 * listed.
+	 * is ticked already. Adding them goes back to the client's
+	 * Contacts, where they are listed.
 	 */
 	let { data }: PageProps = $props();
-	const back = $derived(resolve('/clients/[id]', { id: data.client.slug }));
+	const back = $derived(resolve('/clients/[id]/contacts', { id: data.client.slug }));
 
 	let name = $state('');
 	let email = $state('');

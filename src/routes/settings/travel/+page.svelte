@@ -111,7 +111,7 @@
 				</div>
 			{/each}
 			{#each data.history as h (h.id)}
-				<a class="rec link" href={resolve('/services/[id]/history', { id: h.id })}>
+				<a class="rec link" href={resolve('/catalogue/services/[id]/history', { id: h.id })}>
 					<div class="rec-m">
 						<div class="rec-t"><span class="lt">Earlier rates</span></div>
 						<div class="rec-s">

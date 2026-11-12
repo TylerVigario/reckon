@@ -308,7 +308,7 @@
 				<div class="sec-h"><h2>Paid differently for {a.client}</h2></div>
 				<div class="rows">
 					{#each data.rules as r (r.id)}
-						<a class="rec link" href={resolve('/services/[id]', { id: r.service_id })}>
+						<a class="rec link" href={resolve('/catalogue/services/[id]', { id: r.service_id })}>
 							<div class="rec-m">
 								<div class="rec-t">{r.payee}&nbsp;<span class="lt">· {FOR[r.pays_for]}</span></div>
 								<div class="rec-s">{r.service} · {pays(r)}</div>

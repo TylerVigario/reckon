@@ -312,8 +312,8 @@ console.log('\n  contacts — added to a client, changed on their own page, sent
 	const first = `Write Check Billing ${run}`;
 	const other = `Write Check Second ${run}`;
 	const clientPage = async () =>
-		(await fetch(`${base}/clients/${clientSlug}`, { headers: { cookie } })).text();
-	/** Who the client page says the invoices go to, and each contact's id by name. */
+		(await fetch(`${base}/clients/${clientSlug}/contacts`, { headers: { cookie } })).text();
+	/** Who the client's Contacts say the invoices go to, and each contact's id by name. */
 	const read = (/** @type {string} */ html) => ({
 		bills:
 			/Invoices go to<\/span>[\s\S]*?class="kv-v[^"]*">(?:\s|<!--[^>]*-->)*<span[^>]*>([^<]+)</
@@ -913,8 +913,10 @@ if (aid) {
 		400
 	);
 
-	const listed = await (await fetch(`${base}/services`, { headers: { cookie } })).text();
-	const service = [...listed.matchAll(/\/services\/([0-9a-f-]{36})"/g)].map((m) => m[1])[0];
+	const listed = await (await fetch(`${base}/catalogue/services`, { headers: { cookie } })).text();
+	const service = [...listed.matchAll(/\/catalogue\/services\/([0-9a-f-]{36})"/g)].map(
+		(m) => m[1]
+	)[0];
 	if (service) {
 		const cover = `${at}/coverage/${service}`;
 		await check(
@@ -1237,7 +1239,7 @@ console.log(
 	'\n  pay — recorded once, never less than nothing, never for somebody else, each part as it paid'
 );
 
-// Who is owed, from the pay report; Sam's earlier payment, from Sam's page.
+// Who is owed, from the pay report; Sam's earlier payment, from Sam's Paid tab.
 const payPage = await (await fetch(`${base}/reports/pay`, { headers: { cookie } })).text();
 const payee = (/** @type {string} */ name) =>
 	[
@@ -1248,7 +1250,7 @@ const payee = (/** @type {string} */ name) =>
 const sam = payee('Sam Ortega');
 const avery = payee('Avery Lind');
 const samPage = sam
-	? await (await fetch(`${base}/reports/pay/${sam}`, { headers: { cookie } })).text()
+	? await (await fetch(`${base}/reports/pay/${sam}/paid`, { headers: { cookie } })).text()
 	: '';
 const samPaid = /\/reports\/pay\/payments\/([0-9a-f-]{36})"/.exec(samPage)?.[1];
 if (sam && avery && samPaid) {

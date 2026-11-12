@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { count, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
@@ -16,16 +16,17 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const sc = t.siteContact;
 	const si = t.site;
 
-	const { rows: contacts } = await db.execute<{
-		id: string;
-		name: string;
-		email: string | null;
-		phone: string | null;
-		note: string | null;
-		clients: string[];
-		sites: string[];
-		primary_for: string[];
-	}>(sql`
+	const [{ rows: contacts }, [clients]] = await Promise.all([
+		db.execute<{
+			id: string;
+			name: string;
+			email: string | null;
+			phone: string | null;
+			note: string | null;
+			clients: string[];
+			sites: string[];
+			primary_for: string[];
+		}>(sql`
 		select ${c.id} as id, ${c.name} as name, ${c.email} as email, ${c.phone} as phone,
 		       ${c.note} as note,
 		       -- coalesce, not just array_remove: array_agg over no rows is NULL,
@@ -42,9 +43,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 		  left join ${sc} on ${sc.contactId} = ${c.id}
 		  left join ${si} on ${si.id} = ${sc.siteId}
 		 group by ${c.id}
-		 order by ${c.name}`);
+		 order by ${c.name}`),
+		// For Entities' other tab, counted as the client list counts them.
+		db.select({ n: count() }).from(e)
+	]);
 
 	return {
-		contacts: fieldOnly(locals) ? contacts.map((c) => ({ ...c, primary_for: [] })) : contacts
+		contacts: fieldOnly(locals) ? contacts.map((c) => ({ ...c, primary_for: [] })) : contacts,
+		counts: { clients: clients.n }
 	};
 };

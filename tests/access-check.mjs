@@ -174,10 +174,11 @@ const others = Object.values(idOf).filter((id) => id !== me);
 check(!!me && others.length >= 2, 'Field has their own pay under More, and others are paid');
 check(!linked(fullMore, '/reports/pay').size, 'Full reaches pay through the reports instead');
 
-{
-	const own = await asField(`/reports/pay/${me}`);
-	check(own.status === 200, 'Field opens their own pay', String(own.status));
-	const theirs = await Promise.all(others.map((id) => asField(`/reports/pay/${id}`)));
+for (const tab of ['', '/paid']) {
+	const own = await asField(`/reports/pay/${me}${tab}`);
+	const said = tab ? 'payments made to them' : 'pay';
+	check(own.status === 200, `Field opens their own ${said}`, String(own.status));
+	const theirs = await Promise.all(others.map((id) => asField(`/reports/pay/${id}${tab}`)));
 	check(
 		theirs.every((r) => r.status === 404),
 		"and not anyone else's",
@@ -256,22 +257,41 @@ check(!linked(fullMore, '/reports/pay').size, 'Full reaches pay through the repo
 	const slug = [...clients.matchAll(/\/clients\/([a-z0-9-]+)"/g)]
 		.map((m) => m[1])
 		.find((x) => x !== 'contacts' && x !== 'new');
-	const [toFull, toField] = await Promise.all([
-		page(asFull, `/clients/${slug}`),
-		page(asField, `/clients/${slug}`)
-	]);
+	// Details is billing, tax and invoices, all Full's: Field opens a client on
+	// its Sites, and its head says nothing of what it owes.
+	const [toFull, fieldDetails, sitesFull, sitesField, contactsFull, contactsField] =
+		await Promise.all([
+			page(asFull, `/clients/${slug}`),
+			asField(`/clients/${slug}`),
+			page(asFull, `/clients/${slug}/sites`),
+			page(asField, `/clients/${slug}/sites`),
+			page(asFull, `/clients/${slug}/contacts`),
+			page(asField, `/clients/${slug}/contacts`)
+		]);
 	check(
-		toFull.includes('Unapplied credit') && !toField.includes('Unapplied credit'),
-		'Field reads a client without what it owes or its billing'
+		toFull.includes('Unapplied credit') &&
+			fieldDetails.status === 307 &&
+			(fieldDetails.headers.get('location') ?? '').endsWith(`/clients/${slug}/sites`),
+		'Field opens a client on its sites, without its billing',
+		`${fieldDetails.status} ${fieldDetails.headers.get('location')}`
 	);
 	check(
-		toFull.includes('Invoices go to') && !toField.includes('Invoices go to'),
+		// As the head words it: the page's own data names the field either way.
+		/Nothing owed|owed · \d/.test(sitesFull) && !/Nothing owed|owed · \d/.test(sitesField),
+		'nor what it owes, at the head of every tab'
+	);
+	check(
+		contactsFull.includes('Invoices go to') &&
+			!contactsField.includes('Invoices go to') &&
+			contactsField.includes('/clients/contacts/'),
 		"Field reads a client's contacts, and not who the invoices go to"
 	);
 
 	// A contact, to read: nothing changed, and not whose invoices go to them.
 	const people = [
-		...new Set([...toFull.matchAll(/\/clients\/contacts\/([0-9a-f-]{36})"/g)].map((m) => m[1]))
+		...new Set(
+			[...contactsFull.matchAll(/\/clients\/contacts\/([0-9a-f-]{36})"/g)].map((m) => m[1])
+		)
 	];
 	const pages = await Promise.all(
 		people.map(async (id) => ({
