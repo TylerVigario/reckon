@@ -413,27 +413,23 @@ number of proxies in front, 1 for one.
 
 A release is one tarball, built by `npm run release` and published with its
 provenance attested: the part of this repository that runs, at the same paths it
-has here, with its production dependencies installed, so a host needs Node and
+has here, with every package it uses bundled in, so a host needs Node and
 nothing else.
 
-|                    |                                                            |
-| ------------------ | ---------------------------------------------------------- |
-| `build/`           | the application; `node build` runs it                      |
-| `drizzle/`         | the migrations, which the application applies as it starts |
-| `scripts/user.mjs` | adds the first person, and gives a link to make a passkey  |
-| `node_modules/`    | the production dependencies, from `npm ci --omit dev`      |
-| `package.json`     | and `package-lock.json`, as they are in the repository     |
-| `RELEASE`          | the version, the commit, and the Node it was built with    |
-| `MANIFEST.sha256`  | every file's digest, so what is installed can be checked   |
+|                    |                                                                   |
+| ------------------ | ----------------------------------------------------------------- |
+| `build/`           | the application; `node build` runs it                             |
+| `drizzle/`         | the migrations, which the application applies as it starts        |
+| `scripts/user.mjs` | adds the first person, and gives a link to make a passkey         |
+| `package.json`     | and `package-lock.json`: which version of each package is bundled |
+| `RELEASE`          | the version, the commit, and the Node it was built with           |
+| `MANIFEST.sha256`  | every file's digest, so what is installed can be checked          |
 
-**The production dependencies are what stays out of the bundle.** adapter-node
-bundles everything into `build/` but them (_"Bundle everything except
-production dependencies"_), and Node loads them from `node_modules/` as they
-are published. One is there though reckon never imports it: SimpleWebAuthn's
-server library, which Better Auth's passkey plugin uses. Its certificate
-reader, `@peculiar/x509`, imports `reflect-metadata` and then `tsyringe`, which
-refuses to load without it. Rolldown, bundling, doesn't promise that order, and
-has run `tsyringe` first and failed the build; Node keeps it.
+**Everything it runs is in the bundle, so it has no `node_modules/`.** What it
+reaches outside itself is the host's own: Node, Postgres and the mail server.
+Every package is a devDependency: adapter-node bundles everything but
+`dependencies`, and a test fails if one appears there. `scripts/user.mjs` is
+bundled as `build/` is, into one file at the path it has here.
 
 Run it from its own directory — a service unit's `WorkingDirectory` — since the
 migrations are read from `drizzle/` there. A deploy is a backup of the database,

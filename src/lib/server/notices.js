@@ -1,6 +1,6 @@
 // What reckon tells a person by email, and how it is worded. Plain JavaScript, so
-// the server and scripts/user.mjs write the same notice, and a release can run
-// user.mjs with it.
+// the server and scripts/user.mjs, which runs with no build step, write the same
+// notice.
 //
 // A notice says what happened, when, in the person's own zone and words, and
 // what to do if it was not them -- NIST SP 800-63B-4 §4.6: "clear

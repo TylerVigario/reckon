@@ -96,6 +96,10 @@ the binary, a speed-up for the `esbuild` command, which nothing here runs, and
 esbuild works without it. npm names any dependency that brings a new one: read
 what it does, then `npm approve-scripts` or `npm deny-scripts` it.
 
+**A package is added with `npm install --save-dev`.** Everything is bundled, so
+every package is a devDependency; one in `dependencies` would be left out of
+the bundle and missing from a release, and a test says so.
+
 The database commands read `.env` as `npm run dev` does, under whatever the shell
 sets, and connect the way the server does, so `PGHOST`, `PGUSER` and the rest
 apply. If your cluster wants a different user, become one:
