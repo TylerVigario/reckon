@@ -1,15 +1,12 @@
 /**
  * Builds the release: one tarball holding the part of this repository that
- * runs, at the same paths it has here, with its dependencies installed.
+ * runs, at the same paths it has here, every package it uses bundled in.
  *
  *   build/             the application, from `vite build`; `node build` runs it
  *   drizzle/           the migrations, which the application applies when it starts
  *   scripts/user.mjs   the command that adds the first person, before anyone can sign in,
- *                      with what it imports: scripts/env.mjs and
- *                      src/lib/server/db/defaults.js, which it reads its settings with
- *                      and connects by
+ *                      bundled with everything it imports (release-files.mjs bundleUser)
  *   package.json       and package-lock.json, as they are here
- *   node_modules/      the production dependencies, from `npm ci --omit dev`
  *   .env.example       what the environment may set
  *   LICENSE, LICENSE-NOTICE.md, CHANGELOG.md
  *   RELEASE            which commit, on what, with which Node
@@ -19,12 +16,12 @@
  * way, so nothing has to know which of the two it is in: the server finds its
  * migrations in drizzle/ beside build/ in either.
  *
- * SELF-CONTAINED. adapter-node needs the build, package.json and the production
- * dependencies; they are installed here, from the lockfile, so a host needs
- * Node and nothing else -- no registry to reach, no compiler for anything
- * native -- and every way an install can fail fails in CI, where it stops a
- * release, rather than on the host, where it stops a deploy. Nothing it
- * depends on is native.
+ * SELF-CONTAINED. Everything it runs is bundled, so it carries no node_modules
+ * and a host needs Node and nothing else -- no registry to reach, nothing to
+ * install, no compiler for anything native -- and every way a bundle can fail
+ * fails in CI, where it stops a release, rather than on the host, where it
+ * stops a deploy. What it reaches outside itself is the host's own: Postgres
+ * and the mail server.
  *
  *   node scripts/make-release.mjs                  # the version in package.json
  *   node scripts/make-release.mjs --version 1.2.3
@@ -35,7 +32,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
-import { RELEASE_FILES } from './release-files.mjs';
+import { bundleUser, RELEASE_FILES } from './release-files.mjs';
 import { releaseVersion } from './release-version.mjs';
 
 /** @type {(name: string, fallback: string) => string} */
@@ -85,13 +82,8 @@ run('npm', ['run', 'build'], { stdio: 'inherit' });
 
 for (const p of RELEASE_FILES) fs.cpSync(p, path.join(staging, p), { recursive: true });
 
-// The production dependencies, exactly as the lockfile resolved them. No
-// lifecycle script runs: nothing here needs one.
-console.log('  npm ci --omit dev');
-run('npm', ['ci', '--omit', 'dev', '--ignore-scripts', '--no-audit', '--no-fund'], {
-	cwd: staging,
-	stdio: 'inherit'
-});
+console.log('  scripts/user.mjs, bundled');
+await bundleUser(staging);
 
 // What changed, inside the artifact, so it is known without a path back to the
 // release notes.

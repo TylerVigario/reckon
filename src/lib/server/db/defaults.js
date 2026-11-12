@@ -1,7 +1,6 @@
 // Where the database is when nothing says otherwise, and which one it is, which
 // nothing assumes. Plain JavaScript, so the server, the commands in scripts/ and
-// the checks in tests/ share one answer, and a release can run scripts/user.mjs
-// with nothing of src/ but this.
+// the checks in tests/, which run with no build step, share one answer.
 
 import { createReadStream, stat } from 'node:fs';
 import { userInfo } from 'node:os';
