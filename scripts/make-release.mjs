@@ -3,9 +3,12 @@
  * runs, at the same paths it has here, every package it uses bundled in.
  *
  *   build/             the application, from `vite build`; `node build` runs it
- *   drizzle/           the migrations, which the application applies when it starts
- *   scripts/user.mjs   the command that adds the first person, before anyone can sign in,
- *                      bundled with everything it imports (release-files.mjs bundleUser)
+ *   drizzle/           the migrations, which the application applies when it starts,
+ *                      or scripts/migrate.mjs does where the host migrates
+ *   scripts/           user.mjs, the command that adds the first person, before anyone
+ *                      can sign in, and migrate.mjs, which brings the database up to
+ *                      date as its owner; each bundled with everything it imports
+ *                      (release-files.mjs bundleScripts)
  *   package.json       and package-lock.json, as they are here
  *   .env.example       what the environment may set
  *   LICENSE, LICENSE-NOTICE.md, CHANGELOG.md
@@ -32,7 +35,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
-import { bundleUser, RELEASE_FILES } from './release-files.mjs';
+import { bundleScripts, RELEASE_FILES, RELEASE_SCRIPTS } from './release-files.mjs';
 import { releaseVersion } from './release-version.mjs';
 
 /** @type {(name: string, fallback: string) => string} */
@@ -82,8 +85,8 @@ run('npm', ['run', 'build'], { stdio: 'inherit' });
 
 for (const p of RELEASE_FILES) fs.cpSync(p, path.join(staging, p), { recursive: true });
 
-console.log('  scripts/user.mjs, bundled');
-await bundleUser(staging);
+console.log(`  scripts/${RELEASE_SCRIPTS.join(', ')}, bundled`);
+await bundleScripts(staging);
 
 // What changed, inside the artifact, so it is known without a path back to the
 // release notes.

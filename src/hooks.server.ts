@@ -7,12 +7,12 @@ import 'temporal-polyfill/global';
 import { redirect, error } from '@sveltejs/kit';
 import { sequence, type Handle, type ServerInit } from '@sveltejs/kit/hooks';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
-import { SECURE_COOKIES, SITE_URL } from '$app/env/private';
+import { MIGRATE_ON_START, SECURE_COOKIES, SITE_URL } from '$app/env/private';
 import { authHeaders, getAuth } from '#lib/server/auth.ts';
 import { googleKey } from '#lib/server/google-key.ts';
 import { startSending } from '#lib/server/email.ts';
 import { pool } from '#lib/server/db/index.ts';
-import { bringUpToDate } from '#lib/server/db/migrate.ts';
+import { bringUpToDate, mustBeUpToDate } from '#lib/server/db/migrate.ts';
 import { building } from '$app/env';
 import { getRequestEvent } from '$app/server';
 import { businessDefaults } from '#lib/server/business.ts';
@@ -29,14 +29,16 @@ import { THEME_COOKIE, themeFrom } from '#lib/device-fields.ts';
  * configuration Better Auth refuses stops the process with its reason instead
  * of answering every request with a 500.
  *
- * And the database is brought up to date first (#lib/server/db/migrate): every
- * migration in the drizzle/ beside the build it has not seen, before the first
- * request is answered. One that fails stops the server starting, so nothing is
- * ever served from a database the code does not expect. Not while building,
- * when there is no database to reach.
+ * And the database is checked first (#lib/server/db/migrate): a migration in
+ * the drizzle/ beside the build it has not seen stops the server starting,
+ * before the first request is answered, so nothing is ever served from a
+ * database the code does not expect. Migrating is its own step, run as the
+ * database's owner; where MIGRATE_ON_START=true the server, connected as the
+ * owner, brings it up to date itself, and one that fails stops the start the
+ * same way. Not while building, when there is no database to reach.
  */
 export const init: ServerInit = async () => {
-	if (!building) await bringUpToDate(pool);
+	if (!building) await (MIGRATE_ON_START ? bringUpToDate(pool) : mustBeUpToDate(pool));
 	getAuth();
 	// A key given both as itself and as a file stops the start here, as the
 	// session secret's does in getAuth, rather than the first address entered.

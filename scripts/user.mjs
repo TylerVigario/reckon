@@ -36,7 +36,7 @@
  * passkey is made for that site.
  *
  * Plain JavaScript, run here as it is; a release carries it at the same path,
- * bundled with everything it imports (scripts/release-files.mjs bundleUser).
+ * bundled with everything it imports (scripts/release-files.mjs bundleScripts).
  * It connects as the server does, from the same settings
  * (#lib/server/db/defaults): .env in development, under whatever the shell
  * sets, or the host's own.

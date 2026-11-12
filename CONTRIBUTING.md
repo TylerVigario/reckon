@@ -103,8 +103,9 @@ the bundle and missing from a release, and a test says so.
 The database commands read `.env` as `npm run dev` does, under whatever the shell
 sets, and connect the way the server does, so `PGHOST`, `PGUSER` and the rest
 apply. If your cluster wants a different user, become one:
-`sudo -u postgres npm run db:migrate`. The server brings its own database up to
-date as it starts, too, so `npm run dev` alone keeps `reckon_dev` current.
+`sudo -u postgres npm run db:migrate`. The server only checks its database,
+and will not start while a migration is waiting: after pulling one, or
+generating your own, `npm run db:migrate` applies it.
 
 Node is pinned in [`.nvmrc`](.nvmrc). Postgres 18 or newer — every id defaults
 to `uuidv7()`, which does not predate it. CI runs 18, which is what the guards
