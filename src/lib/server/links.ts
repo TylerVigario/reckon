@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { and, count, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { SITE_URL } from '$app/env/private';
-import { db, type Tx } from './db/index.ts';
+import { actingAs, db, type Tx } from './db/index.ts';
 import { emailLink, linkTry, passkey, user, type LINK_PURPOSES } from './db/schema/index.ts';
 import type { Changing, Waiting } from '#lib/people-fields.ts';
 import { mailer } from './email.ts';
@@ -205,6 +205,8 @@ export async function usableById(tx: Tx, id: string): Promise<Usable | null> {
 
 /** Marks a link used, and the address it went to proven theirs. */
 export async function used(tx: Tx, link: Usable): Promise<void> {
+	// Whatever the link changes is theirs, in record_history.
+	await actingAs(tx, link.userId);
 	await tx
 		.update(emailLink)
 		.set({ usedAt: sql`now()` })

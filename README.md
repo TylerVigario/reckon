@@ -481,16 +481,16 @@ OWASP's Logging Vocabulary names it, in the field OWASP's own example calls
 
 What is recorded, and where (ASVS 5.0 16.1.1):
 
-|                                        | where                             |                                                                                      |
-| -------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------ |
-| `sys_startup`, `sys_shutdown`          | the log                           | each start, once the database is checked; each stop, with why                        |
-| `sys_crash`                            | the log                           | a start that failed, or an exception nothing caught; Node's own stack follows it     |
-| an error nobody meant                  | the log                           | with its `error.id`, the route and who asked; the person is shown the id and no more |
-| a value the database refused           | the log                           | its code, table, constraint and column — never what was typed                        |
-| email, Google and the relay's settings | the log                           | a message not sent, a lookup refused, a setting left unsafe                          |
-| Better Auth's own messages             | the log                           | under `code.namespace` `better-auth`                                                 |
-| every change to the business's records | `record_history`, in the database | who, when and what, kept with the books, and shown on each record                    |
-| each security event                    | `security_event`, and the log     | below; each person sees theirs on Your profile, someone with Full everyone's on Team |
+|                                                       | where                             |                                                                                                                                 |
+| ----------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `sys_startup`, `sys_shutdown`                         | the log                           | each start, once the database is checked; each stop, with why                                                                   |
+| `sys_crash`                                           | the log                           | a start that failed, or an exception nothing caught; Node's own stack follows it                                                |
+| an error nobody meant                                 | the log                           | with its `error.id`, the route and who asked; the person is shown the id and no more                                            |
+| a value the database refused                          | the log                           | its code, table, constraint and column — never what was typed                                                                   |
+| email, Google and the relay's settings                | the log                           | a message not sent, a lookup refused, a setting left unsafe                                                                     |
+| Better Auth's own messages                            | the log                           | under `code.namespace` `better-auth`                                                                                            |
+| every change to the business's records, and to people | `record_history`, in the database | who, when, what, and the save it was part of; written by the tables' own triggers alone, never changed, and kept with the books |
+| each security event                                   | `security_event`, and the log     | below; each person sees theirs on Your profile, someone with Full everyone's on Team                                            |
 
 Never written: a secret, a token, a cookie, a session id, a sign-in link or an
 email's body. An object that carries one by name has it replaced with

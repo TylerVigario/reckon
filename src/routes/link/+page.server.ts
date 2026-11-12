@@ -1,6 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import { and, eq, ne } from 'drizzle-orm';
-import { db } from '#lib/server/db/index.ts';
+import { actingAs, db } from '#lib/server/db/index.ts';
 import { user } from '#lib/server/db/schema/index.ts';
 import { authHeaders, getAuth } from '#lib/server/auth.ts';
 import { MAKES_PASSKEY, missed, turnedAway, usable, used } from '#lib/server/links.ts';
@@ -124,6 +124,7 @@ export const actions: Actions = {
 					.from(user)
 					.where(and(eq(user.email, link.email), ne(user.id, link.userId)));
 				if (taken) return 'taken' as const;
+				await actingAs(tx, link.userId);
 				await tx.update(user).set({ email: link.email }).where(eq(user.id, link.userId));
 				await record(tx, 'user_updated', {
 					user: link.userId,

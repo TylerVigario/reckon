@@ -330,6 +330,20 @@
       "when": 1794506503716,
       "tag": "0046_security_events_stand",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1794512478926,
+      "tag": "0047_history_names_its_save",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1794512479673,
+      "tag": "0048_history_covers_people_and_stands",
+      "breakpoints": true
     }
   ]
 }
