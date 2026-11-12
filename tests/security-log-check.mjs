@@ -4,7 +4,8 @@
  * shows each person theirs and someone with Full everyone's: a sign-in, a
  * sign-in refused for a passkey reckon doesn't know, a screen and a request
  * refused to Field, Field's access changed by someone with Full and changed
- * back, link codes tried until the network is turned away, and a sign-out --
+ * back, link codes tried until the network is turned away, what Team shows of
+ * each person, and a sign-out --
  * each a row, from where it came, and each said on Your profile and on Team. Field opens neither Team's log nor anyone's on it.
  *
  *   node tests/security-log-check.mjs <base-url> <full-email> <field-email>
@@ -230,6 +231,18 @@ check(
 );
 check(turned.length === 1, 'and being turned away is too (16.3.3)', `${turned.length} rows`);
 await db.query('delete from link_try where network = $1', [HERE]);
+
+console.log('What Team shows of each person');
+const fieldName = /** @type {string} */ (
+	(await db.query('select name from "user" where id = $1', [field])).rows[0].name
+);
+const team = await (await asFull('/team')).text();
+const fieldRow = team.slice(team.indexOf(fieldName));
+check(
+	/Signed in [^<]*·\s*1(\s|&nbsp;)passkey[^<]*·\s*\d+(\s|&nbsp;)sessions? open/.test(fieldRow),
+	'when each last signed in, their passkeys and where each is kept, and the sessions they have open',
+	fieldRow.slice(0, 300).replace(/\s+/g, ' ')
+);
 
 console.log('Signing out');
 const out = await asField('/logout', {

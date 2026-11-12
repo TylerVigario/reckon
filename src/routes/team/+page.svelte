@@ -4,6 +4,8 @@
 	import { teamTabs } from '#lib/section-tabs.ts';
 	import { ACCESS_WORDS } from '#lib/access.ts';
 	import { STANDING, standing } from '#lib/people-fields.ts';
+	import { clock, datedAt } from '#lib/format.ts';
+	import { personalZone } from '#lib/zone.svelte.ts';
 	import { resolve } from '$app/paths';
 	import type { PageProps } from './$types';
 
@@ -13,8 +15,30 @@
 	 * their role and access, whether they sign in yet or still -- and each row
 	 * opens that person's page, where everything about them is changed. Add
 	 * person is the screen's one action, beside its title.
+	 *
+	 * Each row also says what anyone checking access reads -- when they last
+	 * signed in, their passkeys and where each is kept, the sessions they have
+	 * open (+page.server.ts).
 	 */
 	let { data }: PageProps = $props();
+
+	const when = (at: string | Date) =>
+		`${datedAt(at, personalZone())}, ${clock(at, personalZone())}`;
+	// A count keeps its word on the same line: "1 passkey", never "1" then "passkey".
+	const plural = (n: number, one: string, many: string) => `${n}\u00a0${n === 1 ? one : many}`;
+	/** What anyone checking access reads of someone, in one line. */
+	const accessLine = (p: (typeof data.people)[number]) =>
+		[
+			p.last_signed_in_at ? `Signed in ${when(p.last_signed_in_at)}` : 'Never signed in',
+			p.passkeys.length
+				? [plural(p.passkeys.length, 'passkey', 'passkeys'), p.passkeys.filter(Boolean).join(', ')]
+						.filter(Boolean)
+						.join(': ')
+				: 'No passkey',
+			p.sessions ? `${plural(p.sessions, 'session', 'sessions')} open` : null
+		]
+			.filter(Boolean)
+			.join(' · ');
 
 	const initials = (name: string) =>
 		name
@@ -50,6 +74,7 @@
 				<span class="who">
 					<span class="n">{p.name}</span>
 					<span class="e">{p.email}</span>
+					<span class="e">{accessLine(p)}</span>
 				</span>
 				<span class="as">{p.role ?? 'Not paid'} · {ACCESS_WORDS[p.access].label}</span>
 				<span class="lab {STANDING[standing(p)].tone}">{STANDING[standing(p)].label}</span>

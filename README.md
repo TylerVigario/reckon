@@ -311,6 +311,13 @@ can't, and aren't offered work; everything they did is kept, and they can be
 reactivated. Team also says when each person last signed in, and who is
 Invited, or whose invitation expired unused.
 
+**Team shows what anyone checking access reads.** Each person's row says when
+they last signed in, their passkeys and where each is kept, and how many
+sessions they have open; the security log says what changed and who changed
+it. Reviewing access is the business's to do, by looking there (SOC 2 CC6.2
+and CC6.3): reckon keeps no record that someone looked, as GitHub keeps none of
+its own.
+
 **Better Auth's routes are mounted under `/api/auth`**, as its SvelteKit guide
 has it, and only where `SITE_URL` is set: that is the only base URL Better Auth
 is given, never one taken from a request. `src/lib/server/auth-paths.ts` lists
