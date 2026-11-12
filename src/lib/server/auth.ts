@@ -16,6 +16,7 @@ import { eitherOf } from './secret-file.ts';
 import { CLOSED_AUTH_PATHS } from './auth-paths.ts';
 import { beforeKeeping, beforeSigningIn, forTheLink, mayOpenSession } from './passkeys.ts';
 import type { Access } from '#lib/access.ts';
+import { log } from './log.ts';
 
 /**
  * Sign-in, by Better Auth over the app's own database, with passkeys alone:
@@ -87,7 +88,7 @@ function createAuth() {
 		logger: {
 			log: (level, message, ...args: unknown[]) => {
 				if (level === 'warn' && message.includes('Base URL is not set')) return;
-				console[level]('[Better Auth]', message, ...args);
+				log[level]({ 'code.namespace': 'better-auth', ...(args.length ? { args } : {}) }, message);
 			}
 		},
 		advanced: {

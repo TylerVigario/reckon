@@ -1,4 +1,5 @@
 import { problem } from './problem.ts';
+import { log } from './log.ts';
 
 /**
  * Turning a database complaint into one a person can act on, keyed to the box
@@ -29,7 +30,13 @@ const only = (errors: Errors) => {
 };
 
 /** What Postgres said, under Drizzle's wrapper: the pg error is its cause. */
-type PgError = { code?: string; constraint?: string; column?: string; message?: string };
+type PgError = {
+	code?: string;
+	constraint?: string;
+	table?: string;
+	column?: string;
+	message?: string;
+};
 export function pgError(e: unknown): PgError {
 	const outer = e as { cause?: unknown; code?: string };
 	return (outer?.code === undefined && outer?.cause ? outer.cause : e) as PgError;
@@ -75,11 +82,17 @@ export function refuseIfTheDatabaseSaidSo(e: unknown, names: string[], prefix: s
 	// detail goes to the log, to be fixed there -- not in a field label,
 	// where "violates check constraint service_minimum_charge_check" is
 	// nothing anybody can act on.
-	console.error('the database refused a value', {
-		code,
-		constraint: err.constraint,
-		message: err.message
-	});
+	// The code and the rule, never Postgres's own message: that can quote the
+	// value typed, which is the person's, not the log's (ASVS 5.0 16.2.5).
+	log.error(
+		{
+			'db.response.status_code': code,
+			'db.collection.name': err.table,
+			constraint: err.constraint,
+			column: err.column
+		},
+		'the database refused a value'
+	);
 	// 23505 is a unique violation, and "already taken" is the one database
 	// complaint a person can act on directly -- so it says that rather than
 	// the generic refusal.

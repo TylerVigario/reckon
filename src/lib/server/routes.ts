@@ -1,4 +1,5 @@
 import { googleKey } from './google-key.ts';
+import { log } from './log.ts';
 
 /**
  * A TRIP'S MILES BY GOOGLE'S ROUTE: the Routes API, asked by this server only,
@@ -117,7 +118,14 @@ async function legsOf(
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 		if (!r.ok) {
-			console.error('Google would not give a route', r.status, await r.text().catch(() => ''));
+			log.error(
+				{
+					'server.address': 'routes.googleapis.com',
+					'http.response.status_code': r.status,
+					body: (await r.text().catch(() => '')).slice(0, 300)
+				},
+				'Google would not give a route'
+			);
 			return null;
 		}
 		const body = (await r.json()) as {

@@ -26,6 +26,7 @@ import {
 } from './notices.js';
 import { LOGO_CID, laidOut, mailableLogo } from './email-layout.js';
 import { eitherOf } from './secret-file.ts';
+import { log } from './log.ts';
 
 /**
  * EMAIL, by SMTP to the relay SMTP_HOST names, from SMTP_FROM. Every provider
@@ -379,8 +380,9 @@ async function sendOne(
 				nextTryAt: sql`now() + ${sql.raw(`interval '${againAfter(m.tries)} seconds'`)}`,
 				lastError: said
 			});
-		console.warn(
-			`An email (${m.id}) was not sent${permanent ? ', and will not be' : ', and will be tried again'}: ${said}`
+		log.warn(
+			{ 'email.id': m.id, reason: said },
+			`An email was not sent${permanent ? ', and will not be' : ', and will be tried again'}`
 		);
 	}
 }
@@ -437,24 +439,24 @@ export async function sendTest(to: { name: string; email: string }) {
 export function startSending(): void {
 	const relay = mailer();
 	if (!relay)
-		console.warn(
+		log.warn(
 			'SMTP_HOST is unset: reckon sends no email, and nobody can be invited. A notice waits a week for one to be set.'
 		);
 	else if (!SITE_URL)
-		console.warn(
+		log.warn(
 			'SITE_URL is unset: reckon has no address to build a link from, so nobody can be invited or sent a new link by email.'
 		);
 	else {
 		// Chosen, and allowed, but never quietly (RFC 8314 §5.2).
 		if (SMTP_SECURITY === 'none' && !isLoopback(relay.host))
-			console.warn(
+			log.warn(
 				`SMTP_SECURITY=none: email to ${relay.host} crosses the network unencrypted, readable and changeable on the way.`
 			);
 		relay.transport
 			.verify()
-			.then(() => console.log(`Email goes to ${relay.host}, as ${relay.from}: it answers.`))
+			.then(() => log.info(`Email goes to ${relay.host}, as ${relay.from}: it answers.`))
 			.catch((e: Error & { response?: string }) =>
-				console.warn(
+				log.warn(
 					`Email goes to ${relay.host}, which does not answer as it should yet: ${(e.response ?? e.message).slice(0, 300)}`
 				)
 			);
@@ -492,5 +494,4 @@ export function startSending(): void {
 	void sendDue().catch(report);
 }
 
-const report = (e: unknown) =>
-	console.error('Sending email failed:', e instanceof Error ? e.message : e);
+const report = (e: unknown) => log.error({ err: e }, 'Sending email failed');

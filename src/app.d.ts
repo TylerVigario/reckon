@@ -30,6 +30,14 @@ declare global {
 			/** Light or dark as this device is set, or null for its own (#lib/device-fields). */
 			theme: Theme | null;
 		}
+		interface Error {
+			message: string;
+			/**
+			 * Given to an error nobody meant, and recorded with it in the log, so
+			 * whoever is shown it can say which (hooks.server.ts handleError).
+			 */
+			id?: string;
+		}
 		interface PageState {
 			/**
 			 * An invitation just sent, carried from Add person to the person's page

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { log } from './log.ts';
 
 vi.mock('$app/env/private', () => ({
 	GOOGLE_MAPS_API_KEY: 'test-key',
@@ -35,11 +36,11 @@ describe('validate', () => {
 		vi.stubGlobal('fetch', () =>
 			Promise.resolve(new Response(JSON.stringify({ error: { message: said } }), { status: 400 }))
 		);
-		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const logged = vi.spyOn(log, 'error').mockImplementation(() => {});
 		const thrown = await validate(ADDRESS).catch((e: unknown) => e);
 		expect(thrown).toBeInstanceOf(NoVerdict);
 		expect((thrown as Error).message).not.toContain('API key');
-		expect(JSON.stringify(log.mock.calls)).toContain('API key not valid');
+		expect(JSON.stringify(logged.mock.calls)).toContain('API key not valid');
 	});
 
 	it('says so when Google runs out of time', async () => {
@@ -53,7 +54,7 @@ describe('validate', () => {
 
 	it('gives no verdict, rather than throwing something else, when Google cannot be reached', async () => {
 		vi.stubGlobal('fetch', () => Promise.reject(new TypeError('fetch failed')));
-		vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.spyOn(log, 'error').mockImplementation(() => {});
 		await expect(validate(ADDRESS)).rejects.toThrow(NoVerdict);
 	});
 });

@@ -32,6 +32,7 @@ reckon is a SvelteKit project with Drizzle, laid out as both lay one out.
 | `drizzle/`                      | the schema as applied SQL: generated from the above, and hand-written migrations for whatever Drizzle can't say |
 | `src/lib/server/db/migrate.ts`  | brings a database up to date as its owner, and checks, as the server starts, that it is                         |
 | `src/lib/server/valuation/`     | what an hour bills, what it pays, what a retainer covers, and the tax split — exact decimals, tested            |
+| `src/lib/server/log.ts`         | the log: one JSON line for each thing the server records — see [Logging](#logging)                              |
 | `tests/db/constraints.sql`      | proves the guards, both ways                                                                                    |
 | `tests/`                        | the behaviour checks, which drive the built app in a browser against an invented business                       |
 | `scripts/`                      | the commands: adding people, refreshing tax rates, migrating, proving the guards, printing, making a release    |
@@ -466,6 +467,38 @@ Name a header the proxy sets from the connection. One it overwrites, like an
 `X-Real-IP` set from the connection's address, needs nothing else.
 `X-Forwarded-For` is one a client can start, so it also needs `XFF_DEPTH`: the
 number of proxies in front, 1 for one.
+
+## Logging
+
+**The server writes one JSON line for each thing it records**, on standard
+output, where whatever runs it keeps it — journald, under a service unit
+(`src/lib/server/log.ts`, by pino). JSON, so a line break inside a value is
+written as `\n`, and nothing anyone types can begin a line of its own. Each line
+has its `time`, in ISO 8601 and UTC, and its `level`. An event is named as
+OWASP's Logging Vocabulary names it, in the field OWASP's own example calls
+`event`; every other field has OpenTelemetry's name — `user.id`,
+`client.address`, `user_agent.original`, `http.request.method`, `http.route`.
+
+What is recorded, and where (ASVS 5.0 16.1.1):
+
+|                                        | where                             |                                                                                      |
+| -------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------ |
+| `sys_startup`, `sys_shutdown`          | the log                           | each start, once the database is checked; each stop, with why                        |
+| `sys_crash`                            | the log                           | a start that failed, or an exception nothing caught; Node's own stack follows it     |
+| an error nobody meant                  | the log                           | with its `error.id`, the route and who asked; the person is shown the id and no more |
+| a value the database refused           | the log                           | its code, table, constraint and column — never what was typed                        |
+| email, Google and the relay's settings | the log                           | a message not sent, a lookup refused, a setting left unsafe                          |
+| Better Auth's own messages             | the log                           | under `code.namespace` `better-auth`                                                 |
+| every change to the business's records | `record_history`, in the database | who, when and what, kept with the books, and shown on each record                    |
+
+Never written: a secret, a token, a cookie, a session id, a sign-in link or an
+email's body. An object that carries one by name has it replaced with
+`[kept out]`. The one line that is not JSON is adapter-node's own
+`Listening on …` as it starts.
+
+How long the log is kept, and copying it to another machine so that a breach
+of this one cannot change it (16.4.3), are the host's: journald's settings, and
+whatever ships it.
 
 ## A release
 
