@@ -39,7 +39,22 @@ import type { Access } from '#lib/access.ts';
  * Secure is SECURE_COOKIES, said outright, not inferred from the base URL.
  */
 
-const SESSION_DAYS = 30;
+/**
+ * HOW LONG SOMEONE STAYS SIGNED IN, as GitHub keeps them: until two weeks
+ * without use ("GitHub typically marks a user session for deletion after two
+ * weeks of inactivity"), each use carrying it on -- Better Auth's own expiry,
+ * slid forward at the first use in each hour. The checks that matter are
+ * where the harm is instead: a lost phone's passkeys ended on Team, and
+ * signing in again is a touch, where asking often costs more than it guards
+ * (Microsoft: "Regular reauthentication prompts are bad for user productivity
+ * and can make users more vulnerable to attacks"). Over 20 hours, so WCAG
+ * 2.2.1 asks no warning before it.
+ *
+ * An overall limit besides, however much a session is used -- NIST SP
+ * 800-63B-4 §2.2.3: one "SHALL be established"; ASVS 5.0 7.3.2 -- is Better
+ * Auth's to give, and it has none yet (better-auth/better-auth#10405).
+ */
+const SESSION_UNUSED_DAYS = 14;
 
 /** The secret every session is signed with. Undefined only while building. */
 export function authSecret(): string | undefined {
@@ -94,10 +109,10 @@ function createAuth() {
 		// No passwords: a passkey is the only way in.
 		emailAndPassword: { enabled: false },
 		session: {
-			expiresIn: SESSION_DAYS * 86400,
-			// Slid forward once past halfway, so daily use never expires mid-job
-			// while an abandoned browser still ages out.
-			updateAge: (SESSION_DAYS / 2) * 86400
+			expiresIn: SESSION_UNUSED_DAYS * 86400,
+			// Slid forward at the first use in each hour: two weeks from the last
+			// use, give or take that hour, for one row written an hour at most.
+			updateAge: 3600
 		},
 		user: {
 			// Set when a person is added or their role changes, never by the
