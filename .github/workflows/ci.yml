@@ -201,19 +201,61 @@ jobs:
           done
           echo "::error::the relay stand-in never answered"; exit 1
 
-      - name: A business to run the checks against
+      - name: A business to run the checks against, owned by one role, served by another that owns none of it
         # The database's default zone is set to one nobody keeps. reckon opens
         # its connections in UTC and names a zone wherever it works out a day,
         # so nothing it shows may depend on the host's zone, and here it would.
+        #
+        # The two roles of the README's "The database": reckon_owner owns it,
+        # and the server connects as reckon, granted rows and nothing more, so
+        # anything that quietly needs to own a table fails here first. The owner
+        # signs in nowhere: the job's superuser migrates, as a host's postgres
+        # could, and db:migrate acts as the owner. The server migrating as it
+        # starts is the Build job's.
         run: |
-          createdb reckon_ci
+          psql -q -v ON_ERROR_STOP=1 -d postgres <<'SQL'
+          CREATE ROLE reckon_owner;
+          CREATE ROLE reckon LOGIN PASSWORD 'ci-only-serving-role';
+          SQL
+          createdb -O reckon_owner reckon_ci
           psql -q -d postgres -c "ALTER DATABASE reckon_ci SET TimeZone = 'Pacific/Kiritimati'"
           npm run db:migrate
           npm run db:seed
+          psql -q -v ON_ERROR_STOP=1 -d reckon_ci <<'SQL'
+          GRANT USAGE ON SCHEMA public, drizzle TO reckon;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO reckon;
+          GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO reckon;
+          GRANT SELECT ON drizzle.__drizzle_migrations TO reckon;
+          ALTER DEFAULT PRIVILEGES FOR ROLE reckon_owner IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO reckon;
+          ALTER DEFAULT PRIVILEGES FOR ROLE reckon_owner IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO reckon;
+          SQL
+
+      - name: The role that owns nothing may not migrate, and is told why
+        # By hand, db:migrate stops before it tries anything; and a server
+        # told to migrate as it starts says the same and does not start,
+        # rather than showing the first statement Postgres refused.
+        env:
+          PGUSER: reckon
+          PGPASSWORD: ci-only-serving-role
+        run: |
+          if out=$(npm run db:migrate 2>&1); then
+            echo "::error::db:migrate ran as reckon"; exit 1
+          fi
+          grep -q "reckon may not act as its owner, reckon_owner" <<<"$out" || {
+            echo "$out"; echo "::error::db:migrate did not say why"; exit 1
+          }
+          if out=$(MIGRATE_ON_START=true timeout 60 node build 2>&1); then
+            echo "::error::the server started, told to migrate as reckon"; exit 1
+          fi
+          grep -q "reckon may not do what the migrations do" <<<"$out" || {
+            echo "$out"; echo "::error::the server did not say why"; exit 1
+          }
 
       - name: Start it
+        # As the role that owns nothing, checking the database is up to date
+        # rather than migrating it.
         run: |
-          node build &
+          PGUSER=reckon PGPASSWORD=ci-only-serving-role node build &
           echo $! > /tmp/reckon.pid
           for _ in $(seq 1 30); do
             curl -sf -o /dev/null "http://127.0.0.1:5178/login" && exit 0
@@ -348,7 +390,7 @@ jobs:
           check offline
           # While the phone is out of reach, the server moves on without it.
           psql -q -v ON_ERROR_STOP=1 -d reckon_ci -f tests/offline-meanwhile.sql
-          node build &
+          PGUSER=reckon PGPASSWORD=ci-only-serving-role node build &
           echo $! > /tmp/reckon.pid
           for _ in $(seq 1 30); do
             curl -sf -o /dev/null "http://127.0.0.1:$PORT/login" && break
@@ -422,7 +464,7 @@ jobs:
       - uses: ./.github/actions/setup
       - run: npm run build
 
-      - name: An empty database, which the server brings up to date as it starts
+      - name: An empty database, which the server, told to, brings up to date as it starts
         run: createdb reckon_ci
 
       - name: The build produced a server that serves a page
@@ -433,6 +475,9 @@ jobs:
           HOST: 127.0.0.1
           # Without one the server refuses to start, which is the point.
           BETTER_AUTH_SECRET: ci-only-secret-for-a-database-that-ends-with-the-job
+          # The other way a host may run it: connected as the owner, migrating
+          # as it starts. The behaviour job's server only checks.
+          MIGRATE_ON_START: 'true'
         run: |
           node build &
           pid=$!

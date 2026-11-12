@@ -5,6 +5,10 @@
  * tests/db/constraints.sql is run both ways -- what must be refused is, and the
  * ordinary case beside it still works -- and the database is dropped.
  *
+ * And that the server, which only checks unless MIGRATE_ON_START=true, refuses
+ * the database before it is brought up to date, takes it after, and refuses it
+ * again with a migration beside the build that it has not seen.
+ *
  *   npm run db:test
  *
  * Needs psql, since the guard suite is a psql script, and a role that may create
@@ -18,7 +22,10 @@ import './env.mjs';
 import { spawnSync } from 'node:child_process';
 import pg from 'pg';
 import { DEFAULT_PGHOST } from '../src/lib/server/db/defaults.js';
-import { bringUpToDate } from '../src/lib/server/db/migrate.ts';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Behind, MIGRATIONS, bringUpToDate, mustBeUpToDate } from '../src/lib/server/db/migrate.ts';
 
 const SCRATCH = 'reckon_guards';
 const SUITE = 'tests/db/constraints.sql';
@@ -33,9 +40,31 @@ console.log(`scratch database: ${SCRATCH}`);
 let failed = 0;
 try {
 	const pool = new pg.Pool({ host, database: SCRATCH, max: 1 });
+	// A copy of drizzle/ with one migration more, which the database has not seen.
+	const ahead = mkdtempSync(join(tmpdir(), 'reckon-migrations-'));
 	try {
+		const refuses = async (/** @type {string} */ what, /** @type {string} */ folder) => {
+			try {
+				await mustBeUpToDate(pool, folder);
+			} catch (e) {
+				if (e instanceof Behind) return console.log(`  ✓ ${what}: ${e.message}`);
+				throw e;
+			}
+			throw new Error(`${what}, and the check let it through`);
+		};
+		await refuses('the server refuses a database nothing was applied to', MIGRATIONS);
 		await bringUpToDate(pool);
+		await mustBeUpToDate(pool);
+		console.log('  ✓ and takes it once it is up to date');
+		cpSync(MIGRATIONS, ahead, { recursive: true });
+		const journal = JSON.parse(readFileSync(join(ahead, 'meta/_journal.json'), 'utf8'));
+		const last = journal.entries.at(-1);
+		journal.entries.push({ ...last, idx: last.idx + 1, when: last.when + 1, tag: '9999_waiting' });
+		writeFileSync(join(ahead, 'meta/_journal.json'), JSON.stringify(journal));
+		writeFileSync(join(ahead, '9999_waiting.sql'), 'select 1;');
+		await refuses('and refuses it with a migration beside the build it has not seen', ahead);
 	} finally {
+		rmSync(ahead, { recursive: true, force: true });
 		await pool.end();
 	}
 

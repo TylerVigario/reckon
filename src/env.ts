@@ -161,6 +161,16 @@ export const variables = defineEnvVars({
 		}
 	},
 
+	MIGRATE_ON_START: {
+		description:
+			"Whether the server brings the database up to date as it starts, which it can only do connected as the database's owner. false unless set: the server only checks, and will not start while a migration is waiting; `node scripts/migrate.mjs` (`npm run db:migrate` in a clone) applies them, as the owner, before it starts, so the server can connect as a role that owns nothing (#lib/server/db/migrate).",
+		schema: (value = 'false') => {
+			if (value === 'true') return true;
+			if (value === 'false') return false;
+			throw new Error(`MIGRATE_ON_START must be true or false, not '${value}'.`);
+		}
+	},
+
 	SMTP_HOST: {
 		description:
 			"The relay reckon hands its email to (#lib/server/email): any host that takes mail by SMTP -- a provider's (smtp.example.com), or a mail server on this machine or this network. Unset, reckon sends no email.",
