@@ -1,0 +1,2 @@
+ALTER TABLE "security_event" DROP CONSTRAINT "security_event_name_check";--> statement-breakpoint
+ALTER TABLE "security_event" ADD CONSTRAINT "security_event_name_check" CHECK ("security_event"."name" = ANY (ARRAY['authn_login_success', 'authn_login_fail', 'excess_rate_limit_exceeded', 'session_logout', 'session_expired', 'authn_passkey_added', 'authn_passkey_removed', 'authn_link_issued', 'authn_link_used', 'authn_link_refused', 'user_created', 'user_updated', 'authz_change', 'user_archived', 'user_restored', 'authz_fail', 'access_reviewed']));

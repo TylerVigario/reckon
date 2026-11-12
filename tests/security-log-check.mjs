@@ -4,7 +4,8 @@
  * shows each person theirs and someone with Full everyone's: a sign-in, a
  * sign-in refused for a passkey reckon doesn't know, a screen and a request
  * refused to Field, Field's access changed by someone with Full and changed
- * back, link codes tried until the network is turned away, and a sign-out --
+ * back, link codes tried until the network is turned away, the access review
+ * marked on Team and refused to Field, and a sign-out --
  * each a row, from where it came, and each said on Your profile and on Team. Field opens neither Team's log nor anyone's on it.
  *
  *   node tests/security-log-check.mjs <base-url> <full-email> <field-email>
@@ -230,6 +231,54 @@ check(
 );
 check(turned.length === 1, 'and being turned away is too (16.3.3)', `${turned.length} rows`);
 await db.query('delete from link_try where network = $1', [HERE]);
+
+console.log('The access review on Team');
+const fieldName = /** @type {string} */ (
+	(await db.query('select name from "user" where id = $1', [field])).rows[0].name
+);
+const fullName = /** @type {string} */ (
+	(await db.query('select name from "user" where id = $1', [full])).rows[0].name
+);
+const review = async (/** @type {ReturnType<typeof as>} */ who) =>
+	who('/team?/review', {
+		method: 'POST',
+		body: '',
+		headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-sveltekit-action': 'true' }
+	});
+const team = await (await asFull('/team')).text();
+const fieldRow = team.slice(team.indexOf(fieldName));
+check(
+	/Signed in [^<]*·\s*1(\s|&nbsp;)passkey/.test(fieldRow),
+	'Team says when each last signed in, and their passkeys and where each is kept',
+	fieldRow.slice(0, 300).replace(/\s+/g, ' ')
+);
+check(/Mark access reviewed/.test(team), 'and offers Full the review to mark');
+const byField = await review(asField);
+// A form action is answered in JSON, a redirect as one: either way, to /refused.
+const refusedTo =
+	byField.status === 303
+		? byField.headers.get('location')
+		: /** @type {{ location?: string }} */ (await byField.json()).location;
+check(/\/refused/.test(refusedTo ?? ''), 'Field marks no review: turned away', String(refusedTo));
+check(
+	(await rows('access_reviewed', 'e.user_id = $3', [field])).length === 0,
+	'and none is recorded for them'
+);
+const byFull = await review(asFull);
+check(byFull.ok, 'Full marks access reviewed', String(byFull.status));
+check(
+	(await rows('access_reviewed', 'e.user_id = $3', [full])).length === 1,
+	'and it is recorded, about whoever marked it'
+);
+const after = await (await asFull('/team')).text();
+check(
+	/Last marked reviewed[^<]*by /.test(after) && after.includes(fullName),
+	'Team then says when it was last marked reviewed, and by whom'
+);
+check(
+	(await (await asFull('/team/security-log')).text()).includes('Access reviewed'),
+	'as Team’s security log does'
+);
 
 console.log('Signing out');
 const out = await asField('/logout', {
