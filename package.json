@@ -70,7 +70,7 @@
 		"vitest": "^5.1.0"
 	},
 	"dependencies": {
-		"@simplewebauthn/server": "^13.3.3",
+		"@simplewebauthn/server": "^14.1.0",
 		"nodemailer": "^10.4.0",
 		"pg": "^8.23.1",
 		"pgpass": "^1.0.6"
