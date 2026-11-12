@@ -9,6 +9,7 @@ import { NEW_PERSON_FIELDS } from '#lib/people-fields.ts';
 import type { Access } from '#lib/access.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
+import { record } from '#lib/server/events.ts';
 import { readFields } from '#lib/json.ts';
 
 /**
@@ -44,6 +45,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					access: values.access as Access
 				})
 				.returning({ id: user.id });
+			await record(tx, 'user_created', {
+				user: person.id,
+				detail: { access: values.access as Access }
+			});
 			const sent = await issue(tx, person.id, 'invite', me.id);
 			await tell(
 				tx,

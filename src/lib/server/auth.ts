@@ -14,7 +14,15 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { db, schema } from './db/index.ts';
 import { eitherOf } from './secret-file.ts';
 import { CLOSED_AUTH_PATHS } from './auth-paths.ts';
-import { beforeKeeping, beforeSigningIn, forTheLink, mayOpenSession } from './passkeys.ts';
+import { createAuthMiddleware, isAPIError } from 'better-auth/api';
+import {
+	beforeKeeping,
+	beforeSigningIn,
+	forTheLink,
+	mayOpenSession,
+	sessionOpened,
+	signInRefused
+} from './passkeys.ts';
 import type { Access } from '#lib/access.ts';
 import { log } from './log.ts';
 
@@ -131,9 +139,30 @@ function createAuth() {
 				weekStart: { type: 'number', required: false, input: false }
 			}
 		},
-		// Every session opens for someone still active (#lib/server/passkeys).
+		// Every session opens for someone still active, and each that opens is a
+		// sign-in in the security log (#lib/server/passkeys).
 		databaseHooks: {
-			session: { create: { before: (session) => mayOpenSession(session.userId) } }
+			session: {
+				create: {
+					before: (session) => mayOpenSession(session.userId),
+					after: (session, ctx) => sessionOpened(session.userId, ctx?.path)
+				}
+			}
+		},
+		// And each passkey sign-in refused, by the plugin or by reckon, is one too,
+		// with whose passkey it was where that is known.
+		hooks: {
+			after: createAuthMiddleware(async (ctx) => {
+				if (ctx.path !== '/passkey/verify-authentication') return;
+				const returned = ctx.context.returned;
+				if (!isAPIError(returned)) return;
+				const body = returned.body as { code?: string; message?: string } | undefined;
+				await signInRefused(
+					(ctx.body as { response?: { id?: string } } | undefined)?.response?.id,
+					body?.code,
+					body?.message ?? returned.message
+				);
+			})
 		},
 		plugins: [
 			// Passkeys, for this site alone: its host name is what each is made for,

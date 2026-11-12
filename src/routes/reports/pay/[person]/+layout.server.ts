@@ -6,6 +6,7 @@ import { businessToday } from '#lib/server/calendar.ts';
 import { owed, paymentsTo } from '#lib/server/pay.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
+import { refusedForAccess } from '#lib/server/refused.ts';
 import type { LayoutServerLoad } from './$types';
 
 /**
@@ -14,9 +15,12 @@ import type { LayoutServerLoad } from './$types';
  * made, Paid lists them. Someone with Field opens only their own, to read
  * (#lib/access).
  */
-export const load: LayoutServerLoad = async ({ params, locals }) => {
+export const load: LayoutServerLoad = async ({ params, locals, route, request }) => {
 	if (!UUID.test(params.person)) error(404, 'Nobody with that id.');
-	if (fieldOnly(locals) && params.person !== locals.user!.id) error(404, 'Nobody with that id.');
+	if (fieldOnly(locals) && params.person !== locals.user!.id) {
+		await refusedForAccess({ locals, route, request });
+		error(404, 'Nobody with that id.');
+	}
 	const [person] = await db
 		.select({ id: t.user.id, name: t.user.name, role: t.role.name })
 		.from(t.user)

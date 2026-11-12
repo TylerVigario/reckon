@@ -490,11 +490,34 @@ What is recorded, and where (ASVS 5.0 16.1.1):
 | email, Google and the relay's settings | the log                           | a message not sent, a lookup refused, a setting left unsafe                          |
 | Better Auth's own messages             | the log                           | under `code.namespace` `better-auth`                                                 |
 | every change to the business's records | `record_history`, in the database | who, when and what, kept with the books, and shown on each record                    |
+| each security event                    | `security_event`, and the log     | below; each person sees theirs on Your profile, someone with Full everyone's on Team |
 
 Never written: a secret, a token, a cookie, a session id, a sign-in link or an
 email's body. An object that carries one by name has it replaced with
 `[kept out]`. The one line that is not JSON is adapter-node's own
 `Listening on …` as it starts.
+
+**The security log is every sign-in and every change to who can reach what**
+(`src/lib/server/events.ts`): a row of `security_event` for people to read, and
+a line of the log, its `event` the name below, `user.id` whom it was about and
+`by.user.id` who did it where that was someone else. Your profile shows each
+person theirs, and what they did to anyone else; Team shows someone with Full
+everyone's, and each person's on their page. The database stamps each with its
+own clock, never lets one change, and removes one only once it is a year old,
+which the server does every day; someone in it is made inactive, never deleted.
+
+|                                                              |                                                                                        |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `authn_login_success`                                        | signed in, with a passkey or with the first one a link made                            |
+| `authn_login_fail`                                           | a passkey sign-in refused: one reckon doesn't know, a check failed, someone not active |
+| `excess_rate_limit_exceeded`                                 | Better Auth's limit on its routes, or too many link codes tried from one network       |
+| `session_logout`, `session_expired`                          | signed out; signed out everywhere, with why                                            |
+| `authn_passkey_added`, `authn_passkey_removed`               | a passkey made, removed, or ended as lost or stolen                                    |
+| `authn_link_issued`, `authn_link_used`, `authn_link_refused` | an invitation or other link sent or used; a code that was not one to use               |
+| `user_created`, `user_updated`                               | someone added; their name, address or role changed — which, never what to              |
+| `authz_change`                                               | their access changed, from and to                                                      |
+| `user_archived`, `user_restored`                             | made inactive, or active again                                                         |
+| `authz_fail`                                                 | refused for lack of access, by route — answered 403, or as not found                   |
 
 How long the log is kept, and copying it to another machine so that a breach
 of this one cannot change it (16.4.3), are the host's: journald's settings, and

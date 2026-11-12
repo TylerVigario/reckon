@@ -70,11 +70,16 @@ export const reportTabs = (here: 'pay' | 'retainers' | 'non-billable' | 'schedul
 	{ href: resolve('/reports/schedule-a'), label: 'Schedule A', current: here === 'schedule-a' }
 ];
 
-/** The people who sign in, and the roles they are paid as. */
+/** The people who sign in, the roles they are paid as, and everyone's security log. */
 export const teamTabs = (
-	here: 'people' | 'roles',
+	here: 'people' | 'roles' | 'security-log',
 	counts: { people: number; roles: number }
 ): Tab[] => [
 	{ href: resolve('/team'), label: 'People', count: counts.people, current: here === 'people' },
-	{ href: resolve('/team/roles'), label: 'Roles', count: counts.roles, current: here === 'roles' }
+	{ href: resolve('/team/roles'), label: 'Roles', count: counts.roles, current: here === 'roles' },
+	{
+		href: resolve('/team/security-log'),
+		label: 'Security log',
+		current: here === 'security-log'
+	}
 ];

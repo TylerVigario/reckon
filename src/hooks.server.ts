@@ -29,6 +29,8 @@ import { LINK_PAGE } from '#lib/client-link.ts';
 import { problem } from '#lib/server/problem.ts';
 import { THEME_COOKIE, themeFrom } from '#lib/device-fields.ts';
 import { log, requestFields } from '#lib/server/log.ts';
+import { readOriginFrom, recordAside, startPruning } from '#lib/server/events.ts';
+import { refusedForAccess } from '#lib/server/refused.ts';
 
 /**
  * Made when the server starts rather than at its first request, so a
@@ -57,6 +59,8 @@ export const init: ServerInit = async () => {
 	if (building) return;
 	log.info({ event: 'sys_startup' }, 'reckon started');
 	watchTheProcess();
+	// And a year's security log is all that is kept (#lib/server/events).
+	startPruning();
 };
 
 async function startUp() {
@@ -77,6 +81,21 @@ async function startUp() {
 			return getRequestEvent().locals.locale ?? 'en-US';
 		} catch {
 			return 'en-US';
+		}
+	});
+	// Each security event says where its request came from and who was signed
+	// in to make it, from the request in hand (#lib/server/events).
+	readOriginFrom(() => {
+		try {
+			const event = getRequestEvent();
+			const fields = requestFields(event);
+			return {
+				address: fields['client.address'],
+				userAgent: fields['user_agent.original'],
+				by: event.locals.user?.id ?? null
+			};
+		} catch {
+			return {};
 		}
 	});
 	// And every amount in the business's currency, to its places (#lib/currency).
@@ -173,6 +192,13 @@ const betterAuthRoutes: Handle = async ({ event, resolve }) => {
 			}
 		}
 	});
+	// Better Auth's own limiter turning a request away (ASVS 5.0 16.3.3).
+	if (theirs && response.status === 429)
+		await recordAside('excess_rate_limit_exceeded', {
+			user: null,
+			by: null,
+			detail: { tried: event.url.pathname.replace(/^\/api\/auth/, '') }
+		});
 	return theirs ? secured(event.url, response) : response;
 };
 
@@ -243,6 +269,7 @@ const app: Handle = async ({ event, resolve }) => {
 	// screen is turned away to the one that says why, inside the app, as the
 	// sign-in page is reached -- an error thrown here would be drawn outside it.
 	if (event.locals.user && !reaches(event.locals.user.access, need)) {
+		await refusedForAccess(event);
 		if (path.startsWith('/api/'))
 			return secured(event.url, problem('beyondAccess', 403, 'That needs Full access.'));
 		redirect(303, '/refused');
@@ -253,6 +280,8 @@ const app: Handle = async ({ event, resolve }) => {
 	const response = await resolve(event, {
 		transformPageChunk: ({ html }) => html.replace('%theme%', event.locals.theme ?? '')
 	});
+	// And one a route refused itself: everything reckon answers 403 is that.
+	if (event.locals.user && response.status === 403) await refusedForAccess(event);
 
 	return secured(event.url, response);
 };

@@ -10,6 +10,7 @@ import { sum } from '#lib/decimal.ts';
 import { driveKey, type Place } from '#lib/trip-legs.ts';
 import type { TripDraft } from '#lib/trip/draft.ts';
 import { resolve } from '$app/paths';
+import { refusedForAccess } from '#lib/server/refused.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -18,12 +19,16 @@ import type { PageServerLoad } from './$types';
  * whose miles are billed or paid is not changed here, and its own screen says so.
  * Someone with Field changes only a trip they drove and recorded (#lib/access).
  */
-export const load: PageServerLoad = async ({ params, locals }) => {
+export const load: PageServerLoad = async ({ params, locals, route, request }) => {
 	if (!UUID.test(params.id)) error(404, 'No trip with that id.');
 	const [trip] = await db.select().from(t.trip).where(eq(t.trip.id, params.id));
 	const field = fieldOnly(locals);
 	const me = locals.user!.id;
-	if (!trip || (field && trip.drivenBy !== me)) error(404, 'No trip with that id.');
+	if (!trip) error(404, 'No trip with that id.');
+	if (field && trip.drivenBy !== me) {
+		await refusedForAccess({ locals, route, request });
+		error(404, 'No trip with that id.');
+	}
 	if (field && trip.createdBy !== me) redirect(303, resolve('/trips/[id]', { id: params.id }));
 	if (await settled(db, params.id)) redirect(303, resolve('/trips/[id]', { id: params.id }));
 

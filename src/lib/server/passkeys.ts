@@ -7,6 +7,7 @@ import { passkey, session, user } from './db/schema/index.ts';
 import { tell } from './email.ts';
 import { endPasskeyLinks, usableById, used } from './links.ts';
 import { passkeyAdded } from './notices.js';
+import { record, recordAside } from './events.ts';
 
 /**
  * WHAT RECKON ASKS OF A PASSKEY, beside what Better Auth's passkey plugin does
@@ -125,8 +126,26 @@ export async function endPasskeys(tx: Tx, userId: string): Promise<number> {
 		.delete(passkey)
 		.where(eq(passkey.userId, userId))
 		.returning({ id: passkey.id });
-	await tx.delete(session).where(eq(session.userId, userId));
+	if (ended.length)
+		await record(tx, 'authn_passkey_removed', {
+			user: userId,
+			detail: { passkeys: ended.length, why: 'ended' }
+		});
+	await signedOutEverywhere(tx, userId, 'their passkeys were ended');
 	return ended.length;
+}
+
+/**
+ * Ends every session someone has, and records it where there were any: the
+ * security log's "Signed out everywhere", with why.
+ */
+export async function signedOutEverywhere(tx: Tx, userId: string, why: string) {
+	const ended = await tx
+		.delete(session)
+		.where(eq(session.userId, userId))
+		.returning({ id: session.id });
+	if (ended.length)
+		await record(tx, 'session_expired', { user: userId, detail: { sessions: ended.length, why } });
 }
 
 /**
@@ -143,7 +162,11 @@ export async function endPasskey(tx: Tx, userId: string, passkeyId: string) {
 		.where(and(eq(passkey.id, passkeyId), eq(passkey.userId, userId)))
 		.returning({ name: passkey.name, aaguid: passkey.aaguid });
 	if (!ended) return null;
-	await tx.delete(session).where(eq(session.userId, userId));
+	await record(tx, 'authn_passkey_removed', {
+		user: userId,
+		detail: { passkey: passkeyName(ended), why: 'ended' }
+	});
+	await signedOutEverywhere(tx, userId, 'a passkey of theirs was ended');
 	const [{ left }] = await tx
 		.select({ left: count() })
 		.from(passkey)
@@ -189,8 +212,12 @@ export async function beforeKeeping({
 		from: browserName(request?.headers.get('user-agent'))
 	};
 	const named = { name: added.name ?? added.from ?? undefined };
+	const noted = { passkey: named.name ?? null };
 	if (!context) {
-		await tell(db, userId, (them, business) => passkeyAdded(them, business, added));
+		await db.transaction(async (tx) => {
+			await record(tx, 'authn_passkey_added', { user: userId, by: null, detail: noted });
+			await tell(tx, userId, (them, business) => passkeyAdded(them, business, added));
+		});
 		return named;
 	}
 	const kept = await db.transaction(async (tx) => {
@@ -198,7 +225,12 @@ export async function beforeKeeping({
 		if (!link || link.userId !== userId) return false;
 		await used(tx, link);
 		await endPasskeyLinks(tx, userId);
-		await tx.delete(session).where(eq(session.userId, userId));
+		await signedOutEverywhere(tx, userId, 'a new passkey was made with a link');
+		await record(tx, 'authn_passkey_added', {
+			user: userId,
+			by: null,
+			detail: { ...noted, with: 'a link' }
+		});
 		await tell(tx, userId, (them, business) => passkeyAdded(them, business, added));
 		return true;
 	});
@@ -247,6 +279,61 @@ const signedInNow = (userId: string) =>
  */
 export async function mayOpenSession(userId: string) {
 	const [person] = await db.select({ active: user.active }).from(user).where(eq(user.id, userId));
-	if (person?.active !== true)
-		throw new APIError('FORBIDDEN', { message: 'That passkey no longer signs anyone in.' });
+	if (person?.active !== true) throw new APIError('FORBIDDEN', { message: NOT_ACTIVE });
+}
+
+/** Said when a passkey's person has been made inactive. */
+export const NOT_ACTIVE = 'That passkey no longer signs anyone in.';
+
+/**
+ * A session just opened: a sign-in, with a passkey or with the first one a
+ * link made (ASVS 5.0 16.3.1, which asks for the factor too). Recorded aside,
+ * so a security log that could not be written turns nobody away.
+ */
+export const sessionOpened = (userId: string, path: string | undefined) =>
+	recordAside('authn_login_success', {
+		user: userId,
+		by: null,
+		detail: {
+			with:
+				path === '/passkey/verify-registration' ? 'a new passkey, made with a link' : 'a passkey'
+		}
+	});
+
+/** Why a passkey sign-in was refused, in the security log's own words for it. */
+export type RefusedBecause =
+	'unknown passkey' | 'check failed' | 'not verified' | 'not active' | 'expired' | 'other';
+
+/**
+ * A passkey sign-in refused, by the plugin's error or reckon's own: whose the
+ * passkey was, where reckon knows it, and why.
+ */
+export async function signInRefused(
+	credentialId: string | undefined,
+	code: string | undefined,
+	message: string | undefined
+) {
+	const because: RefusedBecause =
+		code === 'PASSKEY_NOT_FOUND'
+			? 'unknown passkey'
+			: code === 'AUTHENTICATION_FAILED'
+				? 'check failed'
+				: code === 'CHALLENGE_NOT_FOUND'
+					? 'expired'
+					: message === NOT_VERIFIED
+						? 'not verified'
+						: message === NOT_ACTIVE
+							? 'not active'
+							: 'other';
+	const [found] = credentialId
+		? await db
+				.select({ userId: passkey.userId })
+				.from(passkey)
+				.where(eq(passkey.credentialID, credentialId))
+		: [];
+	await recordAside('authn_login_fail', {
+		user: found?.userId ?? null,
+		by: null,
+		detail: { because }
+	});
 }

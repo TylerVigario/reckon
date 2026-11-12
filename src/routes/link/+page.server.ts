@@ -6,6 +6,7 @@ import { authHeaders, getAuth } from '#lib/server/auth.ts';
 import { MAKES_PASSKEY, missed, turnedAway, usable, used } from '#lib/server/links.ts';
 import { whomToContact } from '#lib/server/whom-to-contact.ts';
 import { pgError } from '#lib/server/field-errors.ts';
+import { record } from '#lib/server/events.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -124,6 +125,11 @@ export const actions: Actions = {
 					.where(and(eq(user.email, link.email), ne(user.id, link.userId)));
 				if (taken) return 'taken' as const;
 				await tx.update(user).set({ email: link.email }).where(eq(user.id, link.userId));
+				await record(tx, 'user_updated', {
+					user: link.userId,
+					by: null,
+					detail: { changed: 'email', with: 'a link' }
+				});
 				await used(tx, link);
 				return link;
 			});

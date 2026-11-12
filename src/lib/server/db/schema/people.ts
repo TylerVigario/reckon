@@ -22,6 +22,7 @@ import {
 	index,
 	inet,
 	integer,
+	jsonb,
 	pgTable,
 	smallint,
 	text,
@@ -389,5 +390,82 @@ export const linkTry = pgTable(
 	(t) => [
 		index('link_try_by_network').on(t.network, t.createdAt),
 		check('link_try_address_in_network', sql`${t.address} <<= ${t.network}`)
+	]
+);
+
+/**
+ * What happened to how someone signs in and what they can reach, each named
+ * as OWASP's Logging Vocabulary names it, and in its style where it has no
+ * name: it has none for a passkey, a link, or someone made active again
+ * (#lib/server/events). Closed, so the README's list of them is the list.
+ */
+export const SECURITY_EVENTS = [
+	'authn_login_success',
+	'authn_login_fail',
+	'excess_rate_limit_exceeded',
+	'session_logout',
+	'session_expired',
+	'authn_passkey_added',
+	'authn_passkey_removed',
+	'authn_link_issued',
+	'authn_link_used',
+	'authn_link_refused',
+	'user_created',
+	'user_updated',
+	'authz_change',
+	'user_archived',
+	'user_restored',
+	'authz_fail'
+] as const;
+
+/**
+ * THE SECURITY LOG (12 November 2026): every sign-in, refused or not, every
+ * passkey and link, everyone added or changed, every access change and every
+ * refusal for lack of it (ASVS 5.0 16.3.1-16.3.3), each also a line in the
+ * server's log (#lib/server/events). Each person sees their own, on Your
+ * profile, and someone with Full everyone's, on Team.
+ *
+ * It stands. The database stamps each with its own clock, whatever the row
+ * says; none is ever changed; and one is removed only once it is a year old,
+ * which the server does every day (PCI DSS 10.5.1's twelve months; GitHub
+ * keeps a person's 90 days). Triggers hold all of it, which only the table's
+ * owner could switch off, and the server's role owns nothing (README, "The
+ * database"). Someone in it is made inactive, never deleted: OWASP's "always
+ * best to archive users rather than deleting".
+ */
+export const securityEvent = pgTable(
+	'security_event',
+	{
+		id: id(),
+		at: tstz().defaultNow().notNull(),
+		name: text({ enum: SECURITY_EVENTS }).notNull(),
+		/** Whom it is about: who signed in, was refused, or was changed. Null where nobody is known. */
+		userId: uuid(),
+		/** Who did it, where it was someone else: someone with Full, on Team. */
+		byId: uuid(),
+		/** Where the request came from, as adapter-node resolved it. */
+		clientAddress: inet(),
+		/** The browser's own word for itself, cut to 512 characters. */
+		userAgent: text(),
+		/** What else it says: a reason, from and to, which passkey. Never a secret. */
+		detail: jsonb()
+	},
+	(t) => [
+		oneOf('security_event_name_check', t.name, SECURITY_EVENTS),
+		check('security_event_user_agent_bounded', sql`length(${t.userAgent}) <= 512`),
+		check('security_event_by_someone_else', sql`${t.byId} is null or ${t.byId} <> ${t.userId}`),
+		index('security_event_by_user').on(t.userId, t.at),
+		index('security_event_by_whom').on(t.byId, t.at),
+		index('security_event_by_when').on(t.at),
+		foreignKey({
+			name: 'security_event_user_id_fkey',
+			columns: [t.userId],
+			foreignColumns: [user.id]
+		}).onDelete('restrict'),
+		foreignKey({
+			name: 'security_event_by_id_fkey',
+			columns: [t.byId],
+			foreignColumns: [user.id]
+		}).onDelete('restrict')
 	]
 );

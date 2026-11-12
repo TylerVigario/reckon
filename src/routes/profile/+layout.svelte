@@ -7,7 +7,8 @@
 
 	/**
 	 * Your profile, and its tabs: Profile, how dates and figures read and the
-	 * address you sign in with, and Passkeys -- each its own address (Primer's
+	 * address you sign in with; Passkeys; and Security log, a year of what
+	 * happened to how you sign in -- each its own address (Primer's
 	 * UnderlineNav: "Use the UnderlineNav component when activating a tab
 	 * changes the URL"), under the head every record with tabs shares
 	 * (#lib/RecordHead). Only the tabs are drawn to Primer here (#lib/primer.css).
@@ -27,6 +28,11 @@
 				label: 'Passkeys',
 				count: data.passkeys,
 				current: page.route.id === '/profile/passkeys'
+			},
+			{
+				href: resolve('/profile/security-log'),
+				label: 'Security log',
+				current: page.route.id === '/profile/security-log'
 			}
 		]}
 	/>

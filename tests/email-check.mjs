@@ -15,7 +15,8 @@
  *
  * The server is to send to the relay stand-in (tests/smtp-stand-in.mjs), read
  * back at http://127.0.0.1:2526 unless said. Needs the database the server
- * uses: it leaves nothing it made.
+ * uses. The person it adds is left inactive, as anyone in the security log
+ * is, never deleted; the email it made is gone.
  */
 // First, so .env is read before anything reads what it sets.
 import { database } from '../scripts/env.mjs';
@@ -303,7 +304,7 @@ try {
 	failures.push(why);
 	console.log(`  ✗ ${why}`);
 } finally {
-	if (id) await db.query('delete from "user" where id = $1', [id]);
+	if (id) await db.query('update "user" set active = false where id = $1', [id]);
 	await db.query('delete from email_message where to_address = any($1)', [addresses]);
 	await db.end();
 }
