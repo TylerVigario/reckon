@@ -330,7 +330,13 @@ try {
 	);
 	void elsewhere;
 
-	await full.ask(`/api/people/${robinId}`, json('PATCH', { fields: { active: 'false' } }));
+	await full.ask(
+		`/api/people/${robinId}`,
+		json('PATCH', {
+			fields: { active: 'false' },
+			reason: 'Checking an inactive person is signed out'
+		})
+	);
 	const [{ open }] = (
 		await client.query('select count(*)::int as open from session where user_id = $1', [robinId])
 	).rows;

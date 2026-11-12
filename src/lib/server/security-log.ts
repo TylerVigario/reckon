@@ -113,6 +113,9 @@ export function inWords(name: SecurityEvent, d: Detail): string {
 			if (s('from') && s('to'))
 				parts.push(`${ACCESS[s('from')!] ?? s('from')} to ${ACCESS[s('to')!] ?? s('to')}`);
 			break;
+		case 'user_archived':
+			if (s('why')) parts.push(`“${s('why')}”`);
+			break;
 		case 'authz_fail':
 			if (s('route')) parts.push(`${s('method') ?? ''} ${s('route')}`.trim());
 			break;

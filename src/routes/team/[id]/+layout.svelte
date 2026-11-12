@@ -67,23 +67,35 @@
 
 	function ask(what: 'reset' | 'end' | 'deactivate') {
 		lost = null;
+		reason = '';
 		askError = '';
 		asking = what;
 	}
 
+	// Why they are made inactive, which they are emailed (api/people/[id]).
+	let reason = $state('');
+
 	async function setActive(active: boolean) {
+		if (!active && !reason.trim()) return void (askError = 'Say why. They’re emailed it.');
 		working = true;
 		const r = await fetch(`/api/people/${p.id}`, {
 			method: 'PATCH',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ fields: { active: String(active) } })
+			body: JSON.stringify({
+				fields: { active: String(active) },
+				...(active ? {} : { reason: reason.trim() })
+			})
 		}).catch(() => null);
 		const why = !r
 			? 'Not saved — no connection.'
 			: r.ok
 				? null
 				: await readProblem(r).then(
-						(problem) => problem.errors?.active ?? problem.detail ?? 'That did not save.'
+						(problem) =>
+							problem.errors?.active ??
+							problem.errors?.reason ??
+							problem.detail ??
+							'That did not save.'
 					);
 		if (!why) await refreshAll();
 		working = false;
@@ -418,5 +430,30 @@
 			{#if where === 'invited'}Their invitation stops working.{/if}
 			Their time, trips and pay are kept, and you can reactivate them.
 		</p>
+		<div class="fc">
+			<label class="fc-l" for="deactivate-why">Why</label>
+			<textarea
+				id="deactivate-why"
+				class="ti why"
+				rows="3"
+				maxlength="300"
+				bind:value={reason}
+				aria-invalid={askError ? 'true' : undefined}
+				oninput={() => (askError = '')}></textarea>
+			<p class="fc-c">{first} is emailed it, with who made them inactive.</p>
+		</div>
+		{#if askError}
+			<p class="fc-e"><Octicon name="alert" />{askError}</p>
+		{/if}
 	</Dialog>
 </div>
+
+<style>
+	/* A line or two of why, which Primer's single-line field is not shaped for. */
+	.ti.why {
+		min-height: 84px;
+		padding: 8px 12px;
+		line-height: 1.4;
+		resize: vertical;
+	}
+</style>

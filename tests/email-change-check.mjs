@@ -253,7 +253,10 @@ try {
 	);
 
 	// ----------------------------------------------------- deactivated ----
-	await asFull(`/api/people/${id}`, send('PATCH', { fields: { active: 'false' } }));
+	await asFull(
+		`/api/people/${id}`,
+		send('PATCH', { fields: { active: 'false' }, reason: 'Checking a change to someone inactive' })
+	);
 	const [{ since }] = (await db.query('select now() as since')).rows;
 	const gone = await changeTo(id, fifth);
 	const after = (await emailOf(id)) ?? {};

@@ -21,7 +21,11 @@ export const EMAIL_KINDS = /** @type {const} */ ([
 	'email_changing',
 	'passkey_added',
 	'passkey_removed',
-	'passkeys_ended'
+	'passkeys_ended',
+	'name_changed',
+	'access_changed',
+	'deactivated',
+	'reactivated'
 ]);
 
 /** @typedef {(typeof EMAIL_KINDS)[number]} EmailKind */
@@ -404,6 +408,107 @@ export function passkeyEnded(person, business, { name, at, by, left }) {
 			left
 				? `Your other ${left === 1 ? 'passkey still works: sign in with it' : 'passkeys still work: sign in with one of them'}.`
 				: `It was your last. To sign in again, ask ${by} to send you a new link to make a passkey with.`,
+			`If you didn't expect this, ask ${by} about it${orContact(business)}.`
+		]
+	});
+}
+
+/** What Full and Field reach, as a notice says it (#lib/access). */
+const REACHES = {
+	full: 'Full: everything, the business and its money included',
+	field: 'Field: their own work, and what they are paid for it'
+};
+
+/**
+ * The name reckon has for them was changed on Team, by someone with Full.
+ * NIST SP 800-63B-4 §4.6: each notice says what to do if it was not expected.
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {{ at: Date, by: string, was: string }} what
+ * @returns {Notice}
+ */
+export function nameChanged(person, business, { at, by, was }) {
+	return laid(person, business, {
+		kind: 'name_changed',
+		to: person.email,
+		subject: subject(business, 'your name was changed'),
+		heading: 'Your name was changed',
+		blocks: [
+			`Hello ${person.name},`,
+			`${by} changed the name ${theirReckon(business)} has for you from ${was} to ${person.name}, on ${when(at, person, business)}.`,
+			`If that isn't right, ask ${by} about it${orContact(business)}.`
+		]
+	});
+}
+
+/**
+ * What they can reach was changed on Team, by someone with Full: Field to
+ * Full, or back. OWASP's authz_change; told, so a change nobody meant is seen
+ * by the person it gives or takes from.
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {{ at: Date, by: string, from: 'full' | 'field', to: 'full' | 'field' }} what
+ * @returns {Notice}
+ */
+export function accessChanged(person, business, { at, by, from, to }) {
+	return laid(person, business, {
+		kind: 'access_changed',
+		to: person.email,
+		subject: subject(business, 'what you can reach changed'),
+		heading: 'What you can reach changed',
+		blocks: [
+			`Hello ${person.name},`,
+			`${by} changed what you can reach in ${theirReckon(business)}, on ${when(at, person, business)}: from ${from === 'full' ? 'Full' : 'Field'} to ${REACHES[to]}.`,
+			`If you didn't expect this, ask ${by} about it${orContact(business)}.`
+		]
+	});
+}
+
+/**
+ * They were made inactive on Team, by someone with Full, with why: signed out
+ * everywhere, and refused a session after (#lib/server/passkeys
+ * mayOpenSession). What they did is kept.
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {{ at: Date, by: string, why: string }} what
+ * @returns {Notice}
+ */
+export function deactivated(person, business, { at, by, why }) {
+	return laid(person, business, {
+		kind: 'deactivated',
+		to: person.email,
+		subject: subject(business, 'you were made inactive'),
+		heading: 'You were made inactive',
+		blocks: [
+			`Hello ${person.name},`,
+			`${by} made you inactive in ${theirReckon(business)}, on ${when(at, person, business)}. They said: ${why}`,
+			"You were signed out everywhere, and can't sign in. Your time, trips and pay are kept.",
+			`If you didn't expect this, ask ${by} about it${orContact(business)}.`
+		]
+	});
+}
+
+/**
+ * They were made active again on Team, by someone with Full: they sign in with
+ * the passkeys they had, or a new link where they have none.
+ *
+ * @param {Person} person
+ * @param {Business} business
+ * @param {{ at: Date, by: string }} what
+ * @returns {Notice}
+ */
+export function reactivated(person, business, { at, by }) {
+	return laid(person, business, {
+		kind: 'reactivated',
+		to: person.email,
+		subject: subject(business, 'you can sign in again'),
+		heading: 'You can sign in again',
+		blocks: [
+			`Hello ${person.name},`,
+			`${by} made you active again in ${theirReckon(business)}, on ${when(at, person, business)}. You can sign in with your passkey again; if you have none, ask ${by} for a new link to make one with.`,
 			`If you didn't expect this, ask ${by} about it${orContact(business)}.`
 		]
 	});
