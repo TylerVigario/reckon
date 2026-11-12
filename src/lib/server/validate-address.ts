@@ -1,5 +1,6 @@
 import { googleKey } from './google-key.ts';
 import type { Verdict } from '#lib/verdict.ts';
+import { log } from './log.ts';
 
 /**
  * Address validation, server-side.
@@ -93,7 +94,14 @@ export async function validate(address: {
 			signal: AbortSignal.timeout(TIMEOUT_MS)
 		});
 		if (!r.ok) {
-			console.error('address validation refused', r.status, await r.text());
+			log.error(
+				{
+					'server.address': 'addressvalidation.googleapis.com',
+					'http.response.status_code': r.status,
+					body: (await r.text()).slice(0, 300)
+				},
+				'Google refused to validate an address'
+			);
 			throw new NoVerdict(`Google answered ${r.status}.`);
 		}
 		answer = (await r.json()) as ValidationAnswer;
@@ -101,7 +109,10 @@ export async function validate(address: {
 		if (e instanceof NoVerdict) throw e;
 		if (e instanceof Error && e.name === 'TimeoutError')
 			throw new NoVerdict(`Google did not answer within ${TIMEOUT_MS / 1000} seconds.`);
-		console.error('address validation failed', e instanceof Error ? e.message : String(e));
+		log.error(
+			{ 'server.address': 'addressvalidation.googleapis.com', err: e },
+			'Google could not be reached to validate an address'
+		);
 		throw new NoVerdict('Google could not be reached.');
 	}
 

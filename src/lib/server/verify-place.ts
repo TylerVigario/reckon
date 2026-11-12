@@ -1,4 +1,5 @@
 import { googleKey } from './google-key.ts';
+import { log } from './log.ts';
 
 /**
  * Asks Google whether a place id is a place.
@@ -36,7 +37,14 @@ export async function verifyPlace(placeId: string): Promise<Verdict> {
 		// Logged for whoever runs the installation: a key Google refuses, or one
 		// not allowed this API, is theirs to put right, and looks to the person
 		// saving an address like Google being away.
-		console.error('Google would not confirm a place', r.status, await r.text().catch(() => ''));
+		log.error(
+			{
+				'server.address': 'places.googleapis.com',
+				'http.response.status_code': r.status,
+				body: (await r.text().catch(() => '')).slice(0, 300)
+			},
+			'Google would not confirm a place'
+		);
 		return 'unknown';
 	} catch {
 		return 'unknown';

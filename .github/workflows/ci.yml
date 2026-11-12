@@ -253,9 +253,10 @@ jobs:
 
       - name: Start it
         # As the role that owns nothing, checking the database is up to date
-        # rather than migrating it.
+        # rather than migrating it. What it writes is kept, for the last step
+        # to read back.
         run: |
-          PGUSER=reckon PGPASSWORD=ci-only-serving-role node build &
+          PGUSER=reckon PGPASSWORD=ci-only-serving-role node build >> /tmp/reckon.log 2>&1 &
           echo $! > /tmp/reckon.pid
           for _ in $(seq 1 30); do
             curl -sf -o /dev/null "http://127.0.0.1:5178/login" && exit 0
@@ -390,7 +391,7 @@ jobs:
           check offline
           # While the phone is out of reach, the server moves on without it.
           psql -q -v ON_ERROR_STOP=1 -d reckon_ci -f tests/offline-meanwhile.sql
-          PGUSER=reckon PGPASSWORD=ci-only-serving-role node build &
+          PGUSER=reckon PGPASSWORD=ci-only-serving-role node build >> /tmp/reckon.log 2>&1 &
           echo $! > /tmp/reckon.pid
           for _ in $(seq 1 30); do
             curl -sf -o /dev/null "http://127.0.0.1:$PORT/login" && break
@@ -430,7 +431,20 @@ jobs:
 
       - name: Stop it
         if: always()
-        run: kill "$(cat /tmp/reckon.pid)" 2>/dev/null || true
+        run: |
+          pid="$(cat /tmp/reckon.pid 2>/dev/null)"
+          kill "$pid" 2>/dev/null || true
+          for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+
+      - name: Every line the server wrote is a JSON record, with nothing it should keep out
+        # Shown whole first, since it is the server's side of anything above
+        # that failed. Then held to the README's "Logging": a record a line,
+        # started and stopped, no secret or session cookie, and no error
+        # nobody meant -- every request the checks make is answered on purpose.
+        if: always()
+        run: |
+          cat /tmp/reckon.log
+          node tests/log-check.mjs /tmp/reckon.log
 
   build:
     name: Build

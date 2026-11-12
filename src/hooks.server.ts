@@ -5,7 +5,12 @@
 // Node, without this file.
 import 'temporal-polyfill/global';
 import { redirect, error } from '@sveltejs/kit';
-import { sequence, type Handle, type ServerInit } from '@sveltejs/kit/hooks';
+import {
+	sequence,
+	type Handle,
+	type HandleServerError,
+	type ServerInit
+} from '@sveltejs/kit/hooks';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { MIGRATE_ON_START, SECURE_COOKIES, SITE_URL } from '$app/env/private';
 import { authHeaders, getAuth } from '#lib/server/auth.ts';
@@ -23,6 +28,7 @@ import { REACH, reaches } from '#lib/access.ts';
 import { LINK_PAGE } from '#lib/client-link.ts';
 import { problem } from '#lib/server/problem.ts';
 import { THEME_COOKIE, themeFrom } from '#lib/device-fields.ts';
+import { log, requestFields } from '#lib/server/log.ts';
 
 /**
  * Made when the server starts rather than at its first request, so a
@@ -38,6 +44,22 @@ import { THEME_COOKIE, themeFrom } from '#lib/device-fields.ts';
  * same way. Not while building, when there is no database to reach.
  */
 export const init: ServerInit = async () => {
+	try {
+		await startUp();
+	} catch (e) {
+		// One line saying why, before the start fails and its stack follows.
+		log.fatal(
+			{ event: 'sys_crash', err: e },
+			`reckon did not start: ${e instanceof Error ? e.message : String(e)}`
+		);
+		throw e;
+	}
+	if (building) return;
+	log.info({ event: 'sys_startup' }, 'reckon started');
+	watchTheProcess();
+};
+
+async function startUp() {
 	if (!building) await (MIGRATE_ON_START ? bringUpToDate(pool) : mustBeUpToDate(pool));
 	getAuth();
 	// A key given both as itself and as a file stops the start here, as the
@@ -68,15 +90,59 @@ export const init: ServerInit = async () => {
 	// Allowed, since building and a first start have none, but never quietly:
 	// without it nobody can sign in at all.
 	if (!building && !SITE_URL)
-		console.warn(
+		log.warn(
 			'SITE_URL is unset: a passkey is made for that site, so nobody can make one or sign in with one. Set it to where reckon is reached.'
 		);
 	// Chosen, and allowed, but never quietly: whoever reads the log should see
 	// that the session token is travelling in the clear.
 	if (!SECURE_COOKIES)
-		console.warn(
+		log.warn(
 			'SECURE_COOKIES=false: the session cookie is not Secure, so a browser sends it over plain http too.'
 		);
+}
+
+/** Set once the process is watched, so a reloaded module in development watches it once. */
+const WATCHED = Symbol.for('reckon.watched');
+
+/**
+ * Stopping, and an exception nothing caught, each recorded as one line: the
+ * second as Node is about to end the process, which it still does
+ * (uncaughtExceptionMonitor changes nothing of that).
+ */
+function watchTheProcess() {
+	const all = globalThis as { [WATCHED]?: true };
+	if (all[WATCHED]) return;
+	all[WATCHED] = true;
+	process.once('sveltekit:shutdown', (reason: string) =>
+		log.info({ event: 'sys_shutdown', reason }, `reckon stopping (${reason})`)
+	);
+	process.on('uncaughtExceptionMonitor', (e, origin) =>
+		log.fatal({ event: 'sys_crash', err: e, origin }, `reckon stopped: ${e.message}`)
+	);
+}
+
+/**
+ * AN ERROR NOBODY MEANT is recorded with an id, and whoever met it is shown
+ * that id and nothing more: never a stack, a query or a value (ASVS 5.0
+ * 16.3.4, 16.5.1). An error reckon throws on purpose -- a 404, a refusal --
+ * keeps its own status and message, and is not an error to record.
+ */
+export const handleError: HandleServerError = ({ kind, error, event }) => {
+	if (kind !== 'unknown') return;
+	const id = crypto.randomUUID();
+	log.error(
+		{
+			err: error,
+			'error.id': id,
+			'error.type': error instanceof Error ? error.constructor.name : typeof error,
+			...requestFields(event)
+		},
+		'An error nobody meant'
+	);
+	return {
+		message: `Something went wrong on reckon's side. If it happens again, give this to whoever runs reckon: ${id}`,
+		id
+	};
 };
 
 /**

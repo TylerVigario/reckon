@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { log } from './log.ts';
 
 vi.mock('$app/env/private', () => ({
 	GOOGLE_MAPS_API_KEY: 'test-key',
@@ -64,9 +65,9 @@ describe("a trip's miles by Google's route", () => {
 		vi.stubGlobal('fetch', () =>
 			Promise.resolve(new Response('Routes API has not been used in project', { status: 403 }))
 		);
-		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const logged = vi.spyOn(log, 'error').mockImplementation(() => {});
 		expect(await routeMiles([place(300), place(301)])).toBeNull();
-		expect(JSON.stringify(log.mock.calls)).toContain('Routes API has not been used');
+		expect(JSON.stringify(logged.mock.calls)).toContain('Routes API has not been used');
 	});
 
 	it('says nothing when the answer has the wrong number of legs', async () => {
@@ -135,7 +136,7 @@ describe("a site's drive, there and back", () => {
 	});
 
 	it('says nothing when Google refuses', async () => {
-		vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.spyOn(log, 'error').mockImplementation(() => {});
 		vi.stubGlobal('fetch', () => Promise.resolve(new Response('denied', { status: 403 })));
 		expect(await roundTrip({ placeId: 'base' }, place(850))).toBeNull();
 	});

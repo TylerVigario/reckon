@@ -13,6 +13,7 @@ import { readBody } from '#lib/json.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { theTeam } from '#lib/server/choices.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
+import { log } from '#lib/server/log.ts';
 
 /** What the body carries, for a database complaint to be laid against. */
 const FIELDS = [
@@ -235,7 +236,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		// worth naming.
 		const pg = pgError(err);
 		if (pg.code === '42703')
-			console.error('time_entry insert names a column that does not exist', pg.message);
+			log.error(
+				{ 'db.response.status_code': pg.code, 'db.collection.name': 'time_entry' },
+				'time_entry insert names a column that does not exist'
+			);
 
 		// A foreign key: the entry names something that has gone since the
 		// phone recorded it -- a service deleted, a site moved to another
