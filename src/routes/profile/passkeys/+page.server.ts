@@ -10,6 +10,7 @@ import { passkey } from '#lib/server/db/schema/index.ts';
 import { tell } from '#lib/server/email.ts';
 import { passkeyRemoved } from '#lib/server/notices.js';
 import { listPasskeys, passkeyLabel, passkeyName } from '#lib/server/passkeys.ts';
+import { recordAside } from '#lib/server/events.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -98,6 +99,11 @@ export const actions: Actions = {
 				return fail(404, { id: p.id, message: 'That passkey isn’t yours.' });
 			throw e;
 		}
+		await recordAside('authn_passkey_removed', {
+			user: me.id,
+			by: null,
+			detail: { passkey: passkeyName(p), why: 'removed' }
+		});
 		await tell(db, me.id, (them, business) =>
 			passkeyRemoved(them, business, {
 				name: passkeyName(p),

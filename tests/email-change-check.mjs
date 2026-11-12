@@ -13,8 +13,9 @@
  *
  * The server sends to the relay stand-in (tests/smtp-stand-in.mjs), read back
  * at http://127.0.0.1:2526 unless said, with SITE_URL the base url. Over HTTP,
- * the way a browser does it. Needs the database the server uses: it leaves
- * nothing it made.
+ * the way a browser does it. Needs the database the server uses. The people
+ * it adds are left inactive, as anyone in the security log is, never deleted;
+ * the email it made is gone.
  */
 // First, so .env is read before anything reads what it sets.
 import { database } from '../scripts/env.mjs';
@@ -273,7 +274,8 @@ try {
 	failures.push(why);
 	console.log(`  ✗ ${why}`);
 } finally {
-	for (const who of made) await db.query('delete from "user" where id = $1', [who]);
+	// Left inactive, as anyone in the security log is: never deleted.
+	for (const who of made) await db.query('update "user" set active = false where id = $1', [who]);
 	await db.query('delete from email_message where to_address = any($1)', [addresses]);
 	await db.query('delete from link_try where network = $1', [HERE]);
 	await db.end();

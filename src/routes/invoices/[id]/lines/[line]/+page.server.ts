@@ -7,6 +7,7 @@ import { UUID } from '#lib/field-rules.ts';
 import { formFieldsOf } from '#lib/server/lines.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
+import { refusedForAccess } from '#lib/server/refused.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -16,7 +17,7 @@ import type { PageServerLoad } from './$types';
  * while its draft is a draft. Someone with Field opens a line on a draft, and
  * changes one they added (#lib/access).
  */
-export const load: PageServerLoad = async ({ params, locals }) => {
+export const load: PageServerLoad = async ({ params, locals, route, request }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.line)) error(404, 'no such line');
 	const il = t.invoiceLine;
 	const payer = alias(t.user, 'payer');
@@ -59,7 +60,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		.leftJoin(src, eq(src.id, il.movedFromInvoiceId))
 		.where(and(eq(il.id, params.line), eq(il.invoiceId, params.id)));
 	const field = fieldOnly(locals);
-	if (!line || (field && line.status !== 'draft')) error(404, 'no such line');
+	if (!line) error(404, 'no such line');
+	if (field && line.status !== 'draft') {
+		await refusedForAccess({ locals, route, request });
+		error(404, 'no such line');
+	}
 	// Whether this person can change it: with Field, only a line they added.
 	const changeable = !field || line.created_by === locals.user!.id;
 

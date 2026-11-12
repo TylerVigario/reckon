@@ -17,7 +17,7 @@
 	/**
 	 * One person, as Primer draws a record: their name heading it with the
 	 * actions menu beside it, where they stand under it, then their tabs --
-	 * Details and Passkeys, each its own address (Primer's UnderlineNav: "Use
+	 * Details, Passkeys and Security log, each its own address (Primer's UnderlineNav: "Use
 	 * the UnderlineNav component when activating a tab changes the URL").
 	 *
 	 * SIGNING IN is with a passkey, made with a link emailed to them
@@ -242,6 +242,11 @@
 			label: 'Passkeys',
 			count: data.passkeys,
 			current: page.route.id === '/team/[id]/passkeys'
+		},
+		{
+			href: resolve('/team/[id]/security-log', { id: p.id }),
+			label: 'Security log',
+			current: page.route.id === '/team/[id]/security-log'
 		}
 	]);
 </script>

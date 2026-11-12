@@ -12,6 +12,7 @@ import { day, monthName, names } from '#lib/format.ts';
 import { crewNames } from '#lib/server/choices.ts';
 import { clientLink } from '#lib/client-link.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
+import { refusedForAccess } from '#lib/server/refused.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -25,7 +26,7 @@ import type { PageServerLoad } from './$types';
  * has gone out, nothing of what it does to the return -- what the goods cost
  * is the business's -- and no history of lines taken off.
  */
-export const load: PageServerLoad = async ({ params, url, locals }) => {
+export const load: PageServerLoad = async ({ params, url, locals, route, request }) => {
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
 	const owing = balances(rounding, places);
 	if (!UUID.test(params.id)) error(404, 'no such invoice');
@@ -66,7 +67,11 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		.innerJoin(e, eq(e.id, i.entityId))
 		.where(eq(i.id, params.id));
 	const field = fieldOnly(locals);
-	if (!invoice || (field && invoice.status !== 'draft')) error(404, 'no such invoice');
+	if (!invoice) error(404, 'no such invoice');
+	if (field && invoice.status !== 'draft') {
+		await refusedForAccess({ locals, route, request });
+		error(404, 'no such invoice');
+	}
 
 	const src = alias(t.invoice, 'src');
 	const dst = alias(t.invoice, 'dst');

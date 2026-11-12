@@ -6,6 +6,7 @@ import { emailLink, linkTry, passkey, user, type LINK_PURPOSES } from './db/sche
 import type { Changing, Waiting } from '#lib/people-fields.ts';
 import { mailer } from './email.ts';
 import { placeOf } from './network.ts';
+import { record, recordAside } from './events.ts';
 
 /**
  * LINKS reckon emails (email_link): an invitation to make a first passkey, a
@@ -125,6 +126,7 @@ export async function issue(
 			sentBy
 		})
 		.returning({ until: emailLink.expiresAt });
+	await record(tx, 'authn_link_issued', { user: userId, by: sentBy, detail: { purpose } });
 	return { link: `${SITE_URL}/link#${code}`, until: made.until, to };
 }
 
@@ -208,6 +210,11 @@ export async function used(tx: Tx, link: Usable): Promise<void> {
 		.set({ usedAt: sql`now()` })
 		.where(eq(emailLink.id, link.id));
 	await tx.update(user).set({ emailVerified: true }).where(eq(user.id, link.userId));
+	await record(tx, 'authn_link_used', {
+		user: link.userId,
+		by: null,
+		detail: { purpose: link.purpose }
+	});
 }
 
 /**
@@ -238,13 +245,20 @@ export async function turnedAway(address: string): Promise<boolean> {
 		.select({ n: count() })
 		.from(linkTry)
 		.where(and(eq(linkTry.network, network), gt(linkTry.createdAt, sql`now() - ${WINDOW}`)));
-	return n >= MISSES_ALLOWED;
+	if (n < MISSES_ALLOWED) return false;
+	await recordAside('excess_rate_limit_exceeded', {
+		user: null,
+		by: null,
+		detail: { tried: 'link codes' }
+	});
+	return true;
 }
 
 /** Counts a code that was not one to use against `address`'s network. */
 export async function missed(address: string): Promise<void> {
 	await db.delete(linkTry).where(lt(linkTry.createdAt, sql`now() - interval '1 day'`));
 	await db.insert(linkTry).values(placeOf(address));
+	await recordAside('authn_link_refused', { user: null, by: null });
 }
 
 /**

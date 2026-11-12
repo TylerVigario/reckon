@@ -76,6 +76,23 @@ const pool = new pg.Pool({ ...database(), max: 1 });
 const q = (/** @type {string} */ text, /** @type {unknown[]} */ values = []) =>
 	pool.query(text, values).then((r) => r.rows);
 
+/**
+ * A row of the security log (#lib/server/events), as the server writes one:
+ * named as it names them, whom it is about, and that it came from this command
+ * on the host, which has no request to say where from.
+ *
+ * @param {{ query: (text: string, values: unknown[]) => Promise<unknown> }} to
+ * @param {string} name
+ * @param {string} userId
+ * @param {Record<string, string | number>} [detail]
+ */
+const record = (to, name, userId, detail = {}) =>
+	to.query('insert into security_event (name, user_id, detail) values ($1, $2, $3)', [
+		name,
+		userId,
+		JSON.stringify({ ...detail, via: 'scripts/user.mjs' })
+	]);
+
 const stop = async (/** @type {string} */ message) => {
 	console.error(message);
 	await pool.end();
@@ -126,6 +143,7 @@ async function linkFor(user) {
 				[user.id, purpose, createHash('sha256').update(code).digest(), user.email]
 			)
 		).rows;
+		await record(client, 'authn_link_issued', user.id, { purpose });
 		await client.query('commit');
 		return { purpose, link: `${site}/link#${code}`, until: /** @type {Date} */ (until) };
 	} catch (e) {
@@ -169,7 +187,14 @@ async function endPasskeys(user) {
 	try {
 		await client.query('begin');
 		const { rowCount } = await client.query('delete from passkey where user_id = $1', [user.id]);
-		await client.query('delete from session where user_id = $1', [user.id]);
+		if (rowCount)
+			await record(client, 'authn_passkey_removed', user.id, { passkeys: rowCount, why: 'ended' });
+		const signedOut = await client.query('delete from session where user_id = $1', [user.id]);
+		if (signedOut.rowCount)
+			await record(client, 'session_expired', user.id, {
+				sessions: signedOut.rowCount,
+				why: 'their passkeys were ended'
+			});
 		const [them] = (
 			await client.query('select name, email, timezone, locale from "user" where id = $1', [
 				user.id
@@ -256,6 +281,7 @@ if (command === 'list') {
 		'insert into "user" (name, email, role_id, access) values ($1, $2, $3, $4) returning id, name, email',
 		[name, email, role?.id ?? null, access]
 	);
+	await record(pool, 'user_created', user.id, { access });
 	console.log(
 		`Added ${user.name}${role ? ` as ${role.name}` : ', with no role -- they sign in and are not paid'}, ` +
 			(access === 'full'

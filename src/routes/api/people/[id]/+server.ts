@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { asUser, type Tx } from '#lib/server/db/index.ts';
-import { passkey, session, user } from '#lib/server/db/schema/index.ts';
+import { passkey, user } from '#lib/server/db/schema/index.ts';
 import { tell } from '#lib/server/email.ts';
 import { cannotSend, endChange, issue, unsentBecause } from '#lib/server/links.ts';
 import { emailChange, emailChanging, invitation } from '#lib/server/notices.js';
@@ -13,6 +13,8 @@ import { readFields } from '#lib/json.ts';
 import { knownZone } from '#lib/server/zones.ts';
 import { pgError } from '#lib/server/field-errors.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
+import { record } from '#lib/server/events.ts';
+import { signedOutEverywhere } from '#lib/server/passkeys.ts';
 
 /** Each field as the user table names it. */
 const COLUMN = {
@@ -83,15 +85,21 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 
 	try {
 		const changed = await asUser(locals.user!.id, async (tx) => {
+			const [before] = await tx
+				.select({ access: user.access, active: user.active })
+				.from(user)
+				.where(eq(user.id, params.id))
+				.for('update');
 			const rows = await tx
 				.update(user)
 				.set({ [COLUMN[name]]: value })
 				.where(eq(user.id, params.id))
 				.returning({ id: user.id });
+			if (rows.length && !own) await recorded(tx, params.id, name, before, value);
 			// Deactivated, they are signed out everywhere in the same step, and
 			// refused a session after (#lib/server/passkeys mayOpenSession).
 			if (rows.length && name === 'active' && value === false)
-				await tx.delete(session).where(eq(session.userId, params.id));
+				await signedOutEverywhere(tx, params.id, 'they were made inactive');
 			return rows;
 		});
 		if (changed.length === 0) return problem('notFound', 404, 'No person with that id.');
@@ -105,6 +113,31 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	}
 	return Response.json({ saved: { [name]: value } });
 };
+
+/**
+ * What Team changed, in the security log: access from and to, made inactive or
+ * active again, or which detail -- never the value itself, which is theirs.
+ * Only what changed: setting what is already so records nothing. Their own
+ * zone and how their figures read are theirs, and not security events.
+ */
+async function recorded(
+	tx: Tx,
+	id: string,
+	name: Field,
+	before: { access: string; active: boolean } | undefined,
+	value: unknown
+) {
+	if (name === 'access') {
+		if (before && before.access !== value)
+			await record(tx, 'authz_change', {
+				user: id,
+				detail: { from: before.access, to: String(value) }
+			});
+	} else if (name === 'active') {
+		if (before && before.active !== value)
+			await record(tx, value ? 'user_restored' : 'user_archived', { user: id });
+	} else await record(tx, 'user_updated', { user: id, detail: { changed: name } });
+}
 
 const TAKEN = 'Someone else signs in with that email.';
 
@@ -146,6 +179,7 @@ async function changeEmail(
 			const canSignIn = person.active && (person.joined !== null || person.held);
 			if (!canSignIn) {
 				await tx.update(user).set({ email: to, emailVerified: false }).where(eq(user.id, id));
+				await record(tx, 'user_updated', { user: id, detail: { changed: 'email' } });
 				await endChange(tx, id);
 				await inviteAgain(tx, id, me);
 				return Response.json({ saved: { email: to } });

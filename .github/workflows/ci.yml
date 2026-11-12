@@ -302,6 +302,15 @@ jobs:
           node tests/access-check.mjs "http://localhost:$PORT" \
             avery@kestrel.example sam@kestrel.example
 
+      - name: The security log keeps each sign-in, refusal and access change, and each person sees theirs
+        # A sign-in, one refused for a passkey nobody has, Field refused what
+        # needs Full, Field's access changed and changed back, a sign-out:
+        # each a row of security_event, said on Your profile and on Team, and
+        # Team's log is Full's alone (#lib/server/events).
+        run: >-
+          node tests/security-log-check.mjs "http://localhost:$PORT"
+          avery@kestrel.example sam@kestrel.example
+
       - name: Every screen renders, with nothing on the console
         # A page can answer 200 with its body already doomed: SvelteKit renders
         # on the client, so a component that throws leaves the URL changed, the

@@ -11,6 +11,7 @@ import { ruleOn } from '#lib/server/valuation/pay.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
+import { refusedForAccess } from '#lib/server/refused.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -24,7 +25,7 @@ import type { PageServerLoad } from './$types';
  * paid only where the vehicle is theirs: another's pay is theirs to see. What
  * the business kept is not shown them.
  */
-export const load: PageServerLoad = async ({ params, locals }) => {
+export const load: PageServerLoad = async ({ params, locals, route, request }) => {
 	if (!UUID.test(params.id)) error(404, 'no such trip');
 
 	const tr = t.trip;
@@ -64,7 +65,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		.where(eq(tr.id, params.id));
 	const field = fieldOnly(locals);
 	const me = locals.user!.id;
-	if (!found || (field && found.driven_by !== me)) error(404, 'no such trip');
+	if (!found) error(404, 'no such trip');
+	if (field && found.driven_by !== me) {
+		await refusedForAccess({ locals, route, request });
+		error(404, 'no such trip');
+	}
 
 	const [stops, rows] = await Promise.all([
 		// Each stop, and who it was for there (0025): two clients at one address

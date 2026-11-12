@@ -2696,4 +2696,75 @@ SELECT must_fail($$
   INSERT INTO link_try (address, network) VALUES ('192.0.2.7', '198.51.100.0/24')
 $$, 'a code tried, counted against a network it did not come from');
 
+
+\echo ''
+\echo '=== 54. a security event is stamped by the database, never changed, and kept a year ==='
+
+INSERT INTO "user" (id, name, email) VALUES
+  ('a1000000-0000-4000-8000-000000000060', 'Logged', 'logged@example.com'),
+  ('a1000000-0000-4000-8000-000000000061', 'Logger', 'logger@example.com');
+
+SELECT must_pass($$
+  INSERT INTO security_event (name, user_id, by_id, client_address, user_agent, detail)
+  VALUES ('authz_change', 'a1000000-0000-4000-8000-000000000060', 'a1000000-0000-4000-8000-000000000061',
+          '192.0.2.7', 'Mozilla/5.0', '{"from":"field","to":"full"}')
+$$, 'an access change, by someone else, from where it came');
+
+SELECT must_pass($$
+  INSERT INTO security_event (name) VALUES ('authn_link_refused')
+$$, 'a refusal about nobody reckon knows');
+
+SELECT must_fail($$
+  INSERT INTO security_event (name) VALUES ('authn_password_change')
+$$, 'an event the vocabulary here does not name');
+
+SELECT must_fail($$
+  INSERT INTO security_event (name, user_id, by_id)
+  VALUES ('user_updated', 'a1000000-0000-4000-8000-000000000060', 'a1000000-0000-4000-8000-000000000060')
+$$, 'someone as the one who did it to themselves: by is someone else');
+
+SELECT must_fail($$
+  INSERT INTO security_event (name, user_agent) VALUES ('authn_login_fail', repeat('x', 513))
+$$, 'a user agent longer than 512 characters');
+
+DO $$
+DECLARE stamped timestamptz;
+BEGIN
+  INSERT INTO security_event (at, name, user_id)
+  VALUES ('2000-01-01', 'authn_login_success', 'a1000000-0000-4000-8000-000000000060')
+  RETURNING at INTO stamped;
+  IF stamped < now() - interval '1 minute' THEN
+    RAISE EXCEPTION 'GUARD MISSING: a security event kept the time it claimed, %', stamped;
+  END IF;
+  RAISE NOTICE '  stamps    a security event with the database''s clock, whatever it claims';
+END $$;
+
+SELECT must_fail($$
+  UPDATE security_event SET name = 'authn_login_success' WHERE name = 'authz_change'
+$$, 'a security event changed');
+
+SELECT must_fail($$
+  DELETE FROM security_event WHERE name = 'authz_change'
+$$, 'a security event removed while it is under a year old');
+
+-- One a year and a day old -- put there with the stamp switched off, as only
+-- the owner can -- is removed, as the server removes them every day.
+DO $$
+DECLARE gone int;
+BEGIN
+  ALTER TABLE security_event DISABLE TRIGGER stamped;
+  INSERT INTO security_event (at, name) VALUES (now() - interval '1 year 1 day', 'authn_login_fail');
+  ALTER TABLE security_event ENABLE TRIGGER stamped;
+  DELETE FROM security_event WHERE at < now() - interval '1 year';
+  GET DIAGNOSTICS gone = ROW_COUNT;
+  IF gone <> 1 THEN
+    RAISE EXCEPTION 'GUARD WRONG: % security event(s) a year old removed, not 1', gone;
+  END IF;
+  RAISE NOTICE '  removes   a security event once it is a year old, and only then';
+END $$;
+
+SELECT must_fail($$
+  DELETE FROM "user" WHERE id = 'a1000000-0000-4000-8000-000000000060'
+$$, 'someone in the security log deleted: they are made inactive instead');
+
 \echo 'All guards hold.'
