@@ -166,6 +166,18 @@ export const operator = pgTable(
 	]
 );
 
+/**
+ * EVERY CHANGE TO WHAT THE BOOKS REST ON, AND TO PEOPLE (12 November 2026):
+ * each field changed, each row added, and each removed where removing is
+ * allowed, with who, when, and the save it was part of -- the tables' own
+ * triggers write it (0001_integrity.sql, and those after it). It is the
+ * books' own trail, kept as long as they are: never removed, unlike the
+ * security log.
+ *
+ * Only those triggers write it, the database stamps when, and no row is ever
+ * changed (0048): the server's role cannot switch any of that off, owning
+ * nothing (README, "The database").
+ */
 export const recordHistory = pgTable(
 	'record_history',
 	{
@@ -181,15 +193,24 @@ export const recordHistory = pgTable(
 		 * When the change was made on a phone, where it was made with no signal:
 		 * changed_at is when it reached the server. Null for one made there.
 		 */
-		madeAt: tstz()
+		madeAt: tstz(),
+		/**
+		 * The transaction it was part of: every change of one save shares it, so
+		 * a change is read with what went with it. Null for any from before 13
+		 * November 2026.
+		 */
+		xact: bigint({ mode: 'number' })
 	},
 	(t) => [
 		index('record_history_row').on(t.tableName, t.rowId, t.changedAt.desc()),
+		index('record_history_by_save').on(t.xact),
+		// Someone who changed anything is made inactive, never deleted: history
+		// names them for as long as it is kept.
 		foreignKey({
 			name: 'record_history_changed_by_fkey',
 			columns: [t.changedBy],
 			foreignColumns: [user.id]
-		}).onDelete('set null')
+		}).onDelete('restrict')
 	]
 );
 

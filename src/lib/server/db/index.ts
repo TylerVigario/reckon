@@ -54,6 +54,14 @@ export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 export type Reader = Db | Tx;
 
 /**
+ * Puts the rest of transaction `tx`'s changes in record_history against
+ * `userId`: for a change someone makes without being signed in, with a link
+ * that names them.
+ */
+export const actingAs = (tx: Tx, userId: string) =>
+	tx.execute(sql`select set_config('reckon.user_id', ${userId}, true)`);
+
+/**
  * Runs `fn` in a transaction whose changes record_history puts against this
  * person, and rolls back everything if it throws.
  */
@@ -68,7 +76,7 @@ export async function asUser<T>(
 	madeAt?: string | null
 ): Promise<T> {
 	return db.transaction(async (tx) => {
-		await tx.execute(sql`select set_config('reckon.user_id', ${userId}, true)`);
+		await actingAs(tx, userId);
 		if (madeAt) await tx.execute(sql`select set_config('reckon.made_at', ${madeAt}, true)`);
 		return fn(tx);
 	});

@@ -2767,4 +2767,96 @@ SELECT must_fail($$
   DELETE FROM "user" WHERE id = 'a1000000-0000-4000-8000-000000000060'
 $$, 'someone in the security log deleted: they are made inactive instead');
 
+
+\echo ''
+\echo '=== 55. history covers people and every row added, is written by triggers alone, and stands ==='
+
+INSERT INTO "user" (id, name, email) VALUES
+  ('a1000000-0000-4000-8000-000000000070', 'Kept', 'kept@example.com'),
+  ('a1000000-0000-4000-8000-000000000071', 'Keeper', 'keeper@example.com');
+
+DO $$
+DECLARE added int; first_save bigint; second_save bigint; fields text[]; skipped int;
+BEGIN
+  SELECT count(*) INTO added FROM record_history
+   WHERE table_name = 'user' AND row_id = 'a1000000-0000-4000-8000-000000000070' AND field = '(added)';
+  IF added <> 1 THEN
+    RAISE EXCEPTION 'GUARD MISSING: a person added is in history % time(s), not once', added;
+  END IF;
+
+  PERFORM set_config('reckon.user_id', 'a1000000-0000-4000-8000-000000000071', true);
+  UPDATE "user" SET name = 'Kept Still', access = 'full'
+   WHERE id = 'a1000000-0000-4000-8000-000000000070';
+  SELECT array_agg(field ORDER BY field), min(xact) INTO fields, first_save FROM record_history
+   WHERE table_name = 'user' AND row_id = 'a1000000-0000-4000-8000-000000000070' AND field <> '(added)';
+  IF fields IS DISTINCT FROM ARRAY['access', 'name'] THEN
+    RAISE EXCEPTION 'GUARD MISSING: a person''s change kept as %, not access and name', fields;
+  END IF;
+  IF (SELECT count(DISTINCT xact) FROM record_history
+       WHERE table_name = 'user' AND row_id = 'a1000000-0000-4000-8000-000000000070' AND field <> '(added)') <> 1
+     OR first_save IS NULL THEN
+    RAISE EXCEPTION 'GUARD MISSING: the fields of one save do not share its transaction';
+  END IF;
+  IF EXISTS (SELECT 1 FROM record_history
+              WHERE table_name = 'user' AND row_id = 'a1000000-0000-4000-8000-000000000070'
+                AND field = 'name' AND changed_by IS DISTINCT FROM 'a1000000-0000-4000-8000-000000000071') THEN
+    RAISE EXCEPTION 'GUARD MISSING: a person''s change does not say who made it';
+  END IF;
+
+  UPDATE "user" SET last_signed_in_at = now(), updated_at = now() + interval '1 second'
+   WHERE id = 'a1000000-0000-4000-8000-000000000070';
+  SELECT count(*) INTO skipped FROM record_history
+   WHERE table_name = 'user' AND row_id = 'a1000000-0000-4000-8000-000000000070'
+     AND field IN ('last_signed_in_at', 'updated_at');
+  IF skipped <> 0 THEN
+    RAISE EXCEPTION 'GUARD WRONG: signing in, or Better Auth''s updated_at, kept in history (% rows)', skipped;
+  END IF;
+  RAISE NOTICE '  keeps     a person added, and each field changed, with who and the save it was part of';
+  RAISE NOTICE '  leaves    out when someone signed in, which is no change to them';
+END $$;
+
+DO $$
+DECLARE other bigint; earlier bigint;
+BEGIN
+  UPDATE "user" SET name = 'Kept Again' WHERE id = 'a1000000-0000-4000-8000-000000000070';
+  SELECT xact INTO other FROM record_history
+   WHERE table_name = 'user' AND row_id = 'a1000000-0000-4000-8000-000000000070' AND new_value = 'Kept Again';
+  SELECT xact INTO earlier FROM record_history
+   WHERE table_name = 'user' AND row_id = 'a1000000-0000-4000-8000-000000000070' AND new_value = 'Kept Still';
+  IF other IS NOT DISTINCT FROM earlier THEN
+    RAISE EXCEPTION 'GUARD MISSING: two saves share a transaction in history';
+  END IF;
+  RAISE NOTICE '  tells     one save from the next';
+END $$;
+
+DO $$
+DECLARE added int;
+BEGIN
+  INSERT INTO entity (id, name, slug) VALUES ('a1000000-0000-4000-8000-000000000072', 'Added Client', 'added-client');
+  SELECT count(*) INTO added FROM record_history
+   WHERE table_name = 'entity' AND row_id = 'a1000000-0000-4000-8000-000000000072' AND field = '(added)';
+  IF added <> 1 THEN
+    RAISE EXCEPTION 'GUARD MISSING: a client added is in history % time(s), not once', added;
+  END IF;
+  RAISE NOTICE '  keeps     each row added to a table whose changes are kept';
+END $$;
+
+SELECT must_fail($$
+  INSERT INTO record_history (table_name, row_id, field, old_value, new_value)
+  VALUES ('invoice', 'a1000000-0000-4000-8000-000000000072', 'total', '100', '1')
+$$, 'history written other than by a table''s own trigger');
+
+SELECT must_fail($$
+  UPDATE record_history SET new_value = 'Someone Else'
+   WHERE row_id = 'a1000000-0000-4000-8000-000000000070' AND field = 'name'
+$$, 'history changed');
+
+SELECT must_fail($$
+  DELETE FROM record_history WHERE row_id = 'a1000000-0000-4000-8000-000000000070'
+$$, 'history removed');
+
+SELECT must_fail($$
+  DELETE FROM "user" WHERE id = 'a1000000-0000-4000-8000-000000000071'
+$$, 'someone history says made a change deleted: they are made inactive instead');
+
 \echo 'All guards hold.'
