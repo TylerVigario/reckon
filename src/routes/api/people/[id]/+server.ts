@@ -3,13 +3,21 @@ import { asUser, type Tx } from '#lib/server/db/index.ts';
 import { passkey, user } from '#lib/server/db/schema/index.ts';
 import { tell } from '#lib/server/email.ts';
 import { cannotSend, endChange, issue, unsentBecause } from '#lib/server/links.ts';
-import { emailChange, emailChanging, invitation } from '#lib/server/notices.js';
+import {
+	accessChanged,
+	deactivated,
+	emailChange,
+	emailChanging,
+	invitation,
+	nameChanged,
+	reactivated
+} from '#lib/server/notices.js';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { OWN_FIELDS, PERSON_FIELDS, parsePersonField } from '#lib/people-fields.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
-import { readFields } from '#lib/json.ts';
+import { readBody, readFields, textField } from '#lib/json.ts';
 import { knownZone } from '#lib/server/zones.ts';
 import { pgError } from '#lib/server/field-errors.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
@@ -54,7 +62,8 @@ type Field = keyof typeof COLUMN;
  */
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	if (!UUID.test(params.id)) return problem('notFound', 404, 'No person with that id.');
-	const fields = await readFields(request);
+	const body = await readBody(request);
+	const fields = await readFields({ json: () => Promise.resolve(body) });
 	const names = fields ? Object.keys(fields) : [];
 	if (!fields || names.length !== 1 || !(names[0] in PERSON_FIELDS))
 		return problem(
@@ -76,6 +85,13 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	let value = parsed.value;
 	if (name === 'active' && value === false && params.id === locals.user!.id)
 		return refuse({ active: "You can't deactivate yourself. Someone else with Full can." });
+	// Made inactive, they are told why (#lib/server/notices deactivated): the
+	// reason goes beside the field, in a line of its own.
+	const why = textField(body, 'reason').replace(/\s+/g, ' ').trim();
+	if (name === 'active' && value === false) {
+		if (!why) return refuse({ reason: 'Say why. They are emailed it.' });
+		if (why.length > WHY_AT_MOST) return refuse({ reason: `At most ${WHY_AT_MOST} characters.` });
+	}
 	if (name === 'timezone' && typeof value === 'string') {
 		value = await knownZone(value);
 		if (value === null) return refuse({ timezone: 'The database does not know that time zone.' });
@@ -86,7 +102,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	try {
 		const changed = await asUser(locals.user!.id, async (tx) => {
 			const [before] = await tx
-				.select({ access: user.access, active: user.active })
+				.select({ name: user.name, access: user.access, active: user.active })
 				.from(user)
 				.where(eq(user.id, params.id))
 				.for('update');
@@ -95,7 +111,10 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 				.set({ [COLUMN[name]]: value })
 				.where(eq(user.id, params.id))
 				.returning({ id: user.id });
-			if (rows.length && !own) await recorded(tx, params.id, name, before, value);
+			if (rows.length && !own && before) {
+				await recorded(tx, params.id, name, before, value, why);
+				await told(tx, params.id, name, before, value, { by: locals.user!.name, why });
+			}
 			// Deactivated, they are signed out everywhere in the same step, and
 			// refused a session after (#lib/server/passkeys mayOpenSession).
 			if (rows.length && name === 'active' && value === false)
@@ -124,19 +143,64 @@ async function recorded(
 	tx: Tx,
 	id: string,
 	name: Field,
-	before: { access: string; active: boolean } | undefined,
-	value: unknown
+	before: Before,
+	value: unknown,
+	why: string
 ) {
 	if (name === 'access') {
-		if (before && before.access !== value)
+		if (before.access !== value)
 			await record(tx, 'authz_change', {
 				user: id,
 				detail: { from: before.access, to: String(value) }
 			});
 	} else if (name === 'active') {
-		if (before && before.active !== value)
-			await record(tx, value ? 'user_restored' : 'user_archived', { user: id });
+		if (before.active !== value)
+			await record(tx, value ? 'user_restored' : 'user_archived', {
+				user: id,
+				...(value ? {} : { detail: { why } })
+			});
 	} else await record(tx, 'user_updated', { user: id, detail: { changed: name } });
+}
+
+/** What someone was before a change on Team. */
+type Before = { name: string; access: string; active: boolean };
+
+/** The longest reason a deactivation is given, in characters. */
+const WHY_AT_MOST = 300;
+
+/**
+ * What Team changed, told to the person it was changed for, as NIST SP
+ * 800-63B-4 §4.6 has every notice say what to do if it was not expected: their
+ * name, what they can reach, made inactive with why, or active again. Only
+ * what changed. Their role is what they are paid as, and is not told; their
+ * address has emails of its own (changeEmail).
+ */
+async function told(
+	tx: Tx,
+	id: string,
+	name: Field,
+	before: Before,
+	value: unknown,
+	{ by, why }: { by: string; why: string }
+) {
+	const at = new Date();
+	if (name === 'name' && before.name !== value)
+		await tell(tx, id, (them, business) =>
+			nameChanged(them, business, { at, by, was: before.name })
+		);
+	else if (name === 'access' && before.access !== value)
+		await tell(tx, id, (them, business) =>
+			accessChanged(them, business, {
+				at,
+				by,
+				from: before.access === 'full' ? 'full' : 'field',
+				to: value === 'full' ? 'full' : 'field'
+			})
+		);
+	else if (name === 'active' && before.active !== value)
+		await tell(tx, id, (them, business) =>
+			value ? reactivated(them, business, { at, by }) : deactivated(them, business, { at, by, why })
+		);
 }
 
 const TAKEN = 'Someone else signs in with that email.';

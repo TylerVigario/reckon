@@ -1,0 +1,2 @@
+ALTER TABLE "email_message" DROP CONSTRAINT "email_message_kind_check";--> statement-breakpoint
+ALTER TABLE "email_message" ADD CONSTRAINT "email_message_kind_check" CHECK ("email_message"."kind" = ANY (ARRAY['invitation', 'passkey_link', 'email_confirmation', 'email_change', 'email_changing', 'passkey_added', 'passkey_removed', 'passkeys_ended', 'name_changed', 'access_changed', 'deactivated', 'reactivated']));

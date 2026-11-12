@@ -379,7 +379,11 @@ built from `SITE_URL`, never from the address a request came in on (OWASP's
 Forgot Password Cheat Sheet), and sent only while its link still works. And it
 tells a person whenever a passkey is added to or removed from their account,
 saying which, when, in their own zone, from which browser, and who to ask if it
-was not them. Without `SMTP_HOST` and `SITE_URL` nobody can be invited by email,
+was not them; and whenever someone with Full changes their name, what they can
+reach, or whether they are active — made inactive, with the reason they were
+given, which Team asks for, or active again. Their role is what they are paid
+as, and is not told. Every notice says who to ask if it was not expected (NIST
+SP 800-63B-4 §4.6). Without `SMTP_HOST` and `SITE_URL` nobody can be invited by email,
 and Team says which is missing.
 
 Every message goes as plain text and as HTML, the text first (RFC 2046), both

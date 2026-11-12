@@ -181,6 +181,49 @@ try {
 		'a new link from Team is emailed, naming who sent it'
 	);
 
+	// ---------------------------------------------- told of Team's changes ----
+	const patch = (/** @type {Record<string, unknown>} */ body) =>
+		asFull(`/api/people/${id}`, {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(body)
+		});
+	await patch({ fields: { name: 'Rowan Told-Again' } });
+	check(
+		!!(await arrives(email, [
+			'your name was changed',
+			'from Rowan Told to Rowan Told-Again',
+			fullName
+		])),
+		'a new name from Team is emailed, with the old one and who changed it'
+	);
+	await patch({ fields: { access: 'full' } });
+	check(
+		!!(await arrives(email, ['what you can reach changed', 'from Field to Full', fullName])),
+		'Full given on Team is emailed, from and to'
+	);
+	await patch({ fields: { access: 'field' } });
+	check(
+		!!(await arrives(email, ['what you can reach changed', 'from Full to Field'])),
+		'and taken back'
+	);
+	const silent = await patch({ fields: { active: 'false' } });
+	check(silent.status === 400, 'nobody is made inactive without saying why', String(silent.status));
+	await patch({ fields: { active: 'false' }, reason: 'The season is over.' });
+	check(
+		!!(await arrives(email, [
+			'you were made inactive',
+			'They said: The season is over.',
+			fullName
+		])),
+		'made inactive, they are emailed why, and by whom'
+	);
+	await patch({ fields: { active: 'true' } });
+	check(
+		!!(await arrives(email, ['you can sign in again', fullName])),
+		'and made active again, they are told they can sign in'
+	);
+
 	// ----------------------------------------------- a relay in trouble ----
 	const later = `later-${tag}@kestrel.example`;
 	addresses.push(later);

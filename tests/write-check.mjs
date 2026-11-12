@@ -1082,7 +1082,20 @@ if (myId && otherId) {
 		{ fields: { active: 'false' } },
 		400
 	);
-	await check('someone else is deactivated', 'PATCH', them, { fields: { active: 'false' } }, 200);
+	await check(
+		'someone else is not deactivated without a reason, which they are emailed',
+		'PATCH',
+		them,
+		{ fields: { active: 'false' } },
+		400
+	);
+	await check(
+		'someone else is deactivated, with why',
+		'PATCH',
+		them,
+		{ fields: { active: 'false' }, reason: 'Checking a deactivation works' },
+		200
+	);
 	await check('and reactivated', 'PATCH', them, { fields: { active: 'true' } }, 200);
 } else {
 	failures.push('could not find who is signed in, and someone else, on /team');
