@@ -1,0 +1,43 @@
+import { error } from '@sveltejs/kit';
+import { count, eq, sql } from 'drizzle-orm';
+import { db } from '#lib/server/db/index.ts';
+import * as t from '#lib/server/db/schema/index.ts';
+import { personalToday } from '#lib/server/calendar.ts';
+import { UUID } from '#lib/field-rules.ts';
+import { materialFigures } from '#lib/server/stock.ts';
+import type { LayoutServerLoad } from './$types';
+
+/**
+ * One material as a record: what it is, what is on hand and what it sells at,
+ * and what one on the shelf costs now -- what its head says, and what Adjust
+ * works from, whichever tab is open. Each tab loads its own part.
+ */
+export const load: LayoutServerLoad = async ({ params }) => {
+	if (!UUID.test(params.id)) error(404, 'no such material');
+	const [found] = await db
+		.select({
+			id: t.material.id,
+			name: t.material.name,
+			sku: t.material.sku,
+			brand: t.material.brand,
+			// How its unit is written beside a figure: "ft", or the name.
+			unit: sql<string>`coalesce(${t.unit.short}, ${t.unit.name})`,
+			places: t.unit.places
+		})
+		.from(t.material)
+		.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
+		.where(eq(t.material.id, params.id));
+	if (!found) error(404, 'no such material');
+	const [figures, [adjusted]] = await Promise.all([
+		materialFigures([found.id]),
+		db
+			.select({ n: count() })
+			.from(t.stockAdjustment)
+			.where(eq(t.stockAdjustment.materialId, found.id))
+	]);
+	return {
+		material: { ...found, ...figures.of.get(found.id)! },
+		adjusted: adjusted.n,
+		today: personalToday()
+	};
+};

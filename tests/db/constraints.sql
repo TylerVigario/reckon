@@ -1689,6 +1689,68 @@ SELECT must_fail($$
 $$, 'a receipt something came on, deleted from under it');
 
 \echo ''
+\echo '=== 36b. stock put right by hand comes off its lots, or is a lot of its own ==='
+
+INSERT INTO stock_adjustment (id, material_id, made_on, way, qty, reason, ex_tax_cost, created_by)
+VALUES ('36b36b36-0000-4000-8000-000000000001','66666666-6666-6666-6666-666666666666',
+        '2026-10-01','off',10,'used',3.10,'a0a0a0a0-0000-4000-8000-0000000000a1');
+
+SELECT must_pass($$
+  INSERT INTO stock_take (adjustment_id, material_lot_id, material_id, qty)
+  SELECT '36b36b36-0000-4000-8000-000000000001', id, material_id, 10
+    FROM material_lot WHERE receipt_id = '36363636-0000-4000-8000-000000000001'
+$$, '10 ft used in the shop, taken off the lot it came from');
+
+DO $$ BEGIN
+  IF (SELECT qty_remaining FROM material_lot WHERE receipt_id = '36363636-0000-4000-8000-000000000001') <> 990 THEN
+    RAISE EXCEPTION 'UNDER-TIGHT: the lot did not follow its take';
+  END IF;
+  RAISE NOTICE '  held      the lot follows its take: 990 left';
+END $$;
+
+SELECT must_fail($$
+  INSERT INTO stock_take (adjustment_id, material_lot_id, material_id, qty)
+  SELECT '36b36b36-0000-4000-8000-000000000001', id, material_id, 5000
+    FROM material_lot WHERE receipt_id = '07070707-0000-4000-8000-000000000001'
+$$, 'a take larger than what is left');
+
+SELECT must_fail($$
+  INSERT INTO stock_adjustment (material_id, made_on, way, qty, reason, ex_tax_cost, created_by)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-10-01','off',2,'found',0,
+          'a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'found stock taken off');
+
+SELECT must_fail($$
+  INSERT INTO stock_adjustment (material_id, made_on, way, qty, reason, ex_tax_cost, created_by)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-10-01','on',2,'damaged',0,
+          'a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'damaged stock put on');
+
+SELECT must_fail($$
+  INSERT INTO stock_adjustment (material_id, made_on, way, qty, reason, ex_tax_cost, created_by)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-10-01','off',0,'used',0,
+          'a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'nothing moved');
+
+INSERT INTO stock_adjustment (id, material_id, made_on, way, qty, reason, ex_tax_cost, created_by)
+VALUES ('36b36b36-0000-4000-8000-000000000002','66666666-6666-6666-6666-666666666666',
+        '2026-10-02','on',4,'found',1.24,'a0a0a0a0-0000-4000-8000-0000000000a1');
+
+SELECT must_pass($$
+  INSERT INTO material_lot (adjustment_id, material_id, received_on, qty_received, qty_remaining,
+                            ex_tax_cost)
+  VALUES ('36b36b36-0000-4000-8000-000000000002','66666666-6666-6666-6666-666666666666',
+          '2026-10-02',4,4,1.24)
+$$, '4 ft found, a lot of its own');
+
+SELECT must_fail($$
+  INSERT INTO material_lot (receipt_id, adjustment_id, material_id, received_on, qty_received,
+                            qty_remaining, ex_tax_cost)
+  VALUES ('36363636-0000-4000-8000-000000000001','36b36b36-0000-4000-8000-000000000002',
+          '66666666-6666-6666-6666-666666666666','2026-10-02',4,4,1.24)
+$$, 'a lot both received and found');
+
+\echo ''
 \echo '=== 37. what was bought or paid for says who paid, and keeps its receipt ==='
 
 -- A draft of its own: section 16's went out, and a sent invoice takes no lines.

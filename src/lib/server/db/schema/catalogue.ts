@@ -23,6 +23,7 @@ import {
 	index,
 	integer,
 	pgTable,
+	primaryKey,
 	text,
 	unique,
 	uuid
@@ -36,6 +37,20 @@ export const PAYS_FOR = ['time', 'covered_time', 'vehicle'] as const;
 export const PAY_METHODS = ['per_hour', 'percent', 'fixed', 'nothing'] as const;
 /** What a receipt may be: a photo, as the phone shrinks it, or a supplier's PDF. */
 export const RECEIPT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] as const;
+/** Which way an adjustment moves stock: taken off the shelf, or put on it. */
+export const ADJUST_WAYS = ['off', 'on'] as const;
+/**
+ * Why: used in the shop, damaged, lost or stolen, returned to the supplier,
+ * found, or a correction -- the first four only take off, found only puts on.
+ */
+export const ADJUST_REASONS = [
+	'used',
+	'damaged',
+	'lost',
+	'returned',
+	'found',
+	'correction'
+] as const;
 
 export const service = pgTable(
 	'service',
@@ -317,12 +332,64 @@ export const stockReceipt = pgTable(
 	]
 );
 
+/**
+ * ONE MATERIAL'S STOCK, PUT RIGHT BY HAND: so much taken off the shelf or put
+ * on it, on a day, and why -- what ERPNext calls a Material Issue or Receipt,
+ * with the reason said. What it moved is held at what it cost, before tax and
+ * in tax: what a take wrote off, or what a find is worth on the shelf.
+ *
+ * A take's quantity comes off the oldest lots first, as a line's draw does
+ * (stockTake); a find is a lot of its own, which names this rather than a
+ * receipt (materialLot.adjustmentId).
+ */
+export const stockAdjustment = pgTable(
+	'stock_adjustment',
+	{
+		id: id(),
+		materialId: uuid().notNull(),
+		madeOn: day().notNull(),
+		way: text({ enum: ADJUST_WAYS }).notNull(),
+		qty: decimal(12, 4).notNull(),
+		reason: text({ enum: ADJUST_REASONS }).notNull(),
+		note: text(),
+		// To four places, as a line drawn from stock holds what it cost.
+		exTaxCost: decimal(12, 4).notNull(),
+		taxPaid: decimal(12, 4).default('0').notNull(),
+		createdBy: uuid().notNull(),
+		createdAt: createdAt()
+	},
+	(t) => [
+		index('stock_adjustment_material').on(t.materialId, t.madeOn),
+		foreignKey({
+			name: 'stock_adjustment_material_id_fkey',
+			columns: [t.materialId],
+			foreignColumns: [material.id]
+		}).onDelete('restrict'),
+		foreignKey({
+			name: 'stock_adjustment_created_by_fkey',
+			columns: [t.createdBy],
+			foreignColumns: [user.id]
+		}).onDelete('restrict'),
+		oneOf('stock_adjustment_way_check', t.way, ADJUST_WAYS),
+		oneOf('stock_adjustment_reason_check', t.reason, ADJUST_REASONS),
+		check('stock_adjustment_qty_check', sql`${t.qty} > 0`),
+		nonNegative('stock_adjustment_ex_tax_cost_check', t.exTaxCost),
+		nonNegative('stock_adjustment_tax_paid_check', t.taxPaid),
+		// A find only puts on; using, damage, loss and a return only take off.
+		check(
+			'stock_adjustment_reason_fits_its_way',
+			sql`(${t.way} = 'on' AND ${t.reason} IN ('found', 'correction')) OR (${t.way} = 'off' AND ${t.reason} <> 'found')`
+		)
+	]
+);
+
 export const materialLot = pgTable(
 	'material_lot',
 	{
 		id: id(),
-		/** The receipt it came on (stockReceipt). */
-		receiptId: uuid().notNull(),
+		/** The receipt it came on (stockReceipt), or the adjustment that found it. */
+		receiptId: uuid(),
+		adjustmentId: uuid(),
 		materialId: uuid().notNull(),
 		/** The day it came onto the shelf: its receipt's. Oldest is drawn first. */
 		receivedOn: day().notNull(),
@@ -353,10 +420,50 @@ export const materialLot = pgTable(
 			columns: [t.receiptId],
 			foreignColumns: [stockReceipt.id]
 		}).onDelete('restrict'),
+		foreignKey({
+			name: 'material_lot_adjustment_id_fkey',
+			columns: [t.adjustmentId],
+			foreignColumns: [stockAdjustment.id]
+		}).onDelete('restrict'),
+		// It came on a receipt, or was found: one, never both or neither.
+		check(
+			'material_lot_has_one_origin',
+			sql`(${t.receiptId} IS NULL) <> (${t.adjustmentId} IS NULL)`
+		),
 		check('cannot_use_more_than_received', sql`${t.qtyRemaining} <= ${t.qtyReceived}`),
 		nonNegative('material_lot_ex_tax_cost_check', t.exTaxCost),
 		check('material_lot_qty_received_check', sql`${t.qtyReceived} > 0`),
 		nonNegative('material_lot_qty_remaining_check', t.qtyRemaining),
 		nonNegative('material_lot_tax_paid_check', t.taxPaid)
+	]
+);
+
+/**
+ * What a take took off each lot: 5 ft of a spool, the oldest first. A lot's
+ * qty_remaining follows these as it does a line's draws (stock_follows_draws),
+ * so a take larger than what is left is refused by the lot's own check.
+ */
+export const stockTake = pgTable(
+	'stock_take',
+	{
+		adjustmentId: uuid().notNull(),
+		materialLotId: uuid().notNull(),
+		materialId: uuid().notNull(),
+		qty: decimal(12, 4).notNull()
+	},
+	(t) => [
+		primaryKey({ name: 'stock_take_pkey', columns: [t.adjustmentId, t.materialLotId] }),
+		index('stock_take_lot').on(t.materialLotId),
+		foreignKey({
+			name: 'stock_take_adjustment_id_fkey',
+			columns: [t.adjustmentId],
+			foreignColumns: [stockAdjustment.id]
+		}).onDelete('restrict'),
+		foreignKey({
+			name: 'stock_take_lot_fkey',
+			columns: [t.materialLotId, t.materialId],
+			foreignColumns: [materialLot.id, materialLot.materialId]
+		}).onDelete('restrict'),
+		check('stock_take_qty_check', sql`${t.qty} > 0`)
 	]
 );
