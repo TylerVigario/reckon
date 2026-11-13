@@ -297,8 +297,12 @@ check(
 );
 
 // The new material's page has the lot, which opens the receipt it came on.
-await evaluate(
-	`[...document.querySelectorAll('a.box-row')].find((a) => a.textContent.includes(${JSON.stringify(NAME)}))?.click()`
+await run(
+	(/** @type {string} */ name) =>
+		/** @type {HTMLAnchorElement | undefined} */ (
+			[...document.querySelectorAll('a.box-row')].find((a) => a.textContent?.includes(name))
+		)?.click(),
+	NAME
 );
 await settle(2000);
 const material = /** @type {string} */ (
