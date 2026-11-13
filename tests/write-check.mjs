@@ -16,6 +16,8 @@
  * It is not clean. It leaves an entry it posted, the settings and terms it
  * saved, and the site it closed, so run it against a scratch database.
  */
+import { database } from '../scripts/env.mjs';
+import pg from 'pg';
 import { signIn } from './passkeys.mjs';
 
 const [, , base = 'http://localhost:5181', email] = process.argv;
@@ -249,6 +251,92 @@ if (serviceId) {
 	);
 } else {
 	failures.push('could not find a service to post an entry with');
+}
+
+console.log('\n  a time entry changed after the fact');
+if (serviceId) {
+	const was = {
+		...entry,
+		service_id: serviceId,
+		crew: 'team',
+		worked_by: null,
+		client_uuid: crypto.randomUUID()
+	};
+	const made = await call('POST', '/api/time', was);
+	const id = /** @type {string | undefined} */ (made.body?.id);
+	if (id) {
+		const at = `/api/time/${id}`;
+		const changed = { ...was, minutes: 30, note: 'write-check, changed' };
+		await check(
+			'it changes, from the save it began from, and counts the save',
+			'PATCH',
+			at,
+			{ ...changed, version: 1 },
+			(r) => r.status === 200 && r.body?.version === 2
+		);
+		await check(
+			'a change from an older copy is refused, not written over the newer',
+			'PATCH',
+			at,
+			{ ...changed, note: 'from an old copy', version: 1 },
+			409
+		);
+		await check(
+			'a change that does not say what it began from is refused',
+			'PATCH',
+			at,
+			changed,
+			(r) => r.status === 400 && !!r.body?.errors?.version
+		);
+		await check(
+			'a refused field names itself, as adding one does',
+			'PATCH',
+			at,
+			{ ...changed, minutes: 0, version: 2 },
+			(r) => r.status === 400 && !!r.body?.errors?.minutes
+		);
+		await check('it is removed', 'DELETE', at, undefined, 200);
+		await check(
+			'and one removed is not there to change',
+			'PATCH',
+			at,
+			{ ...changed, version: 2 },
+			404
+		);
+	} else failures.push(`could not make an entry to change: ${made.status}`);
+
+	// One an invoice was built from, and one a payment was recorded for, stay as they were.
+	const db = new pg.Client(database());
+	await db.connect();
+	const [billed] = (
+		await db.query(
+			`select l.time_entry_id as id, i.status from invoice_line l join invoice i on i.id = l.invoice_id
+			  where l.time_entry_id is not null limit 1`
+		)
+	).rows;
+	const [paid] = (
+		await db.query(
+			`select p.time_entry_id as id from person_payment_item p
+			  where p.time_entry_id is not null
+			    and not exists (select 1 from invoice_line l where l.time_entry_id = p.time_entry_id)
+			  limit 1`
+		)
+	).rows;
+	await db.end();
+	for (const [what, row] of /** @type {const} */ ([
+		['an hour on an invoice', billed],
+		['an hour in a payment', paid]
+	]))
+		if (row)
+			await check(
+				`${what} stays as it was, and says where to put it right`,
+				'PATCH',
+				`/api/time/${row.id}`,
+				{ ...was, version: 1 },
+				(r) =>
+					r.status === 409 && /draft|Credit the invoice|next payment/.test(r.body?.detail ?? '')
+			);
+		else console.log(`  · no ${what} in this business to try`);
 }
 
 console.log('\n  settings');

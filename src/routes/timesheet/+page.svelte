@@ -346,7 +346,11 @@
 			{/each}
 
 			{#each data.entries as e (e.id)}
-				<div class="rec" class:gone={!e.billable}>
+				<a
+					class="rec link"
+					class:gone={!e.billable}
+					href={resolve('/timesheet/[id]', { id: e.id })}
+				>
 					<div class="rec-m">
 						<div class="rec-t">
 							{e.site ?? e.entity ?? e.note ?? 'No client'}
@@ -363,7 +367,7 @@
 						<span class="rec-v" class:mut={!e.billable}>{hhmm(e.seconds)}</span>
 						<span class="rec-x">{e.invoiced ? 'billed' : 'unbilled'}</span>
 					</div>
-				</div>
+				</a>
 			{/each}
 
 			{#if timers.length === 0 && data.entries.length === 0}

@@ -70,7 +70,13 @@ export const timeEntry = pgTable(
 		 * time_entry_crew did it and each of them is paid, so worked_by is null.
 		 */
 		crew: text({ enum: CREWS }).notNull(),
-		siteId: uuid()
+		siteId: uuid(),
+		/**
+		 * Which save of the entry this is: 1 when made, one more each time a
+		 * change is saved (0050). A change says which it began from, so the server
+		 * can tell whether anyone changed it meanwhile.
+		 */
+		version: integer().default(1).notNull()
 	},
 	(t) => [
 		// A phone's uuid is its maker's own: a repeat from them finds what they

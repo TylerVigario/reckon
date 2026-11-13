@@ -59,7 +59,12 @@
 			<div class="sec-h"><h2>Week of {day(w.week)}</h2></div>
 			<div class="rows">
 				{#each w.rows as e (e.id)}
-					<div class="rec" class:gone={!e.billable} class:warn={e.stale}>
+					<a
+						class="rec link"
+						class:gone={!e.billable}
+						class:warn={e.stale}
+						href={resolve('/timesheet/[id]', { id: e.id })}
+					>
 						<div class="rec-m">
 							<div class="rec-t">
 								{e.site ?? e.entity ?? e.service}
@@ -87,7 +92,7 @@
 									×{e.heads}{/if}
 							</span>
 						</div>
-					</div>
+					</a>
 				{/each}
 			</div>
 		</div>

@@ -2859,4 +2859,42 @@ SELECT must_fail($$
   DELETE FROM "user" WHERE id = 'a1000000-0000-4000-8000-000000000071'
 $$, 'someone history says made a change deleted: they are made inactive instead');
 
+
+\echo ''
+\echo '=== 56. a time entry changes after the fact, counting its saves, until it is billed or paid ==='
+
+DO $$
+DECLARE e uuid; v int; kept int;
+BEGIN
+  SELECT t.id INTO e FROM time_entry t
+   WHERE NOT EXISTS (SELECT 1 FROM invoice_line il WHERE il.time_entry_id = t.id)
+     AND NOT EXISTS (SELECT 1 FROM person_payment_item p WHERE p.time_entry_id = t.id)
+   ORDER BY t.id LIMIT 1;
+  SELECT version INTO v FROM time_entry WHERE id = e;
+  UPDATE time_entry SET note = 'Changed after the fact' WHERE id = e;
+  IF (SELECT version FROM time_entry WHERE id = e) <> v + 1 THEN
+    RAISE EXCEPTION 'GUARD MISSING: a changed entry did not count the save';
+  END IF;
+  UPDATE time_entry SET note = 'Changed after the fact' WHERE id = e;
+  IF (SELECT version FROM time_entry WHERE id = e) <> v + 1 THEN
+    RAISE EXCEPTION 'GUARD WRONG: a save that changed nothing was counted';
+  END IF;
+  SELECT count(*) INTO kept FROM record_history
+   WHERE table_name = 'time_entry' AND row_id = e AND field = 'version';
+  IF kept <> 0 THEN
+    RAISE EXCEPTION 'GUARD WRONG: history keeps the count of saves (% rows)', kept;
+  END IF;
+  RAISE NOTICE '  counts    each save that changes an entry, and only those, outside its history';
+END $$;
+
+SELECT must_fail($$
+  UPDATE time_entry SET note = 'Billed, then changed'
+   WHERE id = (SELECT time_entry_id FROM invoice_line WHERE time_entry_id IS NOT NULL LIMIT 1)
+$$, 'changing an entry an invoice was built from');
+
+SELECT must_fail($$
+  UPDATE time_entry SET note = 'Paid, then changed'
+   WHERE id = (SELECT time_entry_id FROM person_payment_item WHERE time_entry_id IS NOT NULL LIMIT 1)
+$$, 'changing an entry a payment was recorded for');
+
 \echo 'All guards hold.'

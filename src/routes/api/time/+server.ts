@@ -8,40 +8,9 @@ import {
 } from '#lib/server/field-errors.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
-import { knownZone } from '#lib/server/zones.ts';
 import { readBody } from '#lib/json.ts';
-import { UUID } from '#lib/field-rules.ts';
-import { theTeam } from '#lib/server/choices.ts';
-import { fieldOnly } from '#lib/server/mine.ts';
 import { log } from '#lib/server/log.ts';
-
-/** What the body carries, for a database complaint to be laid against. */
-const FIELDS = [
-	'client_uuid',
-	'worked_on',
-	'started_at',
-	'ended_at',
-	'zone',
-	'minutes',
-	'crew',
-	'worked_by',
-	'crew_ids',
-	'entity_id',
-	'site_id',
-	'service_id',
-	'billable',
-	'note'
-];
-
-/** Each foreign key an entry can break, and what it means to the person fixing it. */
-const GONE: Record<string, [field: string, why: string]> = {
-	time_entry_service_id_fkey: ['service_id', 'That service no longer exists.'],
-	time_entry_entity_id_fkey: ['entity_id', 'That client no longer exists.'],
-	time_entry_site_id_fkey: ['site_id', 'That site no longer exists.'],
-	time_entry_site_is_the_clients: ['site_id', "That site is no longer this client's."],
-	time_entry_worked_by_fkey: ['worked_by', 'That person no longer exists.'],
-	time_entry_crew_user_id_fkey: ['crew_ids', 'Somebody on the crew no longer exists.']
-};
+import { GONE, readTimeEntry, TIME_FIELDS } from '#lib/server/time-input.ts';
 
 /**
  * Accepts a time entry from the capture queue.
@@ -64,126 +33,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const body = await readBody(request);
 	if (!body) return problem('malformed', 400, 'Expected a JSON object.');
 
-	const refuse = (field: string, why: string) =>
-		problem('invalidField', 400, `${field}: ${why}`, { errors: { [field]: why } });
+	if (typeof body.client_uuid !== 'string')
+		return problem('invalidField', 400, 'client_uuid: Required.', {
+			errors: { client_uuid: 'Required.' }
+		});
+	const client_uuid = body.client_uuid;
+	const read = await readTimeEntry(body, locals);
+	if (!read.ok) return read.refused;
+	const e = read.entry;
 
-	const timed = body.started_at !== undefined && body.started_at !== null;
-	for (const f of [
-		'client_uuid',
-		...(timed ? ['ended_at', 'zone'] : ['worked_on', 'minutes']),
-		'crew',
-		'service_id'
-	])
-		if (body[f] === undefined || body[f] === null) return refuse(f, 'Required.');
-
-	// Each of these is checked for its TYPE and not only its presence. The
-	// queue is a phone's copy of this contract and can be any version of
-	// itself; the database is the last place to find out that a date is not a
-	// date, and its complaint arrives as a 500 the queue retries for ever.
-	const text = (f: string) => (typeof body[f] === 'string' ? body[f] : null);
-	const optionalText = (f: string) => (body[f] === undefined || body[f] === null ? null : text(f));
-
-	const client_uuid = text('client_uuid');
-	const service_id = text('service_id');
-	for (const [f, v] of [
-		['client_uuid', client_uuid],
-		['service_id', service_id]
-	] as const)
-		if (v === null) return refuse(f, 'Expected text.');
-
-	let length: {
-		worked_on: string;
-		seconds: number;
-		started_at: Date | null;
-		ended_at: Date | null;
-		zone: string | null;
-	};
-	if (timed) {
-		const zone = typeof body.zone === 'string' ? await knownZone(body.zone) : null;
-		if (zone === null) return refuse('zone', 'Not a time zone.');
-		const moment = (f: string) => {
-			try {
-				return Temporal.Instant.from(text(f) ?? '');
-			} catch {
-				return null;
-			}
-		};
-		const from = moment('started_at');
-		if (from === null) return refuse('started_at', 'A moment, such as 2026-10-04T16:05:00Z.');
-		const to = moment('ended_at');
-		if (to === null) return refuse('ended_at', 'A moment, such as 2026-10-04T18:45:00Z.');
-		const took = from.until(to).total('milliseconds');
-		if (took <= 0) return refuse('ended_at', 'It ends before it starts.');
-		const started = from.round({ smallestUnit: 'second', roundingMode: 'floor' });
-		const seconds = Math.ceil(took / 1000);
-		const ended = started.add({ seconds });
-		length = {
-			worked_on: started.toZonedDateTimeISO(zone).toPlainDate().toString(),
-			seconds,
-			started_at: new Date(started.epochMilliseconds),
-			ended_at: new Date(ended.epochMilliseconds),
-			zone
-		};
-	} else {
-		const worked_on = text('worked_on');
-		if (worked_on === null) return refuse('worked_on', 'Expected text.');
-		const minutes = body.minutes;
-		if (typeof minutes !== 'number' || !Number.isInteger(minutes) || minutes <= 0)
-			return refuse('minutes', 'A positive whole number of minutes.');
-		length = { worked_on, seconds: minutes * 60, started_at: null, ended_at: null, zone: null };
-	}
-
-	// crew decides the rate, so it is never implied. The database holds the same
-	// rule; this is here to answer with something a person can read.
-	const crew = body.crew;
-	if (crew !== 'one' && crew !== 'team') return refuse('crew', "One of 'one' or 'team'.");
-
-	const worked_by = optionalText('worked_by');
-	if (crew === 'one' && !worked_by) return refuse('worked_by', 'Who worked it.');
-	if (crew === 'team' && worked_by)
-		return refuse('worked_by', 'Leave this empty for a team entry.');
-	// A team entry names its crew (0023). One a phone queued before entries did
-	// names nobody, and is taken as a team was then: everybody holding a role.
-	let crew_ids: string[] = [];
-	if (crew === 'team') {
-		if (body.crew_ids === undefined || body.crew_ids === null)
-			crew_ids = (await theTeam()).map((p) => p.id);
-		else if (
-			!Array.isArray(body.crew_ids) ||
-			!body.crew_ids.every((x): x is string => typeof x === 'string' && UUID.test(x))
-		)
-			return refuse('crew_ids', 'Who was on it, by their ids.');
-		else {
-			crew_ids = [...new Set(body.crew_ids)];
-			if (crew_ids.length < 2)
-				return refuse('crew_ids', 'A team is two or more. One person is an entry of their own.');
-		}
-	} else if (body.crew_ids !== undefined && body.crew_ids !== null)
-		return refuse('crew_ids', "Leave this empty for one person's entry.");
-
-	// Someone with Field enters only work they were on (#lib/access): their own,
-	// or a team's that names them.
-	if (fieldOnly(locals)) {
-		const me = locals.user!.id;
-		if (crew === 'one' && worked_by !== me)
-			return refuse('worked_by', "Your own work. Someone with Full enters anyone else's.");
-		if (crew === 'team' && !crew_ids.includes(me))
-			return refuse('crew_ids', 'A team you were on. Someone with Full enters any other.');
-	}
-
-	// A boolean, not a truthy value: a queue that sends "billable": "false" is
-	// told so, rather than having a non-empty string read as yes.
-	if (body.billable !== undefined && typeof body.billable !== 'boolean')
-		return refuse('billable', 'True or false.');
-	const billable = body.billable ?? true;
-
-	const entity_id = optionalText('entity_id');
-	if (billable && !entity_id) return refuse('entity_id', 'Who is paying.');
-	const site_id = optionalText('site_id');
-	const note = optionalText('note');
-
-	// Never from the body: the queue is written on a phone and a client cannot
-	// be trusted to say who it is.
 	const created_by = locals.user!.id;
 
 	let row;
@@ -192,20 +50,20 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			const added = await tx
 				.insert(timeEntry)
 				.values({
-					clientUuid: client_uuid!,
-					workedOn: length.worked_on,
-					seconds: length.seconds,
-					startedAt: length.started_at,
-					endedAt: length.ended_at,
-					zone: length.zone,
-					crew,
-					workedBy: worked_by,
+					clientUuid: client_uuid,
+					workedOn: e.workedOn,
+					seconds: e.seconds,
+					startedAt: e.startedAt,
+					endedAt: e.endedAt,
+					zone: e.zone,
+					crew: e.crew,
+					workedBy: e.workedBy,
 					createdBy: created_by,
-					entityId: entity_id,
-					siteId: site_id,
-					serviceId: service_id!,
-					billable: billable,
-					note
+					entityId: e.entityId,
+					siteId: e.siteId,
+					serviceId: e.serviceId,
+					billable: e.billable,
+					note: e.note
 				})
 				// A repeat is the row already there, returned as if just written.
 				.onConflictDoUpdate({
@@ -221,10 +79,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					billable: timeEntry.billable
 				});
 			// The crew, once: a repeat finds it there already.
-			if (added[0]?.crew === 'team' && crew_ids.length)
+			if (added[0]?.crew === 'team' && e.crewIds.length)
 				await tx
 					.insert(timeEntryCrew)
-					.values(crew_ids.map((userId) => ({ timeEntryId: added[0].id, userId })))
+					.values(e.crewIds.map((userId) => ({ timeEntryId: added[0].id, userId })))
 					.onConflictDoNothing();
 			return added;
 		});
@@ -250,7 +108,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 		// Any other integrity or data complaint is a 400 too: the body will
 		// never satisfy it, and a 500 is what the queue retries.
-		const refused = refuseIfTheDatabaseSaidSo(err, FIELDS, 'time_entry');
+		const refused = refuseIfTheDatabaseSaidSo(err, TIME_FIELDS, 'time_entry');
 		if (refused) return refused;
 		throw err;
 	}

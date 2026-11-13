@@ -72,6 +72,7 @@ export const REACH = {
 
 	// Their own time, and team work they were on.
 	'/timesheet': 'field',
+	'/timesheet/[id]': 'field',
 	'/timesheet/all': 'field',
 	'/timesheet/manual': 'field',
 	'/timesheet/start': 'field',
