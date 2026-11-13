@@ -25,7 +25,9 @@
 		editable = true,
 		endpoint,
 		validate,
-		onsaved
+		onsaved,
+		version,
+		onconflict
 	}: {
 		/** The field as the endpoint names it. */
 		name: string;
@@ -47,6 +49,14 @@
 		validate: (name: string, raw: string) => Parsed;
 		/** After the server has kept it. */
 		onsaved?: () => void | Promise<void>;
+		/**
+		 * The save the record is at, where it counts them: sent with what this
+		 * detail said then, so a change someone made since is not written over
+		 * unseen. Told of one, it says so and is fetched again; Save again puts
+		 * this one over it, Cancel keeps theirs.
+		 */
+		version?: number;
+		onconflict?: () => void | Promise<void>;
 	} = $props();
 
 	const id = $props.id();
@@ -78,7 +88,10 @@
 		const r = await fetch(endpoint, {
 			method: 'PATCH',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ fields: { [name]: draft } })
+			body: JSON.stringify({
+				fields: { [name]: draft },
+				...(version === undefined ? {} : { version, base: { [name]: value ?? '' } })
+			})
 		}).catch(() => null);
 		if (!r) {
 			saving = false;
@@ -86,6 +99,7 @@
 		}
 		if (!r.ok) {
 			const problem = await readProblem(r);
+			if (r.status === 409) await onconflict?.();
 			saving = false;
 			return void (error = problem.errors?.[name] ?? problem.detail ?? 'That did not save.');
 		}

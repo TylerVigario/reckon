@@ -128,7 +128,9 @@ export async function materialFigures(materialIds: readonly string[]) {
 						on_hand: w.onHand.toString(),
 						ex_tax: w.exTax?.toString() ?? null,
 						tax_paid: w.taxPaid?.toString() ?? null,
-						price: w.price?.toString() ?? null
+						price: w.price?.toString() ?? null,
+						// A set price in force today, if it sells at one rather than a markup.
+						listed: priceOf.get(m.id) ?? null
 					}
 				];
 			})

@@ -22,22 +22,33 @@ export const load: LayoutServerLoad = async ({ params }) => {
 			brand: t.material.brand,
 			// How its unit is written beside a figure: "ft", or the name.
 			unit: sql<string>`coalesce(${t.unit.short}, ${t.unit.name})`,
-			places: t.unit.places
+			unit_id: t.material.unitId,
+			places: t.unit.places,
+			taxable: t.material.taxable,
+			active: t.material.active,
+			own_markup: t.material.markupPct,
+			version: t.material.version
 		})
 		.from(t.material)
 		.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
 		.where(eq(t.material.id, params.id));
 	if (!found) error(404, 'no such material');
-	const [figures, [adjusted]] = await Promise.all([
+	const [figures, [adjusted], [received]] = await Promise.all([
 		materialFigures([found.id]),
 		db
 			.select({ n: count() })
 			.from(t.stockAdjustment)
-			.where(eq(t.stockAdjustment.materialId, found.id))
+			.where(eq(t.stockAdjustment.materialId, found.id)),
+		db.select({ n: count() }).from(t.materialLot).where(eq(t.materialLot.materialId, found.id))
 	]);
 	return {
 		material: { ...found, ...figures.of.get(found.id)! },
+		// The business's own markup, which one with none of its own sells at.
+		markup: figures.markup,
+		costing: figures.costing,
 		adjusted: adjusted.n,
+		// Whether any of it has been received: its unit is then fixed.
+		received: received.n > 0,
 		today: personalToday()
 	};
 };

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import ActionMenu from '#lib/ActionMenu.svelte';
 	import Dialog from '#lib/Dialog.svelte';
 	import Octicon from '#lib/Octicon.svelte';
 	import RecordHead from '#lib/RecordHead.svelte';
@@ -21,10 +22,11 @@
 
 	/**
 	 * A material, as Primer draws a record: its name, what is on hand and what
-	 * it sells at in a line under it, then its tabs -- Stock and Adjustments,
-	 * each its own address. Receive stock and Adjust are its actions; Adjust
-	 * opens a dialog to take some off the shelf or put some on, how many, on
-	 * which day, why, and a note (#lib/adjust-fields).
+	 * it sells at in a line under it, then its tabs -- Stock, Adjustments,
+	 * Details and History, each its own address. Receive stock and Adjust are
+	 * its actions; Adjust opens a dialog to take some off the shelf or put some
+	 * on, how many, on which day, why, and a note (#lib/adjust-fields). Retire
+	 * and Offer again are in its menu, retiring asking first.
 	 */
 	let { data, children }: LayoutProps = $props();
 	const m = $derived(data.material);
@@ -99,6 +101,35 @@
 		await refreshAll();
 	}
 
+	let retiring = $state(false);
+	let offering = $state(false);
+	let failed = $state('');
+	/** Offered or not, from the save the record is at (#lib/Detail's merge). */
+	async function setOffered(active: boolean) {
+		offering = true;
+		failed = '';
+		const r = await fetch(`/api/materials/${m.id}`, {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				fields: { active: String(active) },
+				version: m.version,
+				base: { active: String(m.active) }
+			})
+		}).catch(() => null);
+		offering = false;
+		if (!r?.ok)
+			failed = r
+				? ((await readProblem(r)).detail ?? 'That did not save.')
+				: 'Not saved — no connection.';
+		await refreshAll();
+	}
+	const menu = $derived(
+		m.active
+			? [{ label: 'Retire', onselect: (): void => void (retiring = true) }]
+			: [{ label: 'Offer again', onselect: (): void => void setOffered(true) }]
+	);
+
 	const tabs = $derived([
 		{
 			href: resolve('/catalogue/materials/[id]', { id: m.id }),
@@ -110,6 +141,16 @@
 			label: 'Adjustments',
 			count: data.adjusted,
 			current: page.route.id === '/catalogue/materials/[id]/adjustments'
+		},
+		{
+			href: resolve('/catalogue/materials/[id]/details', { id: m.id }),
+			label: 'Details',
+			current: page.route.id === '/catalogue/materials/[id]/details'
+		},
+		{
+			href: resolve('/catalogue/materials/[id]/history', { id: m.id }),
+			label: 'History',
+			current: page.route.id === '/catalogue/materials/[id]/history'
 		}
 	]);
 </script>
@@ -123,13 +164,17 @@
 <Top title={m.name} back={resolve('/catalogue/materials')} backLabel="Materials">
 	{#snippet actions()}
 		<button type="button" class="btn sm" onclick={adjust}>Adjust</button>
-		<a class="btn sm pri" href={resolve(`/catalogue/receipts/new?material=${m.id}`)}>Receive</a>
+		{#if m.active}
+			<a class="btn sm pri" href={resolve(`/catalogue/receipts/new?material=${m.id}`)}>Receive</a>
+		{/if}
+		<ActionMenu label="Actions for {m.name}" items={menu} />
 	{/snippet}
 </Top>
 
 <div class="pad primer">
 	<RecordHead label="{m.name}’s record" {tabs}>
 		{#snippet state()}
+			{#if !m.active}<span class="lab warn">Retired</span>{/if}
 			<span class="muted">
 				{[
 					`${quantity(m.on_hand)} ${m.unit} on hand`,
@@ -142,6 +187,24 @@
 			</span>
 		{/snippet}
 	</RecordHead>
+
+	{#if !m.active}
+		<div class="banner warn" role="status">
+			<Octicon name="alert" />
+			<div class="banner-m">
+				<p class="banner-t">Not offered for new lines</p>
+				<p class="banner-d">
+					It can’t be put on a draft or received. Offer it again from its menu.
+				</p>
+			</div>
+		</div>
+	{/if}
+	{#if failed}
+		<div class="banner crit" role="alert">
+			<Octicon name="alert" />
+			<div class="banner-m"><p class="banner-t">{failed}</p></div>
+		</div>
+	{/if}
 
 	{@render children()}
 </div>
@@ -251,6 +314,27 @@
 		{@render wrong('note')}
 	</div>
 	{#if problem}<p class="fc-e"><Octicon name="alert" />{problem}</p>{/if}
+</Dialog>
+
+<Dialog
+	open={retiring}
+	title="Retire {m.name}?"
+	go="Retire"
+	going="Retiring…"
+	working={offering}
+	ongo={async () => {
+		await setOffered(false);
+		retiring = false;
+	}}
+	onclose={() => (retiring = false)}
+>
+	<p>
+		It can no longer be added to a draft or received, and it moves under Retired on Materials. Lines
+		it is already on keep it{Number(m.on_hand) > 0
+			? `, and the ${quantity(m.on_hand)} ${m.unit} on the shelf stay counted until adjusted off`
+			: ''}.
+	</p>
+	<p>Offer it again to put it back as it was.</p>
 </Dialog>
 
 <style>

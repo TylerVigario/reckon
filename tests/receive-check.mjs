@@ -382,6 +382,171 @@ check(
 	'Adjustments lists each, why, and what it was worth'
 );
 
+// ITS DETAILS: what it is, changed in place, and what it sells at, in a dialog.
+/** The tab that reads `label`, opened. */
+const tab = async (/** @type {string} */ label) => {
+	await run(
+		(/** @type {string} */ want) =>
+			/** @type {HTMLAnchorElement | undefined} */ (
+				[...document.querySelectorAll('.unav a')].find((a) =>
+					a.textContent?.trim().startsWith(want)
+				)
+			)?.click(),
+		label
+	);
+	await settle(2000);
+};
+/** A detail opened by its pencil, given `value`, and saved. */
+const change = async (/** @type {string} */ field, /** @type {string} */ value) => {
+	await evaluate(`document.querySelector('[data-edit="${field}"]')?.click()`);
+	await settle(300);
+	await run((/** @type {string} */ v) => {
+		const f = /** @type {HTMLInputElement} */ (document.activeElement);
+		f.value = v;
+		f.dispatchEvent(new Event('input', { bubbles: true }));
+	}, value);
+	await press('Save');
+	await settle(2000);
+};
+const body = async () =>
+	/** @type {string} */ (await evaluate(`document.body.textContent.replace(/\\s+/g, ' ')`));
+await tab('Details');
+const details = await body();
+check(
+	details.includes('Counted in') &&
+		details.includes('Fixed once some is received.') &&
+		!(await evaluate(`!!document.querySelector('[data-edit="unit_id"]')`)),
+	'what it is counted in is fixed, and says so, once some of it is received'
+);
+await change('brand', 'Southwire');
+check((await head()).includes('Southwire'), `its brand is changed in place (${await head()})`);
+
+// Someone else renames it meanwhile: this rename is told so, and Save again puts it over theirs.
+const RENAMED = `${NAME}, renamed`;
+const theirs = await run(
+	async (/** @type {string} */ was) =>
+		(
+			await fetch(
+				location.pathname
+					.replace('/catalogue/materials/', '/api/materials/')
+					.replace(/\/details$/, ''),
+				{
+					method: 'PATCH',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						fields: { name: `${was}, theirs` },
+						version: 1,
+						base: { name: was }
+					})
+				}
+			)
+		).status,
+	NAME
+);
+await change('name', RENAMED);
+const told = /** @type {string} */ (await textOf('.fc-e'));
+check(
+	theirs === 200 && told.includes('changed name meanwhile'),
+	`a rename made meanwhile is told, not written over (${theirs}, ${told})`
+);
+await press('Save');
+await settle(2000);
+check(
+	(await evaluate(`document.querySelector('h1')?.textContent?.trim()`)) === RENAMED,
+	'Save again puts this rename over theirs'
+);
+
+// A set price a foot, from today; then back to the markup.
+await evaluate(`document.querySelector('[aria-label="Change what it sells at"]')?.click()`);
+await settle(400);
+await run(() =>
+	/** @type {HTMLInputElement | null} */ (
+		document.querySelector('dialog[open] input[name="p-by"][value="price"]')
+	)?.click()
+);
+await settle(200);
+await set('#p-price', '0.50');
+await evaluate(`document.querySelector('dialog[open] [data-go]')?.click()`);
+await settle(2000);
+check(
+	!(await dialogOpen()) && (await head()).includes('sells at $0.50 a ft'),
+	`a set price is given from today (${await head()})`
+);
+await evaluate(`document.querySelector('[aria-label="Change what it sells at"]')?.click()`);
+await settle(400);
+await run(() =>
+	/** @type {HTMLInputElement | null} */ (
+		document.querySelector('dialog[open] input[name="p-by"][value="business"]')
+	)?.click()
+);
+await evaluate(`document.querySelector('dialog[open] [data-go]')?.click()`);
+await settle(2000);
+check(
+	!(await head()).includes('$0.50') && (await head()).includes(sells),
+	`back to the business's markup, it sells at ${sells} again (${await head()})`
+);
+
+// Its History: each save, newest first, who made it.
+await tab('History');
+const history = await body();
+check(
+	history.includes('Added') &&
+		history.includes('Brand: nothing → “Southwire”') &&
+		history.includes(`Name: “${NAME}, theirs” → “${RENAMED}”`) &&
+		history.includes('Sells at $0.50 a ft') &&
+		history.includes('Sells at its markup again'),
+	`History has each change${history.includes('Brand:') ? '' : ` (${history.slice(0, 400)})`}`
+);
+
+// Retired: not offered, said on its record and under Retired on Materials,
+// and a receipt naming it is refused.
+await evaluate(`document.querySelector('button[aria-label^="Actions for"]')?.click()`);
+await settle(300);
+await run(() =>
+	/** @type {HTMLButtonElement | undefined} */ (
+		[...document.querySelectorAll('[role="menuitem"]')].find(
+			(b) => b.textContent?.trim() === 'Retire'
+		)
+	)?.click()
+);
+await settle(400);
+await evaluate(`document.querySelector('dialog[open] [data-go]')?.click()`);
+await settle(2000);
+const retiredPage = await body();
+check(
+	retiredPage.includes('Not offered for new lines') && (await head()).includes('Retired'),
+	'retired, its record says so'
+);
+const materialId = /** @type {string} */ (await evaluate(`location.pathname.split('/')[3]`));
+const refusedReceipt = /** @type {string} */ (
+	await run(async (/** @type {string} */ id) => {
+		const f = new FormData();
+		f.set('received_on', new Date().toISOString().slice(0, 10));
+		f.set('tax_paid', '0');
+		f.set(
+			'items',
+			JSON.stringify([{ material_id: id, count: '1', per: '', price: '1.00', price_is: 'each' }])
+		);
+		const r = await fetch('/catalogue/receipts/new', {
+			method: 'POST',
+			headers: { 'x-sveltekit-action': 'true' },
+			body: f
+		});
+		return await r.text();
+	}, materialId)
+);
+check(
+	refusedReceipt.includes(`${RENAMED} is retired`),
+	`a receipt naming it is refused (${refusedReceipt.slice(0, 200)})`
+);
+await go('/catalogue/materials');
+const listed = /** @type {string} */ (
+	await evaluate(
+		`document.querySelector('[aria-labelledby="retired-h"]')?.textContent.replace(/\\s+/g, ' ') ?? ''`
+	)
+);
+check(listed.includes(RENAMED), 'Materials lists it under Retired');
+
 check(
 	uncaught.length === 0,
 	`nothing is left uncaught${uncaught.length ? `: ${[...new Set(uncaught)].join(' | ')}` : ''}`

@@ -108,7 +108,8 @@ export function materials(ids?: string[]) {
 			places: t.unit.places,
 			markup: sql<string>`coalesce(${t.material.markupPct}, (select ${t.operator.defaultMarkupPct} from ${t.operator}), 0)::text`,
 			listed,
-			taxable: t.material.taxable
+			taxable: t.material.taxable,
+			active: t.material.active
 		})
 		.from(t.material)
 		.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
@@ -487,6 +488,10 @@ async function fromTheShelf(
 	const [m] = UUID.test(id) ? await materials([id]) : [];
 	const { values, errors } = readFromStock(input.fields, m?.places ?? null);
 	if (id && !m && !errors.material_id) errors.material_id = 'That item no longer exists.';
+	// Retired is not offered for a new line, one made on a phone meanwhile
+	// included; a line put back keeps what it was of, as a line on a draft does.
+	if (m && !m.active && !input.id && !errors.material_id)
+		errors.material_id = `${m.name} is retired. Offer it again from its record, or choose another.`;
 	const siteId = typeof values.site_id === 'string' ? values.site_id : null;
 	const { site, why } = await siteOf(draft, siteId);
 	if (why) errors.site_id = why;

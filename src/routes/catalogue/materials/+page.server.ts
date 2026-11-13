@@ -1,4 +1,4 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, desc, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { materialFigures } from '#lib/server/stock.ts';
@@ -22,12 +22,12 @@ export const load: PageServerLoad = async () => {
 			sku: t.material.sku,
 			brand: t.material.brand,
 			// How its unit is written beside a figure: "ft", or the name.
-			unit: sql<string>`coalesce(${t.unit.short}, ${t.unit.name})`
+			unit: sql<string>`coalesce(${t.unit.short}, ${t.unit.name})`,
+			active: t.material.active
 		})
 		.from(t.material)
 		.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
-		.where(eq(t.material.active, true))
-		.orderBy(asc(t.material.name));
+		.orderBy(desc(t.material.active), asc(t.material.name));
 	const figures = await materialFigures(materials.map((m) => m.id));
 	return {
 		materials: materials.map((m) => ({ ...m, ...figures.of.get(m.id)! })),

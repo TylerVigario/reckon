@@ -386,6 +386,13 @@
       "when": 1794595659606,
       "tag": "0054_stock_is_put_right_by_hand",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1794600010982,
+      "tag": "0055_a_material_is_changed",
+      "breakpoints": true
     }
   ]
 }
