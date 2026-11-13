@@ -425,6 +425,66 @@ check(
 	`taking it off gives the shelf all 15 ft back${sixty === '60 ft' ? '' : ` (${sixty})`}`
 );
 
+// Retired, the raceway is not offered for a new line: one sent regardless, as
+// a phone that had it before would send it, is refused and says why. Offered
+// again, it is as it was.
+const racewayId = /** @type {string | null} */ (
+	await run(
+		(/** @type {string} */ name) =>
+			[...document.querySelectorAll('a.box-row')]
+				.find((r) => r.querySelector('.n')?.textContent?.trim() === name)
+				?.getAttribute('href')
+				?.split('/')
+				.pop() ?? null,
+		RACEWAY
+	)
+);
+/** Offered or not, as its record's menu sets it. */
+const offer = (/** @type {boolean} */ active) =>
+	run(
+		async (/** @type {string} */ id, /** @type {boolean} */ a) =>
+			(
+				await fetch(`/api/materials/${id}`, {
+					method: 'PATCH',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						fields: { active: String(a) },
+						version: 1,
+						base: { active: String(!a) }
+					})
+				})
+			).status,
+		racewayId,
+		active
+	);
+const retired = await offer(false);
+const refusedLine = /** @type {{ status: number; why: string }} */ (
+	await run(
+		async (/** @type {string} */ invoice, /** @type {string} */ material) => {
+			const f = new FormData();
+			f.set('client_uuid', crypto.randomUUID());
+			f.set('invoice_id', invoice);
+			f.set('kind', 'material');
+			f.set('material_id', material);
+			f.set('qty', '1');
+			f.set('site_id', '');
+			const r = await fetch('/api/lines', { method: 'POST', body: f });
+			const body = await r.json();
+			return { status: r.status, why: body.errors?.material_id ?? body.detail ?? '' };
+		},
+		draft.split('/').pop(),
+		racewayId
+	)
+);
+const again = await offer(true);
+check(
+	retired === 200 &&
+		refusedLine.status === 400 &&
+		refusedLine.why.startsWith(`${RACEWAY} is retired.`) &&
+		again === 200,
+	`a retired material is refused for a new line, and offered again (${retired}, ${refusedLine.status} ${refusedLine.why}, ${again})`
+);
+
 check(
 	uncaught.length === 0,
 	`nothing is left uncaught${uncaught.length ? `: ${[...new Set(uncaught)].join(' | ')}` : ''}`

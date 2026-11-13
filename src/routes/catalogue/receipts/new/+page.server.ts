@@ -99,7 +99,12 @@ export const actions: Actions = {
 		const [ofMaterial, ofUnit, places] = await Promise.all([
 			ids('material_id').length
 				? db
-						.select({ id: t.material.id, places: t.unit.places })
+						.select({
+							id: t.material.id,
+							name: t.material.name,
+							places: t.unit.places,
+							active: t.material.active
+						})
 						.from(t.material)
 						.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
 						.where(inArray(t.material.id, ids('material_id')))
@@ -119,6 +124,10 @@ export const actions: Actions = {
 		const { values, items: read, errors } = readReceipt(fields, items, placesOf, places);
 		if (typeof values.received_on === 'string' && values.received_on > personalToday())
 			errors.received_on = 'It cannot have arrived after today.';
+		// Retired is not offered: ERPNext refuses a disabled item on a new entry alike.
+		const retired = ofMaterial.find((m) => !m.active);
+		if (retired && !errors.items)
+			errors.items = `${retired.name} is retired. Offer it again from its record to receive it.`;
 
 		const file = form.get('receipt');
 		let receipt: { bytes: Buffer; type: string } | null = null;

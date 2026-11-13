@@ -255,7 +255,9 @@ export const material = pgTable(
 		taxable: boolean().default(true).notNull(),
 		/** UNUSED, PLANNED. The stock level at which to buy more. Nothing reads it yet. */
 		reorderLevel: decimal(12, 4),
-		active: boolean().default(true).notNull()
+		active: boolean().default(true).notNull(),
+		/** Each save counts, so a change made from an old copy is told of one since. */
+		version: integer().default(1).notNull()
 	},
 	(t) => [
 		unique('material_sku_key').on(t.sku),
@@ -274,7 +276,11 @@ export const materialPrice = pgTable(
 	{
 		id: id(),
 		materialId: uuid().notNull(),
-		price: decimal(12, 4).notNull(),
+		/**
+		 * What it sells at from that day, a unit; empty is back to its markup over
+		 * cost from that day, so every price it has had stays in its history.
+		 */
+		price: decimal(12, 4),
 		effectiveFrom: day().notNull()
 	},
 	(t) => [

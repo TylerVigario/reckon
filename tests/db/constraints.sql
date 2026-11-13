@@ -1751,6 +1751,46 @@ SELECT must_fail($$
 $$, 'a lot both received and found');
 
 \echo ''
+\echo '=== 36c. a material is changed, but not what it was received counted in ==='
+
+SELECT must_fail($$
+  UPDATE material SET unit_id = (SELECT id FROM unit WHERE name = 'each')
+   WHERE id = '66666666-6666-6666-6666-666666666666'
+$$, 'what a received material is counted in, changed');
+
+INSERT INTO material (id, name, unit_id) VALUES
+  ('36c36c36-0000-4000-8000-000000000001','Cable ties - 8 in',
+   (SELECT id FROM unit WHERE name = 'foot'));
+
+SELECT must_pass($$
+  UPDATE material SET unit_id = (SELECT id FROM unit WHERE name = 'each')
+   WHERE id = '36c36c36-0000-4000-8000-000000000001'
+$$, 'what a material none of which was received is counted in, changed');
+
+SELECT must_pass($$
+  UPDATE material SET name = 'Coax - RG6 - Quad shield, black'
+   WHERE id = '66666666-6666-6666-6666-666666666666'
+$$, 'a received material renamed');
+
+DO $$ BEGIN
+  IF (SELECT version FROM material WHERE id = '66666666-6666-6666-6666-666666666666') <> 2 THEN
+    RAISE EXCEPTION 'UNDER-TIGHT: a material save was not counted';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM record_history WHERE table_name = 'material' AND field = 'name'
+                   AND row_id = '66666666-6666-6666-6666-666666666666')
+     OR EXISTS (SELECT 1 FROM record_history WHERE table_name = 'material' AND field = 'version') THEN
+    RAISE EXCEPTION 'UNDER-TIGHT: history did not keep the name, or kept the count';
+  END IF;
+  RAISE NOTICE '  held      a save is counted, and history keeps the name but not the count';
+END $$;
+
+SELECT must_pass($$
+  INSERT INTO material_price (material_id, price, effective_from)
+  VALUES ('66666666-6666-6666-6666-666666666666', 0.45, '2026-10-01'),
+         ('66666666-6666-6666-6666-666666666666', NULL, '2026-10-05')
+$$, 'a set price from a day, and back to its markup from a later one');
+
+\echo ''
 \echo '=== 37. what was bought or paid for says who paid, and keeps its receipt ==='
 
 -- A draft of its own: section 16's went out, and a sent invoice takes no lines.
