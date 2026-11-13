@@ -44,7 +44,9 @@ export type Draw = {
 	taxPaid: Decimal;
 };
 
-const onHandOf = (shelf: Shelf) => shelf.lots.reduce((n, l) => n.add(l.qtyRemaining), Decimal.ZERO);
+/** How much a shelf holds, all its lots together. */
+export const onHandOf = (shelf: Shelf) =>
+	shelf.lots.reduce((n, l) => n.add(l.qtyRemaining), Decimal.ZERO);
 
 /** What the receipts say the lots' remains cost: each lot's share of its total. */
 const receiptCost = (

@@ -34,6 +34,12 @@ describe('stock put right by hand', () => {
 		expect(readAdjustment(used({ reason: 'correction' }), 2).errors).toEqual({});
 	});
 
+	it('leaves a count’s reason to the count', () => {
+		expect(readAdjustment(used({ reason: 'counted' }), 2).errors.reason).toBe(
+			'A count puts stock right from the count itself.'
+		);
+	});
+
 	it('moves something, counted in its unit', () => {
 		expect(readAdjustment(used({ qty: '0' }), 2).errors.qty).toBe('Something has to move.');
 		expect(readAdjustment(used({ qty: '1.5' }), 0).errors.qty).toBe('Whole numbers in this unit.');

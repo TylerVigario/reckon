@@ -26,9 +26,10 @@ import {
 	primaryKey,
 	text,
 	unique,
+	uniqueIndex,
 	uuid
 } from 'drizzle-orm/pg-core';
-import { bytea, createdAt, day, decimal, id, money, nonNegative, oneOf } from './columns.ts';
+import { bytea, createdAt, day, decimal, id, money, nonNegative, oneOf, tstz } from './columns.ts';
 import { entity } from './clients.ts';
 import { role, user } from './people.ts';
 
@@ -41,7 +42,8 @@ export const RECEIPT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'applicat
 export const ADJUST_WAYS = ['off', 'on'] as const;
 /**
  * Why: used in the shop, damaged, lost or stolen, returned to the supplier,
- * found, or a correction -- the first four only take off, found only puts on.
+ * found, a correction, or a count -- the first four only take off, found only
+ * puts on, and a correction or a count goes either way.
  */
 export const ADJUST_REASONS = [
 	'used',
@@ -49,7 +51,8 @@ export const ADJUST_REASONS = [
 	'lost',
 	'returned',
 	'found',
-	'correction'
+	'correction',
+	'counted'
 ] as const;
 
 export const service = pgTable(
@@ -339,6 +342,86 @@ export const stockReceipt = pgTable(
 );
 
 /**
+ * A COUNT OF WHAT IS ON THE SHELF, on a day: as many materials as were
+ * counted, each with what was counted (stockCountLine). Open while it is
+ * counted, and applied once: each difference then becomes an adjustment that
+ * names it. One is open at a time, which anyone counting adds to.
+ */
+export const stockCount = pgTable(
+	'stock_count',
+	{
+		id: id(),
+		countedOn: day().notNull(),
+		createdBy: uuid().notNull(),
+		createdAt: createdAt(),
+		/** When it was applied, and by whom; empty while it is being counted. */
+		appliedAt: tstz(),
+		appliedBy: uuid()
+	},
+	(t) => [
+		foreignKey({
+			name: 'stock_count_created_by_fkey',
+			columns: [t.createdBy],
+			foreignColumns: [user.id]
+		}).onDelete('restrict'),
+		foreignKey({
+			name: 'stock_count_applied_by_fkey',
+			columns: [t.appliedBy],
+			foreignColumns: [user.id]
+		}).onDelete('restrict'),
+		check(
+			'stock_count_applied_by_someone',
+			sql`(${t.appliedAt} IS NULL) = (${t.appliedBy} IS NULL)`
+		),
+		uniqueIndex('stock_count_one_open')
+			.on(sql`(${t.appliedAt} IS NULL)`)
+			.where(sql`${t.appliedAt} IS NULL`)
+	]
+);
+
+/**
+ * ONE MATERIAL, COUNTED: what was there, and what the shelf said when it was
+ * counted -- so stock that moves before the count is applied is told, as
+ * Odoo tells it, rather than written over. A cost each only where the shelf
+ * has nothing to cost what turned up by.
+ */
+export const stockCountLine = pgTable(
+	'stock_count_line',
+	{
+		id: id(),
+		countId: uuid().notNull(),
+		materialId: uuid().notNull(),
+		counted: decimal(12, 4).notNull(),
+		onHand: decimal(12, 4).notNull(),
+		costEach: decimal(12, 4),
+		countedBy: uuid().notNull(),
+		countedAt: createdAt()
+	},
+	(t) => [
+		// Counted again, a material's line is changed, not added to.
+		unique('stock_count_line_once').on(t.countId, t.materialId),
+		foreignKey({
+			name: 'stock_count_line_count_id_fkey',
+			columns: [t.countId],
+			foreignColumns: [stockCount.id]
+		}).onDelete('cascade'),
+		foreignKey({
+			name: 'stock_count_line_material_id_fkey',
+			columns: [t.materialId],
+			foreignColumns: [material.id]
+		}).onDelete('restrict'),
+		foreignKey({
+			name: 'stock_count_line_counted_by_fkey',
+			columns: [t.countedBy],
+			foreignColumns: [user.id]
+		}).onDelete('restrict'),
+		nonNegative('stock_count_line_counted_check', t.counted),
+		nonNegative('stock_count_line_on_hand_check', t.onHand),
+		nonNegative('stock_count_line_cost_each_check', t.costEach)
+	]
+);
+
+/**
  * ONE MATERIAL'S STOCK, PUT RIGHT BY HAND: so much taken off the shelf or put
  * on it, on a day, and why -- what ERPNext calls a Material Issue or Receipt,
  * with the reason said. What it moved is held at what it cost, before tax and
@@ -361,11 +444,19 @@ export const stockAdjustment = pgTable(
 		// To four places, as a line drawn from stock holds what it cost.
 		exTaxCost: decimal(12, 4).notNull(),
 		taxPaid: decimal(12, 4).default('0').notNull(),
+		/** The count it puts right, where a count made it. */
+		countId: uuid(),
 		createdBy: uuid().notNull(),
 		createdAt: createdAt()
 	},
 	(t) => [
 		index('stock_adjustment_material').on(t.materialId, t.madeOn),
+		index('stock_adjustment_count').on(t.countId),
+		foreignKey({
+			name: 'stock_adjustment_count_id_fkey',
+			columns: [t.countId],
+			foreignColumns: [stockCount.id]
+		}).onDelete('restrict'),
 		foreignKey({
 			name: 'stock_adjustment_material_id_fkey',
 			columns: [t.materialId],
@@ -384,7 +475,12 @@ export const stockAdjustment = pgTable(
 		// A find only puts on; using, damage, loss and a return only take off.
 		check(
 			'stock_adjustment_reason_fits_its_way',
-			sql`(${t.way} = 'on' AND ${t.reason} IN ('found', 'correction')) OR (${t.way} = 'off' AND ${t.reason} <> 'found')`
+			sql`(${t.way} = 'on' AND ${t.reason} IN ('found', 'correction', 'counted')) OR (${t.way} = 'off' AND ${t.reason} <> 'found')`
+		),
+		// A count's adjustments, and only those, name it.
+		check(
+			'stock_adjustment_counted_names_its_count',
+			sql`(${t.reason} = 'counted') = (${t.countId} IS NOT NULL)`
 		)
 	]
 );

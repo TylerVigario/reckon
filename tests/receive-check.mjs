@@ -382,7 +382,6 @@ check(
 	'Adjustments lists each, why, and what it was worth'
 );
 
-// ITS DETAILS: what it is, changed in place, and what it sells at, in a dialog.
 /** The tab that reads `label`, opened. */
 const tab = async (/** @type {string} */ label) => {
 	await run(
@@ -410,6 +409,71 @@ const change = async (/** @type {string} */ field, /** @type {string} */ value) 
 };
 const body = async () =>
 	/** @type {string} */ (await evaluate(`document.body.textContent.replace(/\\s+/g, ' ')`));
+
+// A COUNT: 990 ft on the shelf where it says 995. Before it is applied, 10 ft
+// more are used; applying asks what to keep, and keeping the difference found
+// takes 5 ft off the 985 now there.
+const cableId = /** @type {string} */ (await evaluate(`location.pathname.split('/')[3]`));
+const cablePage = /** @type {string} */ (await evaluate('location.pathname'));
+await go('/catalogue/materials');
+await press('Count');
+await settle(2500);
+const countPage = /** @type {string} */ (await evaluate('location.pathname'));
+await set(`#c-${cableId}`, '990');
+await run(
+	(/** @type {string} */ sel) =>
+		document.querySelector(sel)?.dispatchEvent(new Event('change', { bubbles: true })),
+	`#c-${cableId}`
+);
+await settle(2500);
+const sheet = await textOf('#count-panel-done');
+check(
+	countPage.startsWith('/catalogue/counts/') && sheet.includes(NAME) && sheet.includes('−5 ft'),
+	`a count is started from Materials, and the cable counted 5 ft short (${sheet.slice(0, 160)})`
+);
+await go(cablePage);
+await press('Adjust');
+await settle(400);
+await set('#a-qty', '10');
+await press('Take it off');
+await settle(2000);
+await go(countPage);
+await press('Apply');
+await settle(400);
+await evaluate(`document.querySelector('dialog[open] [data-go]')?.click()`);
+await settle(2000);
+const askedKeep = /** @type {string} */ (await textOf('dialog[open]'));
+check(
+	askedKeep.includes('Moved since it was counted') &&
+		askedKeep.includes('counted 990 ft when the shelf said 995 ft; it says 985 ft now'),
+	`stock used since it was counted is told, not written over (${askedKeep.slice(0, 200)})`
+);
+await run(() =>
+	/** @type {HTMLInputElement | null} */ (
+		document.querySelector('dialog[open] input[name="c-keep"][value="difference"]')
+	)?.click()
+);
+await evaluate(`document.querySelector('dialog[open] [data-go]')?.click()`);
+await settle(2500);
+const appliedCount = await body();
+check(
+	!(await dialogOpen()) &&
+		appliedCount.includes('What was counted') &&
+		appliedCount.includes('−5 ft'),
+	'kept as the difference found, the count is applied: 5 ft off'
+);
+await go(cablePage);
+check((await head()).includes('980 ft on hand'), `the shelf is 985 less 5 (${await head()})`);
+await tab('Adjustments');
+const countedRow = /** @type {string} */ (
+	await evaluate(
+		`[...document.querySelectorAll('a.box-row')].find((a) => a.textContent.includes('Counted'))?.getAttribute('href') ?? ''`
+	)
+);
+check(countedRow === countPage, 'its Adjustments has the count’s, which opens the count');
+await go(cablePage);
+
+// ITS DETAILS: what it is, changed in place, and what it sells at, in a dialog.
 await tab('Details');
 const details = await body();
 check(

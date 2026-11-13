@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { percent, quantity } from '#lib/format.ts';
+	import { dated, percent, quantity } from '#lib/format.ts';
+	import Octicon from '#lib/Octicon.svelte';
+	import { readProblem } from '#lib/json.ts';
+	import { goto } from '$app/navigation';
 	import Top from '#lib/Top.svelte';
 	import UnderlineNav from '#lib/UnderlineNav.svelte';
 	import { catalogueTabs } from '#lib/section-tabs.ts';
@@ -10,8 +13,10 @@
 	/**
 	 * Materials: what is on the shelf, as a Primer box with a row each -- what
 	 * it is, what one costs and sells at, how much is left -- each row opening
-	 * its own page, and those retired in a box of their own under it. Receive
-	 * stock is the screen's one action. The
+	 * its own page, and those retired in a box of their own under it. Count
+	 * and Receive stock are its actions; a count being counted says so, with
+	 * how far it has got, and when stock was last counted is said under the
+	 * list, with every count. The
 	 * markup and costing every price here is worked out by are the business's,
 	 * set on Business, and said under the list with a link there.
 	 */
@@ -21,6 +26,23 @@
 	/** "a ft", but "each" for what is counted each. */
 	const per = (unit: string) => (unit === 'each' ? 'each' : `a ${unit}`);
 	const offered = $derived(data.materials.filter((m) => m.active));
+	// Count opens the count being counted, or starts one.
+	let starting = $state(false);
+	let failed = $state('');
+	async function count() {
+		starting = true;
+		failed = '';
+		const r = await fetch('/api/counts', { method: 'POST' }).catch(() => null);
+		starting = false;
+		if (!r?.ok) {
+			failed = r
+				? ((await readProblem(r)).detail ?? 'It did not start.')
+				: 'Not started — no connection.';
+			return;
+		}
+		const { id } = (await r.json()) as { id: string };
+		await goto(resolve('/catalogue/counts/[id]', { id }));
+	}
 	const retired = $derived(data.materials.filter((m) => !m.active));
 </script>
 
@@ -48,12 +70,32 @@
 
 <Top title="Catalogue" sub="What can go on a line" back={resolve('/more')} backLabel="More">
 	{#snippet actions()}
+		<button type="button" class="btn sm" onclick={count} disabled={starting}>Count</button>
 		<a class="btn sm pri" href={resolve('/catalogue/receipts/new')}>Receive stock</a>
 	{/snippet}
 </Top>
 
 <div class="pad primer">
 	<UnderlineNav label="Catalogue" items={catalogueTabs('materials')} />
+
+	{#if data.open}
+		<div class="banner" role="status">
+			<Octicon name="info" />
+			<div class="banner-m">
+				<p class="banner-t">A count is open</p>
+				<p class="banner-d">
+					{data.open.counted} counted so far.
+					<a href={resolve('/catalogue/counts/[id]', { id: data.open.id })}>Carry on counting</a>
+				</p>
+			</div>
+		</div>
+	{/if}
+	{#if failed}
+		<div class="banner crit" role="alert">
+			<Octicon name="alert" />
+			<div class="banner-m"><p class="banner-t">{failed}</p></div>
+		</div>
+	{/if}
 
 	<section class="box" aria-labelledby="stock-h">
 		<div class="box-h">
@@ -78,6 +120,11 @@
 			{/each}
 		</section>
 	{/if}
+
+	<p class="note">
+		{data.lastCounted ? `Last counted ${dated(data.lastCounted)}.` : 'Never counted.'}
+		<a href={resolve('/catalogue/counts')}>Every count</a>
+	</p>
 
 	{#if data.markup}
 		<p class="note">
