@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
 	import { dated, quantity } from '#lib/format.ts';
-	import { money } from '#lib/money.svelte.ts';
+	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -17,7 +17,14 @@
 
 <Top
 	title={m.name}
-	sub={[m.brand, m.sku, `Counted in ${m.unit}`].filter(Boolean).join(' · ')}
+	sub={[
+		`${quantity(m.on_hand)} ${m.unit} on hand`,
+		m.price ? `sells at ${unitPrice(m.price)} ${m.unit === 'each' ? 'each' : `a ${m.unit}`}` : null,
+		m.brand,
+		m.sku
+	]
+		.filter(Boolean)
+		.join(' · ')}
 	back={resolve('/catalogue/materials')}
 	backLabel="Materials"
 >

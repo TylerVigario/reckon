@@ -10,6 +10,9 @@
 	 * Like a price, it adds a row. A change to a rule in force is a rule for the
 	 * same payee and the same clients from a later day, which is why "Change"
 	 * opens this with the scope already chosen.
+	 *
+	 * A Primer form in a dialog: each label above its field, what it means
+	 * below; the dialog's button sends it (save).
 	 */
 	type Rule = {
 		role_id: string | null;
@@ -28,7 +31,7 @@
 		today,
 		preset = null,
 		onsaved,
-		oncancel
+		onsaving
 	}: {
 		serviceId: string;
 		roles: { id: string; name: string }[];
@@ -37,7 +40,8 @@
 		today: string;
 		preset?: Rule | null;
 		onsaved: () => void;
-		oncancel: () => void;
+		/** Told when it starts and stops being sent: the dialog's button says so. */
+		onsaving?: (busy: boolean) => void;
 	} = $props();
 
 	const start = untrack(() => preset);
@@ -52,7 +56,6 @@
 	let from = $state(untrack(() => today));
 	let errors = $state<Record<string, string>>({});
 	let saying = $state('');
-	let saving = $state(false);
 
 	const FOR = [
 		{ v: 'time', l: 'Their time', c: 'Hours they work, billed by the hour.' },
@@ -91,7 +94,10 @@
 					: 'an entry'
 	);
 
-	async function save() {
+	/** Sent from the dialog it is in: its own button, not one of the form's. */
+	let sending = false;
+	export async function save() {
+		if (sending) return;
 		const fields = {
 			role_id: who === 'role' ? (roleId ?? '') : '',
 			user_id: who === 'person' ? (userId ?? '') : '',
@@ -106,13 +112,15 @@
 		errors = local.errors;
 		saying = '';
 		if (Object.keys(errors).length) return;
-		saving = true;
+		sending = true;
+		onsaving?.(true);
 		const r = await fetch(`/api/services/${serviceId}/rules`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ fields })
 		}).catch(() => null);
-		saving = false;
+		sending = false;
+		onsaving?.(false);
 		if (!r) {
 			saying = 'Not saved — no connection.';
 			return;
@@ -133,7 +141,7 @@
 	{/if}
 {/snippet}
 
-<div class="box-row form">
+<div class="form">
 	<fieldset class="fc">
 		<legend class="fc-l">Who</legend>
 		<label class="rad">
@@ -260,13 +268,7 @@
 		before their role’s.
 	</p>
 
-	<div class="keep">
-		<button type="button" class="btn pri" onclick={save} disabled={saving}>
-			{saving ? 'Saving…' : 'Save rule'}
-		</button>
-		<button type="button" class="btn" onclick={oncancel}>Cancel</button>
-		{#if saying}<p class="fc-e"><Octicon name="alert" />{saying}</p>{/if}
-	</div>
+	{#if saying}<p class="fc-e"><Octicon name="alert" />{saying}</p>{/if}
 </div>
 
 <style>
@@ -274,8 +276,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 20px;
-		padding: 16px;
-		background: var(--surface);
 	}
 	.fc {
 		max-width: 440px;
@@ -298,11 +298,5 @@
 		font-size: 13px;
 		color: var(--ink-3);
 		pointer-events: none;
-	}
-	.keep {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 8px 12px;
 	}
 </style>

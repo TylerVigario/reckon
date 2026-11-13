@@ -11,14 +11,15 @@
 	 * saves together.
 	 *
 	 * There is no default allotment, so the hours box starts empty. Drawn as a
-	 * Primer form in the row it adds to, each choice a radio.
+	 * Primer form in a dialog, each choice a radio; the dialog's button sends
+	 * it (save).
 	 */
 	let {
 		agreementId,
 		services,
 		preset = null,
 		onsaved,
-		oncancel
+		onsaving
 	}: {
 		agreementId: string;
 		/** What can be chosen. A change keeps its service; a new one picks. */
@@ -31,7 +32,8 @@
 			overage: string | null;
 		} | null;
 		onsaved: () => void;
-		oncancel: () => void;
+		/** Told when it starts and stops being sent: the dialog's button says so. */
+		onsaving?: (busy: boolean) => void;
 	} = $props();
 
 	const was = untrack(() => preset);
@@ -41,9 +43,11 @@
 	let overage = $state(was?.overage ?? '');
 	let errors = $state<Record<string, string>>({});
 	let saying = $state('');
-	let saving = $state(false);
 
-	async function save() {
+	/** Sent from the dialog it is in: its own button, not one of the form's. */
+	let sending = false;
+	export async function save() {
+		if (sending) return;
 		const fields = {
 			allotment,
 			included_hours: allotment === 'capped' ? hours : '',
@@ -56,13 +60,15 @@
 		if (!serviceId) errors = { ...errors, service: 'Which service.' };
 		saying = '';
 		if (Object.keys(errors).length) return;
-		saving = true;
+		sending = true;
+		onsaving?.(true);
 		const r = await fetch(`/api/agreements/${agreementId}/coverage/${serviceId}`, {
 			method: 'PUT',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ fields })
 		}).catch(() => null);
-		saving = false;
+		sending = false;
+		onsaving?.(false);
 		if (!r) {
 			saying = 'Not saved — no connection.';
 			return;
@@ -83,7 +89,7 @@
 	{/if}
 {/snippet}
 
-<div class="box-row form">
+<div class="form">
 	{#if was}
 		<p class="which">{was.service}</p>
 	{:else}
@@ -153,13 +159,7 @@
 		</fieldset>
 	{/if}
 
-	<div class="keep">
-		<button type="button" class="btn pri" onclick={save} disabled={saving}>
-			{saving ? 'Saving…' : was ? 'Save' : 'Cover it'}
-		</button>
-		<button type="button" class="btn" onclick={oncancel}>Cancel</button>
-		{#if saying}<p class="fc-e"><Octicon name="alert" />{saying}</p>{/if}
-	</div>
+	{#if saying}<p class="fc-e"><Octicon name="alert" />{saying}</p>{/if}
 </div>
 
 <style>
@@ -167,8 +167,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 20px;
-		padding: 16px;
-		background: var(--surface);
 	}
 	.which {
 		margin: 0;
@@ -192,11 +190,5 @@
 		font-size: 13px;
 		color: var(--ink-3);
 		pointer-events: none;
-	}
-	.keep {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 8px 12px;
 	}
 </style>

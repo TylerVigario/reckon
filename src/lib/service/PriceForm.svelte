@@ -11,6 +11,9 @@
 	 * It adds a row. The price in force is left as it was and moves to the
 	 * service's history when this one starts, so what a job was worth before
 	 * the change stays what it was worth.
+	 *
+	 * A Primer form in a dialog: each label above its field, what it means
+	 * below; the dialog's button sends it (save).
 	 */
 	let {
 		serviceId,
@@ -19,7 +22,7 @@
 		today,
 		preset = null,
 		onsaved,
-		oncancel
+		onsaving
 	}: {
 		serviceId: string;
 		unit: string;
@@ -28,7 +31,8 @@
 		/** The price being changed, so its clients and figures start filled in. */
 		preset?: { entity_id: string | null; rate: string; additional_rate: string } | null;
 		onsaved: () => void;
-		oncancel: () => void;
+		/** Told when it starts and stops being sent: the dialog's button says so. */
+		onsaving?: (busy: boolean) => void;
 	} = $props();
 
 	const start = untrack(() => preset);
@@ -41,14 +45,16 @@
 	let from = $state(untrack(() => today));
 	let errors = $state<Record<string, string>>({});
 	let saying = $state('');
-	let saving = $state(false);
 
 	// Heads only change what a job costs when it is charged by the hour; a mile
 	// or an entry is the same whoever is in the truck.
 	const byTheHour = $derived(unit === 'hour');
 	const per = $derived(unit === 'hour' ? 'an hour' : unit === 'mile' ? 'a mile' : 'each');
 
-	async function save() {
+	/** Sent from the dialog it is in: its own button, not one of the form's. */
+	let sending = false;
+	export async function save() {
+		if (sending) return;
 		const fields = {
 			entity_id: one ? (entity ?? '') : '',
 			rate,
@@ -60,13 +66,15 @@
 		errors = local.errors;
 		saying = '';
 		if (Object.keys(errors).length) return;
-		saving = true;
+		sending = true;
+		onsaving?.(true);
 		const r = await fetch(`/api/services/${serviceId}/prices`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ fields })
 		}).catch(() => null);
-		saving = false;
+		sending = false;
+		onsaving?.(false);
 		if (!r) {
 			saying = 'Not saved — no connection.';
 			return;
@@ -87,7 +95,7 @@
 	{/if}
 {/snippet}
 
-<div class="box-row form">
+<div class="form">
 	<fieldset class="fc">
 		<legend class="fc-l">Clients</legend>
 		<label class="rad">
@@ -175,13 +183,7 @@
 		{/if}
 	</div>
 
-	<div class="keep">
-		<button type="button" class="btn pri" onclick={save} disabled={saving}>
-			{saving ? 'Saving…' : 'Save price'}
-		</button>
-		<button type="button" class="btn" onclick={oncancel}>Cancel</button>
-		{#if saying}<p class="fc-e"><Octicon name="alert" />{saying}</p>{/if}
-	</div>
+	{#if saying}<p class="fc-e"><Octicon name="alert" />{saying}</p>{/if}
 </div>
 
 <style>
@@ -189,8 +191,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 20px;
-		padding: 16px;
-		background: var(--surface);
 	}
 	.fc {
 		max-width: 440px;
@@ -210,11 +210,5 @@
 		font-size: 13px;
 		color: var(--ink-3);
 		pointer-events: none;
-	}
-	.keep {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 8px 12px;
 	}
 </style>
