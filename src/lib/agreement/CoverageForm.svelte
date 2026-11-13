@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { readCoverage } from '#lib/agreement-fields.ts';
 	import { readProblem } from '#lib/json.ts';
+	import Octicon from '#lib/Octicon.svelte';
 
 	/**
 	 * A service on an agreement and its allotment: no limit, or a number of
@@ -9,7 +10,8 @@
 	 * the agreement, whether that is one site's or the whole client's. All of it
 	 * saves together.
 	 *
-	 * There is no default allotment, so the hours box starts empty.
+	 * There is no default allotment, so the hours box starts empty. Drawn as a
+	 * Primer form in the row it adds to, each choice a radio.
 	 */
 	let {
 		agreementId,
@@ -75,113 +77,126 @@
 	}
 </script>
 
-<div class="form">
+{#snippet wrong(key: string)}
+	{#if errors[key]}
+		<p class="fc-e" id="c-{key}-e"><Octicon name="alert" />{errors[key]}</p>
+	{/if}
+{/snippet}
+
+<div class="box-row form">
 	{#if was}
 		<p class="which">{was.service}</p>
 	{:else}
-		<div class="fld">
-			<label for="c-service">Service</label>
-			<select id="c-service" class="inp" bind:value={serviceId}>
+		<div class="fc">
+			<label class="fc-l" for="c-service">Service</label>
+			<select
+				id="c-service"
+				class="ti"
+				bind:value={serviceId}
+				aria-invalid={errors.service ? 'true' : undefined}
+				aria-describedby={errors.service ? 'c-service-e' : undefined}
+			>
 				<option value={null}>Choose…</option>
 				{#each services as s (s.id)}<option value={s.id}>{s.name}</option>{/each}
 			</select>
-			{#if errors.service}<small class="why">{errors.service}</small>{/if}
+			{@render wrong('service')}
 		</div>
 	{/if}
 
-	<div class="fld">
-		<span class="lbl">Included</span>
-		<div class="seg">
-			<button
-				type="button"
-				class:on={allotment === 'unlimited'}
-				onclick={() => (allotment = 'unlimited')}>Unlimited</button
+	<fieldset class="fc">
+		<legend class="fc-l">Included</legend>
+		<label class="rad">
+			<input type="radio" name="c-allotment" value="unlimited" bind:group={allotment} />
+			<span><span class="rad-t">Unlimited</span></span>
+		</label>
+		<label class="rad">
+			<input type="radio" name="c-allotment" value="capped" bind:group={allotment} />
+			<span
+				><span class="rad-t">Capped</span><span class="rad-c">So many hours a period.</span></span
 			>
-			<button type="button" class:on={allotment === 'capped'} onclick={() => (allotment = 'capped')}
-				>Capped</button
-			>
-		</div>
-		{#if errors.allotment}<small class="why">{errors.allotment}</small>{/if}
-	</div>
+		</label>
+		{@render wrong('allotment')}
+	</fieldset>
 
 	{#if allotment === 'capped'}
-		<div class="fld">
-			<label for="c-hours">Hours</label>
-			<span class="inp-wrap">
-				<input id="c-hours" class="inp" inputmode="decimal" bind:value={hours} />
-				<span class="hint">a period</span>
+		<div class="fc">
+			<label class="fc-l" for="c-hours">Hours</label>
+			<span class="tv">
+				<input
+					id="c-hours"
+					class="ti"
+					inputmode="decimal"
+					autocomplete="off"
+					bind:value={hours}
+					aria-invalid={errors.included_hours ? 'true' : undefined}
+					aria-describedby={errors.included_hours ? 'c-included_hours-e' : undefined}
+				/>
+				<span class="tv-v" aria-hidden="true">a period</span>
 			</span>
-			{#if errors.included_hours}<small class="why">{errors.included_hours}</small>{/if}
+			{@render wrong('included_hours')}
 		</div>
-		<div class="fld">
-			<span class="lbl">Past the cap</span>
-			<div class="seg">
-				<button type="button" class:on={overage === 'bill'} onclick={() => (overage = 'bill')}
-					>Billed</button
-				>
-				<button
-					type="button"
-					class:on={overage === 'no_charge'}
-					onclick={() => (overage = 'no_charge')}>No charge</button
-				>
-				<button type="button" class:on={overage === 'deny'} onclick={() => (overage = 'deny')}
-					>Refused</button
-				>
-			</div>
-			{#if errors.overage}<small class="why">{errors.overage}</small>{/if}
-		</div>
+		<fieldset class="fc">
+			<legend class="fc-l">Past the cap</legend>
+			<label class="rad">
+				<input type="radio" name="c-overage" value="bill" bind:group={overage} />
+				<span><span class="rad-t">Billed</span></span>
+			</label>
+			<label class="rad">
+				<input type="radio" name="c-overage" value="no_charge" bind:group={overage} />
+				<span><span class="rad-t">No charge</span></span>
+			</label>
+			<label class="rad">
+				<input type="radio" name="c-overage" value="deny" bind:group={overage} />
+				<span><span class="rad-t">Refused</span></span>
+			</label>
+			{@render wrong('overage')}
+		</fieldset>
 	{/if}
 
-	{#if saying}<p class="why">{saying}</p>{/if}
-
-	<div class="btnrow">
-		<button type="button" class="btn" onclick={oncancel}>Cancel</button>
+	<div class="keep">
 		<button type="button" class="btn pri" onclick={save} disabled={saving}>
 			{saving ? 'Saving…' : was ? 'Save' : 'Cover it'}
 		</button>
+		<button type="button" class="btn" onclick={oncancel}>Cancel</button>
+		{#if saying}<p class="fc-e"><Octicon name="alert" />{saying}</p>{/if}
 	</div>
 </div>
 
 <style>
 	.form {
-		padding: 14px;
 		display: flex;
 		flex-direction: column;
-		gap: 14px;
-		border-top: 1px solid var(--line-soft);
+		gap: 20px;
+		padding: 16px;
+		background: var(--surface);
 	}
 	.which {
 		margin: 0;
 		font-weight: 600;
 	}
-	.lbl {
-		font-family: var(--f-mono);
-		font-size: 10px;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--ink-3);
+	.fc {
+		max-width: 440px;
 	}
-	.inp-wrap {
+	.tv {
 		position: relative;
 		display: block;
 	}
-	.inp-wrap .hint {
+	.tv .ti {
+		padding-right: 88px;
+	}
+	.tv-v {
 		position: absolute;
-		right: 14px;
+		right: 12px;
 		top: 50%;
 		transform: translateY(-50%);
 		font-size: 13px;
 		color: var(--ink-3);
-		font-family: var(--f-mono);
 		pointer-events: none;
 	}
-	.fld small {
-		font-size: 12.5px;
-		color: var(--ink-3);
-	}
-	.why,
-	.fld small.why {
-		color: var(--crit);
-		margin: 0;
+	.keep {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 12px;
 	}
 </style>

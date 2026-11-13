@@ -83,6 +83,10 @@
 	color: var(--crit);
 	border-color: var(--crit);
 }
+.primer .lab.acc {
+	color: var(--accent);
+	border-color: var(--accent);
+}
 
 .primer .count {
 	display: inline-block;

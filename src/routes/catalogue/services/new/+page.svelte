@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import { NEW_SERVICE_FIELDS } from '#lib/service-fields.ts';
 	import { parseAll } from '#lib/field-rules.ts';
 	import { readJson, readProblem } from '#lib/json.ts';
@@ -18,12 +19,18 @@
 	let saving = $state(false);
 
 	const UNITS = [
-		{ v: 'hour', l: 'Hour' },
-		{ v: 'mile', l: 'Mile' },
-		{ v: 'each', l: 'Each' }
+		{ v: 'hour', l: 'Hour', c: 'Timed, and billed to the minute unless you say otherwise.' },
+		{ v: 'mile', l: 'Mile', c: 'Charged by the distance a trip assigns it.' },
+		{
+			v: 'each',
+			l: 'Each',
+			c: 'A flat rate: the same charge for each entry, however long it took.'
+		}
 	];
 
-	async function create() {
+	async function create(e: SubmitEvent) {
+		e.preventDefault();
+		if (saving) return;
 		const fields = { name, unit };
 		errors = parseAll(NEW_SERVICE_FIELDS, fields).errors;
 		saying = '';
@@ -61,52 +68,60 @@
 	backLabel="Services"
 />
 
-<div class="pad">
-	<div class="sec">
-		<div class="rows inset">
-			<div class="fld">
-				<label for="n-name">Name</label>
-				<input id="n-name" class="inp" placeholder="Field service" bind:value={name} />
-				{#if errors.name}<small class="why">{errors.name}</small>{/if}
+<div class="pad primer">
+	<form class="box" onsubmit={create} novalidate>
+		<div class="box-row form">
+			<div class="fc">
+				<label class="fc-l" for="n-name">Name<span aria-hidden="true"> *</span></label>
+				<input
+					id="n-name"
+					class="ti"
+					autocomplete="off"
+					bind:value={name}
+					aria-invalid={errors.name ? 'true' : undefined}
+					aria-describedby={errors.name ? 'n-name-e' : undefined}
+				/>
+				{#if errors.name}<p class="fc-e" id="n-name-e">
+						<Octicon name="alert" />{errors.name}
+					</p>{/if}
 			</div>
-			<div class="fld">
-				<span class="lbl">Charged per</span>
-				<div class="seg">
-					{#each UNITS as u (u.v)}
-						<button type="button" class:on={unit === u.v} onclick={() => (unit = u.v)}>{u.l}</button
-						>
-					{/each}
-				</div>
-				<small>
-					{unit === 'hour'
-						? 'Timed, and billed to the minute unless you say otherwise.'
-						: unit === 'mile'
-							? 'Charged by the distance a trip assigns it.'
-							: 'A flat rate: the same charge for each entry, however long it took.'}
-				</small>
-			</div>
-			{#if saying}<p class="why">{saying}</p>{/if}
-			<button type="button" class="btn pri blk" onclick={create} disabled={saving}>
-				{saving ? 'Creating…' : 'Create and price it'}
-			</button>
+			<fieldset class="fc">
+				<legend class="fc-l">Charged per</legend>
+				{#each UNITS as u (u.v)}
+					<label class="rad">
+						<input type="radio" name="unit" value={u.v} bind:group={unit} />
+						<span><span class="rad-t">{u.l}</span><span class="rad-c">{u.c}</span></span>
+					</label>
+				{/each}
+				{#if errors.unit}<p class="fc-e"><Octicon name="alert" />{errors.unit}</p>{/if}
+			</fieldset>
 		</div>
-	</div>
+		<div class="box-row keep">
+			<button type="submit" class="btn pri" disabled={saving}
+				>{saving ? 'Creating…' : 'Create and price it'}</button
+			>
+			<a class="btn" href={resolve('/catalogue/services')}>Cancel</a>
+			{#if saying}<p class="fc-e"><Octicon name="alert" />{saying}</p>{/if}
+		</div>
+	</form>
 </div>
 
 <style>
-	.lbl {
-		font-family: var(--f-mono);
-		font-size: 10px;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--ink-3);
+	.form {
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+		padding: 16px;
 	}
-	small {
-		font-size: 12.5px;
-		color: var(--ink-3);
+	.fc {
+		max-width: 440px;
 	}
-	.why {
-		color: var(--crit);
-		margin: 0;
+	.keep {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 12px;
+		padding: 16px;
+		background: var(--surface-2);
 	}
 </style>

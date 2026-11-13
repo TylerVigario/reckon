@@ -7,6 +7,13 @@
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
+	/**
+	 * Agreements: what clients pay for by the period, as Primer boxes --
+	 * running, then ended -- with a row each: the client and site, what it
+	 * covers and how much of it this month has used, and what it charges. What
+	 * all the running ones bring in a month heads the first. New agreement is
+	 * the screen's action.
+	 */
 	let { data }: PageProps = $props();
 
 	const hrs = (v: string | null | undefined) => hours(v, 'allotted');
@@ -16,8 +23,7 @@
 		quarterly: 'quarter',
 		annually: 'year'
 	};
-	const per = (i: string) =>
-		i === 'monthly' ? '/mo' : i === 'annually' ? '/yr' : i === 'quarterly' ? '/qtr' : '/wk';
+	const per = (i: string) => `a ${PERIOD[i] ?? 'period'}`;
 </script>
 
 <Top title="Catalogue" sub="What can go on a line" back={resolve('/more')} backLabel="More">
@@ -26,72 +32,89 @@
 	{/snippet}
 </Top>
 
-<div class="pad">
-	<div class="primer"><UnderlineNav label="Catalogue" items={catalogueTabs('agreements')} /></div>
-	{#each [{ head: '', list: data.live }, { head: 'Ended', list: data.ended }] as group (group.head)}
-		{#if group.list.length}
-			<div class="sec">
-				<div class="sec-h">
-					<h2>{group.head || 'Running'}</h2>
-					{#if !group.head}
-						<span class="sp"></span>
-						<span class="chip">{money(data.recurring)} a month</span>
+<div class="pad primer">
+	<UnderlineNav label="Catalogue" items={catalogueTabs('agreements')} />
+
+	{#each [{ key: 'running', head: 'Running', list: data.live }, { key: 'ended', head: 'Ended', list: data.ended }] as group (group.key)}
+		{#if group.list.length || group.key === 'running'}
+			<section class="box" aria-labelledby="{group.key}-h">
+				<div class="box-h">
+					<h2 class="box-t" id="{group.key}-h">{group.head}</h2>
+					{#if group.key === 'running' && group.list.length}
+						<span class="sub"><span class="v">{money(data.recurring)}</span> a month</span>
+					{:else}
+						<span class="count">{group.list.length}</span>
 					{/if}
 				</div>
-				<div class="rows">
-					{#each group.list as a (a.id)}
-						<a
-							class="rec link"
-							class:gone={a.ended}
-							href={resolve('/catalogue/agreements/[id]', { id: a.id })}
-						>
-							<div class="rec-m">
-								<div class="rec-t">
-									{a.who}&nbsp;<span class="lt">· {a.site ?? 'the whole client'}</span>
-								</div>
-								{#each a.covers as c (c.service)}
-									<div class="rec-s">
-										{c.service} · {hrs(c.used)} used this month of {c.allotment === 'unlimited'
-											? 'unlimited'
-											: hrs(c.hours)}
-									</div>
-								{:else}
-									<div class="rec-s">Covers no service yet — everything is billed</div>
-								{/each}
-								{#if !a.ended}
-									<div class="rec-c">
-										{#if a.now.state === 'given'}
-											<span class="chip good"
-												>this {PERIOD[a.interval] ?? 'period'} given freely</span
-											>
-										{:else if a.now.state === 'uncharged'}
-											<span class="chip">this {PERIOD[a.interval] ?? 'period'} not charged yet</span
-											>
-										{/if}
-									</div>
-								{/if}
-							</div>
-							<div class="rec-n">
-								<span class="rec-v">{money(a.price)}</span>
-								<span class="rec-x">{per(a.interval)}</span>
-							</div>
-							<span class="arw" aria-hidden="true">›</span>
-						</a>
-					{/each}
-					{#if !group.head}
-						<div class="rec tot">
-							<div class="rec-m"><div class="rec-t">Recurring revenue</div></div>
-							<div class="rec-n">
-								<span class="rec-v">{money(data.recurring)}</span><span class="rec-x">/mo</span>
-							</div>
-						</div>
-					{/if}
-				</div>
-			</div>
+				{#each group.list as a (a.id)}
+					<a class="box-row line" href={resolve('/catalogue/agreements/[id]', { id: a.id })}>
+						<span class="what">
+							<span class="n">{a.who} · {a.site ?? 'the whole client'}</span>
+							{#each a.covers as c (c.service)}
+								<span class="sub">
+									{c.service} · {hrs(c.used)} used this month of {c.allotment === 'unlimited'
+										? 'unlimited'
+										: hrs(c.hours)}
+								</span>
+							{:else}
+								<span class="sub">Covers no service yet: everything is billed</span>
+							{/each}
+						</span>
+						{#if !a.ended && a.now.state === 'given'}
+							<span class="lab good">This {PERIOD[a.interval] ?? 'period'} given freely</span>
+						{:else if !a.ended && a.now.state === 'uncharged'}
+							<span class="lab">Not charged yet this {PERIOD[a.interval] ?? 'period'}</span>
+						{/if}
+						<span class="end-fig">
+							<span class="v">{money(a.price)}</span>
+							<span class="sub">{per(a.interval)}</span>
+						</span>
+					</a>
+				{:else}
+					<p class="box-row muted">No agreements yet. New agreement adds the first.</p>
+				{/each}
+			</section>
 		{/if}
 	{/each}
-
-	{#if data.live.length === 0 && data.ended.length === 0}
-		<p class="none">No agreements yet.</p>
-	{/if}
 </div>
+
+<style>
+	.box-row {
+		margin: 0;
+	}
+	.line {
+		min-height: 64px;
+		box-sizing: border-box;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		overflow-wrap: anywhere;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--ink-3);
+	}
+	.lab {
+		flex: 0 0 auto;
+	}
+	.end-fig {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
+		text-align: right;
+	}
+	.v {
+		font-family: var(--f-mono);
+		font-weight: 600;
+		color: var(--ink);
+	}
+</style>

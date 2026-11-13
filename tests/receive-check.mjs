@@ -128,9 +128,8 @@ const set = (/** @type {string} */ field, /** @type {string} */ value, event = '
 		event
 	);
 // The receiving form, not the sign-out form the layout puts first on every page.
-const text = () =>
-	evaluate(`document.querySelector('form.form').textContent.replace(/\\s+/g, ' ')`);
-const submit = () => evaluate(`document.querySelector('form.form button.btn.pri').click()`);
+const text = () => evaluate(`document.querySelector('#receive').textContent.replace(/\\s+/g, ' ')`);
+const submit = () => evaluate(`document.querySelector('#receive button.btn.pri').click()`);
 
 // Something new, counted in feet.
 await set('#r-item', '', 'change');
@@ -160,7 +159,7 @@ check(
 await set('#r-qty', '1000');
 await settle(300);
 const bill = /** @type {string} */ (
-	(await evaluate(`document.querySelector('.bill')?.textContent.replace(/\\s+/g, ' ') ?? ''`)) ?? ''
+	(await evaluate(`document.querySelector('.each')?.textContent.replace(/\\s+/g, ' ') ?? ''`)) ?? ''
 );
 // A foot at $0.31 sells at the business's markup over it: at 25%, $0.3875.
 const markup = Number(/(\d+)% markup/.exec(bill)?.[1] ?? NaN);
@@ -168,18 +167,22 @@ const tenThousandths = 31 * (100 + markup);
 const sells = `$0.${String(tenThousandths)
 	.padStart(4, '0')
 	.replace(/0{1,2}$/, '')}`;
+// The label and the figure are cells of their own, so read without spaces.
+const tight = bill.replace(/\s+/g, '');
 const priced =
-	bill.includes('$0.31') && bill.includes('$0.0248') && bill.includes(`Sells at ${sells}/ft`);
+	tight.includes('Costs$0.31') &&
+	tight.includes('Taxpaid$0.0248') &&
+	tight.includes(`Sellsat,${markup}%markup${sells}`);
 check(
 	priced,
 	`what a foot cost and sells at shows as it is typed${priced ? '' : bill ? ` (${bill})` : ', but nothing shows'}`
 );
 
-// Paid by the first person on the list.
+// Paid by the first person on the list, after the business.
 const payer = await evaluate(`(() => {
-	const b = [...document.querySelectorAll('.seg button')][0];
-	b?.click();
-	return b?.textContent?.trim() ?? '';
+	const r = [...document.querySelectorAll('#receive input[name="paid_by"]')][1];
+	r?.click();
+	return r?.closest('label')?.querySelector('.rad-t')?.textContent?.trim() ?? '';
 })()`);
 
 // A photo as large as a phone camera makes, drawn here and attached.

@@ -8,9 +8,16 @@
 	import { readLot } from '#lib/stock-fields.ts';
 	import { shrink } from '#lib/receipt.ts';
 	import ReceiptPicker from '#lib/ReceiptPicker.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
+	/**
+	 * Stock received, as a Primer form: each label above its field, what it
+	 * means below, and Receive at the foot with Cancel beside it. What one of it
+	 * cost and sells at is worked out as the figures are typed, from what all of
+	 * it cost, as the receipt says them.
+	 */
 	let { data, form }: PageProps = $props();
 
 	// Seeded once; after that the boxes are the truth.
@@ -52,6 +59,12 @@
 	});
 </script>
 
+{#snippet wrong(key: string)}
+	{#if errors[key]}
+		<p class="fc-e" id="r-{key}-e"><Octicon name="alert" />{errors[key]}</p>
+	{/if}
+{/snippet}
+
 <Top
 	title="Receive stock"
 	sub={material ? `Into ${material.name}` : 'Something new to the catalogue'}
@@ -59,11 +72,13 @@
 	backLabel="Materials"
 />
 
-<div class="pad">
+<div class="pad primer">
 	<form
-		class="rows form"
+		id="receive"
+		class="box"
 		method="POST"
 		enctype="multipart/form-data"
+		novalidate
 		use:enhance={async ({ formData, cancel }) => {
 			const fields = Object.fromEntries(
 				[...formData.entries()].filter((e): e is [string, string] => typeof e[1] === 'string')
@@ -80,200 +95,258 @@
 			};
 		}}
 	>
-		<div class="fld">
-			<label for="r-item">Item</label>
-			<span class="inp-wrap">
-				<select id="r-item" name="material_id" class="inp" bind:value={materialId}>
+		<div class="box-row form">
+			<div class="fc">
+				<label class="fc-l" for="r-item">Item</label>
+				<select
+					id="r-item"
+					name="material_id"
+					class="ti"
+					bind:value={materialId}
+					aria-invalid={errors.material_id ? 'true' : undefined}
+					aria-describedby={errors.material_id ? 'r-material_id-e' : 'r-item-c'}
+				>
 					{#each data.materials as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
 					<option value="">Something new…</option>
 				</select>
-				{#if material && written}<span class="hint">{written}</span>{/if}
-			</span>
-			{#if errors.material_id}<small class="why">{errors.material_id}</small>{/if}
-		</div>
+				{#if errors.material_id}
+					{@render wrong('material_id')}
+				{:else}
+					<p class="fc-c" id="r-item-c">
+						{material && written
+							? `Counted in ${written}.`
+							: 'Named here, and counted in a unit below.'}
+					</p>
+				{/if}
+			</div>
 
-		{#if !material}
-			<div class="fld">
-				<label for="r-name">What it is</label>
+			{#if !material}
+				<div class="fc">
+					<label class="fc-l" for="r-name">What it is<span aria-hidden="true"> *</span></label>
+					<input
+						id="r-name"
+						name="name"
+						class="ti"
+						autocomplete="off"
+						bind:value={name}
+						aria-invalid={errors.name ? 'true' : undefined}
+						aria-describedby={errors.name ? 'r-name-e' : undefined}
+					/>
+					{@render wrong('name')}
+				</div>
+				<div class="fc">
+					<label class="fc-l" for="r-unit">Counted in</label>
+					<select
+						id="r-unit"
+						name="unit_id"
+						class="ti"
+						bind:value={unitId}
+						aria-describedby="r-unit-c"
+					>
+						{#each data.units as u (u.id)}<option value={u.id}>{u.name}</option>{/each}
+					</select>
+					<p class="fc-c" id="r-unit-c">
+						Not listed? <a class="lk" href={resolve('/settings/units')}>Add a unit</a>.
+					</p>
+				</div>
+			{/if}
+
+			<div class="fc">
+				<label class="fc-l" for="r-from">Bought from</label>
 				<input
-					id="r-name"
-					name="name"
-					class="inp"
-					placeholder="Cat6 plenum cable"
-					bind:value={name}
+					id="r-from"
+					name="supplier"
+					class="ti"
+					autocomplete="off"
+					aria-invalid={errors.supplier ? 'true' : undefined}
+					aria-describedby={errors.supplier ? 'r-supplier-e' : undefined}
 				/>
-				{#if errors.name}<small class="why">{errors.name}</small>{/if}
+				{@render wrong('supplier')}
 			</div>
-			<div class="fld">
-				<label for="r-unit">Counted in</label>
-				<select id="r-unit" name="unit_id" class="inp" bind:value={unitId}>
-					{#each data.units as u (u.id)}<option value={u.id}>{u.name}</option>{/each}
-				</select>
-				<small class="lt">Not here? <a href={resolve('/settings/units')}>Add a unit</a>.</small>
-			</div>
-		{/if}
 
-		<div class="fld">
-			<label for="r-from">Bought from</label>
-			<input id="r-from" name="supplier" class="inp" placeholder="Delta Wholesale" />
-			{#if errors.supplier}<small class="why">{errors.supplier}</small>{/if}
-		</div>
-
-		<div class="fld">
-			<label for="r-day">Day received</label>
-			<input
-				id="r-day"
-				name="received_on"
-				class="inp"
-				type="date"
-				max={data.today}
-				value={data.today}
-			/>
-			{#if errors.received_on}<small class="why">{errors.received_on}</small>{/if}
-		</div>
-
-		<div class="fld">
-			<label for="r-qty">How much</label>
-			<span class="inp-wrap">
+			<div class="fc">
+				<label class="fc-l" for="r-day">Day received<span aria-hidden="true"> *</span></label>
 				<input
-					id="r-qty"
-					name="qty_received"
-					class="inp"
-					inputmode="decimal"
-					placeholder="1000"
-					bind:value={qty}
+					id="r-day"
+					name="received_on"
+					class="ti"
+					type="date"
+					max={data.today}
+					value={data.today}
+					aria-invalid={errors.received_on ? 'true' : undefined}
+					aria-describedby={errors.received_on ? 'r-received_on-e' : undefined}
 				/>
-				{#if written}<span class="hint">{written}</span>{/if}
-			</span>
-			{#if errors.qty_received}<small class="why">{errors.qty_received}</small>{/if}
-		</div>
-
-		<div class="fld">
-			<label for="r-cost">Cost before tax, all of it</label>
-			<input
-				id="r-cost"
-				name="ex_tax_cost"
-				class="inp"
-				inputmode="decimal"
-				placeholder="310.00"
-				bind:value={cost}
-			/>
-			{#if errors.ex_tax_cost}<small class="why">{errors.ex_tax_cost}</small>{/if}
-		</div>
-
-		<div class="fld">
-			<label for="r-tax">Tax paid, all of it</label>
-			<input
-				id="r-tax"
-				name="tax_paid"
-				class="inp"
-				inputmode="decimal"
-				placeholder="0.00"
-				bind:value={tax}
-			/>
-			{#if errors.tax_paid}<small class="why">{errors.tax_paid}</small>{/if}
-		</div>
-
-		{#if each}
-			<div class="bill">
-				<div class="kv">
-					<span class="k">Cost a {unit?.name ?? 'unit'}</span><span class="v"
-						>{unitPrice(each.cost)}</span
-					>
-				</div>
-				<div class="kv">
-					<span class="k">Tax paid a {unit?.name ?? 'unit'}</span><span class="v"
-						>{unitPrice(each.tax)}</span
-					>
-				</div>
-				<div class="kv">
-					<span class="k">Sells at</span>
-					<span class="v"
-						>{unitPrice(each.sells)}{written ? `/${written}` : ''}, {percent(markup)} markup</span
-					>
-				</div>
+				{@render wrong('received_on')}
 			</div>
-		{/if}
 
-		<div class="fld">
-			<span class="lbl">Who paid</span>
-			<input type="hidden" name="paid_by" value={paidBy} />
-			<div class="seg">
-				{#each data.people as p (p.id)}
-					<button type="button" class:on={paidBy === p.id} onclick={() => (paidBy = p.id)}
-						>{p.name.split(' ')[0]}</button
-					>
-				{/each}
-				<button type="button" class:on={paidBy === ''} onclick={() => (paidBy = '')}
-					>Business</button
+			<div class="fc">
+				<label class="fc-l" for="r-qty">How much<span aria-hidden="true"> *</span></label>
+				<span class="tv">
+					<input
+						id="r-qty"
+						name="qty_received"
+						class="ti"
+						inputmode="decimal"
+						autocomplete="off"
+						bind:value={qty}
+						aria-invalid={errors.qty_received ? 'true' : undefined}
+						aria-describedby={errors.qty_received ? 'r-qty_received-e' : undefined}
+					/>
+					{#if written}<span class="tv-v" aria-hidden="true">{written}</span>{/if}
+				</span>
+				{@render wrong('qty_received')}
+			</div>
+
+			<div class="fc">
+				<label class="fc-l" for="r-cost"
+					>Cost before tax, all of it<span aria-hidden="true"> *</span></label
 				>
+				<input
+					id="r-cost"
+					name="ex_tax_cost"
+					class="ti"
+					inputmode="decimal"
+					autocomplete="off"
+					bind:value={cost}
+					aria-invalid={errors.ex_tax_cost ? 'true' : undefined}
+					aria-describedby={errors.ex_tax_cost ? 'r-ex_tax_cost-e' : 'r-cost-c'}
+				/>
+				{#if errors.ex_tax_cost}
+					{@render wrong('ex_tax_cost')}
+				{:else}
+					<p class="fc-c" id="r-cost-c">As the receipt says it, for everything received.</p>
+				{/if}
 			</div>
-			<small class="lt">Whoever paid out of their own pocket is owed it back.</small>
-			{#if errors.paid_by}<small class="why">{errors.paid_by}</small>{/if}
-		</div>
 
-		<div class="fld">
-			<span class="lbl">Receipt or invoice</span>
-			<ReceiptPicker id="r-receipt" />
-			<small class="lt"
-				>A photo, shrunk on this phone before it is sent, or the supplier's PDF.</small
-			>
-			{#if errors.receipt}<small class="why">{errors.receipt}</small>{/if}
-		</div>
+			<div class="fc">
+				<label class="fc-l" for="r-tax">Tax paid, all of it</label>
+				<input
+					id="r-tax"
+					name="tax_paid"
+					class="ti"
+					inputmode="decimal"
+					autocomplete="off"
+					bind:value={tax}
+					aria-invalid={errors.tax_paid ? 'true' : undefined}
+					aria-describedby={errors.tax_paid ? 'r-tax_paid-e' : 'r-tax-c'}
+				/>
+				{#if errors.tax_paid}
+					{@render wrong('tax_paid')}
+				{:else}
+					<p class="fc-c" id="r-tax-c">
+						Kept apart from the cost, so what was resold can be claimed back.
+					</p>
+				{/if}
+			</div>
 
-		<button class="btn pri blk" disabled={saving}>
-			{saving
-				? 'Receiving…'
-				: qty
-					? `Receive ${quantity(qty)}${written ? ` ${written}` : ''}`
-					: 'Receive'}
-		</button>
+			{#if each}
+				<section class="box each" aria-labelledby="each-h">
+					<div class="box-h">
+						<h3 class="box-t" id="each-h">
+							{!unit || unit.name === 'each' ? 'Each one' : `Each ${unit.name}`}
+						</h3>
+					</div>
+					<div class="box-row kv">
+						<span>Costs</span><span class="v">{unitPrice(each.cost)}</span>
+					</div>
+					<div class="box-row kv">
+						<span>Tax paid</span><span class="v">{unitPrice(each.tax)}</span>
+					</div>
+					<div class="box-row kv">
+						<span>Sells at, {percent(markup)} markup</span><span class="v"
+							>{unitPrice(each.sells)}</span
+						>
+					</div>
+				</section>
+			{/if}
+
+			<fieldset class="fc" aria-describedby="r-paid-c">
+				<legend class="fc-l">Who paid</legend>
+				<p class="fc-c" id="r-paid-c">Whoever paid out of their own pocket is owed it back.</p>
+				<label class="rad">
+					<input type="radio" name="paid_by" value="" bind:group={paidBy} />
+					<span><span class="rad-t">The business</span></span>
+				</label>
+				{#each data.people as p (p.id)}
+					<label class="rad">
+						<input type="radio" name="paid_by" value={p.id} bind:group={paidBy} />
+						<span><span class="rad-t">{p.name}</span></span>
+					</label>
+				{/each}
+				{@render wrong('paid_by')}
+			</fieldset>
+
+			<div class="fc">
+				<span class="fc-l" id="r-receipt-l">Receipt or invoice</span>
+				<ReceiptPicker id="r-receipt" />
+				{#if errors.receipt}
+					{@render wrong('receipt')}
+				{:else}
+					<p class="fc-c">
+						A photo, shrunk on this phone before it is sent, or the supplier’s PDF.
+					</p>
+				{/if}
+			</div>
+		</div>
+		<div class="box-row keep">
+			<button type="submit" class="btn pri" disabled={saving}>
+				{saving
+					? 'Receiving…'
+					: qty
+						? `Receive ${quantity(qty)}${written ? ` ${written}` : ''}`
+						: 'Receive'}
+			</button>
+			<a class="btn" href={resolve('/catalogue/materials')}>Cancel</a>
+		</div>
 	</form>
 </div>
 
 <style>
 	.form {
-		padding: 16px;
 		display: flex;
 		flex-direction: column;
-		gap: 15px;
+		gap: 20px;
+		padding: 16px;
 	}
-	.lbl {
-		font-family: var(--f-mono);
-		font-size: 10px;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--ink-3);
+	.fc {
+		max-width: 440px;
 	}
-	.inp-wrap {
+	.tv {
 		position: relative;
 		display: block;
 	}
-	.inp-wrap .hint {
+	.tv .ti {
+		padding-right: 56px;
+	}
+	.tv-v {
 		position: absolute;
-		right: 38px;
+		right: 12px;
 		top: 50%;
 		transform: translateY(-50%);
+		font-family: var(--f-mono);
 		font-size: 13px;
 		color: var(--ink-3);
-		font-family: var(--f-mono);
 		pointer-events: none;
 	}
-	.bill {
+	.each {
+		max-width: 440px;
+	}
+	.kv {
 		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		padding: 12px 14px;
-		border-radius: var(--r);
-		background: var(--accent-wash);
-		border: 1px solid var(--accent-line);
+		justify-content: space-between;
+		gap: 12px;
+		padding: 8px 16px;
 	}
-	.why {
-		color: var(--crit);
-		font-size: 12.5px;
+	.v {
+		font-family: var(--f-mono);
+		font-weight: 600;
 	}
-	button.btn[disabled] {
-		opacity: 0.6;
-		cursor: default;
+	.keep {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 12px;
+		padding: 16px;
+		background: var(--surface-2);
 	}
 </style>

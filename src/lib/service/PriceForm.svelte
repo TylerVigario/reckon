@@ -3,6 +3,7 @@
 	import { readPrice } from '#lib/service-fields.ts';
 	import { readProblem } from '#lib/json.ts';
 	import { forInput } from '#lib/currency.ts';
+	import Octicon from '#lib/Octicon.svelte';
 
 	/**
 	 * A price from a day: every client's, or one client's.
@@ -80,113 +81,140 @@
 	}
 </script>
 
-<div class="form">
-	<div class="fld">
-		<span class="lbl">Clients</span>
-		<div class="seg">
-			<button type="button" class:on={!one} onclick={() => (one = false)}>Every client</button>
-			<button type="button" class:on={one} onclick={() => (one = true)}>One client</button>
-		</div>
-	</div>
+{#snippet wrong(key: string)}
+	{#if errors[key]}
+		<p class="fc-e" id="p-{key}-e"><Octicon name="alert" />{errors[key]}</p>
+	{/if}
+{/snippet}
+
+<div class="box-row form">
+	<fieldset class="fc">
+		<legend class="fc-l">Clients</legend>
+		<label class="rad">
+			<input type="radio" name="p-who" value={false} bind:group={one} />
+			<span><span class="rad-t">Every client</span></span>
+		</label>
+		<label class="rad">
+			<input type="radio" name="p-who" value={true} bind:group={one} />
+			<span><span class="rad-t">One client</span></span>
+		</label>
+	</fieldset>
 	{#if one}
-		<div class="fld">
-			<label for="p-client">Which client</label>
-			<select id="p-client" class="inp" bind:value={entity}>
+		<div class="fc">
+			<label class="fc-l" for="p-client">Which client</label>
+			<select
+				id="p-client"
+				class="ti"
+				bind:value={entity}
+				aria-invalid={errors.entity_id ? 'true' : undefined}
+				aria-describedby={errors.entity_id ? 'p-entity_id-e' : undefined}
+			>
 				<option value={null}>Choose…</option>
 				{#each clients as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
 			</select>
-			{#if errors.entity_id}<small class="why">{errors.entity_id}</small>{/if}
+			{@render wrong('entity_id')}
 		</div>
 	{/if}
 
-	<div class="fld">
-		<label for="p-rate">{byTheHour ? 'Rate — one person' : 'Rate'}</label>
-		<span class="inp-wrap">
+	<div class="fc">
+		<label class="fc-l" for="p-rate">{byTheHour ? 'Rate, one person' : 'Rate'}</label>
+		<span class="tv">
 			<input
 				id="p-rate"
-				class="inp"
+				class="ti"
 				inputmode="decimal"
-				placeholder={forInput('95')}
+				autocomplete="off"
 				bind:value={rate}
+				aria-invalid={errors.rate ? 'true' : undefined}
+				aria-describedby={errors.rate ? 'p-rate-e' : undefined}
 			/>
-			<span class="hint">{per}</span>
+			<span class="tv-v" aria-hidden="true">{per}</span>
 		</span>
-		{#if errors.rate}<small class="why">{errors.rate}</small>{/if}
+		{@render wrong('rate')}
 	</div>
 
 	{#if byTheHour}
-		<div class="fld">
-			<label for="p-more">Each additional person</label>
-			<span class="inp-wrap">
+		<div class="fc">
+			<label class="fc-l" for="p-more">Each additional person</label>
+			<span class="tv">
 				<input
 					id="p-more"
-					class="inp"
+					class="ti"
 					inputmode="decimal"
-					placeholder="nothing extra"
+					autocomplete="off"
 					bind:value={additional}
+					aria-invalid={errors.additional_rate ? 'true' : undefined}
+					aria-describedby={errors.additional_rate ? 'p-additional_rate-e' : 'p-more-c'}
 				/>
-				<span class="hint">an hour</span>
+				<span class="tv-v" aria-hidden="true">an hour</span>
 			</span>
-			{#if errors.additional_rate}<small class="why">{errors.additional_rate}</small>
-			{:else}<small>Empty charges the job the same however many work it.</small>{/if}
+			{#if errors.additional_rate}
+				{@render wrong('additional_rate')}
+			{:else}
+				<p class="fc-c" id="p-more-c">Empty charges the job the same however many work it.</p>
+			{/if}
 		</div>
 	{/if}
 
-	<div class="fld">
-		<label for="p-from">From</label>
-		<input id="p-from" class="inp" type="date" bind:value={from} />
-		{#if errors.effective_from}<small class="why">{errors.effective_from}</small>
-		{:else}<small>Work from this day on is charged at it. An earlier day is allowed.</small>{/if}
+	<div class="fc">
+		<label class="fc-l" for="p-from">From</label>
+		<input
+			id="p-from"
+			class="ti"
+			type="date"
+			bind:value={from}
+			aria-invalid={errors.effective_from ? 'true' : undefined}
+			aria-describedby={errors.effective_from ? 'p-effective_from-e' : 'p-from-c'}
+		/>
+		{#if errors.effective_from}
+			{@render wrong('effective_from')}
+		{:else}
+			<p class="fc-c" id="p-from-c">
+				Work from this day on is charged at it. An earlier day is allowed.
+			</p>
+		{/if}
 	</div>
 
-	{#if saying}<p class="why">{saying}</p>{/if}
-
-	<div class="btnrow">
-		<button type="button" class="btn" onclick={oncancel}>Cancel</button>
+	<div class="keep">
 		<button type="button" class="btn pri" onclick={save} disabled={saving}>
 			{saving ? 'Saving…' : 'Save price'}
 		</button>
+		<button type="button" class="btn" onclick={oncancel}>Cancel</button>
+		{#if saying}<p class="fc-e"><Octicon name="alert" />{saying}</p>{/if}
 	</div>
 </div>
 
 <style>
 	.form {
-		padding: 14px;
 		display: flex;
 		flex-direction: column;
-		gap: 14px;
-		border-top: 1px solid var(--line-soft);
+		gap: 20px;
+		padding: 16px;
+		background: var(--surface);
 	}
-	.lbl {
-		font-family: var(--f-mono);
-		font-size: 10px;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--ink-3);
+	.fc {
+		max-width: 440px;
 	}
-	.inp-wrap {
+	.tv {
 		position: relative;
 		display: block;
 	}
-	.inp-wrap .hint {
+	.tv .ti {
+		padding-right: 72px;
+	}
+	.tv-v {
 		position: absolute;
-		right: 14px;
+		right: 12px;
 		top: 50%;
 		transform: translateY(-50%);
 		font-size: 13px;
 		color: var(--ink-3);
-		font-family: var(--f-mono);
 		pointer-events: none;
 	}
-	.fld small {
-		font-size: 12.5px;
-		color: var(--ink-3);
-	}
-	.why {
-		color: var(--crit);
-		margin: 0;
-	}
-	.fld small.why {
-		color: var(--crit);
+	.keep {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 12px;
 	}
 </style>

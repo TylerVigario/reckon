@@ -323,10 +323,14 @@ const shelfLeft = async () => {
 	await go('/catalogue/materials');
 	return /** @type {string} */ (
 		await run((/** @type {string} */ name) => {
-			const row = [...document.querySelectorAll('.rec')].find(
-				(r) => r.querySelector('.rec-t')?.textContent?.trim() === name
+			const row = [...document.querySelectorAll('a.box-row')].find(
+				(r) => r.querySelector('.n')?.textContent?.trim() === name
 			);
-			return row?.querySelector('.rec-x')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+			const left = row?.querySelector('.fig .sub')?.textContent ?? '';
+			return left
+				.replace(/\s+/g, ' ')
+				.trim()
+				.replace(/ left$/, '');
 		}, RACEWAY)
 	);
 };
