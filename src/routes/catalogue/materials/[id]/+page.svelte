@@ -7,9 +7,9 @@
 
 	/**
 	 * One material, and every lot of it received, as a Primer box with a row
-	 * each: when and from whom, how much for what, who paid, the receipt, and
-	 * how much of it is left. Receive stock, into this one, is the screen's
-	 * action.
+	 * each: when and from whom, how much for what, who paid, and how much of
+	 * it is left, each opening the receipt it came on. Receive stock, into
+	 * this one, is the screen's action.
 	 */
 	let { data }: PageProps = $props();
 	const m = $derived(data.material);
@@ -29,7 +29,7 @@
 	backLabel="Materials"
 >
 	{#snippet actions()}
-		<a class="btn sm pri" href={resolve(`/catalogue/materials/receive?material=${m.id}`)}
+		<a class="btn sm pri" href={resolve(`/catalogue/receipts/new?material=${m.id}`)}
 			>Receive stock</a
 		>
 	{/snippet}
@@ -42,29 +42,24 @@
 			<span class="count">{data.lots.length}</span>
 		</div>
 		{#each data.lots as l (l.id)}
-			<div class="box-row lot">
+			<a class="box-row lot" href={resolve('/catalogue/receipts/[id]', { id: l.receipt_id })}>
 				<span class="what">
-					<span class="n">{dated(l.received_on)}{l.supplier ? ` · ${l.supplier}` : ''}</span>
+					<span class="n"
+						>{dated(l.received_on)}{l.supplier ? ` · ${l.supplier}` : ''}{l.reference
+							? ` · ${l.reference}`
+							: ''}</span
+					>
 					<span class="sub">
 						{quantity(l.qty_received)}
 						{m.unit} for {money(l.ex_tax_cost)}, and {money(l.tax_paid)} tax · paid by {l.paid_by ??
 							'the business'}
 					</span>
-					{#if l.receipt}
-						<a
-							class="lk sub"
-							href={resolve('/catalogue/materials/[id]/lots/[lot]/receipt', {
-								id: m.id,
-								lot: l.id
-							})}>The receipt</a
-						>
-					{/if}
 				</span>
 				<span class="fig">
 					<span class="v">{quantity(l.qty_remaining)}</span>
 					<span class="sub">{m.unit} left</span>
 				</span>
-			</div>
+			</a>
 		{:else}
 			<p class="box-row muted">Nothing received yet.</p>
 		{/each}
@@ -96,10 +91,6 @@
 	.sub {
 		font-size: 12px;
 		color: var(--ink-3);
-	}
-	a.lk.sub {
-		color: var(--accent);
-		align-self: flex-start;
 	}
 	.fig {
 		flex: 0 0 auto;

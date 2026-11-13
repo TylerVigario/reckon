@@ -297,17 +297,28 @@ $$, 'deleting a draft, lines and all');
 \echo ''
 \echo '=== 7. stock cannot be used before it arrives ==='
 
+-- The receipt the lots below came on.
+INSERT INTO stock_receipt (id, received_on, supplier, tax_paid)
+VALUES ('07070707-0000-4000-8000-000000000001','2026-07-14','Delta Wholesale',6.96);
+
 SELECT must_pass($$
-  INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining,
+  INSERT INTO material_lot (receipt_id, material_id, received_on, qty_received, qty_remaining,
                             ex_tax_cost, tax_paid)
-  VALUES ('66666666-6666-6666-6666-666666666666','2026-07-14',600,420,90.00,6.96)
+  VALUES ('07070707-0000-4000-8000-000000000001','66666666-6666-6666-6666-666666666666',
+          '2026-07-14',600,420,90.00,6.96)
 $$, 'a lot with 180 ft drawn from it');
 
 SELECT must_fail($$
-  INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining,
+  INSERT INTO material_lot (receipt_id, material_id, received_on, qty_received, qty_remaining,
                             ex_tax_cost, tax_paid)
-  VALUES ('66666666-6666-6666-6666-666666666666','2026-07-14',600,700,90.00,6.96)
+  VALUES ('07070707-0000-4000-8000-000000000001','66666666-6666-6666-6666-666666666666',
+          '2026-07-14',600,700,90.00,6.96)
 $$, 'a lot with more left than ever arrived');
+
+SELECT must_fail($$
+  INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining, ex_tax_cost)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-07-14',10,10,5.00)
+$$, 'a lot that came on no receipt');
 
 \echo ''
 \echo '=== 8. a rate is CDTFA''s answer, not ours ==='
@@ -1627,46 +1638,55 @@ SELECT must_pass($$
 $$, 'and letting go of one nothing is counted in');
 
 \echo ''
-\echo '=== 36. a lot keeps what its receipt says, and who paid ==='
+\echo '=== 36. a receipt keeps what it says, and who paid ==='
 
 SELECT must_pass($$
-  INSERT INTO material_lot (material_id, received_on, supplier, qty_received, qty_remaining,
-                            ex_tax_cost, tax_paid, paid_by, receipt, receipt_type)
-  VALUES ('66666666-6666-6666-6666-666666666666','2026-09-30','Delta Wholesale',1000,1000,
-          310.00,24.80,'a0a0a0a0-0000-4000-8000-0000000000a1','\xffd8ffe0'::bytea,'image/jpeg')
-$$, '1,000 ft for 310.00 and 24.80, paid by Avery, with its receipt');
+  INSERT INTO stock_receipt (id, received_on, supplier, reference, tax_paid, paid_by, receipt,
+                             receipt_type)
+  VALUES ('36363636-0000-4000-8000-000000000001','2026-09-30','Delta Wholesale','INV-55120',
+          24.80,'a0a0a0a0-0000-4000-8000-0000000000a1','\xffd8ffe0'::bytea,'image/jpeg')
+$$, 'a Delta Wholesale invoice with 24.80 tax, paid by Avery, with the paper');
+
+SELECT must_pass($$
+  INSERT INTO material_lot (receipt_id, material_id, received_on, qty_received, qty_remaining,
+                            ex_tax_cost, tax_paid)
+  VALUES ('36363636-0000-4000-8000-000000000001','66666666-6666-6666-6666-666666666666',
+          '2026-09-30',1000,1000,310.00,24.80)
+$$, 'and 1,000 ft on it for 310.00, with its share of the tax');
 
 SELECT must_fail($$
-  INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining, ex_tax_cost)
-  VALUES ('66666666-6666-6666-6666-666666666666','2026-09-30',10,10,-1.00)
+  INSERT INTO material_lot (receipt_id, material_id, received_on, qty_received, qty_remaining,
+                            ex_tax_cost)
+  VALUES ('36363636-0000-4000-8000-000000000001','66666666-6666-6666-6666-666666666666',
+          '2026-09-30',10,10,-1.00)
 $$, 'a cost below nothing');
 
 SELECT must_fail($$
-  INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining, ex_tax_cost,
-                            receipt)
-  VALUES ('66666666-6666-6666-6666-666666666666','2026-09-30',10,10,5.00,'\x25504446'::bytea)
+  INSERT INTO stock_receipt (received_on, tax_paid) VALUES ('2026-09-30',-1.00)
+$$, 'tax below nothing');
+
+SELECT must_fail($$
+  INSERT INTO stock_receipt (received_on, receipt) VALUES ('2026-09-30','\x25504446'::bytea)
 $$, 'a receipt with no type');
 
 SELECT must_fail($$
-  INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining, ex_tax_cost,
-                            receipt, receipt_type)
-  VALUES ('66666666-6666-6666-6666-666666666666','2026-09-30',10,10,5.00,'\x3c737667'::bytea,
-          'image/svg+xml')
+  INSERT INTO stock_receipt (received_on, receipt, receipt_type)
+  VALUES ('2026-09-30','\x3c737667'::bytea,'image/svg+xml')
 $$, 'a receipt that is a drawing, which can carry a script');
 
 SELECT must_fail($$
-  INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining, ex_tax_cost,
-                            receipt, receipt_type)
-  VALUES ('66666666-6666-6666-6666-666666666666','2026-09-30',10,10,5.00,
-          convert_to(repeat('x', 2097153), 'UTF8'),'application/pdf')
+  INSERT INTO stock_receipt (received_on, receipt, receipt_type)
+  VALUES ('2026-09-30',convert_to(repeat('x', 2097153), 'UTF8'),'application/pdf')
 $$, 'a receipt larger than any the phone sends');
 
 SELECT must_fail($$
-  INSERT INTO material_lot (material_id, received_on, qty_received, qty_remaining, ex_tax_cost,
-                            paid_by)
-  VALUES ('66666666-6666-6666-6666-666666666666','2026-09-30',10,10,5.00,
-          '00000000-0000-4000-8000-000000000000')
+  INSERT INTO stock_receipt (received_on, paid_by)
+  VALUES ('2026-09-30','00000000-0000-4000-8000-000000000000')
 $$, 'paid by somebody who does not exist');
+
+SELECT must_fail($$
+  DELETE FROM stock_receipt WHERE id = '36363636-0000-4000-8000-000000000001'
+$$, 'a receipt something came on, deleted from under it');
 
 \echo ''
 \echo '=== 37. what was bought or paid for says who paid, and keeps its receipt ==='
@@ -1719,14 +1739,17 @@ $$, 'a markup on job purchases below nothing');
 -- A spool of coax and a box of jacks, each received whole.
 INSERT INTO material (id, name, unit_id) VALUES
   ('38383838-0000-4000-8000-0000000000aa','Keystone jack',(SELECT id FROM unit WHERE name = 'each'));
-INSERT INTO material_lot (id, material_id, received_on, supplier, qty_received, qty_remaining,
+INSERT INTO stock_receipt (id, received_on, supplier) VALUES
+  ('38383838-0000-4000-8000-0000000000b1','2026-10-01','Delta Wholesale'),
+  ('38383838-0000-4000-8000-0000000000b2','2026-10-02','Delta Wholesale');
+INSERT INTO material_lot (id, receipt_id, material_id, received_on, qty_received, qty_remaining,
                           ex_tax_cost) VALUES
-  ('38383838-0000-4000-8000-000000000001','66666666-6666-6666-6666-666666666666','2026-10-01',
-   'Delta Wholesale',100,100,31.00),
-  ('38383838-0000-4000-8000-000000000002','38383838-0000-4000-8000-0000000000aa','2026-10-01',
-   'Delta Wholesale',40,40,80.00),
-  ('38383838-0000-4000-8000-000000000003','66666666-6666-6666-6666-666666666666','2026-10-02',
-   'Delta Wholesale',100,100,35.00);
+  ('38383838-0000-4000-8000-000000000001','38383838-0000-4000-8000-0000000000b1',
+   '66666666-6666-6666-6666-666666666666','2026-10-01',100,100,31.00),
+  ('38383838-0000-4000-8000-000000000002','38383838-0000-4000-8000-0000000000b1',
+   '38383838-0000-4000-8000-0000000000aa','2026-10-01',40,40,80.00),
+  ('38383838-0000-4000-8000-000000000003','38383838-0000-4000-8000-0000000000b2',
+   '66666666-6666-6666-6666-666666666666','2026-10-02',100,100,35.00);
 INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
                           material_id, ex_tax_cost, tax_paid) VALUES
   ('38383838-0000-4000-8000-0000000000b1','7777eeee-7777-7777-7777-777777777737',50,'material',

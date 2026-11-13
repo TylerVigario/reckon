@@ -273,27 +273,68 @@ export const materialPrice = pgTable(
 	]
 );
 
+/**
+ * WHAT WAS BOUGHT ON ONE RECEIPT OR INVOICE: from whom, on which day, its
+ * number, who paid, the tax it charged, and the paper itself, kept once.
+ * Its items are the lots it brought in, each of them in its own unit, as
+ * ERPNext's Purchase Receipt is a supplier, a date and an Items table.
+ *
+ * The tax is the receipt's total, as it is printed: each lot carries its
+ * share of it, split by what each cost before tax (#lib/receipt-split).
+ */
+export const stockReceipt = pgTable(
+	'stock_receipt',
+	{
+		id: id(),
+		receivedOn: day().notNull(),
+		supplier: text(),
+		/** The receipt's or the invoice's own number, where it has one. */
+		reference: text(),
+		/** Who paid: a person, who is owed it back, or the business when empty. */
+		paidBy: uuid(),
+		/** The tax the receipt charged, all of it. */
+		taxPaid: money().default('0').notNull(),
+		/** The receipt or invoice, as the phone shrank it, and its type. */
+		receipt: bytea(),
+		receiptType: text(),
+		createdAt: createdAt()
+	},
+	(t) => [
+		foreignKey({
+			name: 'stock_receipt_paid_by_fkey',
+			columns: [t.paidBy],
+			foreignColumns: [user.id]
+		}).onDelete('restrict'),
+		nonNegative('stock_receipt_tax_paid_check', t.taxPaid),
+		check(
+			'stock_receipt_receipt_comes_with_its_type',
+			sql`(${t.receipt} IS NULL) = (${t.receiptType} IS NULL)`
+		),
+		oneOf('stock_receipt_receipt_type_check', t.receiptType, RECEIPT_TYPES),
+		// What the phone sends is shrunk to well under this; a file this size is
+		// not a receipt.
+		check('stock_receipt_receipt_size_check', sql`octet_length(${t.receipt}) <= 2097152`)
+	]
+);
+
 export const materialLot = pgTable(
 	'material_lot',
 	{
 		id: id(),
+		/** The receipt it came on (stockReceipt). */
+		receiptId: uuid().notNull(),
 		materialId: uuid().notNull(),
+		/** The day it came onto the shelf: its receipt's. Oldest is drawn first. */
 		receivedOn: day().notNull(),
-		supplier: text(),
 		qtyReceived: decimal(12, 4).notNull(),
 		qtyRemaining: decimal(12, 4).notNull(),
 		/**
-		 * What all of it cost before tax, and the tax paid on it, as the receipt
-		 * says them: 1,000 ft for 310.00 and 24.80. A unit's share is worked out
-		 * from these, so nothing is lost to rounding a cost per foot.
+		 * What all of it cost before tax, as the receipt says it, and its share of
+		 * the receipt's tax: 1,000 ft for 310.00 and 24.80. A unit's share is
+		 * worked out from these, so nothing is lost to rounding a cost per foot.
 		 */
 		exTaxCost: money().notNull(),
-		taxPaid: money().default('0').notNull(),
-		/** Who paid for it: a person, who is owed it back, or the business when empty. */
-		paidBy: uuid(),
-		/** The receipt or invoice it came on, as the phone shrank it, and its type. */
-		receipt: bytea(),
-		receiptType: text()
+		taxPaid: money().default('0').notNull()
 	},
 	(t) => [
 		// What a draw names, so the lot it comes off is of the line's material.
@@ -301,28 +342,21 @@ export const materialLot = pgTable(
 		index('material_lot_open')
 			.on(t.materialId, t.receivedOn)
 			.where(sql`${t.qtyRemaining} > 0`),
+		index('material_lot_receipt').on(t.receiptId),
 		foreignKey({
 			name: 'material_lot_material_id_fkey',
 			columns: [t.materialId],
 			foreignColumns: [material.id]
 		}).onDelete('restrict'),
 		foreignKey({
-			name: 'material_lot_paid_by_fkey',
-			columns: [t.paidBy],
-			foreignColumns: [user.id]
+			name: 'material_lot_receipt_id_fkey',
+			columns: [t.receiptId],
+			foreignColumns: [stockReceipt.id]
 		}).onDelete('restrict'),
 		check('cannot_use_more_than_received', sql`${t.qtyRemaining} <= ${t.qtyReceived}`),
 		nonNegative('material_lot_ex_tax_cost_check', t.exTaxCost),
 		check('material_lot_qty_received_check', sql`${t.qtyReceived} > 0`),
 		nonNegative('material_lot_qty_remaining_check', t.qtyRemaining),
-		nonNegative('material_lot_tax_paid_check', t.taxPaid),
-		check(
-			'material_lot_receipt_comes_with_its_type',
-			sql`(${t.receipt} IS NULL) = (${t.receiptType} IS NULL)`
-		),
-		oneOf('material_lot_receipt_type_check', t.receiptType, RECEIPT_TYPES),
-		// What the phone sends is shrunk to well under this; a file this size is
-		// not a receipt.
-		check('material_lot_receipt_size_check', sql`octet_length(${t.receipt}) <= 2097152`)
+		nonNegative('material_lot_tax_paid_check', t.taxPaid)
 	]
 );

@@ -97,12 +97,13 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 				from_stock: sql<boolean>`${il.materialId} is not null`,
 				supplier: sql<string | null>`(
 					select string_agg(s.supplier, ', ' order by s.first)
-					  from (select ${t.materialLot.supplier} as supplier,
+					  from (select ${t.stockReceipt.supplier} as supplier,
 					               min(${t.materialLot.receivedOn}) as first
 					          from ${t.stockDraw}
 					          join ${t.materialLot} on ${t.materialLot.id} = ${t.stockDraw.materialLotId}
+					          join ${t.stockReceipt} on ${t.stockReceipt.id} = ${t.materialLot.receiptId}
 					         where ${t.stockDraw.invoiceLineId} = ${il.id}
-					           and ${t.materialLot.supplier} is not null
+					           and ${t.stockReceipt.supplier} is not null
 					         group by 1) s)`,
 				period_start: ap.periodStart,
 				qty: il.qty,

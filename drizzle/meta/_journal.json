@@ -365,6 +365,20 @@
       "when": 1794527789489,
       "tag": "0051_a_billed_hour_stands",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1794584791569,
+      "tag": "0052_a_receipt_holds_its_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1794584802419,
+      "tag": "0053_a_lot_is_its_receipts",
+      "breakpoints": true
     }
   ]
 }

@@ -42,7 +42,7 @@ const { AGREEMENT_FIELDS, NEW_AGREEMENT_FIELDS, COVERAGE_FIELDS } =
 	await import('../src/lib/agreement-fields.ts');
 const { ROLE_FIELDS, PERSON_FIELDS } = await import('../src/lib/people-fields.ts');
 const { UNIT_FIELDS } = await import('../src/lib/unit-fields.ts');
-const { LOT_FIELDS, NEW_MATERIAL_FIELDS } = await import('../src/lib/stock-fields.ts');
+const { RECEIPT_FIELDS, NEW_MATERIAL_FIELDS } = await import('../src/lib/stock-fields.ts');
 const { PASSED_ON_FIELDS, FROM_STOCK_FIELDS } = await import('../src/lib/line-fields.ts');
 
 /** @type {[string, import('../src/lib/field-rules.ts').Registry][]} */
@@ -58,7 +58,7 @@ const registries = [
 	['agreement_service', COVERAGE_FIELDS],
 	['role', ROLE_FIELDS],
 	['unit', UNIT_FIELDS],
-	['material_lot', LOT_FIELDS],
+	['stock_receipt', RECEIPT_FIELDS],
 	['material', NEW_MATERIAL_FIELDS],
 	['invoice_line', PASSED_ON_FIELDS],
 	['invoice_line', FROM_STOCK_FIELDS],

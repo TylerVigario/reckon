@@ -11,7 +11,8 @@ import {
 	materialPrice,
 	payRule,
 	service,
-	servicePrice
+	servicePrice,
+	stockReceipt
 } from './catalogue.ts';
 import { timeEntry, trip, tripLeg, tripStop, tripStopClient, vehicle } from './work.ts';
 import { agreement, agreementPeriod, agreementService } from './agreements.ts';
@@ -88,7 +89,12 @@ export const materialRelations = relations(material, ({ many }) => ({
 }));
 
 export const materialLotRelations = relations(materialLot, ({ one }) => ({
-	material: one(material, { fields: [materialLot.materialId], references: [material.id] })
+	material: one(material, { fields: [materialLot.materialId], references: [material.id] }),
+	receipt: one(stockReceipt, { fields: [materialLot.receiptId], references: [stockReceipt.id] })
+}));
+
+export const stockReceiptRelations = relations(stockReceipt, ({ many }) => ({
+	lots: many(materialLot)
 }));
 
 export const materialPriceRelations = relations(materialPrice, ({ one }) => ({
