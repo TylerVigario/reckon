@@ -491,6 +491,85 @@ const entry = (/** @type {Record<string, unknown>} */ extra) => ({
 	if (firstId) await asFull(`/api/time/${firstId}?version=1`, { method: 'DELETE' });
 }
 
+// WHAT A PHONE KEEPS, cut to what is done there (#lib/offline-copy): for
+// someone with Full as for someone with Field, no figure of what is owed, held,
+// unbilled or worth, and nobody else's trips.
+{
+	const dataOf = (/** @type {string} */ p) => `${p === '/' ? '' : p}/__data.json`;
+	for (const [who, ask, other] of /** @type {[string, Ask, string][]} */ ([
+		['Full', asFull, fieldEmail],
+		['Field', asField, fullEmail]
+	])) {
+		const list = await ask('/api/offline');
+		const screens = /** @type {string[]} */ (list.ok ? (await list.json()).screens : []);
+		const trips = screens.filter((p) => /^\/trips\/[0-9a-f-]{36}$/.test(p));
+		/** The copy of a screen kept for no signal, page and data, as text. */
+		const copyOf = async (/** @type {string} */ path) => {
+			const [page, data] = await Promise.all([
+				ask(`${path}?copy=offline`),
+				ask(`${dataOf(path)}?copy=offline`)
+			]);
+			return {
+				ok: page.status === 200 && data.status === 200,
+				page: await page.text(),
+				data: await data.text()
+			};
+		};
+		const shown = await Promise.all(
+			['/', '/timesheet', '/invoices', '/trips', ...trips].map(copyOf)
+		);
+		check(
+			shown.every((c) => c.ok && !/\$\d/.test(c.page)),
+			`${who}'s phone keeps Today, Time, Invoices, Trips and each of their trips with no figure of money`,
+			shown.map((c) => (c.ok ? (/\$\d/.exec(c.page)?.[0] ?? 'ok') : 'not 200')).join(' ')
+		);
+		const [today, , invoices] = shown;
+		check(
+			!/tax_held|owed_count|last_paid/.test(today.data) &&
+				!/overdueCount|drafted/.test(invoices.data),
+			`and their data holds none either: not what is owed, held, drafted or paid (${who})`
+		);
+		// The demo's people: whoever the other one signed in here is.
+		const otherName = other.startsWith('sam') ? 'Sam Ortega' : 'Avery Lind';
+		const tripsCopy = shown[3];
+		check(
+			!tripsCopy.page.includes(otherName) && !tripsCopy.data.includes(otherName),
+			`${who}'s phone keeps none of ${otherName}'s trips`
+		);
+	}
+
+	// Nothing reckon answers is the browser cache's to keep, but where a route
+	// says otherwise (ASVS 5.0 14.3.2).
+	const answers = await Promise.all(
+		['/', '/__data.json', '/timesheet', '/api/offline', '/invoices/__data.json'].map((p) =>
+			asFull(p)
+		)
+	);
+	const theme = await asFull('/operator/theme.css');
+	check(
+		// SvelteKit's own data answers say `private, no-store`.
+		answers.every((r) => /\bno-store\b/.test(r.headers.get('cache-control') ?? '')) &&
+			/max-age/.test(theme.headers.get('cache-control') ?? ''),
+		'every screen and answer says no-store, and the operator’s stylesheet keeps its own',
+		answers.map((r) => r.headers.get('cache-control')).join(' | ')
+	);
+
+	// Signing out clears the browser's cache of reckon, and only that: not
+	// "cookies", which would reach every site under the domain, nor "storage",
+	// which holds the work not yet sent.
+	const spare = as((await signIn(base, fieldEmail)).cookie);
+	const out = await spare('/logout', { method: 'POST' });
+	const after = await spare('/');
+	check(
+		out.status === 303 &&
+			out.headers.get('location') === '/login' &&
+			out.headers.get('clear-site-data') === '"cache"' &&
+			after.status !== 200,
+		'signing out clears the browser’s cache of reckon, and ends the session',
+		`${out.status} ${out.headers.get('clear-site-data')} ${after.status}`
+	);
+}
+
 // Lines: added to a draft, and changed or taken off only by whoever added them.
 {
 	const draft = [...linked(await page(asField, '/invoices'), '/invoices')][0];

@@ -1,6 +1,7 @@
 import { self } from '$app/service-worker';
 import { version } from '$app/env';
 import { assets, immutable } from '$app/manifest';
+import { OFFLINE_COPY, SESSION_UNUSED_DAYS } from '#lib/offline-copy.ts';
 
 /**
  * What reckon does without a signal.
@@ -23,15 +24,15 @@ import { assets, immutable } from '$app/manifest';
  * or paid, each on its screen, and All entries holding only those, so an entry
  * is changed or removed on site.
  *
- * A SCREEN LISTED WITH A QUERY is kept as a copy of its own: the list names the
- * copy to fetch (All entries' is "?copy=offline", trimmed to what can be done
- * with no signal), and it is kept in the screen's place. The screen as it is
- * with a signal -- everyone's entries, and what they are worth -- is never kept.
+ * Trips too: the list, New trip, and each trip the person drove whose miles are
+ * not yet billed, with its Change, so a trip is recorded or put right on the
+ * road. The queue sends it when there is a signal, and Google's route takes
+ * the place of miles the phone could only estimate.
  *
- * Trips too: the list, New trip, and each recent trip whose miles are not yet
- * billed, with its Change, so a trip is recorded or put right on the road. The
- * queue sends it when there is a signal, and Google's route takes the place of
- * miles the phone could only estimate.
+ * EVERY SCREEN IS KEPT AS A COPY OF ITS OWN, cut to what can be done with it
+ * there (#lib/offline-copy): fetched with that query and kept in the screen's
+ * place. The screen as it is with a signal -- what the business is owed, what
+ * work is worth, anyone's pay, everyone's day -- is never kept.
  *
  * Nothing else is kept. A sent invoice, a report or a setting shown from a
  * stale copy would be a figure presented as current that is not, so those
@@ -42,9 +43,14 @@ import { assets, immutable } from '$app/manifest';
  *
  *   shell   the app's own files -- the built code, the fonts, the icons, and
  *           the page that says a screen needs a connection. Never personal.
- *   pages   the offline screens and their data, as the person signed in last
- *           saw them. Personal, so it is emptied when they sign out, and when
- *           a request finds the session gone.
+ *   pages   the offline copies, as the person signed in last had them.
+ *           Personal, so it is emptied when they sign out, when a request finds
+ *           the session gone, and when the server has not been reached for as
+ *           long as a session lasts unused (SESSION_UNUSED_DAYS): by then the
+ *           server has ended it, and the phone cannot hear that, so it forgets
+ *           by itself (ASVS 5.0 14.3.1).
+ *
+ * Unsent work is not a copy: the queue keeps it until it is sent (#lib/queue).
  */
 
 const SHELL = `shell-${version}`;
@@ -60,6 +66,12 @@ const OFFLINE_PAGE = at('offline.html');
 const OFFLINE_SCREENS = ['/', '/timesheet', '/timesheet/start', '/timesheet/manual'];
 /** Where the server says which drafts to keep besides, and where its answer is kept. */
 const LIST = '/api/offline';
+/**
+ * When the server last confirmed the session -- its list came back to someone
+ * signed in -- by this phone's clock, kept beside the copies.
+ */
+const CONFIRMED = at('__confirmed');
+const LAPSE_MS = SESSION_UNUSED_DAYS * 86_400_000;
 /** And the request each screen makes for its data on a client-side navigation. */
 const dataOf = (screen: string) => `${screen === '/' ? '' : screen}/__data.json`;
 const OFFLINE_DATA = OFFLINE_SCREENS.map(dataOf);
@@ -71,11 +83,6 @@ const OFFLINE_DATA = OFFLINE_SCREENS.map(dataOf);
  */
 const LISTED_DATA =
 	/^\/(invoices(\/new|\/on-phone(\/add)?|\/[0-9a-f-]{36}(\/add|\/lines\/[0-9a-f-]{36}(\/change)?)?)?|timesheet\/(all|[0-9a-f-]{36})|trips(\/new|\/[0-9a-f-]{36}(\/change)?)?)\/__data\.json$/;
-
-/** A listed screen's own path, without the query that names a copy of it. */
-const pathOf = (listed: string) => listed.split('?')[0];
-/** The query naming the copy of a screen to keep, where it has one: "?copy=offline". */
-const copyOf = (listed: string) => (listed.includes('?') ? listed.slice(listed.indexOf('?')) : '');
 
 /** The screens kept now, as listed: the ones always kept, and the ones the server last listed. */
 let listed: string[] | null = null;
@@ -98,12 +105,36 @@ async function forget() {
 }
 
 /**
+ * Whether the copies have outlived the session: kept, and the server not
+ * reached for as long as one lasts unused. If so they are forgotten now.
+ */
+async function lapsed(): Promise<boolean> {
+	const kept = await caches.match(CONFIRMED, { cacheName: PAGES });
+	if (!kept) return false;
+	if (Date.now() - Number(await kept.text()) <= LAPSE_MS) return false;
+	await forget();
+	return true;
+}
+
+/**
+ * The app's own files, any the browser has let go put back: what a screen
+ * kept for no signal is drawn with.
+ */
+async function refill() {
+	const shell = await caches.open(SHELL);
+	const have = new Set((await shell.keys()).map((r) => new URL(r.url).pathname));
+	const missing = FILES.filter((f) => !have.has(f));
+	if (missing.length) await shell.addAll(missing);
+}
+
+/**
  * Fetches the offline screens and their data now, while there is a signal --
  * so one never opened is still there without one. Stops, and forgets, at the
  * first sign the session is gone. A draft no longer listed -- sent, or deleted
  * -- is let go.
  */
 async function warm() {
+	await refill().catch(() => {});
 	const pages = await caches.open(PAGES);
 	const list = await fetch(LIST);
 	if (signedOut(list)) return forget();
@@ -111,26 +142,25 @@ async function warm() {
 		const body = (await list.clone().json()) as { screens?: unknown };
 		if (Array.isArray(body.screens)) {
 			await pages.put(LIST, list);
+			await pages.put(CONFIRMED, new Response(String(Date.now())));
 			listed = body.screens.filter((x): x is string => typeof x === 'string');
 		}
 	}
 	const all = await screens();
-	const paths = all.map(pathOf);
-	const keep = new Set([...paths, ...paths.map(dataOf), LIST]);
+	const keep = new Set([...all, ...all.map(dataOf), LIST, CONFIRMED]);
 	for (const request of await pages.keys()) {
 		const path = new URL(request.url).pathname;
 		if (!keep.has(path) && !OPERATOR.includes(path)) await pages.delete(request);
 	}
 	for (const screen of all) {
-		const path = pathOf(screen);
-		const page = await fetch(screen);
+		const page = await fetch(`${screen}?${OFFLINE_COPY}`);
 		if (signedOut(page)) return forget();
 		if (!page.ok) continue;
-		await pages.put(path, page);
-		const data = await fetch(`${dataOf(path)}${copyOf(screen)}`);
+		await pages.put(screen, page);
+		const data = await fetch(`${dataOf(screen)}?${OFFLINE_COPY}`);
 		// Signed out, a data request still answers 200, with a redirect inside it.
 		const body = data.ok ? await data.clone().text() : '';
-		if (body.startsWith('{"type":"data"')) await pages.put(dataOf(path), data);
+		if (body.startsWith('{"type":"data"')) await pages.put(dataOf(screen), data);
 	}
 }
 
@@ -166,9 +196,12 @@ self.addEventListener('fetch', (event) => {
 	const url = new URL(request.url);
 	if (url.origin !== self.location.origin) return;
 
-	// Signing out empties the personal cache, whatever the response.
+	// Signing out empties the personal cache, whatever the response. The
+	// request goes on to the network untouched: the browser honours what its
+	// answer says to clear only on a response it fetched itself, not on one a
+	// worker hands it (Clear Site Data, 5.2).
 	if (request.method === 'POST' && url.pathname === '/logout') {
-		event.respondWith(fetch(request).finally(forget));
+		event.waitUntil(forget());
 		return;
 	}
 	if (request.method !== 'GET') return;
@@ -199,26 +232,22 @@ self.addEventListener('fetch', (event) => {
 });
 
 /**
- * A screen. From the network; without one, its last copy or the offline page.
- * One with a copy of its own is kept only as warm() fetches it.
+ * A screen. From the network; without one, its copy or the offline page. A
+ * copy is kept only as warm() fetches it, never the screen as it came now.
  */
 async function navigate(request: Request, url: URL): Promise<Response> {
-	const all = await screens();
-	const offlineScreen = all.some((s) => pathOf(s) === url.pathname);
-	const asItIs = all.includes(url.pathname);
 	try {
 		const response = await fetch(request);
 		if (signedOut(response)) await forget();
-		else if (asItIs && response.ok)
-			await (await caches.open(PAGES)).put(url.pathname, response.clone());
 		return response;
 	} catch {
+		const offlineScreen = (await screens()).includes(url.pathname) && !(await lapsed());
 		const kept = offlineScreen ? await caches.match(url.pathname, { cacheName: PAGES }) : undefined;
 		return kept ?? (await caches.match(OFFLINE_PAGE, { cacheName: SHELL })) ?? Response.error();
 	}
 }
 
-/** Data an offline screen draws from. From the network; without one, the last full copy. */
+/** Data an offline screen draws from. From the network; without one, its copy. */
 async function networkFirst(request: Request, url: URL): Promise<Response> {
 	try {
 		const response = await fetch(request);
@@ -230,6 +259,7 @@ async function networkFirst(request: Request, url: URL): Promise<Response> {
 			await (await caches.open(PAGES)).put(request, response.clone());
 		return response;
 	} catch (error) {
+		if (await lapsed()) throw error;
 		const kept = await caches.match(OPERATOR.includes(url.pathname) ? request : url.pathname, {
 			cacheName: PAGES,
 			ignoreSearch: !OPERATOR.includes(url.pathname)

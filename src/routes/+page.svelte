@@ -3,6 +3,7 @@
 	import { currencyPlaces } from '#lib/currency.ts';
 	import { onMount } from 'svelte';
 	import Top from '#lib/Top.svelte';
+	import OfflineBanner from '#lib/OfflineBanner.svelte';
 	import { running, type Running } from '#lib/timers.ts';
 	import {
 		count,
@@ -75,9 +76,12 @@
 	{/snippet}
 </Top>
 
+<OfflineBanner asOf={data.as_of} />
+
 {#if data.mine}
 	{@const m = data.mine}
-	<!-- Someone with Field: their own day, and nothing of the business's figures. -->
+	<!-- Someone with Field, or anyone with no signal: their own day, and nothing
+	     of the business's figures. -->
 	<div class="pad">
 		<div class="tiles">
 			<div class="tile">
@@ -98,15 +102,18 @@
 				<span class="v sm">{secondsAsHours(m.monthSeconds, 'whole')}</span>
 				<span class="s">This month</span>
 			</div>
-			<div class="tile wide">
-				<span class="k">Owed to you</span>
-				<span class="v sm">{money(m.owed)}</span>
-				<span class="s">
-					{m.last_paid ? `Last paid ${dated(m.last_paid)}` : 'Nothing paid yet'}{m.unpriced
-						? ' · and work no pay rule reaches yet'
-						: ''}
-				</span>
-			</div>
+			{#if m.pay}
+				<div class="tile wide">
+					<span class="k">Owed to you</span>
+					<span class="v sm">{money(m.pay.owed)}</span>
+					<span class="s">
+						{m.pay.last_paid ? `Last paid ${dated(m.pay.last_paid)}` : 'Nothing paid yet'}{m.pay
+							.unpriced
+							? ' · and work no pay rule reaches yet'
+							: ''}
+					</span>
+				</div>
+			{/if}
 		</div>
 
 		<div class="duo">
@@ -159,13 +166,24 @@
 						<div class="rec">
 							<div class="rec-m">
 								<div class="rec-t"><span class="lt">No drafts</span></div>
-								<div class="rec-s">Someone with Full starts one for a client</div>
+								<div class="rec-s">
+									{data.user?.access === 'field'
+										? 'Someone with Full starts one for a client'
+										: 'New draft, on Invoices, starts one for a client'}
+								</div>
 							</div>
 						</div>
 					{/each}
 				</div>
 			</div>
 		</div>
+		{#if data.offline}
+			<p class="none">
+				{data.user?.access === 'field'
+					? 'What you are owed needs a connection.'
+					: 'What is owed, ready to send and not yet billed needs a connection.'}
+			</p>
+		{/if}
 	</div>
 {:else}
 	<div class="pad">

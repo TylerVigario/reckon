@@ -248,19 +248,17 @@ const CHANGED = 'offline-check.changed';
 const TRIPS = 'offline-check.trips';
 /** Where the time entries changed and removed with no signal are, kept between runs. */
 const ENTRIES = 'offline-check.entries';
+/** Where Avery's own trip, changed with no signal, is kept between runs. */
+const OWN_TRIP = 'offline-check.own-trip';
+/** Sam's drive today, in the demo: someone else's, so never kept on Avery's phone. */
+const SAMS_TRIP = '/trips/d1ecd94f-1c64-409e-89fd-d6f6da437a7c';
+/** The Tacoma, Avery's own. */
+const TACOMA = '019a0001-0000-7000-8000-000000000002';
 /** Avery, whose entries they are; and the demo's field service, at Pinecrest's suite. */
 const AVERY = 'c41b2fab-5b71-4954-bb86-1bc803daf7ee';
 const FIELD_SERVICE = '2d15bc02-d08e-4242-860c-5d461bf2b1c2';
 const PINECREST = 'adaf8510-48a7-4ce1-a78f-6f7eab7ea29e';
 const SUITE = '4c42978a-ace1-4a79-a7f0-0d9e7efed2da';
-/** A trip on the list driven by `who`: its own screen. */
-const tripBy = (/** @type {string} */ who) =>
-	run((/** @type {string} */ name) => {
-		const a = [...document.querySelectorAll('a.rec.link')].find((x) =>
-			x.querySelector('.rec-s')?.textContent?.includes(name)
-		);
-		return a ? a.getAttribute('href') : null;
-	}, who);
 /** A select set to the option that reads `label`, as a person picks it. */
 const choose = (/** @type {string} */ selector, /** @type {string} */ label) =>
 	run(
@@ -354,11 +352,42 @@ if (phase === 'online') {
 		ENTRIES,
 		JSON.stringify({ toChange, toRemove, toAddAgain, month: yesterday.slice(0, 7) })
 	);
+	// And a trip Avery drove yesterday, not yet billed: hers to put right on the
+	// road. Someone else's is not kept on her phone, Full or not.
+	const ownTrip = /** @type {string | null} */ (
+		await run(
+			async (/** @type {Record<string, unknown>} */ trip) => {
+				const r = await fetch('/api/trips', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ ...trip, client_uuid: crypto.randomUUID() })
+				});
+				return r.ok ? (await r.json()).id : null;
+			},
+			{
+				travelled_on: yesterday,
+				driven_by: AVERY,
+				vehicle_id: TACOMA,
+				stops: [
+					{ address: 'Offline check yard', clients: [{ entity_id: PINECREST, asked_there: false }] }
+				],
+				drives: [{ miles: '9.0' }, { miles: '9.0' }]
+			}
+		)
+	);
+	check(!!ownTrip, 'Avery records a trip of her own, to put right with no signal');
+	await run(
+		(/** @type {string} */ key, /** @type {string} */ value) => localStorage.setItem(key, value),
+		OWN_TRIP,
+		`/trips/${ownTrip}`
+	);
 	const entryScreens = [
 		'/timesheet/all',
 		`/timesheet/${toChange}`,
 		`/timesheet/${toRemove}`,
-		`/timesheet/${toAddAgain}`
+		`/timesheet/${toAddAgain}`,
+		`/trips/${ownTrip}`,
+		`/trips/${ownTrip}/change`
 	];
 	await go('/');
 
@@ -394,7 +423,11 @@ if (phase === 'online') {
 	check(!have.includes(SENT), 'it keeps no invoice that has gone out');
 	check(
 		entryScreens.every((p) => have.includes(p) && have.includes(`${p}/__data.json`)),
-		'it keeps the entries Avery entered, to change with no signal, and All entries with them'
+		'it keeps the entries Avery entered and the trip she drove, to change with no signal, and All entries with them'
+	);
+	check(
+		!have.includes(SAMS_TRIP) && !(screens ?? []).includes(SAMS_TRIP),
+		'it keeps no trip of anyone else’s, though Avery has Full'
 	);
 	/** What the worker kept under `path`, as text. */
 	const keptAt = async (/** @type {string} */ path) =>
@@ -413,6 +446,48 @@ if (phase === 'online') {
 				(t) => t.includes(String(toChange)) && !t.includes('Replaced the front desk switch')
 			),
 		'All entries is kept as a copy of its own: Avery’s entries alone, never everyone’s'
+	);
+
+	// EVERY SCREEN KEPT IS CUT TO WHAT IS DONE THERE (#lib/offline-copy), page
+	// and data alike: nothing of what the business is owed, holds or has not
+	// billed, what anything is worth, or anyone else's work.
+	const today = await keptAt('/');
+	const todayData = await keptAt('/__data.json');
+	check(
+		today.includes('What is owed, ready to send and not yet billed needs a connection.') &&
+			!/Owed to|Sales tax held|Unbilled work/.test(today) &&
+			!/tax_held|owed_count|last_paid/.test(todayData) &&
+			today.includes('Your work today'),
+		'Today is kept as Avery’s own day: no figure of what is owed, held or unbilled'
+	);
+	const time = await keptAt('/timesheet');
+	check(
+		time.includes('Everyone else’s work today needs a connection.'),
+		'Time is kept with Avery’s work alone'
+	);
+	const invoices = await keptAt('/invoices');
+	const invoicesData = await keptAt('/invoices/__data.json');
+	check(
+		invoices.includes('needs a connection') &&
+			invoices.includes('Not sent') &&
+			!/Out, unpaid|Overdue|Paid, recently/.test(invoices) &&
+			!/overdueCount|drafted/.test(invoicesData),
+		'Invoices is kept as the drafts alone, with nothing they come to'
+	);
+	const trips = await keptAt('/trips');
+	const tripsData = await keptAt('/trips/__data.json');
+	check(
+		trips.includes('need a connection') &&
+			!trips.includes('Sam Ortega') &&
+			!tripsData.includes('Sam Ortega') &&
+			!/\$\d/.test(trips),
+		'Trips is kept as Avery’s own, with nothing they bill'
+	);
+	const trip = await keptAt(`/trips/${ownTrip}`);
+	check(
+		trip.includes('needs a connection') &&
+			!/Billed|Paid for the vehicle|Not over-billed|\$\d/.test(trip),
+		'her trip is kept as the drive, with nothing it bills or pays'
 	);
 
 	const install = await send('Page.getInstallabilityErrors');
@@ -786,13 +861,32 @@ if (phase === 'offline') {
 		'the entry opens on the change it waits with'
 	);
 
-	// A trip recorded, and the demo's drive today changed, with no signal.
+	// A trip recorded, and Avery's own drive yesterday changed, with no signal.
 	await go('/trips');
 	check(
 		(await heading()).startsWith('Trips') && /Offline/.test(await banner()),
 		'/trips opens with no server, saying how old it is'
 	);
-	const sams = await tripBy('Sam Ortega');
+	const tripsShown = /** @type {string} */ (await text());
+	check(
+		!tripsShown.includes('Sam Ortega') && tripsShown.includes('everyone else’s'),
+		'it lists Avery’s own trips, and says everyone else’s need a connection'
+	);
+	await go(SAMS_TRIP);
+	check((await heading()) === 'No connection', 'Sam’s trip says it needs a connection');
+	const own = /** @type {string | null} */ (
+		await evaluate(`localStorage.getItem(${JSON.stringify(OWN_TRIP)})`)
+	);
+	if (own) {
+		await go(own);
+		const drive = /** @type {string} */ (await text());
+		check(
+			drive.includes('Offline check yard') &&
+				drive.includes('needs a connection') &&
+				!drive.includes('Paid for the vehicle'),
+			'her own trip opens with no server: the drive, and nothing it bills'
+		);
+	}
 	await go('/trips/new');
 	for (const [client, site] of [
 		['Harbor Light Dental', 'Woodland office'],
@@ -837,11 +931,11 @@ if (phase === 'offline') {
 			newKey !== null,
 		'the trip waits on the phone, and the list shows it'
 	);
-	if (sams) {
-		await go(`${sams}/change`);
+	if (own) {
+		await go(`${own}/change`);
 		check(
 			(await heading()).startsWith('Change the trip'),
-			"Sam's trip opens to be changed with no server"
+			'her trip opens to be changed with no server'
 		);
 		await typeIn('#t-note', 'Changed offline by offline-check');
 		await click('Save the trip');
@@ -850,9 +944,29 @@ if (phase === 'offline') {
 			(await text()).includes('a change to a saved trip'),
 			'the change waits on the phone beside it'
 		);
-	} else failures.push("could not find Sam's trip on /trips");
+	} else failures.push('could not find Avery’s own trip');
 	await evaluate(
-		`localStorage.setItem(${JSON.stringify(TRIPS)}, ${JSON.stringify(JSON.stringify({ newKey, sams, driven }))})`
+		`localStorage.setItem(${JSON.stringify(TRIPS)}, ${JSON.stringify(JSON.stringify({ newKey, own, driven }))})`
+	);
+
+	// TWO WEEKS WITHOUT THE SERVER: the session has ended there, and the phone
+	// forgets its copies by itself. The work on it stays.
+	const waitingBefore = ((await queued()) ?? []).length;
+	await run(async () => {
+		const name = (await caches.keys()).find((k) => k.startsWith('pages-'));
+		if (name)
+			await (
+				await caches.open(name)
+			).put('/__confirmed', new Response(String(Date.now() - 15 * 86_400_000)));
+	});
+	await go('/');
+	check(
+		(await heading()) === 'No connection' && ((await kept()) ?? []).length === 0,
+		'two weeks after the server last answered, the phone has forgotten its copies'
+	);
+	check(
+		((await queued()) ?? []).length === waitingBefore && waitingBefore > 0,
+		`and keeps every entry waiting to send (${waitingBefore})`
 	);
 }
 
@@ -918,6 +1032,26 @@ if (phase === 'back' && other) {
 	check(
 		(await evaluate('location.pathname')) === '/login' && (await stored('reckon.running')) === 1,
 		'and once they say so, they are signed out, the timer still running on the phone'
+	);
+	// What was kept for them is gone with them; the app's own files are not,
+	// and nor is anyone's work waiting to send.
+	const caches_ = /** @type {{ pages: number, shell: number }} */ (
+		await evaluate(`(async () => {
+			const keys = await caches.keys();
+			const count = async (prefix) => {
+				const name = keys.find((k) => k.startsWith(prefix));
+				return name ? (await (await caches.open(name)).keys()).length : 0;
+			};
+			return { pages: await count('pages-'), shell: await count('shell-') };
+		})()`)
+	);
+	check(
+		caches_.pages === 0 && caches_.shell > 0,
+		`signing out empties the copies kept for them, and leaves the app’s own files (${caches_.shell})`
+	);
+	check(
+		((await queued()) ?? []).length === recorded.length,
+		'and the work waiting on the phone stays, still unsent'
 	);
 	if (theirs) await useSession(theirs);
 }
@@ -1239,7 +1373,7 @@ if (phase === 'back') {
 
 	// The trip and the change arrive; the drive's estimates were the last drive's,
 	// and Google, with no key here, has nothing to put in their place.
-	const trips = /** @type {{ newKey: string | null; sams: string | null; driven: number }} */ (
+	const trips = /** @type {{ newKey: string | null; own: string | null; driven: number }} */ (
 		JSON.parse(
 			/** @type {string} */ (
 				await evaluate(`localStorage.getItem(${JSON.stringify(TRIPS)}) ?? '{}'`)
@@ -1274,9 +1408,12 @@ if (phase === 'back') {
 			`the trip is as it was recorded, its legs worked out on arrival (${trips.driven.toFixed(1)} mi)`
 		);
 	}
-	if (trips.sams) {
-		await go(trips.sams);
-		check((await text()).includes('Changed offline by offline-check'), "Sam's trip has the change");
+	if (trips.own) {
+		await go(trips.own);
+		check(
+			(await text()).includes('Changed offline by offline-check'),
+			'her own trip has the change'
+		);
 	}
 
 	await evaluate(`document.querySelector('form[action="/logout"]')?.requestSubmit()`);

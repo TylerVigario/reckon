@@ -78,7 +78,7 @@
 	let removing = $state<'idle' | 'asking' | 'working'>('idle');
 	const goesWith = $derived(
 		[
-			Decimal.from(data.trip.billed).isZero()
+			data.trip.billed === null || Decimal.from(data.trip.billed).isZero()
 				? null
 				: `${money(data.trip.billed)} not yet billed to the client`,
 			data.trip.owner && data.trip.paid && !Decimal.from(data.trip.paid).isZero()
@@ -150,20 +150,22 @@
 			</div>
 		</div>
 	{/if}
-	<div class="tiles">
-		<div class="tile">
-			<span class="k">Billed</span>
-			<span class="v good">{money(data.trip.billed)}</span>
-			<span class="s">for {miles(data.trip.miles)} driven</span>
-		</div>
-		{#if saved !== null && saved.gt(0)}
+	{#if data.trip.billed !== null}
+		<div class="tiles">
 			<div class="tile">
-				<span class="k">Not over-billed</span>
-				<span class="v sm">{money(saved.toString())}</span>
-				<span class="s">vs a round trip each</span>
+				<span class="k">Billed</span>
+				<span class="v good">{money(data.trip.billed)}</span>
+				<span class="s">for {miles(data.trip.miles)} driven</span>
 			</div>
-		{/if}
-	</div>
+			{#if saved !== null && saved.gt(0)}
+				<div class="tile">
+					<span class="k">Not over-billed</span>
+					<span class="v sm">{money(saved.toString())}</span>
+					<span class="s">vs a round trip each</span>
+				</div>
+			{/if}
+		</div>
+	{/if}
 
 	<div class="sec">
 		<div class="sec-h"><h2>Driven in</h2></div>
@@ -219,25 +221,34 @@
 						<div class="rec-s">{l.rule ? RULE[l.rule] : 'no rule recorded'}</div>
 					</div>
 					<div class="rec-n">
-						{#if l.who}
-							<span class="rec-v">{money(l.value)}</span>
+						{#if data.offline}
+							<span class="rec-v">{miles(l.miles)}</span>
 						{:else}
-							<span class="rec-v mut">—</span>
+							{#if l.who}
+								<span class="rec-v">{money(l.value)}</span>
+							{:else}
+								<span class="rec-v mut">—</span>
+							{/if}
+							<span class="rec-x">{miles(l.miles)}</span>
 						{/if}
-						<span class="rec-x">{miles(l.miles)}</span>
 					</div>
 				</div>
 			{/each}
 			<div class="rec tot">
-				<div class="rec-m"><div class="rec-t">Driven, and billed</div></div>
-				<div class="rec-n">
-					<span class="rec-v">{money(data.trip.billed)}</span>
-					<span class="rec-x">{miles(data.trip.miles)}</span>
-				</div>
+				{#if data.offline}
+					<div class="rec-m"><div class="rec-t">Driven</div></div>
+					<div class="rec-n"><span class="rec-v">{miles(data.trip.miles)}</span></div>
+				{:else}
+					<div class="rec-m"><div class="rec-t">Driven, and billed</div></div>
+					<div class="rec-n">
+						<span class="rec-v">{money(data.trip.billed)}</span>
+						<span class="rec-x">{miles(data.trip.miles)}</span>
+					</div>
+				{/if}
 			</div>
 		</div>
 	</div>
-	{#if data.trip.vehicle}
+	{#if data.trip.vehicle && !data.offline}
 		<div class="sec">
 			<div class="sec-h"><h2>Paid for the vehicle</h2></div>
 			<div class="rows">
@@ -273,6 +284,9 @@
 				</div>
 			</div>
 		</div>
+	{/if}
+	{#if data.offline}
+		<p class="none">What it bills, and what it pays for the vehicle, needs a connection.</p>
 	{/if}
 	{#if data.trip.invoiced}
 		<p class="aside">Its miles are on an invoice, so it stays as it was billed.</p>

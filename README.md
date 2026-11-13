@@ -808,19 +808,34 @@ it to the home screen: named for the business, in its colour, with its logo as
 the icon where the logo is fit to be one (square, and an SVG or a PNG of 512px
 or more) and reckon's own tally where it is not. A service worker keeps Today,
 the Time screens, the invoices with each draft and its lines, and Trips with
-each recent trip not yet billed, as they were last seen, each saying how old it
-is. It keeps the time entries a person entered this week and last that are not
-yet billed or paid, each on its screen, and All entries as a copy of its own
-holding only those, with nothing of what they are worth; the screen as it is
-with a signal, everyone's entries and their value, is never kept. With no
+each trip the person drove that is not yet billed, each saying how old it is.
+It keeps the time entries a person entered this week and last that are not yet
+billed or paid, each on its screen, and All entries holding only those. With no
 signal at all the app still opens there — a timer starts and stops, an entry is
 changed, a line goes on a draft, a trip is recorded — and what was recorded
 posts when any page next opens with one. Every other screen says it needs a
 connection rather than showing a figure that may have changed.
-Signing out empties what was kept, and a new deploy is announced with a reload,
-never forced on someone mid-entry. The service worker is registered for
-somebody signed in, and only then, so a client opening their invoice's link is
-not installing the app.
+
+**What the phone keeps is only what is done there.** Each screen is kept as a
+copy of its own, cut to its task (`src/lib/offline-copy.ts`; ASVS 5.0 14.2.6).
+A form is kept whole, since its choices, its rates and a draft's lines are what
+it asks with. A screen leaves out what the business is owed, holds or has not
+billed, what work is worth, anyone's pay, and other people's work — someone
+with Full included — and says those need a connection; the screen as it is
+with a signal is never kept. Nothing reckon answers is for the browser's own
+cache (`Cache-Control: no-store`, ASVS 14.3.2), but a receipt's photo for an
+hour and the business's colour and logo. Signing out empties the copies and
+clears the browser's cache of reckon (`Clear-Site-Data: "cache"`, ASVS 14.3.1).
+Not `"cookies"`, which clears every site under the same registered domain, so
+signing out of reckon would sign someone out of every other app beside it; and
+not `"storage"`, which would delete the unsent work. A phone that has not
+reached the server for two weeks, as long as a session lasts unused, forgets
+its copies by itself: the server has ended the session by then, and the phone
+cannot hear it. Unsent work stays through all of it.
+
+A new deploy is announced with a reload, never forced on someone mid-entry. The
+service worker is registered for somebody signed in, and only then, so a client
+opening their invoice's link is not installing the app.
 
 ## Licence
 

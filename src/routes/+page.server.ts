@@ -13,6 +13,7 @@ import { ageOf, type Age } from '#lib/ageing.ts';
 import { crewNames } from '#lib/server/choices.ts';
 import { fieldOnly, theirWork } from '#lib/server/mine.ts';
 import { owed, paymentsTo } from '#lib/server/pay.ts';
+import { isOfflineCopy } from '#lib/offline-copy.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -30,8 +31,14 @@ import type { PageServerLoad } from './$types';
  * The date comes from the database rather than from `new Date()`: the server's
  * clock is UTC and toISOString() west of Greenwich calls it tomorrow from five
  * in the afternoon.
+ *
+ * KEPT FOR NO SIGNAL (#lib/offline-copy), it is everyone's own day, Full's
+ * too: what is running, their time this month and today, and the drafts to
+ * add to -- the work done on site. What anyone is owed, and what a draft
+ * comes to, need a connection.
  */
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
+	const offline = isOfflineCopy(url);
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
 	const owing = balances(rounding, places);
 	const today = businessToday();
@@ -84,11 +91,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 		};
 	};
 
-	if (fieldOnly(locals)) {
+	if (fieldOnly(locals) || offline) {
 		const me = locals.user!.id;
 		const day = personalToday();
 		const u = alias(t.user, 'u');
-		const [drafts, names, [month], work, items, payments] = await Promise.all([
+		const [drafts, names, [month], work, pay] = await Promise.all([
 			recentDrafts(),
 			timerNames(),
 			db
@@ -113,25 +120,29 @@ export const load: PageServerLoad = async ({ locals }) => {
 				.leftJoin(t.site, eq(t.site.id, t.timeEntry.siteId))
 				.where(and(eq(t.timeEntry.workedOn, day), theirWork(me)))
 				.orderBy(desc(t.timeEntry.createdAt), desc(t.timeEntry.id)),
-			owed([me]).then((m) => m.get(me) ?? []),
-			paymentsTo(me)
+			offline
+				? null
+				: Promise.all([owed([me]).then((m) => m.get(me) ?? []), paymentsTo(me)]).then(
+						([items, payments]) => ({
+							owed: sum(items.map((x) => x.amount)).toFixed(places),
+							// Work no rule pays yet is owed at no figure, so the total is not all of it.
+							unpriced: items.some((x) => x.amount === null),
+							last_paid: payments[0]?.paid_on ?? null
+						})
+					)
 		]);
 		return {
 			today,
 			totals: null,
 			decisions: [],
-			drafts,
+			// What each draft comes to is the business's figure, not the day's work.
+			drafts: offline ? drafts.map((d) => ({ ...d, gross: null })) : drafts,
 			ageing: [],
 			names,
 			me,
-			mine: {
-				monthSeconds: Number(month.seconds),
-				owed: sum(items.map((x) => x.amount)).toFixed(places),
-				// Work no rule pays yet is owed at no figure, so the total is not all of it.
-				unpriced: items.some((x) => x.amount === null),
-				last_paid: payments[0]?.paid_on ?? null,
-				work
-			}
+			mine: { monthSeconds: Number(month.seconds), pay, work },
+			offline,
+			as_of: new Date().toISOString()
 		};
 	}
 
@@ -280,6 +291,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 		ageing,
 		names: await timerNames(),
 		me: locals.user!.id,
-		mine: null
+		mine: null,
+		offline,
+		as_of: new Date().toISOString()
 	};
 };

@@ -9,6 +9,8 @@ import { loadCatalogue, valueLegs } from '#lib/server/valuation/load.ts';
 import { jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
+import { keptTrips } from '#lib/server/kept.ts';
+import { isOfflineCopy } from '#lib/offline-copy.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -19,8 +21,13 @@ import type { PageServerLoad } from './$types';
  * round trip each (on the seeded trip, 70 miles for 57 driven). "Every mile
  * assigned" means no leg is left without a client. Someone with Field sees the
  * trips they drove (#lib/access).
+ *
+ * KEPT FOR NO SIGNAL (#lib/offline-copy), it is the trips the person drove that
+ * can still be put right (#lib/server/kept), Full's own too, and nothing of
+ * what they bill: older ones, billed ones and anyone else's need a connection.
  */
 export const load: PageServerLoad = async ({ url, locals }) => {
+	const offline = isOfflineCopy(url);
 	const asked = url.searchParams.get('month') ?? '';
 	const day = businessToday();
 	const from = /^\d{4}-(0[1-9]|1[0-2])$/.test(asked) ? `${asked}-01` : `${day.slice(0, 8)}01`;
@@ -52,11 +59,13 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		.leftJoin(u, eq(u.id, tr.drivenBy))
 		.leftJoin(t.vehicle, eq(t.vehicle.id, tr.vehicleId))
 		.where(
-			and(
-				gte(tr.travelledOn, from),
-				lt(tr.travelledOn, to),
-				fieldOnly(locals) ? eq(tr.drivenBy, locals.user!.id) : undefined
-			)
+			offline
+				? keptTrips(locals.user!.id, day)
+				: and(
+						gte(tr.travelledOn, from),
+						lt(tr.travelledOn, to),
+						fieldOnly(locals) ? eq(tr.drivenBy, locals.user!.id) : undefined
+					)
 		)
 		.orderBy(desc(tr.travelledOn), desc(tr.id));
 
@@ -97,8 +106,9 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			legs: mine.length,
 			miles: miles.toFixed(2),
 			assigned: assigned.toFixed(2),
-			// Each leg at its own service's price on the day.
-			value: sum(mine.map((l) => worth.get(l.id)?.billed ?? null)).toFixed(places),
+			// Each leg at its own service's price on the day; none in the copy kept
+			// for no signal.
+			value: offline ? null : sum(mine.map((l) => worth.get(l.id)?.billed ?? null)).toFixed(places),
 			billed: theirs.length > 0 && theirs.every((l) => l.invoiced),
 			// Whether every mile driven is some client's.
 			balanced: assigned.eq(miles)
@@ -121,11 +131,12 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		unbilled: trips.filter((x) => !x.billed),
 		billed: trips.filter((x) => x.billed),
 		as_of: new Date().toISOString(),
+		offline,
 		totals: {
-			month: monthOf(from),
+			month: offline ? null : monthOf(from),
 			miles: sum(legs.map((l) => l.miles)).toFixed(2),
 			trips: String(found.length),
-			rate: rate?.toString() ?? null
+			rate: offline ? null : (rate?.toString() ?? null)
 		}
 	};
 };

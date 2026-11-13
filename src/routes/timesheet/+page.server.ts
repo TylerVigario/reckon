@@ -6,6 +6,7 @@ import * as t from '#lib/server/db/schema/index.ts';
 import { clientsAndSites, crewNames, theTeam, timedServices } from '#lib/server/choices.ts';
 import { pricesToday } from '#lib/server/prices.ts';
 import { fieldOnly, theirWork } from '#lib/server/mine.ts';
+import { isOfflineCopy } from '#lib/offline-copy.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -17,12 +18,16 @@ import type { PageServerLoad } from './$types';
  * provides is the names and rates a timer needs in order to say what it is
  * timing, and everything already recorded today -- for someone with Field,
  * what they worked (#lib/access).
+ *
+ * KEPT FOR NO SIGNAL (#lib/offline-copy), it is what the person worked, Full
+ * too: everyone else's day needs a connection.
  */
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
 	const day = personalToday();
 	const monthStart = `${day.slice(0, 8)}01`;
 	const u = alias(t.user, 'u');
-	const mine = fieldOnly(locals) ? theirWork(locals.user!.id) : undefined;
+	const offline = isOfflineCopy(url);
+	const mine = fieldOnly(locals) || offline ? theirWork(locals.user!.id) : undefined;
 
 	const [[month], entries, people, entities, services, prices] = await Promise.all([
 		db
@@ -74,6 +79,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		people,
 		entities,
 		services,
-		prices
+		prices,
+		offline
 	};
 };
