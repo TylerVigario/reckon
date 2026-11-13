@@ -23,11 +23,12 @@ export const ADJUST_REASONS = [
 	'lost',
 	'returned',
 	'found',
-	'correction'
+	'correction',
+	'counted'
 ] as const;
 export type AdjustReason = (typeof ADJUST_REASONS)[number];
 
-/** Why stock moves each way, in the order offered. */
+/** Why stock moves each way by hand, in the order offered: a count makes its own. */
 export const REASONS_FOR: Record<AdjustWay, readonly AdjustReason[]> = {
 	off: ['used', 'damaged', 'lost', 'returned', 'correction'],
 	on: ['found', 'correction']
@@ -40,7 +41,8 @@ export const REASON_WORDS: Record<AdjustReason, string> = {
 	lost: 'Lost or stolen',
 	returned: 'Returned to the supplier',
 	found: 'Found',
-	correction: 'A correction'
+	correction: 'A correction',
+	counted: 'Counted'
 };
 
 export const ADJUST_FIELDS = {
@@ -75,9 +77,11 @@ export function readAdjustment(
 		!REASONS_FOR[v.way as AdjustWay].includes(v.reason as AdjustReason)
 	)
 		errors.reason =
-			v.way === 'on'
-				? 'Stock is put on when found, or to correct it.'
-				: 'Found stock is added, not taken off.';
+			v.reason === 'counted'
+				? 'A count puts stock right from the count itself.'
+				: v.way === 'on'
+					? 'Stock is put on when found, or to correct it.'
+					: 'Found stock is added, not taken off.';
 	if (!errors.qty) {
 		const why = countError(String(v.qty), places, 'Something has to move.');
 		if (why) errors.qty = why;

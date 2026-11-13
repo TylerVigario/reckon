@@ -13,6 +13,8 @@ import {
 	service,
 	servicePrice,
 	stockAdjustment,
+	stockCount,
+	stockCountLine,
 	stockReceipt,
 	stockTake
 } from './catalogue.ts';
@@ -101,7 +103,18 @@ export const stockReceiptRelations = relations(stockReceipt, ({ many }) => ({
 
 export const stockAdjustmentRelations = relations(stockAdjustment, ({ one, many }) => ({
 	material: one(material, { fields: [stockAdjustment.materialId], references: [material.id] }),
+	count: one(stockCount, { fields: [stockAdjustment.countId], references: [stockCount.id] }),
 	takes: many(stockTake)
+}));
+
+export const stockCountRelations = relations(stockCount, ({ many }) => ({
+	lines: many(stockCountLine),
+	adjustments: many(stockAdjustment)
+}));
+
+export const stockCountLineRelations = relations(stockCountLine, ({ one }) => ({
+	count: one(stockCount, { fields: [stockCountLine.countId], references: [stockCount.id] }),
+	material: one(material, { fields: [stockCountLine.materialId], references: [material.id] })
 }));
 
 export const stockTakeRelations = relations(stockTake, ({ one }) => ({

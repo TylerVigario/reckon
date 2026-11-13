@@ -45,6 +45,7 @@ const { UNIT_FIELDS } = await import('../src/lib/unit-fields.ts');
 const { RECEIPT_FIELDS, NEW_MATERIAL_FIELDS } = await import('../src/lib/stock-fields.ts');
 const { ADJUST_FIELDS } = await import('../src/lib/adjust-fields.ts');
 const { MATERIAL_FIELDS } = await import('../src/lib/material-fields.ts');
+const { COUNT_LINE_FIELDS } = await import('../src/lib/count-fields.ts');
 const { PASSED_ON_FIELDS, FROM_STOCK_FIELDS } = await import('../src/lib/line-fields.ts');
 
 /** @type {[string, import('../src/lib/field-rules.ts').Registry][]} */
@@ -64,6 +65,7 @@ const registries = [
 	['stock_adjustment', ADJUST_FIELDS],
 	['material', NEW_MATERIAL_FIELDS],
 	['material', MATERIAL_FIELDS],
+	['stock_count_line', COUNT_LINE_FIELDS],
 	['invoice_line', PASSED_ON_FIELDS],
 	['invoice_line', FROM_STOCK_FIELDS],
 	['user', PERSON_FIELDS]

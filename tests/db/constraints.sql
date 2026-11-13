@@ -1791,6 +1791,88 @@ SELECT must_pass($$
 $$, 'a set price from a day, and back to its markup from a later one');
 
 \echo ''
+\echo '=== 36d. a count is counted, applied once, and names what it put right ==='
+
+INSERT INTO stock_count (id, counted_on, created_by)
+VALUES ('36d36d36-0000-4000-8000-000000000001','2026-10-03','a0a0a0a0-0000-4000-8000-0000000000a1');
+
+SELECT must_fail($$
+  INSERT INTO stock_count (counted_on, created_by)
+  VALUES ('2026-10-03','a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'a second count open while one is');
+
+SELECT must_pass($$
+  INSERT INTO stock_count_line (count_id, material_id, counted, on_hand, counted_by)
+  VALUES ('36d36d36-0000-4000-8000-000000000001','66666666-6666-6666-6666-666666666666',
+          990, 994, 'a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'coax counted: 990 ft where the shelf said 994');
+
+SELECT must_fail($$
+  INSERT INTO stock_count_line (count_id, material_id, counted, on_hand, counted_by)
+  VALUES ('36d36d36-0000-4000-8000-000000000001','66666666-6666-6666-6666-666666666666',
+          980, 994, 'a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'one material counted twice on one count');
+
+SELECT must_fail($$
+  UPDATE stock_count_line SET counted = -1
+   WHERE count_id = '36d36d36-0000-4000-8000-000000000001'
+$$, 'less than none counted');
+
+SELECT must_fail($$
+  INSERT INTO stock_adjustment (material_id, made_on, way, qty, reason, ex_tax_cost, created_by)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-10-03','off',4,'counted',1.24,
+          'a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'counted, with no count named');
+
+SELECT must_fail($$
+  INSERT INTO stock_adjustment (material_id, made_on, way, qty, reason, ex_tax_cost, count_id,
+                                created_by)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-10-03','off',4,'used',1.24,
+          '36d36d36-0000-4000-8000-000000000001','a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'a count named by an adjustment it did not make');
+
+SELECT must_pass($$
+  INSERT INTO stock_adjustment (id, material_id, made_on, way, qty, reason, ex_tax_cost, count_id,
+                                created_by)
+  VALUES ('36d36d36-0000-4000-8000-0000000000a1','66666666-6666-6666-6666-666666666666',
+          '2026-10-03','off',4,'counted',1.24,'36d36d36-0000-4000-8000-000000000001',
+          'a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, '4 ft short, put right by the count, either way');
+
+SELECT must_pass($$
+  UPDATE stock_count SET applied_at = now(), applied_by = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+   WHERE id = '36d36d36-0000-4000-8000-000000000001'
+$$, 'the count applied');
+
+SELECT must_fail($$
+  UPDATE stock_count_line SET counted = 991
+   WHERE count_id = '36d36d36-0000-4000-8000-000000000001'
+$$, 'what was counted on an applied count, changed');
+
+SELECT must_fail($$
+  UPDATE stock_count SET counted_on = '2026-10-04'
+   WHERE id = '36d36d36-0000-4000-8000-000000000001'
+$$, 'an applied count, changed');
+
+SELECT must_fail($$
+  DELETE FROM stock_count WHERE id = '36d36d36-0000-4000-8000-000000000001'
+$$, 'an applied count, deleted');
+
+SELECT must_pass($$
+  INSERT INTO stock_count (id, counted_on, created_by)
+  VALUES ('36d36d36-0000-4000-8000-000000000002','2026-10-04','a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'a new count, once the last is applied');
+
+SELECT must_fail($$
+  UPDATE stock_count SET applied_at = now()
+   WHERE id = '36d36d36-0000-4000-8000-000000000002'
+$$, 'applied by nobody');
+
+SELECT must_pass($$
+  DELETE FROM stock_count WHERE id = '36d36d36-0000-4000-8000-000000000002'
+$$, 'a count still being counted, thrown away');
+
+\echo ''
 \echo '=== 37. what was bought or paid for says who paid, and keeps its receipt ==='
 
 -- A draft of its own: section 16's went out, and a sent invoice takes no lines.
