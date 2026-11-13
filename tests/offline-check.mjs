@@ -167,7 +167,7 @@ const stored = (/** @type {string} */ key) =>
  */
 const inQueue = (/** @type {string} */ body) =>
 	evaluate(`new Promise((resolve) => {
-		const req = indexedDB.open('reckon', 5);
+		const req = indexedDB.open('reckon', 6);
 		req.onupgradeneeded = () => {
 			const db = req.result;
 			if (!db.objectStoreNames.contains('queue'))
@@ -180,6 +180,8 @@ const inQueue = (/** @type {string} */ body) =>
 				db.createObjectStore('changes', { keyPath: 'change.line_id' });
 			if (!db.objectStoreNames.contains('trips'))
 				db.createObjectStore('trips', { keyPath: 'trip.key' });
+			if (!db.objectStoreNames.contains('time_changes'))
+				db.createObjectStore('time_changes', { keyPath: 'change.entry_id' });
 		};
 		req.onerror = () => resolve(null);
 		req.onsuccess = () => {
@@ -202,6 +204,17 @@ const linesQueued = () =>
 				id: q.line.client_uuid,
 				refused: q.refused?.detail ?? null,
 				description: q.line.shown.description
+			})));
+		all.onerror = () => done(null);`);
+/** @returns {Promise<{ id: string, act: string, refused: string | null, what: string | null }[] | null>} */
+const timeChangesQueued = () =>
+	inQueue(`const all = db.transaction('time_changes').objectStore('time_changes').getAll();
+		all.onsuccess = () =>
+			done(all.result.map((q) => ({
+				id: q.change.entry_id,
+				act: q.change.act,
+				refused: q.refused?.detail ?? null,
+				what: q.refused?.conflict?.what ?? null
 			})));
 		all.onerror = () => done(null);`);
 const click = (/** @type {string} */ text) =>
@@ -233,6 +246,13 @@ const STARTED = 'offline-check.draft';
 const CHANGED = 'offline-check.changed';
 /** Where the trip recorded and the trip changed with no signal are, kept between runs. */
 const TRIPS = 'offline-check.trips';
+/** Where the time entries changed and removed with no signal are, kept between runs. */
+const ENTRIES = 'offline-check.entries';
+/** Avery, whose entries they are; and the demo's field service, at Pinecrest's suite. */
+const AVERY = 'c41b2fab-5b71-4954-bb86-1bc803daf7ee';
+const FIELD_SERVICE = '2d15bc02-d08e-4242-860c-5d461bf2b1c2';
+const PINECREST = 'adaf8510-48a7-4ce1-a78f-6f7eab7ea29e';
+const SUITE = '4c42978a-ace1-4a79-a7f0-0d9e7efed2da';
 /** A trip on the list driven by `who`: its own screen. */
 const tripBy = (/** @type {string} */ who) =>
 	run((/** @type {string} */ name) => {
@@ -291,6 +311,57 @@ if (phase === 'online') {
 	}
 	await go('/');
 
+	// Three entries Avery entered yesterday, which the phone keeps to change with
+	// no signal: two to change, one to remove.
+	const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+	const made = /** @type {(string | null)[]} */ (
+		await run(
+			async (/** @type {Record<string, unknown>[]} */ entries) => {
+				const ids = [];
+				for (const e of entries) {
+					const r = await fetch('/api/time', {
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ ...e, client_uuid: crypto.randomUUID() })
+					});
+					ids.push(r.ok ? (await r.json()).id : null);
+				}
+				return ids;
+			},
+			[
+				{ note: 'Patched the front desk', minutes: 60 },
+				{ note: 'Checked the wiring closet', minutes: 30 },
+				{ note: 'Labelled the patch panel', minutes: 45 }
+			].map((e) => ({
+				...e,
+				worked_on: yesterday,
+				crew: 'one',
+				worked_by: AVERY,
+				entity_id: PINECREST,
+				site_id: SUITE,
+				service_id: FIELD_SERVICE,
+				billable: true
+			}))
+		)
+	);
+	const [toChange, toRemove, toAddAgain] = made;
+	check(
+		!!toChange && !!toRemove && !!toAddAgain,
+		'Avery enters three entries to change with no signal'
+	);
+	await run(
+		(/** @type {string} */ key, /** @type {string} */ value) => localStorage.setItem(key, value),
+		ENTRIES,
+		JSON.stringify({ toChange, toRemove, toAddAgain, month: yesterday.slice(0, 7) })
+	);
+	const entryScreens = [
+		'/timesheet/all',
+		`/timesheet/${toChange}`,
+		`/timesheet/${toRemove}`,
+		`/timesheet/${toAddAgain}`
+	];
+	await go('/');
+
 	// The worker installs on the first load, then fetches the offline screens
 	// when the page asks it to; a fresh load makes sure it is the one asked.
 	/** @type {string[]} */
@@ -303,8 +374,9 @@ if (phase === 'online') {
 			const list = name ? await (await caches.open(name)).match('/api/offline') : undefined;
 			return list ? (await list.json()).screens : [];
 		})()`);
+	// A screen listed with a query is kept in its own place (src/service-worker).
 	const everyScreen = (/** @type {string[]} */ h, /** @type {string[]} */ more) =>
-		[...OFFLINE, ...LISTED, ...more].every(
+		[...OFFLINE, ...LISTED, ...entryScreens, ...more.map((p) => p.split('?')[0])].every(
 			(p) => h.includes(p) && h.includes(`${p === '/' ? '' : p}/__data.json`)
 		);
 	/** @type {string[]} */
@@ -320,6 +392,28 @@ if (phase === 'online') {
 		`the worker keeps the offline screens and their data, the drafts and their lines among them (${have.length} kept)`
 	);
 	check(!have.includes(SENT), 'it keeps no invoice that has gone out');
+	check(
+		entryScreens.every((p) => have.includes(p) && have.includes(`${p}/__data.json`)),
+		'it keeps the entries Avery entered, to change with no signal, and All entries with them'
+	);
+	/** What the worker kept under `path`, as text. */
+	const keptAt = async (/** @type {string} */ path) =>
+		/** @type {string} */ (
+			await run(async (/** @type {string} */ at) => {
+				const name = (await caches.keys()).find((k) => k.startsWith('pages-'));
+				const hit = name ? await (await caches.open(name)).match(at) : undefined;
+				return hit ? await hit.text() : '';
+			}, path)
+		);
+	const allPage = await keptAt('/timesheet/all');
+	const allData = await keptAt('/timesheet/all/__data.json');
+	check(
+		allPage.includes('Yours, this week and last') &&
+			[allPage, allData].every(
+				(t) => t.includes(String(toChange)) && !t.includes('Replaced the front desk switch')
+			),
+		'All entries is kept as a copy of its own: Avery’s entries alone, never everyone’s'
+	);
 
 	const install = await send('Page.getInstallabilityErrors');
 	const errors = install.result?.installabilityErrors ?? [];
@@ -640,6 +734,56 @@ if (phase === 'offline') {
 	check(
 		(marked.match(/Changed on this phone/g) ?? []).length === 2,
 		'the draft marks both lines as changed on this phone'
+	);
+
+	// Time entries the server has, changed and removed with no signal, from All
+	// entries' copy: only Avery's own, to change on site.
+	const entries = /** @type {{ toChange: string, toRemove: string, toAddAgain: string }} */ (
+		JSON.parse(/** @type {string} */ (await evaluate(`localStorage.getItem('${ENTRIES}') ?? '{}'`)))
+	);
+	await go('/timesheet/all');
+	const yours = /** @type {string} */ (await text());
+	check(
+		(await subtitle()) === 'Yours, this week and last' &&
+			yours.includes('Patched the front desk') &&
+			!yours.includes('Replaced the front desk switch') &&
+			yours.includes('need a connection'),
+		'All entries opens with no server, holding only your own entries to change'
+	);
+	await go(`/timesheet/${entries.toChange}`);
+	check(
+		(await heading()) === 'Change an entry',
+		'an entry the server has opens to be changed with no server'
+	);
+	await typeIn('#m-note', 'Patched the front desk, offline');
+	await typeIn('#m-length', '1:30');
+	check(await click('Save changes'), 'it is changed');
+	await settle(5500);
+	await go(`/timesheet/${entries.toAddAgain}`);
+	await typeIn('#m-note', 'Labelled the patch panel and the drops');
+	await click('Save changes');
+	await settle(5500);
+	await go(`/timesheet/${entries.toRemove}`);
+	await click('Remove this entry');
+	await settle(300);
+	await evaluate(
+		`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent.trim() === 'Remove')?.click()`
+	);
+	await settle(5500);
+	await go('/timesheet/all');
+	const entriesMarked = /** @type {string} */ (await text());
+	check(
+		/Patched the front desk, offline.*Changed on this phone.*1\.5000 hr/.test(entriesMarked) &&
+			/Checked the wiring closet.*Removed on this phone/.test(entriesMarked),
+		'All entries shows the change as made, and the removal, both waiting on the phone'
+	);
+	await go(`/timesheet/${entries.toChange}`);
+	const waits = /** @type {string} */ (await text());
+	check(
+		waits.includes('A change made on this phone waits to send.') &&
+			(await evaluate(`document.querySelector('#m-note')?.value`)) ===
+				'Patched the front desk, offline',
+		'the entry opens on the change it waits with'
 	);
 
 	// A trip recorded, and the demo's drive today changed, with no signal.
@@ -980,6 +1124,97 @@ if (phase === 'back') {
 	check(
 		/Taken off the draft.*Sam Ortega.*Put back on the draft/.test(story),
 		'its history has Sam taking it off, and it being put back'
+	);
+
+	// The entries changed here while Sam changed them there.
+	const entries =
+		/** @type {{ toChange: string, toRemove: string, toAddAgain: string, month: string }} */ (
+			JSON.parse(
+				/** @type {string} */ (await evaluate(`localStorage.getItem('${ENTRIES}') ?? '{}'`))
+			)
+		);
+	await go(`/timesheet/all?month=${entries.month}`);
+	const listedBack = /** @type {string} */ (await text());
+	check(
+		/Changed in two places/.test(listedBack) && /Changed since you removed it/.test(listedBack),
+		'All entries says which change collided, and which entry was changed after it was removed here'
+	);
+	await go(`/timesheet/${entries.toChange}`);
+	await settle(1000);
+	const picking = /** @type {string} */ (await text());
+	check(
+		/When Merged.*1\.5 hr.*Only you changed it, on this phone/.test(picking) &&
+			/Billable Merged.*Not billable.*Only Sam Ortega changed it/.test(picking) &&
+			/Note — pick one.*“Patched the front desk”.*Where both started.*“Patched the front desk, by Sam”.*Sam Ortega.*“Patched the front desk, offline”.*You · on this phone/.test(
+				picking
+			),
+		`how long it took merges from the phone and whether it bills from Sam, and the note is picked${picking.includes('pick one') ? '' : ` (${picking.slice(0, 400)})`}`
+	);
+	check(await click('Keep these'), "the phone's note is kept");
+	await settle(5500);
+	await go(`/timesheet/${entries.toChange}`);
+	const changedForm = await evaluate(`({
+		note: document.querySelector('#m-note')?.value ?? '',
+		took: document.querySelector('#m-length')?.value ?? '',
+		text: document.body.textContent.replace(/\\s+/g, ' ')
+	})`);
+	check(
+		changedForm.note === 'Patched the front desk, offline' &&
+			changedForm.took === '1:30' &&
+			!changedForm.text.includes('pick one') &&
+			!changedForm.text.includes('waits to send'),
+		`the entry has both changes, and the note picked${changedForm.note ? ` (${changedForm.note}, ${changedForm.took})` : ''}`
+	);
+	await go(`/timesheet/${entries.toRemove}`);
+	await settle(1000);
+	check(
+		/Sam Ortega changed this entry.*after it was removed on this phone/.test(
+			/** @type {string} */ (await text())
+		),
+		'the entry removed here says Sam changed it since'
+	);
+	check(await click('Remove it anyway'), 'and is removed anyway');
+	await settle(5500);
+	// Removed meanwhile, the third has no screen to open: Time has it, to be
+	// added again with the change.
+	await go('/timesheet');
+	const notSaved = /** @type {string} */ (
+		await evaluate(`(() => {
+			const sec = [...document.querySelectorAll('.sec')].find((s) => s.querySelector('h2')?.textContent?.trim() === 'Not saved');
+			return sec ? sec.textContent.replace(/\\s+/g, ' ') : '';
+		})()`)
+	);
+	const saysRemoved =
+		/Labelled the patch panel and the drops.*Sam Ortega removed this entry at .*, while your change waited on this phone/.test(
+			notSaved
+		);
+	check(
+		saysRemoved,
+		`Time says an entry changed here was removed meanwhile, and by whom${saysRemoved ? '' : ` (${notSaved.slice(0, 500)})`}`
+	);
+	check(await click('Add it again, with your change'), 'and adds it again, with the change');
+	/** @type {Awaited<ReturnType<typeof timeChangesQueued>>} */
+	let changesLeft = null;
+	for (let i = 0; i < 15; i++) {
+		await settle(1000);
+		changesLeft = await timeChangesQueued();
+		if (changesLeft?.length === 0) break;
+	}
+	await go(`/timesheet/all?month=${entries.month}`);
+	// The rows alone: the sign-out dialog, closed, says "on this phone" too.
+	const entriesAfter = /** @type {string} */ (
+		await evaluate(
+			`[...document.querySelectorAll('.rows')].map((r) => r.textContent).join(' ').replace(/\\s+/g, ' ')`
+		)
+	);
+	const gone = !entriesAfter.includes('Checked the wiring closet');
+	const stays =
+		/Patched the front desk, offline/.test(entriesAfter) &&
+		/Labelled the patch panel and the drops/.test(entriesAfter);
+	const quiet = !/on this phone|two places/.test(entriesAfter);
+	check(
+		changesLeft?.length === 0 && gone && stays && quiet,
+		`one is gone, one is back as a new entry, and nothing about them waits on the phone${changesLeft?.length === 0 && gone && stays && quiet ? '' : ` (${JSON.stringify({ changesLeft, gone, stays, quiet })} ${entriesAfter.slice(entriesAfter.indexOf('Week of'), entriesAfter.indexOf('Week of') + 600)})`}`
 	);
 
 	// The draft started on the phone arrived, numbered, with its hire.

@@ -22,3 +22,30 @@ UPDATE invoice_line SET ex_tax_cost = 29.00, unit_price = 29.00, amount = 29.00,
                         bought_from = 'Valley Hardware, Woodland'
  WHERE description = 'Keystone jacks ×12';
 COMMIT;
+
+-- Sam changes the two entries Avery made yesterday and changed or removed on
+-- the phone: the note on the one changed there too, and whether it bills, which
+-- only he does; and the note on the one removed there.
+BEGIN;
+DO $$ BEGIN
+  PERFORM set_config('reckon.user_id',
+                     (SELECT id::text FROM "user" WHERE email = 'sam@kestrel.example'), true);
+END $$;
+UPDATE time_entry SET note = 'Patched the front desk, by Sam', billable = false
+ WHERE note = 'Patched the front desk'
+   AND created_by = (SELECT id FROM "user" WHERE email = 'avery@kestrel.example');
+UPDATE time_entry SET note = 'Checked the wiring closet, by Sam'
+ WHERE note = 'Checked the wiring closet'
+   AND created_by = (SELECT id FROM "user" WHERE email = 'avery@kestrel.example');
+COMMIT;
+
+-- And removes the third, which the phone changed.
+BEGIN;
+DO $$ BEGIN
+  PERFORM set_config('reckon.user_id',
+                     (SELECT id::text FROM "user" WHERE email = 'sam@kestrel.example'), true);
+END $$;
+DELETE FROM time_entry
+ WHERE note = 'Labelled the patch panel'
+   AND created_by = (SELECT id FROM "user" WHERE email = 'avery@kestrel.example');
+COMMIT;

@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import { invoice, invoiceLine, trip } from '#lib/server/db/schema/index.ts';
-import { businessToday } from '#lib/server/calendar.ts';
+import { invoice, invoiceLine, timeEntry, trip } from '#lib/server/db/schema/index.ts';
+import { businessToday, lastWeekBegan } from '#lib/server/calendar.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { RequestHandler } from './$types';
 
@@ -17,6 +17,12 @@ import type { RequestHandler } from './$types';
  * miles are neither billed nor paid, with its Change, so a trip is recorded or
  * put right on the road.
  *
+ * And the time entries the person entered this week and last that are neither
+ * billed nor paid, each on its own screen, with All entries' copy of them --
+ * a copy of its own, which the worker fetches as listed (?copy=offline) and
+ * keeps in the screen's place, never the screen as it is with a signal -- so
+ * an entry is changed or removed on site.
+ *
  * For someone with Field, only what opens for them (#lib/access): no new draft,
  * the trips they drove, and a Change only for a line or a trip they made.
  */
@@ -24,7 +30,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 	const field = fieldOnly(locals);
 	const me = locals.user!.id;
 	const since = Temporal.PlainDate.from(businessToday()).subtract({ days: 60 }).toString();
-	const [drafts, lines, trips] = await Promise.all([
+	const [drafts, lines, trips, entries] = await Promise.all([
 		db.select({ id: invoice.id }).from(invoice).where(eq(invoice.status, 'draft')),
 		// Lines added by hand on a draft: each opens on a screen of its own, to be
 		// changed or taken off on site too.
@@ -53,6 +59,17 @@ export const GET: RequestHandler = async ({ locals }) => {
 					                 where l.trip_id = ${trip.id})`,
 					sql`not exists (select 1 from person_payment_item i where i.trip_id = ${trip.id})`
 				)
+			),
+		db
+			.select({ id: timeEntry.id })
+			.from(timeEntry)
+			.where(
+				and(
+					eq(timeEntry.createdBy, me),
+					gte(timeEntry.workedOn, lastWeekBegan(businessToday(), locals.weekStart)),
+					sql`not exists (select 1 from invoice_line il where il.time_entry_id = ${timeEntry.id})`,
+					sql`not exists (select 1 from person_payment_item i where i.time_entry_id = ${timeEntry.id})`
+				)
 			)
 	]);
 	return Response.json(
@@ -66,6 +83,8 @@ export const GET: RequestHandler = async ({ locals }) => {
 					`/invoices/${l.invoice_id}/lines/${l.id}`,
 					...(!field || l.mine ? [`/invoices/${l.invoice_id}/lines/${l.id}/change`] : [])
 				]),
+				'/timesheet/all?copy=offline',
+				...entries.map((e) => `/timesheet/${e.id}`),
 				'/trips',
 				'/trips/new',
 				...trips.flatMap((t) => [

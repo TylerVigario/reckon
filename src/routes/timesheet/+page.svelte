@@ -1,13 +1,24 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Top from '#lib/Top.svelte';
-	import { held, flush, enqueue, discard, secondsOf, type Queued } from '#lib/queue.ts';
+	import {
+		held,
+		flush,
+		enqueue,
+		discard,
+		discardTimeChange,
+		secondsOf,
+		type Queued,
+		type QueuedTimeChange
+	} from '#lib/queue.ts';
+	import { addAgain, asChanged, changesByEntry, markOf } from '#lib/entry-changes.ts';
 	import { running, drop, moveStart, toEntry, type Running } from '#lib/timers.ts';
 	import { clockOf, lastAt } from '#lib/work-times.ts';
 	import { refreshAll } from '$app/navigation';
 	import { unitPrice } from '#lib/money.svelte.ts';
 	import {
 		clock as clockAt,
+		datedAt,
 		day,
 		elapsed,
 		increment,
@@ -30,15 +41,18 @@
 	let timers = $state<Running[]>([]);
 	let queued = $state(0);
 	let notSaved = $state<Queued[]>([]);
+	/** Changes made on this phone to entries the server has, by entry. */
+	let changes = $state(new Map<string, QueuedTimeChange>());
 	let online = $state(true);
 	let now = $state(Date.now());
 	let why = $state('');
 
 	const readQueue = () =>
-		held().then(
-			(s) => {
-				queued = s.waiting;
+		Promise.all([held(), changesByEntry()]).then(
+			([s, c]) => {
+				queued = s.waiting + [...c.values()].filter((q) => !q.refused).length;
 				notSaved = s.refused;
+				changes = c;
 			},
 			() => {}
 		);
@@ -125,7 +139,7 @@
 	// Letting go of a refused entry is hours gone for good, so it takes a
 	// second tap, and the first one says so.
 	let confirming = $state<string | null>(null);
-	async function letGo(id: string) {
+	async function letGo(id: string, change = false) {
 		if (confirming !== id) {
 			confirming = id;
 			setTimeout(() => {
@@ -134,9 +148,30 @@
 			return;
 		}
 		confirming = null;
-		await discard(id).catch(() => {});
+		await (change ? discardTimeChange(id) : discard(id)).catch(() => {});
 		await readQueue();
 	}
+
+	// CHANGES TO ENTRIES THAT RAN INTO SOMETHING wait here too, whatever day they
+	// were worked: a part someone else changed as well, an entry changed after it
+	// was removed here, or a refusal, each decided on the entry's screen. One
+	// removed meanwhile has no screen to open, so it is decided here: added
+	// again with the change, or the change let go.
+	const stuck = $derived([...changes.values()].filter((q) => q.refused));
+	async function again(q: QueuedTimeChange) {
+		try {
+			await addAgain(q, $state.snapshot(q.change.fields), data.me);
+		} catch {
+			why = 'This phone would not save that, so nothing was added.';
+			return;
+		}
+		await readQueue();
+		await refreshAll();
+	}
+	/** "9:50 AM", or "Oct 2, 9:50 AM" on another day. */
+	const when = (iso: string) =>
+		(Date.parse(iso) > Date.now() - 86_400_000 ? '' : `${datedAt(iso, personalZone())}, `) +
+		clockAt(iso, personalZone());
 
 	const nameOf = (list: { id: string; name: string }[], id: string | null) =>
 		list.find((x) => x.id === id)?.name ?? null;
@@ -198,10 +233,59 @@
 <div class="pad">
 	{#if why}<p class="why bad">{why}</p>{/if}
 
-	{#if notSaved.length}
+	{#if notSaved.length || stuck.length}
 		<div class="sec">
 			<div class="sec-h"><h2>Not saved</h2></div>
 			<div class="rows">
+				{#each stuck as q (q.change.entry_id)}
+					{@const s = q.change.shown}
+					{@const c = q.refused?.conflict}
+					<div class="rec crit">
+						<div class="rec-m">
+							<div class="rec-t">
+								{s.site ?? s.entity ?? 'No client'}
+								<span class="lt">· {s.service}</span>
+							</div>
+							<div class="rec-s">
+								{[
+									s.crew === 'team' ? names(s.crew_names) : (s.worked_by ?? 'Unassigned'),
+									day(s.worked_on),
+									hhmm(s.seconds),
+									s.note
+								]
+									.filter(Boolean)
+									.join(' · ')}
+							</div>
+							<div class="rec-s refusal">
+								{#if c?.what === 'removed'}
+									{c.by ?? 'Someone'} removed this entry at {when(c.at)}, while your change waited
+									on this phone.
+								{:else if c}
+									{markOf(q).text}: your change waits on this phone until you decide.
+								{:else}
+									Refused: {q.refused?.detail} Your change is kept on this phone until it is fixed or
+									let go.
+								{/if}
+							</div>
+							<div class="acts">
+								{#if c?.what === 'removed'}
+									<button class="btn sm pri" onclick={() => again(q)}
+										>Add it again, with your change</button
+									>
+									<button class="btn sm gho" onclick={() => letGo(q.change.entry_id, true)}>
+										{confirming === q.change.entry_id
+											? 'Tap again to let it go'
+											: 'Let the change go'}
+									</button>
+								{:else}
+									<a class="btn sm pri" href={resolve('/timesheet/[id]', { id: q.change.entry_id })}
+										>{c ? 'Decide' : 'Fix'}</a
+									>
+								{/if}
+							</div>
+						</div>
+					</div>
+				{/each}
 				{#each notSaved as q (q.entry.client_uuid)}
 					{@const e = q.entry}
 					<div class="rec crit">
@@ -345,10 +429,13 @@
 				</div>
 			{/each}
 
-			{#each data.entries as e (e.id)}
+			{#each data.entries as row (row.id)}
+				{@const q = changes.get(row.id)}
+				{@const e = asChanged(row, q)}
+				{@const mark = q ? markOf(q) : null}
 				<a
 					class="rec link"
-					class:gone={!e.billable}
+					class:gone={!e.billable || q?.change.act === 'remove'}
 					href={resolve('/timesheet/[id]', { id: e.id })}
 				>
 					<div class="rec-m">
@@ -362,6 +449,9 @@
 								? workedTimes(e.started_at, e.ended_at, e.zone, personalZone())
 								: clockAt(e.at, personalZone())} · {e.service}
 						</div>
+						{#if mark}
+							<span class="chip {mark.tone}"><span class="dot"></span>{mark.text}</span>
+						{/if}
 					</div>
 					<div class="rec-n">
 						<span class="rec-v" class:mut={!e.billable}>{hhmm(e.seconds)}</span>

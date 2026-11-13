@@ -2,7 +2,7 @@ import { monthOf } from '#lib/format.ts';
 import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '#lib/server/db/index.ts';
-import { businessToday } from '#lib/server/calendar.ts';
+import { businessToday, lastWeekBegan, weekOf } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
 import { crewNames } from '#lib/server/choices.ts';
@@ -18,8 +18,15 @@ import type { PageServerLoad } from './$types';
  * that had taken effect on the day the work happened, never today's. A rate
  * that changed last week must not silently restate what a job in June was
  * worth.
+ *
+ * KEPT FOR NO SIGNAL, it is a copy of its own (?copy=offline, which the
+ * service worker fetches, as api/offline lists it): only the entries the person
+ * entered this week and last that are neither billed nor paid -- the ones they
+ * can change on site -- and nothing of what anything is worth. The rest needs
+ * a connection, and says so.
  */
 export const load: PageServerLoad = async ({ url, locals }) => {
+	const offline = url.searchParams.get('copy') === 'offline';
 	// ?month=YYYY-MM, defaulting to this one. Parsed rather than interpolated.
 	const asked = url.searchParams.get('month') ?? '';
 	const day = businessToday();
@@ -29,6 +36,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 	// or with ?who=yours their own: what they worked, and team work they were on.
 	const field = fieldOnly(locals);
 	const yours = field || url.searchParams.get('who') === 'yours';
+	const me = locals.user!.id;
 
 	const u = alias(t.user, 'u');
 	const [entries, [operator]] = await Promise.all([
@@ -53,20 +61,29 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			.leftJoin(t.site, eq(t.site.id, t.timeEntry.siteId))
 			.leftJoin(t.invoiceLine, eq(t.invoiceLine.timeEntryId, t.timeEntry.id))
 			.where(
-				and(
-					gte(t.timeEntry.workedOn, from),
-					lt(t.timeEntry.workedOn, to),
-					yours ? theirWork(locals.user!.id) : undefined
-				)
+				offline
+					? and(
+							eq(t.timeEntry.createdBy, me),
+							gte(t.timeEntry.workedOn, lastWeekBegan(day, locals.weekStart)),
+							sql`${t.invoiceLine.id} is null`,
+							sql`not exists (select 1 from ${t.personPaymentItem} i
+							                 where i.time_entry_id = ${t.timeEntry.id})`
+						)
+					: and(
+							gte(t.timeEntry.workedOn, from),
+							lt(t.timeEntry.workedOn, to),
+							yours ? theirWork(me) : undefined
+						)
 			)
 			.orderBy(desc(t.timeEntry.workedOn), desc(t.timeEntry.createdAt), desc(t.timeEntry.id)),
 		db.select({ ageingAlertDays: t.operator.ageingAlertDays }).from(t.operator)
 	]);
-	const worth = await valueEntries(db, entries);
+	// What each is worth, but for the copy kept for no signal.
+	const worth = offline ? null : await valueEntries(db, entries);
 	const alertDays = operator?.ageingAlertDays ?? 30;
 
 	const rows = entries.map((e) => {
-		const w = worth.get(e.id)!;
+		const w = worth?.get(e.id);
 		return {
 			id: e.id,
 			worked_on: e.workedOn,
@@ -85,14 +102,17 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			entity: e.entity,
 			site: e.site,
 			service: e.service,
-			value: e.billable ? (w.billed?.toString() ?? null) : null,
+			value: e.billable ? (w?.billed?.toString() ?? null) : null,
 			// Wholly inside a retainer: it bills nothing by the hour because the
 			// retainer has already charged for it.
-			covered: w.coveredSeconds === e.seconds,
-			heads: w.heads,
+			covered: w?.coveredSeconds === e.seconds,
+			heads: w?.heads ?? 1,
 			invoiced: e.invoiced,
 			stale:
-				!e.invoiced && e.billable && Temporal.PlainDate.from(e.workedOn).until(day).days > alertDays
+				!offline &&
+				!e.invoiced &&
+				e.billable &&
+				Temporal.PlainDate.from(e.workedOn).until(day).days > alertDays
 		};
 	});
 
@@ -110,14 +130,11 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		w.rows.push(r);
 	}
 
-	return { weeks, totals, who: field ? null : yours ? ('yours' as const) : ('everyone' as const) };
+	return {
+		weeks,
+		totals,
+		who: field || offline ? null : yours ? ('yours' as const) : ('everyone' as const),
+		offline,
+		as_of: new Date().toISOString()
+	};
 };
-
-/**
- * The first day of the week a calendar day falls in, for a week that starts on
- * `first` -- 1 for Monday to 7 for Sunday: the person's own, or their locale's.
- */
-function weekOf(d: string, first: number) {
-	const day = Temporal.PlainDate.from(d);
-	return day.subtract({ days: (day.dayOfWeek - first + 7) % 7 }).toString();
-}

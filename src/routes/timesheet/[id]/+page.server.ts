@@ -16,12 +16,15 @@ import {
 import { UUID } from '#lib/field-rules.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import { refusedForAccess } from '#lib/server/refused.ts';
+import { fieldsOfEntry } from '#lib/entry-merge.ts';
 import type { PageServerLoad } from './$types';
 
 /**
  * ONE TIME ENTRY, TO CHANGE AFTER THE FACT (12 November 2026): the entry as it
- * is, which save it is (version), and what Add past work offers to choose from
- * (#lib/EntryForm). Whoever entered it, or someone with Full, changes or
+ * is, which save it is (version) and its fields as the form sends them (base),
+ * which a change says it began from, and what Add past work offers to choose
+ * from (#lib/EntryForm). Kept for no signal for whoever entered it, this week
+ * and last (api/offline), so a change is made on site and sent later. Whoever entered it, or someone with Full, changes or
  * removes it (api/time/[id]); someone with Field opens their own work -- an
  * entry of theirs, or a team's they were on -- and any other is not found.
  *
@@ -90,13 +93,15 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 		timedServices(),
 		pricesToday()
 	]);
+	const entry = {
+		...found,
+		started_at: found.started_at?.toISOString() ?? null,
+		ended_at: found.ended_at?.toISOString() ?? null,
+		crew_ids: crewIds
+	};
 	return {
-		entry: {
-			...found,
-			started_at: found.started_at?.toISOString() ?? null,
-			ended_at: found.ended_at?.toISOString() ?? null,
-			crew_ids: crewIds
-		},
+		entry,
+		base: fieldsOfEntry(entry),
 		/** Why it stays as it is, where it does: on an invoice, or in a payment. */
 		used: found.invoice_id
 			? {
@@ -113,6 +118,7 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 		people,
 		entities,
 		services,
-		prices
+		prices,
+		as_of: new Date().toISOString()
 	};
 };

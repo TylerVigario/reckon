@@ -1,6 +1,6 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChangeEntry, Entry, LineEntry, TripEntry } from './queue.ts';
+import type { ChangeEntry, Entry, LineEntry, TimeChange, TripEntry } from './queue.ts';
 
 const entry = (client_uuid: string, extra: Partial<Entry> = {}): Entry => ({
 	client_uuid,
@@ -446,6 +446,129 @@ describe('a change to a line the server has', () => {
 		});
 		await q.flush();
 		expect(asked).toBe('DELETE /api/lines/cable?version=2&made_at=2026-10-06T21%3A30%3A00.000Z');
+	});
+});
+
+describe('a change to a time entry the server has', () => {
+	const fields = {
+		worked_on: '2026-11-10',
+		minutes: 90,
+		crew: 'one' as const,
+		worked_by: 'a',
+		service_id: 'v',
+		note: 'Replaced the switch'
+	};
+	const change = (extra: Partial<TimeChange> = {}): TimeChange => ({
+		entry_id: 'e1',
+		act: 'change',
+		version: 2,
+		base: fields,
+		fields: { ...fields, note: 'Replaced the switch and the patch leads' },
+		made_at: '2026-11-12T21:30:00.000Z',
+		shown: {
+			worked_on: '2026-11-10',
+			seconds: 5400,
+			started_at: null,
+			ended_at: null,
+			zone: null,
+			crew: 'one',
+			worked_by: 'Avery Lind',
+			crew_names: [],
+			entity: null,
+			site: null,
+			service: 'Help desk',
+			billable: true,
+			note: 'Replaced the switch and the patch leads'
+		},
+		...extra
+	});
+
+	it('goes after the new entries, saying the save it began from and the entry then', async () => {
+		await q.enqueueTimeChange(change());
+		await q.enqueue(entry('new'));
+		const sent: string[] = [];
+		let body: Record<string, unknown> = {};
+		vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
+			sent.push(`${init.method} ${url}`);
+			if (url === '/api/time/e1') body = JSON.parse(init.body as string) as Record<string, unknown>;
+			return answer(200, {});
+		});
+		expect(await q.flush()).toEqual({ sent: 2, refused: 0 });
+		expect(sent).toEqual(['POST /api/time', 'PATCH /api/time/e1']);
+		expect([body.note, body.version, body.base, body.made_at]).toEqual([
+			'Replaced the switch and the patch leads',
+			2,
+			fields,
+			'2026-11-12T21:30:00.000Z'
+		]);
+		expect(await q.timeChangesHeld()).toHaveLength(0);
+	});
+
+	it('changed again before it goes, still begins where the first did', async () => {
+		await q.enqueueTimeChange(change());
+		await q.enqueueTimeChange(
+			change({ version: 3, base: { ...fields, note: 'x' }, fields: { ...fields, note: 'y' } })
+		);
+		const kept = await q.findTimeChange('e1');
+		expect([kept?.change.version, kept?.change.base.note, kept?.change.fields.note]).toEqual([
+			2,
+			'Replaced the switch',
+			'y'
+		]);
+	});
+
+	it('is kept with what it ran into, and not sent again until a person decides', async () => {
+		await q.enqueueTimeChange(change());
+		vi.stubGlobal('fetch', () =>
+			answer(409, {
+				status: 409,
+				detail: 'Part of it needs a choice.',
+				conflict: { what: 'collided', collided: ['note'] }
+			})
+		);
+		expect(await q.flush()).toEqual({ sent: 0, refused: 1 });
+		expect((await q.findTimeChange('e1'))?.refused?.conflict).toEqual({
+			what: 'collided',
+			collided: ['note']
+		});
+		expect(await q.waitingCount()).toBe(0);
+		let asked = false;
+		vi.stubGlobal('fetch', () => {
+			asked = true;
+			return answer(200, {});
+		});
+		await q.flush();
+		expect(asked).toBe(false);
+	});
+
+	it('removed, goes as a removal at the save it was removed at, and anyway once decided', async () => {
+		await q.enqueueTimeChange(change({ act: 'remove' }));
+		const asked: string[] = [];
+		vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
+			asked.push(`${init.method} ${url}`);
+			return asked.length === 1
+				? answer(409, { status: 409, detail: 'Changed.' })
+				: answer(200, {});
+		});
+		await q.flush();
+		const kept = await q.findTimeChange('e1');
+		await q.enqueueTimeChange({ ...kept!.change, force: true }, true);
+		await q.flush();
+		expect(asked).toEqual([
+			'DELETE /api/time/e1?version=2&made_at=2026-11-12T21%3A30%3A00.000Z',
+			'DELETE /api/time/e1?version=2&made_at=2026-11-12T21%3A30%3A00.000Z&force=1'
+		]);
+	});
+
+	it('is its maker’s: someone else neither sees it, sends it, nor replaces it', async () => {
+		await q.enqueueTimeChange(change());
+		owner.setOwner('sam');
+		expect(await q.timeChangesHeld()).toHaveLength(0);
+		expect(await q.findTimeChange('e1')).toBeUndefined();
+		await expect(q.enqueueTimeChange(change())).rejects.toThrow(q.SOMEONE_ELSES);
+		await q.discardTimeChange('e1');
+		owner.setOwner('avery');
+		expect(await q.waitingCount()).toBe(1);
 	});
 });
 

@@ -264,50 +264,136 @@ if (serviceId) {
 	};
 	const made = await call('POST', '/api/time', was);
 	const id = /** @type {string | undefined} */ (made.body?.id);
+	const db = new pg.Client(database());
+	await db.connect();
+	/** One value of the entry, or of its newest history, as the database has it. */
+	const one = async (/** @type {string} */ q, /** @type {unknown[]} */ args) =>
+		(await db.query(q, args)).rows[0];
 	if (id) {
 		const at = `/api/time/${id}`;
-		const changed = { ...was, minutes: 30, note: 'write-check, changed' };
+		// The entry as its form sends it: what a change says it began from.
+		const crew = (
+			await db.query('select user_id from time_entry_crew where time_entry_id = $1', [id])
+		).rows
+			.map((r) => r.user_id)
+			.sort();
+		const base = {
+			worked_on: was.worked_on,
+			minutes: was.minutes,
+			crew: 'team',
+			worked_by: null,
+			crew_ids: crew,
+			entity_id: null,
+			site_id: null,
+			service_id: serviceId,
+			billable: false,
+			note: was.note
+		};
+		const changed = { ...base, note: 'write-check, changed' };
 		await check(
 			'it changes, from the save it began from, and counts the save',
 			'PATCH',
 			at,
-			{ ...changed, version: 1 },
+			{ ...changed, version: 1, base, made_at: '2026-01-02T03:04:05Z' },
 			(r) => r.status === 200 && r.body?.version === 2
 		);
+		const kept = await one(
+			`select made_at from record_history where table_name = 'time_entry' and row_id = $1
+			  and field = 'note' order by changed_at desc limit 1`,
+			[id]
+		);
+		const keptAt = kept?.made_at?.toISOString();
+		const okAt = keptAt === '2026-01-02T03:04:05.000Z';
+		if (okAt) passed++;
+		else failures.push(`its history keeps when the change was made: ${keptAt}`);
+		console.log(`  ${okAt ? '✓' : '✗'} its history keeps when the change was made, on the phone`);
+
 		await check(
-			'a change from an older copy is refused, not written over the newer',
+			'a change from an older copy to another part is merged with the newer',
 			'PATCH',
 			at,
-			{ ...changed, note: 'from an old copy', version: 1 },
-			409
+			{ ...base, minutes: 45, version: 1, base },
+			(r) => r.status === 200 && r.body?.version === 3
+		);
+		const merged = await one('select seconds, note from time_entry where id = $1', [id]);
+		const okMerged = merged?.seconds === 2700 && merged?.note === 'write-check, changed';
+		if (okMerged) passed++;
+		else failures.push(`the merge kept both changes: ${JSON.stringify(merged)}`);
+		console.log(`  ${okMerged ? '✓' : '✗'} and the entry has both changes`);
+
+		await check(
+			'a change from an older copy to the same part is kept for a person to pick',
+			'PATCH',
+			at,
+			{ ...base, note: 'from an old copy', version: 1, base },
+			(r) =>
+				r.status === 409 &&
+				r.body?.conflict?.what === 'collided' &&
+				r.body.conflict.collided?.join() === 'note' &&
+				r.body.conflict.version === 3 &&
+				r.body.conflict.server?.note === 'write-check, changed' &&
+				r.body.conflict.from?.when === 'server'
 		);
 		await check(
-			'a change that does not say what it began from is refused',
+			'a change that does not say what save it began from is refused',
 			'PATCH',
 			at,
-			changed,
+			{ ...changed, base },
 			(r) => r.status === 400 && !!r.body?.errors?.version
+		);
+		await check(
+			'a change that does not say what the entry was then is refused',
+			'PATCH',
+			at,
+			{ ...changed, version: 3 },
+			(r) => r.status === 400 && !!r.body?.errors?.base
 		);
 		await check(
 			'a refused field names itself, as adding one does',
 			'PATCH',
 			at,
-			{ ...changed, minutes: 0, version: 2 },
+			{ ...changed, minutes: 0, version: 3, base },
 			(r) => r.status === 400 && !!r.body?.errors?.minutes
 		);
-		await check('it is removed', 'DELETE', at, undefined, 200);
 		await check(
-			'and one removed is not there to change',
+			'a removal that does not say what save it was made at is refused',
+			'DELETE',
+			at,
+			undefined,
+			(r) => r.status === 400 && !!r.body?.errors?.version
+		);
+		await check(
+			'a removal from an older copy is asked about',
+			'DELETE',
+			`${at}?version=1`,
+			undefined,
+			(r) => r.status === 409 && r.body?.conflict?.what === 'changed'
+		);
+		await check(
+			'and removed anyway, once decided',
+			'DELETE',
+			`${at}?version=1&force=1`,
+			undefined,
+			200
+		);
+		await check('removing it again is done already', 'DELETE', `${at}?version=3`, undefined, 200);
+		await check(
+			'a change to one removed meanwhile says who removed it',
 			'PATCH',
 			at,
-			{ ...changed, version: 2 },
+			{ ...changed, version: 3, base },
+			(r) => r.status === 409 && r.body?.conflict?.what === 'removed' && !!r.body.conflict.at
+		);
+		await check(
+			'and one never there is not found',
+			'PATCH',
+			`/api/time/${crypto.randomUUID()}`,
+			{ ...changed, version: 1, base },
 			404
 		);
 	} else failures.push(`could not make an entry to change: ${made.status}`);
 
 	// One an invoice was built from, and one a payment was recorded for, stay as they were.
-	const db = new pg.Client(database());
-	await db.connect();
 	const [billed] = (
 		await db.query(
 			`select l.time_entry_id as id, i.status from invoice_line l join invoice i on i.id = l.invoice_id
@@ -332,7 +418,7 @@ if (serviceId) {
 				`${what} stays as it was, and says where to put it right`,
 				'PATCH',
 				`/api/time/${row.id}`,
-				{ ...was, version: 1 },
+				{ ...was, version: 1, base: {} },
 				(r) =>
 					r.status === 409 && /draft|Credit the invoice|next payment/.test(r.body?.detail ?? '')
 			);
@@ -940,7 +1026,7 @@ if (sid) {
 	});
 	if (hour.body?.id) {
 		await check('a service with time recorded is not removed', 'DELETE', at, undefined, 409);
-		await check('its entry goes', 'DELETE', `/api/time/${hour.body.id}`, undefined, 200);
+		await check('its entry goes', 'DELETE', `/api/time/${hour.body.id}?version=1`, undefined, 200);
 	}
 	await check('a service nothing used is removed', 'DELETE', at, undefined, 200);
 }

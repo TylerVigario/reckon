@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Top from '#lib/Top.svelte';
+	import OfflineBanner from '#lib/OfflineBanner.svelte';
 	import Segmented from '#lib/Segmented.svelte';
 	import { day, secondsAsHours, workedTimes, names } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
@@ -7,8 +9,22 @@
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { asChanged, changesByEntry, markOf } from '#lib/entry-changes.ts';
+	import { waitingCount, type QueuedTimeChange } from '#lib/queue.ts';
 
 	let { data }: PageProps = $props();
+
+	// Changes made on this phone that the server cannot know yet: each entry is
+	// shown as it is once changed, and says so.
+	let changes = $state(new Map<string, QueuedTimeChange>());
+	let waiting = $state(0);
+	onMount(() => {
+		void changesByEntry().then((m) => (changes = m));
+		void waitingCount().then(
+			(n) => (waiting = n),
+			() => {}
+		);
+	});
 
 	// The month asked for, kept as the scope changes.
 	const month = $derived(page.url.searchParams.get('month'));
@@ -23,15 +39,17 @@
 	};
 
 	const sub = $derived(
-		[
-			data.totals?.month,
-			secondsAsHours(Number(data.totals?.seconds ?? 0), 'whole'),
-			Number(data.totals?.idle ?? 0) > 0
-				? `${secondsAsHours(Number(data.totals.idle), 'glance')} non-billable`
-				: null
-		]
-			.filter(Boolean)
-			.join(' · ')
+		data.offline
+			? 'Yours, this week and last'
+			: [
+					data.totals?.month,
+					secondsAsHours(Number(data.totals?.seconds ?? 0), 'whole'),
+					Number(data.totals?.idle ?? 0) > 0
+						? `${secondsAsHours(Number(data.totals.idle), 'glance')} non-billable`
+						: null
+				]
+					.filter(Boolean)
+					.join(' · ')
 	);
 </script>
 
@@ -41,6 +59,8 @@
 	back={resolve('/timesheet')}
 	backLabel="Time"
 />
+
+<OfflineBanner asOf={data.as_of} {waiting} />
 
 <div class="pad">
 	{#if data.who}
@@ -58,10 +78,13 @@
 		<div class="sec">
 			<div class="sec-h"><h2>Week of {day(w.week)}</h2></div>
 			<div class="rows">
-				{#each w.rows as e (e.id)}
+				{#each w.rows as row (row.id)}
+					{@const q = changes.get(row.id)}
+					{@const e = asChanged(row, q)}
+					{@const mark = q ? markOf(q) : null}
 					<a
 						class="rec link"
-						class:gone={!e.billable}
+						class:gone={!e.billable || q?.change.act === 'remove'}
 						class:warn={e.stale}
 						href={resolve('/timesheet/[id]', { id: e.id })}
 					>
@@ -73,14 +96,25 @@
 								{/if}
 							</div>
 							<div class="rec-s">
-								{day(e.worked_on)}{#if e.started_at && e.ended_at && e.zone}
-									· {workedTimes(e.started_at, e.ended_at, e.zone, personalZone())}{/if}
-								· {e.crew === 'team' ? names(e.crew_names) : (e.worked_by ?? 'unassigned')}
-								· {e.note ?? e.service}
+								{[
+									day(e.worked_on),
+									e.started_at && e.ended_at && e.zone
+										? workedTimes(e.started_at, e.ended_at, e.zone, personalZone())
+										: null,
+									e.crew === 'team' ? names(e.crew_names) : (e.worked_by ?? 'unassigned'),
+									e.note ?? e.service
+								]
+									.filter(Boolean)
+									.join(' · ')}
 							</div>
+							{#if mark}
+								<span class="chip {mark.tone}"><span class="dot"></span>{mark.text}</span>
+							{/if}
 						</div>
 						<div class="rec-n">
-							{#if e.covered}
+							{#if q}
+								<span class="rec-v mut">—</span>
+							{:else if e.covered}
 								<span class="rec-v mut">retainer</span>
 							{:else if e.value}
 								<span class="rec-v">{money(e.value)}</span>
@@ -97,6 +131,13 @@
 			</div>
 		</div>
 	{:else}
-		<p class="none">Nothing captured this month.</p>
+		<p class="none">
+			{data.offline
+				? 'Nothing of yours to change from this week or last.'
+				: 'Nothing captured this month.'}
+		</p>
 	{/each}
+	{#if data.offline}
+		<p class="none">Older entries, and everyone else’s, need a connection.</p>
+	{/if}
 </div>

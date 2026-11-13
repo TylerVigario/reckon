@@ -2,6 +2,8 @@ import { PROBLEM_MEDIA_TYPE, type ProblemBody } from './problem.ts';
 import type { Conflict } from './line-conflict.ts';
 import type { TripDraft } from './trip/draft.ts';
 import { currentOwner } from './owner.ts';
+import type { EntryFields } from './entry-form.ts';
+import type { EntryConflict } from './entry-merge.ts';
 
 /**
  * The capture queue.
@@ -42,6 +44,12 @@ import { currentOwner } from './owner.ts';
  * both changed, a line taken off -- is kept with it, as a refusal is, until a
  * person decides (#lib/line-conflict).
  *
+ * CHANGES TO TIME ENTRIES the server has -- one changed, or removed -- wait in
+ * a sixth, one to an entry, and go after the new ones. Each says the save it
+ * began from and the entry's fields then, so the server merges it with a change
+ * made meanwhile (#lib/entry-merge), and what it runs into is kept with it
+ * until a person decides, as a line's is.
+ *
  * TRIPS recorded or changed on the phone wait in a fifth, and go last: the
  * trip as /api/trips takes it, the form as it was filled in, so Fix opens it
  * again, and what the trips list shows of it meanwhile. A change names the trip
@@ -60,7 +68,9 @@ const LINES = 'lines';
 const DRAFTS = 'drafts';
 const CHANGES = 'changes';
 const TRIPS = 'trips';
-type Store = typeof STORE | typeof LINES | typeof DRAFTS | typeof CHANGES | typeof TRIPS;
+const TIME_CHANGES = 'time_changes';
+type Store =
+	typeof STORE | typeof LINES | typeof DRAFTS | typeof CHANGES | typeof TRIPS | typeof TIME_CHANGES;
 /** Where the queue lived before IndexedDB. Read once, emptied once moved. */
 const OLD_KEY = 'reckon.queue';
 
@@ -94,14 +104,14 @@ export type Entry = {
 };
 
 /** Why the server refused an entry, in its own words. */
-export type Refusal = {
+export type Refusal<C = Conflict> = {
 	status: number;
 	/** A sentence that is safe to show a person. */
 	detail: string;
 	/** Which field it was about, where the server said. */
 	errors?: Record<string, string>;
-	/** What a change to a line ran into, for a person to decide (#lib/line-conflict). */
-	conflict?: Conflict;
+	/** What a change ran into, for a person to decide (#lib/line-conflict, #lib/entry-merge). */
+	conflict?: C;
 };
 
 export type Queued = {
@@ -166,9 +176,9 @@ let opening: Promise<IDBDatabase> | null = null;
 function open(): Promise<IDBDatabase> {
 	opening ??= new Promise<IDBDatabase>((resolve, reject) => {
 		// 2: lines joined time entries; 3: drafts started here; 4: changes to
-		// lines; 5: trips. A phone on an earlier one keeps what it has and gains
-		// the stores it lacks.
-		const req = indexedDB.open(DB, 5);
+		// lines; 5: trips; 6: changes to time entries. A phone on an earlier one
+		// keeps what it has and gains the stores it lacks.
+		const req = indexedDB.open(DB, 6);
 		req.onupgradeneeded = () => {
 			const db = req.result;
 			if (!db.objectStoreNames.contains(STORE))
@@ -181,6 +191,8 @@ function open(): Promise<IDBDatabase> {
 				db.createObjectStore(CHANGES, { keyPath: 'change.line_id' });
 			if (!db.objectStoreNames.contains(TRIPS))
 				db.createObjectStore(TRIPS, { keyPath: 'trip.key' });
+			if (!db.objectStoreNames.contains(TIME_CHANGES))
+				db.createObjectStore(TIME_CHANGES, { keyPath: 'change.entry_id' });
 		};
 		req.onsuccess = () => {
 			// A later version opening this database in another tab has to be
@@ -336,7 +348,7 @@ async function someoneElses(store: Store, key: string): Promise<boolean> {
 export async function claimUnowned(): Promise<void> {
 	const id = currentOwner();
 	if (!id) return;
-	for (const store of [STORE, LINES, DRAFTS, CHANGES, TRIPS] as const)
+	for (const store of [STORE, LINES, DRAFTS, CHANGES, TRIPS, TIME_CHANGES] as const)
 		await tx(
 			'readwrite',
 			(s) => {
@@ -387,8 +399,10 @@ const settleDraft = (q: QueuedDraft, next: QueuedDraft | null) =>
 const settleChange = (q: QueuedChange, next: QueuedChange | null) =>
 	settleIn(CHANGES, q.change.line_id, q, next);
 const settleTrip = (q: QueuedTrip, next: QueuedTrip | null) => settleIn(TRIPS, q.trip.key, q, next);
+const settleTimeChange = (q: QueuedTimeChange, next: QueuedTimeChange | null) =>
+	settleIn(TIME_CHANGES, q.change.entry_id, q, next);
 
-async function reason(r: Response): Promise<Refusal> {
+async function reason<C = Conflict>(r: Response): Promise<Refusal<C>> {
 	let body: Partial<ProblemBody> = {};
 	try {
 		body = (await r.json()) as Partial<ProblemBody>;
@@ -403,7 +417,7 @@ async function reason(r: Response): Promise<Refusal> {
 				? body.detail
 				: `The server refused it (${r.status}).`,
 		...(body.errors && typeof body.errors === 'object' ? { errors: body.errors } : {}),
-		...(conflict && typeof conflict === 'object' ? { conflict: conflict as Conflict } : {})
+		...(conflict && typeof conflict === 'object' ? { conflict: conflict as C } : {})
 	};
 }
 
@@ -412,9 +426,9 @@ export type Flushed = { sent: number; refused: number };
 /** What a post came to: in, kept as refused, worth another go, or no connection. */
 type Posted = 'sent' | 'refused' | 'again' | 'offline';
 
-async function postOne(
+async function postOne<C = Conflict>(
 	send: () => Promise<Response>,
-	refuse: (why: Refusal) => Promise<unknown>,
+	refuse: (why: Refusal<C>) => Promise<unknown>,
 	done: () => Promise<unknown>
 ): Promise<Posted> {
 	let r: Response;
@@ -430,14 +444,14 @@ async function postOne(
 	// A 403 this API explains is a refusal of what this person's access reaches
 	// (#lib/access), made again whenever it is sent. Kept, with its reason.
 	if (r.status === 403 && (r.headers.get('content-type') ?? '').startsWith(PROBLEM_MEDIA_TYPE)) {
-		await refuse(await reason(r));
+		await refuse(await reason<C>(r));
 		return 'refused';
 	}
 	// It is fine and something else is not: the session (401, or a 403 the API
 	// did not explain), the moment (408, 429), or the server (5xx). Worth another go.
 	if ([401, 403, 408, 429].includes(r.status) || r.status >= 500) return 'again';
 	// Any other 4xx the server would refuse again. Kept, with its reason.
-	await refuse(await reason(r));
+	await refuse(await reason<C>(r));
 	return 'refused';
 }
 
@@ -461,6 +475,14 @@ async function post(): Promise<Flushed> {
 			() => settle(q, null)
 		);
 		// No connection. The rest would fail the same way; they all wait.
+		if (count(p) === 'offline') return { sent, refused };
+	}
+	for (const q of (await allTimeChanges()).filter((q) => !q.refused)) {
+		const p = await postOne<EntryConflict>(
+			() => sendTimeChange(q.change),
+			(why) => settleTimeChange(q, { ...q, refused: why }),
+			() => settleTimeChange(q, null)
+		);
 		if (count(p) === 'offline') return { sent, refused };
 	}
 	for (const q of (await allDrafts()).filter((q) => !q.refused)) {
@@ -515,7 +537,8 @@ async function post(): Promise<Flushed> {
 let chain: Promise<unknown> = Promise.resolve();
 
 /**
- * Posts everything waiting, oldest first: time, then drafts, then lines, then changes, then trips. One flush at a time: a second call
+ * Posts everything waiting, oldest first: time, then changes to time, then
+ * drafts, then lines, then changes to lines, then trips. One flush at a time: a second call
  * runs after the first, so it sees whatever was queued before it was made, and
  * no entry is ever out on two posts at once.
  */
@@ -810,10 +833,11 @@ export async function discardTrip(key: string): Promise<void> {
 	await discardIn(TRIPS, key);
 }
 
-/** Everything of the signed-in person's waiting to send -- time, drafts, lines, changes and trips -- leaving out what was refused. */
+/** Everything of the signed-in person's waiting to send -- time and changes to it, drafts, lines, changes to lines and trips -- leaving out what was refused. */
 export async function waitingCount(): Promise<number> {
-	const [time, drafts, lines, changes, trips] = await Promise.all([
+	const [time, timeChanges, drafts, lines, changes, trips] = await Promise.all([
 		held(),
+		allTimeChanges(),
 		allDrafts(),
 		allLines(),
 		allChanges(),
@@ -821,6 +845,7 @@ export async function waitingCount(): Promise<number> {
 	]);
 	return (
 		time.waiting +
+		timeChanges.filter((q) => !q.refused).length +
 		drafts.filter((q) => !q.refused).length +
 		lines.filter((q) => !q.refused).length +
 		changes.filter((q) => !q.refused).length +
@@ -828,8 +853,109 @@ export async function waitingCount(): Promise<number> {
 	);
 }
 
+/**
+ * A change to a time entry the server has: what it does, the save it began
+ * from and the entry's fields then, and the fields it leaves the entry with.
+ */
+export type TimeChange = {
+	entry_id: string;
+	act: 'change' | 'remove';
+	version: number;
+	base: EntryFields;
+	/** The entry once changed; for a removal, as it was. */
+	fields: EntryFields;
+	/** Removed even though someone changed it since. */
+	force?: boolean;
+	/** When it was made, on this phone. */
+	made_at: string;
+	/** What Time and All entries show of it until it arrives. */
+	shown: ShownEntry;
+};
+
+/** An entry as the lists show it: names, not ids. */
+export type ShownEntry = {
+	worked_on: string;
+	seconds: number;
+	started_at: string | null;
+	ended_at: string | null;
+	zone: string | null;
+	crew: 'one' | 'team';
+	worked_by: string | null;
+	crew_names: string[];
+	entity: string | null;
+	site: string | null;
+	service: string;
+	billable: boolean;
+	note: string | null;
+};
+
+export type QueuedTimeChange = {
+	change: TimeChange;
+	/** Who made it (#lib/owner). */
+	owner?: string;
+	queued_at: number;
+	refused?: Refusal<EntryConflict>;
+};
+
+/** The request a change to a time entry is sent as. */
+function sendTimeChange(c: TimeChange): Promise<Response> {
+	if (c.act === 'remove') {
+		const q = new URLSearchParams({ version: String(c.version), made_at: c.made_at });
+		if (c.force) q.set('force', '1');
+		return fetch(`/api/time/${c.entry_id}?${q.toString()}`, { method: 'DELETE' });
+	}
+	return fetch(`/api/time/${c.entry_id}`, {
+		method: 'PATCH',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ ...c.fields, version: c.version, base: c.base, made_at: c.made_at })
+	});
+}
+
+/**
+ * Writes a change to a time entry. Resolves once it is committed. A second
+ * change to an entry whose first is still waiting replaces it, but keeps the
+ * save and the fields the first began from: the server merges against where
+ * this phone started, not against itself. `fresh` writes it as given -- a pick
+ * made against the entry as the server now has it.
+ */
+export async function enqueueTimeChange(c: TimeChange, fresh = false): Promise<void> {
+	keep();
+	const owner = maker();
+	if (await someoneElses(TIME_CHANGES, c.entry_id)) throw new Error(SOMEONE_ELSES);
+	const had = fresh ? undefined : await findTimeChange(c.entry_id);
+	const began = had && !had.refused ? { version: had.change.version, base: had.change.base } : {};
+	await tx(
+		'readwrite',
+		(s) =>
+			s.put({
+				change: { ...c, ...began },
+				queued_at: Date.now(),
+				owner
+			} satisfies QueuedTimeChange),
+		TIME_CHANGES
+	);
+}
+
+async function allTimeChanges(): Promise<QueuedTimeChange[]> {
+	const rows = (await tx<QueuedTimeChange[]>('readonly', (s) => s.getAll(), TIME_CHANGES)) ?? [];
+	return mine(rows).sort((a, b) => a.queued_at - b.queued_at);
+}
+
+/** Every change to a time entry on this phone, waiting or run into something, oldest first. */
+export const timeChangesHeld = allTimeChanges;
+
+/** The change waiting for one time entry. */
+export async function findTimeChange(entry_id: string): Promise<QueuedTimeChange | undefined> {
+	return ifMine(await tx<QueuedTimeChange>('readonly', (s) => s.get(entry_id), TIME_CHANGES));
+}
+
+/** Lets go of a change to a time entry. A person's decision. */
+export async function discardTimeChange(entry_id: string): Promise<void> {
+	await discardIn(TIME_CHANGES, entry_id);
+}
+
 /** How long a queued entry took, in seconds: from its moments, or its minutes. */
-export function secondsOf(e: Entry): number {
+export function secondsOf(e: Pick<Entry, 'started_at' | 'ended_at' | 'minutes'>): number {
 	if (e.started_at && e.ended_at)
 		return Math.max(1, Math.round((Date.parse(e.ended_at) - Date.parse(e.started_at)) / 1000));
 	return (e.minutes ?? 0) * 60;
