@@ -25,6 +25,7 @@ import {
 } from './passkeys.ts';
 import type { Access } from '#lib/access.ts';
 import { log } from './log.ts';
+import { SESSION_UNUSED_DAYS } from '#lib/offline-copy.ts';
 
 /**
  * Sign-in, by Better Auth over the app's own database, with passkeys alone:
@@ -48,22 +49,20 @@ import { log } from './log.ts';
  * Secure is SECURE_COOKIES, said outright, not inferred from the base URL.
  */
 
-/**
- * HOW LONG SOMEONE STAYS SIGNED IN, as GitHub keeps them: until two weeks
- * without use ("GitHub typically marks a user session for deletion after two
- * weeks of inactivity"), each use carrying it on -- Better Auth's own expiry,
- * slid forward at the first use in each hour. The checks that matter are
- * where the harm is instead: a lost phone's passkeys ended on Team, and
- * signing in again is a touch, where asking often costs more than it guards
- * (Microsoft: "Regular reauthentication prompts are bad for user productivity
- * and can make users more vulnerable to attacks"). Over 20 hours, so WCAG
- * 2.2.1 asks no warning before it.
+/*
+ * HOW LONG SOMEONE STAYS SIGNED IN: SESSION_UNUSED_DAYS without use, each use
+ * carrying it on -- Better Auth's own expiry, slid forward at the first use in
+ * each hour (#lib/offline-copy, where a phone's copies lapse with it). The
+ * checks that matter are where the harm is instead: a lost phone's passkeys
+ * ended on Team, and signing in again is a touch, where asking often costs
+ * more than it guards (Microsoft: "Regular reauthentication prompts are bad
+ * for user productivity and can make users more vulnerable to attacks"). Over
+ * 20 hours, so WCAG 2.2.1 asks no warning before it.
  *
  * An overall limit besides, however much a session is used -- NIST SP
  * 800-63B-4 §2.2.3: one "SHALL be established"; ASVS 5.0 7.3.2 -- is Better
  * Auth's to give, and it has none yet (better-auth/better-auth#10405).
  */
-const SESSION_UNUSED_DAYS = 14;
 
 /** The secret every session is signed with. Undefined only while building. */
 export function authSecret(): string | undefined {

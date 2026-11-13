@@ -16,8 +16,9 @@
 	const who = $derived(data.operator?.short_name || 'you');
 	// Someone with Field adds lines to drafts, and starts and sends none (#lib/access).
 	const field = $derived(data.user?.access === 'field');
+	// The copy kept for no signal is the drafts alone (#lib/offline-copy).
 	const sub = $derived(
-		field
+		field || !data.totals
 			? `${data.drafts.length} ${data.drafts.length === 1 ? 'draft' : 'drafts'} to add to`
 			: `${money(data.totals.owed)} out · ${money(data.totals.drafted)} in draft`
 	);
@@ -53,7 +54,7 @@
 <OfflineBanner asOf={data.as_of} {waiting} />
 
 <div class="pad">
-	{#if !field}
+	{#if !field && data.totals}
 		<div class="tiles">
 			<div class="tile">
 				<span class="k">Owed</span>
@@ -119,7 +120,9 @@
 								{/if}
 							</div>
 						</div>
-						<div class="rec-n"><span class="rec-v">{money(i.gross)}</span></div>
+						{#if i.gross !== null}
+							<div class="rec-n"><span class="rec-v">{money(i.gross)}</span></div>
+						{/if}
 						<span class="arw" aria-hidden="true">›</span>
 					</a>
 				{/each}
@@ -154,7 +157,7 @@
 				{/each}
 				<div class="rec tot">
 					<div class="rec-m"><div class="rec-t">Owed to {who}</div></div>
-					<div class="rec-n"><span class="rec-v">{money(data.totals.owed)}</span></div>
+					<div class="rec-n"><span class="rec-v">{money(data.totals?.owed)}</span></div>
 				</div>
 			</div>
 		</div>
@@ -178,12 +181,17 @@
 		</div>
 	{/if}
 
+	{#if data.offline && !field}
+		<p class="none">
+			What has gone out or been paid, and what any of it comes to, needs a connection.
+		</p>
+	{/if}
 	{#if field}
 		<p class="none">
 			Add what was used on the job to its client's draft. Someone with Full starts a draft and sends
 			it, and once it has gone out it leaves this list.
 		</p>
-	{:else if data.drafts.length === 0 && data.out.length === 0 && data.paid.length === 0}
+	{:else if !data.offline && data.drafts.length === 0 && data.out.length === 0 && data.paid.length === 0}
 		<p class="none">No invoices yet.</p>
 	{/if}
 </div>

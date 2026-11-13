@@ -1,7 +1,8 @@
-import { and, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { invoice, invoiceLine, timeEntry, trip } from '#lib/server/db/schema/index.ts';
-import { businessToday, lastWeekBegan } from '#lib/server/calendar.ts';
+import { businessToday } from '#lib/server/calendar.ts';
+import { keptEntries, keptTrips } from '#lib/server/kept.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { RequestHandler } from './$types';
 
@@ -13,23 +14,24 @@ import type { RequestHandler } from './$types';
  * any draft on site. Only drafts: an invoice that has gone out
  * takes no lines, and is shown only with a signal.
  *
- * Trips too: the list, New trip, and each trip of the past sixty days whose
- * miles are neither billed nor paid, with its Change, so a trip is recorded or
- * put right on the road.
+ * Trips too: the list, New trip, and each trip the person drove whose miles
+ * are neither billed nor paid, with its Change, so a trip is recorded or put
+ * right on the road (#lib/server/kept).
  *
- * And the time entries the person entered this week and last that are neither
- * billed nor paid, each on its own screen, with All entries' copy of them --
- * a copy of its own, which the worker fetches as listed (?copy=offline) and
- * keeps in the screen's place, never the screen as it is with a signal -- so
- * an entry is changed or removed on site.
+ * And All entries, with the time entries the person entered this week and
+ * last that are neither billed nor paid, each on its own screen, so an entry
+ * is changed or removed on site.
+ *
+ * The worker keeps each as a copy cut to that (#lib/offline-copy): this says
+ * only which screens.
  *
  * For someone with Field, only what opens for them (#lib/access): no new draft,
- * the trips they drove, and a Change only for a line or a trip they made.
+ * and a Change only for a line or a trip they made.
  */
 export const GET: RequestHandler = async ({ locals }) => {
 	const field = fieldOnly(locals);
 	const me = locals.user!.id;
-	const since = Temporal.PlainDate.from(businessToday()).subtract({ days: 60 }).toString();
+	const today = businessToday();
 	const [drafts, lines, trips, entries] = await Promise.all([
 		db.select({ id: invoice.id }).from(invoice).where(eq(invoice.status, 'draft')),
 		// Lines added by hand on a draft: each opens on a screen of its own, to be
@@ -51,26 +53,11 @@ export const GET: RequestHandler = async ({ locals }) => {
 		db
 			.select({ id: trip.id, mine: sql<boolean>`${trip.createdBy} = ${me}::uuid` })
 			.from(trip)
-			.where(
-				and(
-					gte(trip.travelledOn, since),
-					field ? eq(trip.drivenBy, me) : undefined,
-					sql`not exists (select 1 from invoice_line il join trip_leg l on l.id = il.trip_leg_id
-					                 where l.trip_id = ${trip.id})`,
-					sql`not exists (select 1 from person_payment_item i where i.trip_id = ${trip.id})`
-				)
-			),
+			.where(keptTrips(me, today)),
 		db
 			.select({ id: timeEntry.id })
 			.from(timeEntry)
-			.where(
-				and(
-					eq(timeEntry.createdBy, me),
-					gte(timeEntry.workedOn, lastWeekBegan(businessToday(), locals.weekStart)),
-					sql`not exists (select 1 from invoice_line il where il.time_entry_id = ${timeEntry.id})`,
-					sql`not exists (select 1 from person_payment_item i where i.time_entry_id = ${timeEntry.id})`
-				)
-			)
+			.where(keptEntries(me, today, locals.weekStart))
 	]);
 	return Response.json(
 		{
@@ -83,7 +70,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 					`/invoices/${l.invoice_id}/lines/${l.id}`,
 					...(!field || l.mine ? [`/invoices/${l.invoice_id}/lines/${l.id}/change`] : [])
 				]),
-				'/timesheet/all?copy=offline',
+				'/timesheet/all',
 				...entries.map((e) => `/timesheet/${e.id}`),
 				'/trips',
 				'/trips/new',

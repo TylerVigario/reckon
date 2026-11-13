@@ -2,7 +2,9 @@ import { monthOf } from '#lib/format.ts';
 import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '#lib/server/db/index.ts';
-import { businessToday, lastWeekBegan, weekOf } from '#lib/server/calendar.ts';
+import { businessToday, weekOf } from '#lib/server/calendar.ts';
+import { keptEntries } from '#lib/server/kept.ts';
+import { isOfflineCopy } from '#lib/offline-copy.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
 import { crewNames } from '#lib/server/choices.ts';
@@ -19,14 +21,13 @@ import type { PageServerLoad } from './$types';
  * that changed last week must not silently restate what a job in June was
  * worth.
  *
- * KEPT FOR NO SIGNAL, it is a copy of its own (?copy=offline, which the
- * service worker fetches, as api/offline lists it): only the entries the person
+ * KEPT FOR NO SIGNAL (#lib/offline-copy), it is only the entries the person
  * entered this week and last that are neither billed nor paid -- the ones they
- * can change on site -- and nothing of what anything is worth. The rest needs
- * a connection, and says so.
+ * can change on site (#lib/server/kept) -- and nothing of what anything is
+ * worth. The rest needs a connection, and says so.
  */
 export const load: PageServerLoad = async ({ url, locals }) => {
-	const offline = url.searchParams.get('copy') === 'offline';
+	const offline = isOfflineCopy(url);
 	// ?month=YYYY-MM, defaulting to this one. Parsed rather than interpolated.
 	const asked = url.searchParams.get('month') ?? '';
 	const day = businessToday();
@@ -62,13 +63,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			.leftJoin(t.invoiceLine, eq(t.invoiceLine.timeEntryId, t.timeEntry.id))
 			.where(
 				offline
-					? and(
-							eq(t.timeEntry.createdBy, me),
-							gte(t.timeEntry.workedOn, lastWeekBegan(day, locals.weekStart)),
-							sql`${t.invoiceLine.id} is null`,
-							sql`not exists (select 1 from ${t.personPaymentItem} i
-							                 where i.time_entry_id = ${t.timeEntry.id})`
-						)
+					? keptEntries(me, day, locals.weekStart)
 					: and(
 							gte(t.timeEntry.workedOn, from),
 							lt(t.timeEntry.workedOn, to),

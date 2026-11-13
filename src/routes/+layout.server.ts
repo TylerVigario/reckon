@@ -4,6 +4,7 @@ import { db } from '#lib/server/db/index.ts';
 import { entity, invoice, operator, timeEntry } from '#lib/server/db/schema/index.ts';
 import { iconFromLogo } from '#lib/server/app-icon.ts';
 import { fieldOnly, theirWork } from '#lib/server/mine.ts';
+import { isOfflineCopy } from '#lib/offline-copy.ts';
 import type { LayoutServerLoad } from './$types';
 
 /**
@@ -15,9 +16,10 @@ import type { LayoutServerLoad } from './$types';
  *
  * The rail carries a count beside each section. They are read here, together,
  * because the shell is drawn on every screen and a count per screen would be
- * a query per section on every navigation.
+ * a query per section on every navigation. A copy kept for no signal has none
+ * (#lib/offline-copy): a count from whenever it was kept would be read as now.
  */
-export const load: LayoutServerLoad = async ({ locals }) => {
+export const load: LayoutServerLoad = async ({ locals, url }) => {
 	const [found] = await db
 		.select({
 			trading_name: operator.tradingName,
@@ -54,6 +56,15 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 			counts: {},
 			zone: locals.zone,
 			locale: locals.locale
+		};
+	if (isOfflineCopy(url))
+		return {
+			operator: operatorShown,
+			user: locals.user,
+			zone: locals.zone,
+			locale: locals.locale,
+			theme: locals.theme,
+			counts: {}
 		};
 
 	const [[drafts], [entities], [month]] = await Promise.all([

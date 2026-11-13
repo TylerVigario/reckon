@@ -68,9 +68,11 @@
 			.filter(Boolean)
 			.join(' · ');
 
+	// The copy kept for no signal is the person's own trips still to put right
+	// (#lib/offline-copy).
 	const sub = $derived(
 		[
-			data.totals?.month,
+			data.offline ? 'Yours, not yet billed' : data.totals?.month,
 			`${data.totals?.trips ?? 0} ${Number(data.totals?.trips) === 1 ? 'trip' : 'trips'}`,
 			miles(data.totals?.miles ?? '0')
 		].join(' · ')
@@ -148,7 +150,7 @@
 								{/if}
 							</div>
 							<div class="rec-n">
-								<span class="rec-v">{money(t.value)}</span>
+								{#if t.value !== null}<span class="rec-v">{money(t.value)}</span>{/if}
 								<span class="rec-x">{miles(t.miles)}</span>
 							</div>
 							<span class="arw" aria-hidden="true">›</span>
@@ -159,7 +161,13 @@
 		{/if}
 	{/each}
 
-	{#if data.unbilled.length === 0 && data.billed.length === 0}
+	{#if data.offline}
+		<p class="none">
+			{data.user?.access === 'field'
+				? 'Older trips, billed ones, and what any of them bill, need a connection.'
+				: 'Older trips, billed ones, everyone else’s, and what any of them bill, need a connection.'}
+		</p>
+	{:else if data.unbilled.length === 0 && data.billed.length === 0}
 		<p class="none">No trips this month.</p>
 	{/if}
 </div>

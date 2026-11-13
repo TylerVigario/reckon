@@ -319,6 +319,13 @@ function secured(url: URL, response: Response): Response {
 	// frame-ancestors 'none' in the CSP says this to anything modern.
 	response.headers.set('X-Frame-Options', 'DENY');
 
+	// Nothing reckon answers is the browser's own cache's to keep (ASVS 5.0
+	// 14.3.2: "Cache-Control: no-store"), but where a route says otherwise: a
+	// receipt's photo for the hour a draft shows it, the operator's colour and
+	// mark. What is kept for no signal, the service worker keeps, as copies cut
+	// to what is done there (#lib/offline-copy); its cache does not read this.
+	if (!response.headers.has('Cache-Control')) response.headers.set('Cache-Control', 'no-store');
+
 	// SvelteKit puts the CSP on the pages it renders and on nothing else. The
 	// rest -- the logo, the operator's stylesheet, the manifest, the API -- is
 	// never meant to be opened as a page, and an SVG logo opened as one would

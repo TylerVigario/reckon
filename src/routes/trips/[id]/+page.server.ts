@@ -12,6 +12,7 @@ import { moneyPlaces } from '#lib/server/business.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import { refusedForAccess } from '#lib/server/refused.ts';
+import { isOfflineCopy } from '#lib/offline-copy.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -24,8 +25,12 @@ import type { PageServerLoad } from './$types';
  * Someone with Field sees a trip they drove (#lib/access), and what its vehicle
  * paid only where the vehicle is theirs: another's pay is theirs to see. What
  * the business kept is not shown them.
+ *
+ * KEPT FOR NO SIGNAL (#lib/offline-copy), it is the drive -- its stops, its
+ * legs and their miles -- to be put right on the road: what it bills, what it
+ * pays for the vehicle, and what was kept need a connection.
  */
-export const load: PageServerLoad = async ({ params, locals, route, request }) => {
+export const load: PageServerLoad = async ({ params, locals, route, request, url }) => {
 	if (!UUID.test(params.id)) error(404, 'no such trip');
 
 	const tr = t.trip;
@@ -193,5 +198,13 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 		value: worth.get(l.id)?.billed?.toString() ?? null
 	}));
 
-	return { trip, stops, legs, as_of: new Date().toISOString() };
+	if (isOfflineCopy(url))
+		return {
+			trip: { ...trip, billed: null, round_trips: null, paid: null, kept: null, rule: null },
+			stops,
+			legs: legs.map((l) => ({ ...l, value: null })),
+			offline: true,
+			as_of: new Date().toISOString()
+		};
+	return { trip, stops, legs, offline: false, as_of: new Date().toISOString() };
 };

@@ -202,11 +202,12 @@
 
 	const startedAt = (t: Running) => clockAt(t.started_at, personalZone());
 
-	// Someone with Field sees only what they worked (#lib/access), and is told so.
+	// Someone with Field sees only what they worked (#lib/access), and is told
+	// so; so does anyone opening the copy kept for no signal (#lib/offline-copy).
 	const field = $derived(data.user?.access === 'field');
 	const sub = $derived(
 		[
-			field ? 'Your work' : null,
+			field || data.offline ? 'Your work' : null,
 			notSaved.length ? `${notSaved.length} not saved` : null,
 			queued ? `${queued} queued` : null,
 			`${secondsAsHours(data.monthSeconds, 'whole')} this month`
@@ -470,6 +471,9 @@
 			{/if}
 		</div>
 	</div>
+	{#if data.offline && !field}
+		<p class="none">Everyone else’s work today needs a connection.</p>
+	{/if}
 </div>
 
 <style>
