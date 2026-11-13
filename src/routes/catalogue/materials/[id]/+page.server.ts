@@ -4,6 +4,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { db } from '#lib/server/db/index.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
+import { materialFigures } from '#lib/server/stock.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -43,5 +44,6 @@ export const load: PageServerLoad = async ({ params }) => {
 		.leftJoin(payer, eq(payer.id, t.materialLot.paidBy))
 		.where(and(eq(t.materialLot.materialId, found.id)))
 		.orderBy(desc(t.materialLot.receivedOn), desc(t.materialLot.id));
-	return { material: found, lots };
+	const figures = await materialFigures([found.id]);
+	return { material: { ...found, ...figures.of.get(found.id)! }, lots };
 };

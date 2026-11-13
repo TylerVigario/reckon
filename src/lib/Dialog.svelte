@@ -65,7 +65,7 @@
 			<Octicon name="x" />
 		</button>
 	</header>
-	<div class="body">{@render children()}</div>
+	<div class="body primer">{@render children()}</div>
 	<footer>
 		<button type="button" class="btn" data-cancel onclick={onclose} disabled={working}
 			>Cancel</button

@@ -8,6 +8,13 @@
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
+	/**
+	 * Services: what time and miles are charged as, as Primer boxes -- those
+	 * offered, then those retired -- with a row each: what it charges and how,
+	 * and labels for who it pays, what it keeps, which clients are priced or
+	 * covered differently, and what is about to change. Each row opens the
+	 * service, where all of that is set. New service is the screen's action.
+	 */
 	let { data }: PageProps = $props();
 
 	type Service = (typeof data.services)[number];
@@ -15,7 +22,7 @@
 	const offered = $derived(data.services.filter((s) => s.active));
 	const retired = $derived(data.services.filter((s) => !s.active));
 
-	const per = (u: string) => (u === 'mile' ? '/mi' : u === 'hour' ? '/hr' : ' each');
+	const per = (u: string) => (u === 'mile' ? 'a mile' : u === 'hour' ? 'an hour' : 'each');
 
 	/** The price every client pays today -- the figure a service is known by. */
 	const priceOf = (s: Service) =>
@@ -79,52 +86,89 @@
 	{/snippet}
 </Top>
 
-<div class="pad">
-	<div class="primer"><UnderlineNav label="Catalogue" items={catalogueTabs('services')} /></div>
-	{#if data.services.length === 0}
-		<p class="none">No services yet.</p>
-	{/if}
+<div class="pad primer">
+	<UnderlineNav label="Catalogue" items={catalogueTabs('services')} />
 
-	{#each [{ head: '', list: offered }, { head: 'Retired', list: retired }] as group (group.head)}
-		{#if group.list.length}
-			<div class="sec">
-				{#if group.head}<div class="sec-h"><h2>{group.head}</h2></div>{/if}
-				<div class="rows">
-					{#each group.list as s (s.id)}
-						{@const p = priceOf(s)}
-						<a
-							class="rec link"
-							class:gone={!s.active}
-							class:warn={s.active && !p && s.covered.length === 0}
-							href={resolve('/catalogue/services/[id]', { id: s.id })}
-						>
-							<div class="rec-m">
-								<div class="rec-t">{s.name}</div>
-								<div class="rec-s">
-									{p ? terms(s) : 'Not priced — nothing can be billed under it yet'}
-								</div>
-								{#if s.active && notes(s).length}
-									<div class="rec-c">
-										{#each notes(s) as n (n.text)}
-											<span
-												class="chip"
-												class:good={n.tone === 'good'}
-												class:acc={n.tone === 'acc'}
-												class:warn={n.tone === 'warn'}>{n.text}</span
-											>
-										{/each}
-									</div>
-								{/if}
-							</div>
-							<div class="rec-n">
-								<span class="rec-v" class:mut={!p}>{p ? unitPrice(p.rate) : '—'}</span>
-								{#if p}<span class="rec-x">{per(s.unit)}</span>{/if}
-							</div>
-							<span class="arw" aria-hidden="true">›</span>
-						</a>
-					{/each}
+	{#each [{ key: 'offered', head: 'Offered', list: offered }, { key: 'retired', head: 'Retired', list: retired }] as group (group.key)}
+		{#if group.list.length || group.key === 'offered'}
+			<section class="box" aria-labelledby="{group.key}-h">
+				<div class="box-h">
+					<h2 class="box-t" id="{group.key}-h">{group.head}</h2>
+					<span class="count">{group.list.length}</span>
 				</div>
-			</div>
+				{#each group.list as s (s.id)}
+					{@const p = priceOf(s)}
+					{@const said = s.active ? notes(s) : []}
+					<a class="box-row" href={resolve('/catalogue/services/[id]', { id: s.id })}>
+						<span class="what">
+							<span class="n">{s.name}</span>
+							<span class="sub">
+								{p ? terms(s) : 'Not priced: nothing can be billed under it yet'}
+							</span>
+							{#if said.length}
+								<span class="labs">
+									{#each said as n (n.text)}
+										<span class="lab {n.tone}">{n.text}</span>
+									{/each}
+								</span>
+							{/if}
+						</span>
+						{#if s.active && !p && s.covered.length === 0}
+							<span class="lab warn">Not priced</span>
+						{/if}
+						<span class="fig">
+							<span class="v" class:muted={!p}>{p ? unitPrice(p.rate) : '—'}</span>
+							{#if p}<span class="sub">{per(s.unit)}</span>{/if}
+						</span>
+					</a>
+				{:else}
+					<p class="box-row muted">No services yet. New service adds the first.</p>
+				{/each}
+			</section>
 		{/if}
 	{/each}
 </div>
+
+<style>
+	.box-row {
+		min-height: 64px;
+		box-sizing: border-box;
+		margin: 0;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		overflow-wrap: anywhere;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--ink-3);
+	}
+	.labs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-top: 4px;
+	}
+	.lab {
+		flex: 0 0 auto;
+	}
+	.fig {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
+		text-align: right;
+	}
+	.v {
+		font-family: var(--f-mono);
+		font-weight: 600;
+	}
+</style>

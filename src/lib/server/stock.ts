@@ -1,4 +1,6 @@
-import { inArray, sql } from 'drizzle-orm';
+import { and, desc, inArray, lte, sql } from 'drizzle-orm';
+import { businessToday } from './calendar.ts';
+import { materialWorth } from './valuation/misc.ts';
 import { db, type Reader } from './db/index.ts';
 import * as t from './db/schema/index.ts';
 import { Decimal } from '../decimal.ts';
@@ -69,4 +71,59 @@ export async function shelves(materialIds: readonly string[], r: Reader = db) {
 		});
 	}
 	return out;
+}
+
+/**
+ * What each material has on the shelf, what one costs before tax and in tax,
+ * and what it sells at -- its own price where one is listed today, else that
+ * cost and its markup, or the business's -- as the business costs its stock.
+ * What the materials list shows of each, and a material's own head.
+ */
+export async function materialFigures(materialIds: readonly string[]) {
+	const [own, listed, [op], onShelf] = await Promise.all([
+		db
+			.select({ id: t.material.id, markupPct: t.material.markupPct })
+			.from(t.material)
+			.where(inArray(t.material.id, [...materialIds])),
+		// The newest price listed for each, on or before today.
+		db
+			.selectDistinctOn([t.materialPrice.materialId], {
+				materialId: t.materialPrice.materialId,
+				price: t.materialPrice.price
+			})
+			.from(t.materialPrice)
+			.where(
+				and(
+					inArray(t.materialPrice.materialId, [...materialIds]),
+					lte(t.materialPrice.effectiveFrom, sql`${businessToday()}::date`)
+				)
+			)
+			.orderBy(t.materialPrice.materialId, desc(t.materialPrice.effectiveFrom)),
+		db
+			.select({ markup: t.operator.defaultMarkupPct, costing: t.operator.stockCosting })
+			.from(t.operator),
+		shelves(materialIds)
+	]);
+	const costing = op?.costing ?? 'average';
+	const priceOf = new Map(listed.map((l) => [l.materialId, l.price]));
+	return {
+		costing,
+		markup: op?.markup ?? null,
+		of: new Map(
+			own.map((m) => {
+				const markup = m.markupPct ?? op?.markup ?? '0';
+				const w = materialWorth(onShelf.get(m.id)!, costing, markup, priceOf.get(m.id) ?? null);
+				return [
+					m.id,
+					{
+						markup_pct: markup,
+						on_hand: w.onHand.toString(),
+						ex_tax: w.exTax?.toString() ?? null,
+						tax_paid: w.taxPaid?.toString() ?? null,
+						price: w.price?.toString() ?? null
+					}
+				];
+			})
+		)
+	};
 }

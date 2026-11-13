@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { readRule } from '#lib/service-fields.ts';
 	import { readProblem } from '#lib/json.ts';
+	import Octicon from '#lib/Octicon.svelte';
 
 	/**
 	 * A pay rule from a day: whom it pays, for what, how, and for which clients.
@@ -9,6 +10,9 @@
 	 * Like a price, it adds a row. A change to a rule in force is a rule for the
 	 * same payee and the same clients from a later day, which is why "Change"
 	 * opens this with the scope already chosen.
+	 *
+	 * A Primer form in a dialog: each label above its field, what it means
+	 * below; the dialog's button sends it (save).
 	 */
 	type Rule = {
 		role_id: string | null;
@@ -27,7 +31,7 @@
 		today,
 		preset = null,
 		onsaved,
-		oncancel
+		onsaving
 	}: {
 		serviceId: string;
 		roles: { id: string; name: string }[];
@@ -36,7 +40,8 @@
 		today: string;
 		preset?: Rule | null;
 		onsaved: () => void;
-		oncancel: () => void;
+		/** Told when it starts and stops being sent: the dialog's button says so. */
+		onsaving?: (busy: boolean) => void;
 	} = $props();
 
 	const start = untrack(() => preset);
@@ -51,18 +56,21 @@
 	let from = $state(untrack(() => today));
 	let errors = $state<Record<string, string>>({});
 	let saying = $state('');
-	let saving = $state(false);
 
 	const FOR = [
-		{ v: 'time', l: 'Their time' },
-		{ v: 'covered_time', l: 'Retainer time' },
-		{ v: 'vehicle', l: 'Their vehicle' }
+		{ v: 'time', l: 'Their time', c: 'Hours they work, billed by the hour.' },
+		{ v: 'covered_time', l: 'Retainer time', c: 'Hours a client’s retainer covers.' },
+		{ v: 'vehicle', l: 'Their vehicle', c: 'Miles driven in a vehicle of theirs.' }
 	];
 	const HOW = [
-		{ v: 'per_hour', l: 'Per hour worked' },
-		{ v: 'percent', l: '% of the charge' },
-		{ v: 'fixed', l: 'Fixed per entry' },
-		{ v: 'nothing', l: 'Nothing' }
+		{ v: 'per_hour', l: 'Per hour worked', c: 'Counted to the second.' },
+		{
+			v: 'percent',
+			l: '% of the charge',
+			c: 'Of the whole line, before tax. For retainer time, of what the retainer charged that month, split by each person’s share of its hours.'
+		},
+		{ v: 'fixed', l: 'Fixed per entry', c: 'The same however long it took.' },
+		{ v: 'nothing', l: 'Nothing', c: 'Lets a narrower rule switch a wider one off.' }
 	];
 	// Time a retainer covers is paid as a share of it -- a percentage, or
 	// nothing -- because it was never billed by the hour to take a rate from. A
@@ -86,7 +94,10 @@
 					: 'an entry'
 	);
 
-	async function save() {
+	/** Sent from the dialog it is in: its own button, not one of the form's. */
+	let sending = false;
+	export async function save() {
+		if (sending) return;
 		const fields = {
 			role_id: who === 'role' ? (roleId ?? '') : '',
 			user_id: who === 'person' ? (userId ?? '') : '',
@@ -101,13 +112,15 @@
 		errors = local.errors;
 		saying = '';
 		if (Object.keys(errors).length) return;
-		saving = true;
+		sending = true;
+		onsaving?.(true);
 		const r = await fetch(`/api/services/${serviceId}/rules`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ fields })
 		}).catch(() => null);
-		saving = false;
+		sending = false;
+		onsaving?.(false);
 		if (!r) {
 			saying = 'Not saved — no connection.';
 			return;
@@ -122,180 +135,168 @@
 	}
 </script>
 
+{#snippet wrong(key: string)}
+	{#if errors[key]}
+		<p class="fc-e" id="r-{key}-e"><Octicon name="alert" />{errors[key]}</p>
+	{/if}
+{/snippet}
+
 <div class="form">
-	<div class="fld">
-		<span class="lbl">Who</span>
-		<div class="seg">
-			<button type="button" class:on={who === 'role'} onclick={() => (who = 'role')}>A role</button>
-			<button type="button" class:on={who === 'person'} onclick={() => (who = 'person')}
-				>One person</button
-			>
-		</div>
-	</div>
-	<div class="fld">
+	<fieldset class="fc">
+		<legend class="fc-l">Who</legend>
+		<label class="rad">
+			<input type="radio" name="r-who" value="role" bind:group={who} />
+			<span><span class="rad-t">A role</span></span>
+		</label>
+		<label class="rad">
+			<input type="radio" name="r-who" value="person" bind:group={who} />
+			<span><span class="rad-t">One person</span></span>
+		</label>
+	</fieldset>
+	<div class="fc">
 		{#if who === 'role'}
-			<label for="r-role">Role</label>
-			<select id="r-role" class="inp" bind:value={roleId}>
+			<label class="fc-l" for="r-role">Role</label>
+			<select
+				id="r-role"
+				class="ti"
+				bind:value={roleId}
+				aria-invalid={errors.role_id ? 'true' : undefined}
+				aria-describedby={errors.role_id ? 'r-role_id-e' : undefined}
+			>
 				{#each roles as r (r.id)}<option value={r.id}>{r.name}</option>{/each}
 			</select>
-			{#if errors.role_id}<small class="why">{errors.role_id}</small>{/if}
+			{@render wrong('role_id')}
 		{:else}
-			<label for="r-user">Person</label>
-			<select id="r-user" class="inp" bind:value={userId}>
+			<label class="fc-l" for="r-user">Person</label>
+			<select
+				id="r-user"
+				class="ti"
+				bind:value={userId}
+				aria-invalid={errors.user_id ? 'true' : undefined}
+				aria-describedby={errors.user_id ? 'r-user_id-e' : undefined}
+			>
 				<option value={null}>Choose…</option>
 				{#each people as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
 			</select>
-			{#if errors.user_id}<small class="why">{errors.user_id}</small>{/if}
+			{@render wrong('user_id')}
 		{/if}
 	</div>
 
-	<div class="fld">
-		<span class="lbl">For</span>
-		<div class="seg">
-			{#each FOR as f (f.v)}
-				<button type="button" class:on={paysFor === f.v} onclick={() => (paysFor = f.v)}
-					>{f.l}</button
-				>
-			{/each}
-		</div>
-	</div>
+	<fieldset class="fc">
+		<legend class="fc-l">For</legend>
+		{#each FOR as f (f.v)}
+			<label class="rad">
+				<input type="radio" name="r-for" value={f.v} bind:group={paysFor} />
+				<span><span class="rad-t">{f.l}</span><span class="rad-c">{f.c}</span></span>
+			</label>
+		{/each}
+	</fieldset>
 
-	<div class="fld">
-		<span class="lbl">How</span>
-		<div class="seg four">
-			{#each HOW as h (h.v)}
-				<button
-					type="button"
-					class:on={method === h.v}
-					disabled={!allowed(h.v)}
-					onclick={() => (method = h.v)}>{h.l}</button
-				>
-			{/each}
-		</div>
-		{#if errors.method}<small class="why">{errors.method}</small>{/if}
-	</div>
+	<fieldset class="fc">
+		<legend class="fc-l">How</legend>
+		{#each HOW as h (h.v)}
+			<label class="rad" class:off={!allowed(h.v)}>
+				<input type="radio" name="r-how" value={h.v} bind:group={method} disabled={!allowed(h.v)} />
+				<span><span class="rad-t">{h.l}</span><span class="rad-c">{h.c}</span></span>
+			</label>
+		{/each}
+		{@render wrong('method')}
+	</fieldset>
 
 	{#if method !== 'nothing'}
-		<div class="fld">
-			<label for="r-amount">Amount</label>
-			<span class="inp-wrap">
+		<div class="fc">
+			<label class="fc-l" for="r-amount">Amount</label>
+			<span class="tv">
 				<input
 					id="r-amount"
-					class="inp"
+					class="ti"
 					inputmode="decimal"
-					placeholder={method === 'percent' ? '60' : '45.00'}
+					autocomplete="off"
 					bind:value={amount}
+					aria-invalid={errors.amount ? 'true' : undefined}
+					aria-describedby={errors.amount ? 'r-amount-e' : undefined}
 				/>
-				<span class="hint">{unitOf}</span>
+				<span class="tv-v" aria-hidden="true">{unitOf}</span>
 			</span>
-			{#if errors.amount}<small class="why">{errors.amount}</small>{/if}
+			{@render wrong('amount')}
 		</div>
 	{/if}
 
-	<div class="fld">
-		<span class="lbl">Clients</span>
-		<div class="seg">
-			<button type="button" class:on={!one} onclick={() => (one = false)}>Every client</button>
-			<button type="button" class:on={one} onclick={() => (one = true)}>One client</button>
-		</div>
-	</div>
+	<fieldset class="fc">
+		<legend class="fc-l">Clients</legend>
+		<label class="rad">
+			<input type="radio" name="r-clients" value={false} bind:group={one} />
+			<span><span class="rad-t">Every client</span></span>
+		</label>
+		<label class="rad">
+			<input type="radio" name="r-clients" value={true} bind:group={one} />
+			<span><span class="rad-t">One client</span></span>
+		</label>
+	</fieldset>
 	{#if one}
-		<div class="fld">
-			<label for="r-client">Which client</label>
-			<select id="r-client" class="inp" bind:value={entity}>
+		<div class="fc">
+			<label class="fc-l" for="r-client">Which client</label>
+			<select
+				id="r-client"
+				class="ti"
+				bind:value={entity}
+				aria-invalid={errors.entity_id ? 'true' : undefined}
+				aria-describedby={errors.entity_id ? 'r-entity_id-e' : undefined}
+			>
 				<option value={null}>Choose…</option>
 				{#each clients as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
 			</select>
-			{#if errors.entity_id}<small class="why">{errors.entity_id}</small>{/if}
+			{@render wrong('entity_id')}
 		</div>
 	{/if}
 
-	<div class="fld">
-		<label for="r-from">From</label>
-		<input id="r-from" class="inp" type="date" bind:value={from} />
-		{#if errors.effective_from}<small class="why">{errors.effective_from}</small>{/if}
+	<div class="fc">
+		<label class="fc-l" for="r-from">From</label>
+		<input
+			id="r-from"
+			class="ti"
+			type="date"
+			bind:value={from}
+			aria-invalid={errors.effective_from ? 'true' : undefined}
+			aria-describedby={errors.effective_from ? 'r-effective_from-e' : undefined}
+		/>
+		{@render wrong('effective_from')}
 	</div>
 
 	<p class="note">
-		<b>Per hour worked</b> is counted to the second. <b>% of the charge</b> is of the whole line,
-		before tax — and for retainer time, of what the retainer charged that month, split by each
-		person's share of its hours. <b>Fixed per entry</b> is the same however long it took.
-		<b>Nothing</b> lets a narrower rule switch a wider one off. The narrowest rule that has started pays:
-		one client's before every client's, one person's before their role's.
+		The narrowest rule that has started pays: one client’s before every client’s, one person’s
+		before their role’s.
 	</p>
 
-	{#if saying}<p class="why">{saying}</p>{/if}
-
-	<div class="btnrow">
-		<button type="button" class="btn" onclick={oncancel}>Cancel</button>
-		<button type="button" class="btn pri" onclick={save} disabled={saving}>
-			{saving ? 'Saving…' : 'Save rule'}
-		</button>
-	</div>
+	{#if saying}<p class="fc-e"><Octicon name="alert" />{saying}</p>{/if}
 </div>
 
 <style>
 	.form {
-		padding: 14px;
 		display: flex;
 		flex-direction: column;
-		gap: 14px;
-		border-top: 1px solid var(--line-soft);
+		gap: 20px;
 	}
-	.lbl {
-		font-family: var(--f-mono);
-		font-size: 10px;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--ink-3);
+	.fc {
+		max-width: 440px;
 	}
-	/* Four choices at phone width, two by two. */
-	.seg.four {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
+	.rad.off {
+		opacity: 0.5;
 	}
-	.seg.four button {
-		border-bottom: 1px solid var(--line);
-	}
-	.seg.four button:nth-child(2n) {
-		border-right: 0;
-	}
-	.seg.four button:nth-last-child(-n + 2) {
-		border-bottom: 0;
-	}
-	.seg button:disabled {
-		color: var(--ink-faint);
-		cursor: not-allowed;
-	}
-	.inp-wrap {
+	.tv {
 		position: relative;
 		display: block;
 	}
-	.inp-wrap .hint {
+	.tv .ti {
+		padding-right: 132px;
+	}
+	.tv-v {
 		position: absolute;
-		right: 14px;
+		right: 12px;
 		top: 50%;
 		transform: translateY(-50%);
 		font-size: 13px;
 		color: var(--ink-3);
-		font-family: var(--f-mono);
 		pointer-events: none;
-	}
-	.note {
-		margin: 0;
-		font-size: 12.5px;
-		line-height: 1.5;
-		color: var(--ink-3);
-	}
-	.note b {
-		color: var(--ink-2);
-		font-weight: 600;
-	}
-	.why {
-		color: var(--crit);
-		margin: 0;
-	}
-	.fld small.why {
-		font-size: 12.5px;
 	}
 </style>
