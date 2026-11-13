@@ -9,8 +9,8 @@ import type { PageServerLoad } from './$types';
 
 /**
  * One material, and every lot of it received: when, from whom, how much and
- * how much is left, what it cost as the receipt says, who paid, and the
- * receipt.
+ * how much is left, what it cost and its share of the receipt's tax, who paid,
+ * and the receipt it came on.
  */
 export const load: PageServerLoad = async ({ params }) => {
 	if (!UUID.test(params.id)) error(404, 'no such material');
@@ -31,17 +31,19 @@ export const load: PageServerLoad = async ({ params }) => {
 	const lots = await db
 		.select({
 			id: t.materialLot.id,
+			receipt_id: t.materialLot.receiptId,
 			received_on: t.materialLot.receivedOn,
-			supplier: t.materialLot.supplier,
+			supplier: t.stockReceipt.supplier,
+			reference: t.stockReceipt.reference,
 			qty_received: t.materialLot.qtyReceived,
 			qty_remaining: t.materialLot.qtyRemaining,
 			ex_tax_cost: t.materialLot.exTaxCost,
 			tax_paid: t.materialLot.taxPaid,
-			paid_by: payer.name,
-			receipt: sql<boolean>`${t.materialLot.receipt} is not null`
+			paid_by: payer.name
 		})
 		.from(t.materialLot)
-		.leftJoin(payer, eq(payer.id, t.materialLot.paidBy))
+		.innerJoin(t.stockReceipt, eq(t.stockReceipt.id, t.materialLot.receiptId))
+		.leftJoin(payer, eq(payer.id, t.stockReceipt.paidBy))
 		.where(and(eq(t.materialLot.materialId, found.id)))
 		.orderBy(desc(t.materialLot.receivedOn), desc(t.materialLot.id));
 	const figures = await materialFigures([found.id]);

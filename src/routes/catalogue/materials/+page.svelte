@@ -23,7 +23,7 @@
 
 <Top title="Catalogue" sub="What can go on a line" back={resolve('/more')} backLabel="More">
 	{#snippet actions()}
-		<a class="btn sm pri" href={resolve('/catalogue/materials/receive')}>Receive stock</a>
+		<a class="btn sm pri" href={resolve('/catalogue/receipts/new')}>Receive stock</a>
 	{/snippet}
 </Top>
 

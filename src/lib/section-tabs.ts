@@ -16,11 +16,15 @@ export type Tab = { href: ResolvedPathname; label: string; count?: number; curre
 
 /**
  * What can go on a line. Materials first: stock is received far more often
- * than a price or an agreement changes. No counts: with two-digit counts the
+ * than a price or an agreement changes. Receipts beside them: what was bought
+ * on each, and where it is received. No counts: with two-digit counts the
  * row fills a phone.
  */
-export const catalogueTabs = (here: 'materials' | 'services' | 'agreements'): Tab[] => [
+export const catalogueTabs = (
+	here: 'materials' | 'receipts' | 'services' | 'agreements'
+): Tab[] => [
 	{ href: resolve('/catalogue/materials'), label: 'Materials', current: here === 'materials' },
+	{ href: resolve('/catalogue/receipts'), label: 'Receipts', current: here === 'receipts' },
 	{ href: resolve('/catalogue/services'), label: 'Services', current: here === 'services' },
 	{ href: resolve('/catalogue/agreements'), label: 'Agreements', current: here === 'agreements' }
 ];

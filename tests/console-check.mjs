@@ -164,8 +164,9 @@ while (queue.length) {
 
 	for (const href of links) {
 		const clean = href.split('#')[0];
-		// A receipt is a file a screen links to, not a screen.
-		if (clean.endsWith('/receipt')) continue;
+		// A receipt is a file a screen links to, not a screen: a line's, or a
+		// receipt's own.
+		if (clean.endsWith('/receipt') || clean.endsWith('/file')) continue;
 		if (clean.startsWith('/') && !seen.has(clean) && !queue.includes(clean)) queue.push(clean);
 	}
 }
