@@ -355,6 +355,29 @@ const entry = (/** @type {Record<string, unknown>} */ extra) => ({
 
 	const mine = await asField('/api/time', send('POST', entry({ crew: 'one', worked_by: me })));
 	const mineId = mine.ok ? (await mine.json()).id : null;
+	// Changed after the fact: their own, to their own work and nobody else's.
+	const changed = mineId
+		? await asField(
+				`/api/time/${mineId}`,
+				send('PATCH', { ...entry({ crew: 'one', worked_by: me, minutes: 45 }), version: 1 })
+			)
+		: null;
+	check(
+		changed?.status === 200,
+		'Field changes their own entry after the fact',
+		String(changed?.status)
+	);
+	const elsewise = mineId
+		? await asField(
+				`/api/time/${mineId}`,
+				send('PATCH', { ...entry({ crew: 'one', worked_by: full }), version: 2 })
+			)
+		: null;
+	check(
+		elsewise?.status === 400 && !!(await problemOf(elsewise))?.errors?.worked_by,
+		"but cannot change it into someone else's work",
+		String(elsewise?.status)
+	);
 	const off = mineId ? await asField(`/api/time/${mineId}`, { method: 'DELETE' }) : null;
 	check(
 		mine.ok && off?.status === 200,
@@ -375,6 +398,24 @@ const entry = (/** @type {Record<string, unknown>} */ extra) => ({
 		'team work someone else entered is theirs to take off',
 		`${team.status} ${refused?.status}`
 	);
+	const notChanged = teamId
+		? await asField(
+				`/api/time/${teamId}`,
+				send('PATCH', { ...entry({ crew: 'team', crew_ids: [full, me] }), version: 1 })
+			)
+		: null;
+	check(
+		notChanged?.status === 403 && (await problemOf(notChanged))?.type === '/problems/not-yours',
+		'and theirs to change',
+		String(notChanged?.status)
+	);
+	const opened = teamId ? await asField(`/timesheet/${teamId}`) : null;
+	const openedText = opened?.ok ? await opened.text() : '';
+	check(
+		openedText.includes('Whoever entered it, or someone with Full, changes it'),
+		'Field opens team work they were on, and is told who changes it',
+		String(opened?.status)
+	);
 	if (teamId) await asFull(`/api/time/${teamId}`, { method: 'DELETE' });
 
 	// The uuid a phone makes is its maker's own: sent by anyone else, it
@@ -394,6 +435,12 @@ const entry = (/** @type {Record<string, unknown>} */ extra) => ({
 		!!firstId && !!theirs?.id && theirs.id !== firstId && theirs.seconds === 30 * 60,
 		"someone else's uuid gives Field an entry of their own, not the other's",
 		`${first.status} ${again.status} ${theirs?.id === firstId ? 'the same entry' : ''}`
+	);
+	const notTheirs = firstId ? await asField(`/timesheet/${firstId}`) : null;
+	check(
+		notTheirs?.status === 404,
+		"Field does not open an entry of someone else's work",
+		String(notTheirs?.status)
 	);
 	if (theirs?.id) await asField(`/api/time/${theirs.id}`, { method: 'DELETE' });
 	if (firstId) await asFull(`/api/time/${firstId}`, { method: 'DELETE' });

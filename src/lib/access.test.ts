@@ -44,6 +44,7 @@ describe('who reaches a route', () => {
 				'/api/offline',
 				'/api/people/[id]',
 				'/timesheet',
+				'/timesheet/[id]',
 				'/timesheet/all',
 				'/timesheet/manual',
 				'/timesheet/start',

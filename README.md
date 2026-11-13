@@ -148,11 +148,23 @@ nothing, so anything that would need to own a table fails there first.
 /                what is owed, what is ready to send, and what needs a decision
 /timesheet       the running timers and today's entries
 /timesheet/all   every entry in a month
+/timesheet/:id   one entry, to change or remove after the fact
 /clients         every client; /clients/:id is one, with its sites and agreements
 /invoices        drafts, sent and paid
 /settings        everything about the operator
 /invoice/:token  one sent invoice, for the client: opens without signing in
 ```
+
+**A time entry is changed after the fact** on its own screen, opened from Time
+or All entries: the Add past work form, filled in from it. Whoever entered it
+changes or removes it, and someone with Full anyone's; someone with Field opens
+their own work and is told who changes the rest. Each save says which it began
+from, so one made from an older copy is refused rather than written over a
+change made meanwhile, and history keeps every field changed and who changed
+it. An hour on an invoice, or in a recorded payment, stays as it was — the
+database refuses changing it as it refuses removing it — and its screen says
+where to put it right: taken off the draft, credited on the invoice, or
+corrected on the next payment.
 
 A draft is sent from its own Send screen, which dates it, gives it its due date
 and its link, and hands the link to the phone's share sheet or the clipboard.
