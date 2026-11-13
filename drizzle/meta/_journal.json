@@ -379,6 +379,13 @@
       "when": 1794584802419,
       "tag": "0053_a_lot_is_its_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1794595659606,
+      "tag": "0054_stock_is_put_right_by_hand",
+      "breakpoints": true
     }
   ]
 }

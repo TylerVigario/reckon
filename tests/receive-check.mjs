@@ -152,9 +152,7 @@ const submit = () => evaluate(`document.querySelector('#receive button.btn.pri')
 const press = (/** @type {string} */ label) =>
 	run((/** @type {string} */ want) => {
 		const b = /** @type {HTMLButtonElement | undefined} */ (
-			[...document.querySelectorAll('dialog[open] button, #receive button')].find(
-				(x) => x.textContent?.trim() === want
-			)
+			[...document.querySelectorAll('button')].find((x) => x.textContent?.trim() === want)
 		);
 		b?.click();
 		return !!b;
@@ -313,6 +311,75 @@ check(
 		material.includes('Delta Wholesale · INV-77001') &&
 		material.includes('1,000 ft for $310.00, and $24.03 tax'),
 	'the material keeps the lot, named for the receipt it came on'
+);
+
+// PUT RIGHT BY HAND: 10 ft used in the shop, off the shelf at what it cost.
+/** The line under the material's name: what is on hand, and what it sells at. */
+const head = () => textOf('.rh');
+await press('Adjust');
+await settle(400);
+await set('#a-qty', '10');
+await set('#a-note', 'Run to the bench');
+await press('Take it off');
+await settle(2000);
+check(
+	!(await dialogOpen()) && (await head()).includes('990 ft on hand'),
+	`10 ft used in the shop come off the shelf (${await head()})`
+);
+
+// More than the shelf holds is refused, and the dialog stays open to say so.
+await press('Adjust');
+await settle(400);
+await set('#a-qty', '5000');
+await press('Take it off');
+await settle(1500);
+const tooMuch = /** @type {string} */ (await textOf('dialog[open]'));
+check(
+	(await dialogOpen()) && tooMuch.includes(`Only 990 ft of ${NAME} is on the shelf.`),
+	`taking off more than is there is refused (${tooMuch.slice(0, 200)})`
+);
+await press('Cancel');
+await settle(300);
+
+// 5 ft found, put on at what one on the shelf is worth now.
+await press('Adjust');
+await settle(400);
+await run(() =>
+	/** @type {HTMLInputElement | null} */ (
+		document.querySelector('dialog[open] input[name="a-way"][value="on"]')
+	)?.click()
+);
+await settle(200);
+await set('#a-qty', '5');
+await press('Put it on');
+await settle(2000);
+check((await head()).includes('995 ft on hand'), `5 ft found go on the shelf (${await head()})`);
+const lots = /** @type {string} */ (await textOf('#lots-h'));
+const stock = /** @type {string} */ (
+	await evaluate(`document.querySelector('.box').textContent.replace(/\\s+/g, ' ')`)
+);
+check(
+	stock.includes('found') && stock.includes('Found') && lots.includes('Received'),
+	'the find is a lot of its own, marked found'
+);
+
+// Its Adjustments tab: each, why, and what it moved was worth -- the take at
+// a tenth of a foot's 0.31 and its share of the tax, 3.10 and 0.2403.
+await evaluate(
+	`[...document.querySelectorAll('.unav a')].find((a) => a.textContent.trim().startsWith('Adjustments'))?.click()`
+);
+await settle(2000);
+const adjustments = /** @type {string} */ (
+	await evaluate(`document.body.textContent.replace(/\\s+/g, ' ')`)
+);
+check(
+	adjustments.includes('Used in the shop') &&
+		adjustments.includes('Run to the bench') &&
+		adjustments.includes('−10 ft') &&
+		adjustments.includes('$3.34') &&
+		adjustments.includes('Found') &&
+		adjustments.includes('+5 ft'),
+	'Adjustments lists each, why, and what it was worth'
 );
 
 check(

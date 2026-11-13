@@ -9,7 +9,8 @@ import type { Shelf } from '../stock-draw.ts';
 /**
  * What each material has on the shelf (#lib/stock-draw): its lots with
  * something left, oldest first, and what all of it is worth -- every lot's cost
- * less the cost of every line that drew from them, before tax and in tax.
+ * (a found lot's too) less the cost of every line that drew from them and every
+ * take that wrote some off, before tax and in tax.
  *
  * Every material asked about has a shelf, empty when nothing is left. It is
  * read in one statement, so the lots and the worth are of the same moment: a
@@ -34,13 +35,20 @@ export async function shelves(materialIds: readonly string[], r: Reader = db) {
 		tax_worth: string;
 	}>(sql`
 		with drawn as (
-			-- What every line that drew from them cost, whatever invoice it is on now.
-			select ${il.materialId} as material_id,
-			       sum(coalesce(${il.exTaxCost}, 0)) as ex_tax,
-			       sum(coalesce(${il.taxPaid}, 0)) as tax
-			  from ${il}
-			 where ${inArray(il.materialId, ids)}
-			   and exists (select 1 from ${t.stockDraw} d where d.invoice_line_id = ${il.id})
+			-- What every line that drew from them cost, whatever invoice it is on
+			-- now, and what every take wrote off.
+			select material_id, sum(ex_tax) as ex_tax, sum(tax) as tax from (
+				select ${il.materialId} as material_id,
+				       coalesce(${il.exTaxCost}, 0) as ex_tax,
+				       coalesce(${il.taxPaid}, 0) as tax
+				  from ${il}
+				 where ${inArray(il.materialId, ids)}
+				   and exists (select 1 from ${t.stockDraw} d where d.invoice_line_id = ${il.id})
+				union all
+				select ${t.stockAdjustment.materialId}, ${t.stockAdjustment.exTaxCost}, ${t.stockAdjustment.taxPaid}
+				  from ${t.stockAdjustment}
+				 where ${inArray(t.stockAdjustment.materialId, ids)} and ${t.stockAdjustment.way} = 'off'
+			) d
 			 group by 1
 		)
 		select ${ml.materialId} as material_id, ${ml.id} as id,
