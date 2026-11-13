@@ -19,6 +19,15 @@ import { assets, immutable } from '$app/manifest';
  * (/api/offline), and a draft that has gone out stops being kept. Each says how old its copy is when it is opened
  * from it (#lib/OfflineBanner).
  *
+ * The person's own time entries of this week and last that are not yet billed
+ * or paid, each on its screen, and All entries holding only those, so an entry
+ * is changed or removed on site.
+ *
+ * A SCREEN LISTED WITH A QUERY is kept as a copy of its own: the list names the
+ * copy to fetch (All entries' is "?copy=offline", trimmed to what can be done
+ * with no signal), and it is kept in the screen's place. The screen as it is
+ * with a signal -- everyone's entries, and what they are worth -- is never kept.
+ *
  * Trips too: the list, New trip, and each recent trip whose miles are not yet
  * billed, with its Change, so a trip is recorded or put right on the road. The
  * queue sends it when there is a signal, and Google's route takes the place of
@@ -57,13 +66,18 @@ const OFFLINE_DATA = OFFLINE_SCREENS.map(dataOf);
 /**
  * The data of the screens the list may name: the invoices list, New draft, a
  * draft started on the phone and its Add a line, and a draft, its Add a line,
- * and each line added by hand with its Change; the trips list, New trip, and a
- * trip with its Change.
+ * and each line added by hand with its Change; All entries and a time entry;
+ * the trips list, New trip, and a trip with its Change.
  */
 const LISTED_DATA =
-	/^\/(invoices(\/new|\/on-phone(\/add)?|\/[0-9a-f-]{36}(\/add|\/lines\/[0-9a-f-]{36}(\/change)?)?)?|trips(\/new|\/[0-9a-f-]{36}(\/change)?)?)\/__data\.json$/;
+	/^\/(invoices(\/new|\/on-phone(\/add)?|\/[0-9a-f-]{36}(\/add|\/lines\/[0-9a-f-]{36}(\/change)?)?)?|timesheet\/(all|[0-9a-f-]{36})|trips(\/new|\/[0-9a-f-]{36}(\/change)?)?)\/__data\.json$/;
 
-/** The screens kept now: the ones always kept, and the ones the server last listed. */
+/** A listed screen's own path, without the query that names a copy of it. */
+const pathOf = (listed: string) => listed.split('?')[0];
+/** The query naming the copy of a screen to keep, where it has one: "?copy=offline". */
+const copyOf = (listed: string) => (listed.includes('?') ? listed.slice(listed.indexOf('?')) : '');
+
+/** The screens kept now, as listed: the ones always kept, and the ones the server last listed. */
 let listed: string[] | null = null;
 async function screens(): Promise<string[]> {
 	if (listed === null) {
@@ -101,20 +115,22 @@ async function warm() {
 		}
 	}
 	const all = await screens();
-	const keep = new Set([...all, ...all.map(dataOf), LIST]);
+	const paths = all.map(pathOf);
+	const keep = new Set([...paths, ...paths.map(dataOf), LIST]);
 	for (const request of await pages.keys()) {
 		const path = new URL(request.url).pathname;
 		if (!keep.has(path) && !OPERATOR.includes(path)) await pages.delete(request);
 	}
 	for (const screen of all) {
+		const path = pathOf(screen);
 		const page = await fetch(screen);
 		if (signedOut(page)) return forget();
 		if (!page.ok) continue;
-		await pages.put(screen, page);
-		const data = await fetch(dataOf(screen));
+		await pages.put(path, page);
+		const data = await fetch(`${dataOf(path)}${copyOf(screen)}`);
 		// Signed out, a data request still answers 200, with a redirect inside it.
 		const body = data.ok ? await data.clone().text() : '';
-		if (body.startsWith('{"type":"data"')) await pages.put(dataOf(screen), data);
+		if (body.startsWith('{"type":"data"')) await pages.put(dataOf(path), data);
 	}
 }
 
@@ -182,13 +198,18 @@ self.addEventListener('fetch', (event) => {
 	// to a full navigation, which lands on the page below.
 });
 
-/** A screen. From the network; without one, its last copy or the offline page. */
+/**
+ * A screen. From the network; without one, its last copy or the offline page.
+ * One with a copy of its own is kept only as warm() fetches it.
+ */
 async function navigate(request: Request, url: URL): Promise<Response> {
-	const offlineScreen = (await screens()).includes(url.pathname);
+	const all = await screens();
+	const offlineScreen = all.some((s) => pathOf(s) === url.pathname);
+	const asItIs = all.includes(url.pathname);
 	try {
 		const response = await fetch(request);
 		if (signedOut(response)) await forget();
-		else if (offlineScreen && response.ok)
+		else if (asItIs && response.ok)
 			await (await caches.open(PAGES)).put(url.pathname, response.clone());
 		return response;
 	} catch {

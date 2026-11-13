@@ -52,3 +52,19 @@ export const personalDay = (moment: SQLWrapper) =>
 /** The day a moment fell on for the business, in SQL. */
 export const businessDay = (moment: SQLWrapper) =>
 	sql`((${moment}) at time zone ${businessZone()})::date`;
+
+/**
+ * The first day of the week a calendar day falls in, for a week that starts on
+ * `first` -- 1 for Monday to 7 for Sunday: the person's own, or their locale's.
+ */
+export function weekOf(d: string, first: number): string {
+	const day = Temporal.PlainDate.from(d);
+	return day.subtract({ days: (day.dayOfWeek - first + 7) % 7 }).toString();
+}
+
+/**
+ * The first day of last week, for a week that starts on `first`: how far back a
+ * phone keeps someone's own time entries, to change with no signal.
+ */
+export const lastWeekBegan = (today: string, first: number): string =>
+	Temporal.PlainDate.from(weekOf(today, first)).subtract({ days: 7 }).toString();

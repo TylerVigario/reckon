@@ -158,13 +158,18 @@ nothing, so anything that would need to own a table fails there first.
 **A time entry is changed after the fact** on its own screen, opened from Time
 or All entries: the Add past work form, filled in from it. Whoever entered it
 changes or removes it, and someone with Full anyone's; someone with Field opens
-their own work and is told who changes the rest. Each save says which it began
-from, so one made from an older copy is refused rather than written over a
-change made meanwhile, and history keeps every field changed and who changed
-it. An hour on an invoice, or in a recorded payment, stays as it was — the
-database refuses changing it as it refuses removing it — and its screen says
-where to put it right: taken off the draft, credited on the invoice, or
-corrected on the next payment.
+their own work and is told who changes the rest. A change is written on the
+phone first and sent when there is a connection, as a line's is, saying which
+save it began from and what the entry was then. Someone else's change made
+meanwhile is merged with it part by part — when it was worked, who worked it,
+who pays and where, what was done, whether it bills, its note — and a part both
+changed differently waits on the phone for its maker to pick, from where both
+started, the other's, and their own (`src/lib/entry-merge.ts`). History keeps
+every field changed, who changed it, and when it was made on the phone. An hour
+on an invoice, or in a recorded payment, stays as it was — the database refuses
+changing it as it refuses removing it — and its screen says where to put it
+right: taken off the draft, credited on the invoice, or corrected on the next
+payment.
 
 A draft is sent from its own Send screen, which dates it, gives it its due date
 and its link, and hands the link to the phone's share sheet or the clipboard.
@@ -778,8 +783,9 @@ libpq looks on this platform: on Linux the unix socket packages usually create,
 which authenticates by user rather than by password. `PGHOST` or `DATABASE_URL`
 move it — to TCP, to another machine, or to a managed service.
 
-**Capture works offline.** Time, a draft's lines and changes to them, a draft
-started on site, and a trip recorded or changed are written to the browser first
+**Capture works offline.** Time and changes to it, a draft's lines and changes
+to them, a draft started on site, and a trip recorded or changed are written to
+the browser first
 and sent when there is a connection. Each new thing carries a `client_uuid` made
 on the phone, unique to whoever made it, so a retry returns the row they already
 sent, and the same uuid from anyone else is a row of their own. A trip's miles the phone could only estimate take Google's route when it
@@ -803,10 +809,14 @@ the icon where the logo is fit to be one (square, and an SVG or a PNG of 512px
 or more) and reckon's own tally where it is not. A service worker keeps Today,
 the Time screens, the invoices with each draft and its lines, and Trips with
 each recent trip not yet billed, as they were last seen, each saying how old it
-is. With no signal at all the app still opens there — a timer starts and stops,
-a line goes on a draft, a trip is recorded — and what was recorded posts when
-any page next opens with one. Every other screen says it needs a connection
-rather than showing a figure that may have changed.
+is. It keeps the time entries a person entered this week and last that are not
+yet billed or paid, each on its screen, and All entries as a copy of its own
+holding only those, with nothing of what they are worth; the screen as it is
+with a signal, everyone's entries and their value, is never kept. With no
+signal at all the app still opens there — a timer starts and stops, an entry is
+changed, a line goes on a draft, a trip is recorded — and what was recorded
+posts when any page next opens with one. Every other screen says it needs a
+connection rather than showing a figure that may have changed.
 Signing out empties what was kept, and a new deploy is announced with a reload,
 never forced on someone mid-entry. The service worker is registered for
 somebody signed in, and only then, so a client opening their invoice's link is

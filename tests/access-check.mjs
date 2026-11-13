@@ -353,13 +353,18 @@ const entry = (/** @type {Record<string, unknown>} */ extra) => ({
 		String(crew.status)
 	);
 
-	const mine = await asField('/api/time', send('POST', entry({ crew: 'one', worked_by: me })));
+	const minePosted = entry({ crew: 'one', worked_by: me });
+	const mine = await asField('/api/time', send('POST', minePosted));
 	const mineId = mine.ok ? (await mine.json()).id : null;
 	// Changed after the fact: their own, to their own work and nobody else's.
 	const changed = mineId
 		? await asField(
 				`/api/time/${mineId}`,
-				send('PATCH', { ...entry({ crew: 'one', worked_by: me, minutes: 45 }), version: 1 })
+				send('PATCH', {
+					...entry({ crew: 'one', worked_by: me, minutes: 45 }),
+					version: 1,
+					base: minePosted
+				})
 			)
 		: null;
 	check(
@@ -370,7 +375,7 @@ const entry = (/** @type {Record<string, unknown>} */ extra) => ({
 	const elsewise = mineId
 		? await asField(
 				`/api/time/${mineId}`,
-				send('PATCH', { ...entry({ crew: 'one', worked_by: full }), version: 2 })
+				send('PATCH', { ...entry({ crew: 'one', worked_by: full }), version: 2, base: minePosted })
 			)
 		: null;
 	check(
@@ -378,7 +383,7 @@ const entry = (/** @type {Record<string, unknown>} */ extra) => ({
 		"but cannot change it into someone else's work",
 		String(elsewise?.status)
 	);
-	const off = mineId ? await asField(`/api/time/${mineId}`, { method: 'DELETE' }) : null;
+	const off = mineId ? await asField(`/api/time/${mineId}?version=2`, { method: 'DELETE' }) : null;
 	check(
 		mine.ok && off?.status === 200,
 		'Field enters their own work, and takes it off',
@@ -390,7 +395,9 @@ const entry = (/** @type {Record<string, unknown>} */ extra) => ({
 		send('POST', entry({ crew: 'team', crew_ids: [full, me] }))
 	);
 	const teamId = team.ok ? (await team.json()).id : null;
-	const refused = teamId ? await asField(`/api/time/${teamId}`, { method: 'DELETE' }) : null;
+	const refused = teamId
+		? await asField(`/api/time/${teamId}?version=1`, { method: 'DELETE' })
+		: null;
 	check(
 		team.ok &&
 			refused?.status === 403 &&
@@ -401,7 +408,11 @@ const entry = (/** @type {Record<string, unknown>} */ extra) => ({
 	const notChanged = teamId
 		? await asField(
 				`/api/time/${teamId}`,
-				send('PATCH', { ...entry({ crew: 'team', crew_ids: [full, me] }), version: 1 })
+				send('PATCH', {
+					...entry({ crew: 'team', crew_ids: [full, me] }),
+					version: 1,
+					base: {}
+				})
 			)
 		: null;
 	check(
@@ -416,7 +427,7 @@ const entry = (/** @type {Record<string, unknown>} */ extra) => ({
 		'Field opens team work they were on, and is told who changes it',
 		String(opened?.status)
 	);
-	if (teamId) await asFull(`/api/time/${teamId}`, { method: 'DELETE' });
+	if (teamId) await asFull(`/api/time/${teamId}?version=1`, { method: 'DELETE' });
 
 	// The uuid a phone makes is its maker's own: sent by anyone else, it
 	// neither hands back what the first one made nor is taken for it.
@@ -442,8 +453,42 @@ const entry = (/** @type {Record<string, unknown>} */ extra) => ({
 		"Field does not open an entry of someone else's work",
 		String(notTheirs?.status)
 	);
-	if (theirs?.id) await asField(`/api/time/${theirs.id}`, { method: 'DELETE' });
-	if (firstId) await asFull(`/api/time/${firstId}`, { method: 'DELETE' });
+
+	// Kept on a phone for no signal: each person's own entries alone, to change
+	// on site -- someone with Full's too, who sees everyone's with a signal.
+	const kept = async (
+		/** @type {(path: string, init?: RequestInit) => Promise<Response>} */ as
+	) => {
+		const list = await as('/api/offline');
+		const copy = await as('/timesheet/all?copy=offline');
+		return {
+			screens: /** @type {string[]} */ (list.ok ? (await list.json()).screens : []),
+			copy: copy.ok ? await copy.text() : ''
+		};
+	};
+	const onFields = await kept(asField);
+	const onFulls = await kept(asFull);
+	check(
+		!!theirs?.id &&
+			!!firstId &&
+			onFields.screens.includes(`/timesheet/${theirs.id}`) &&
+			!onFields.screens.includes(`/timesheet/${firstId}`) &&
+			onFulls.screens.includes(`/timesheet/${firstId}`) &&
+			!onFulls.screens.includes(`/timesheet/${theirs.id}`),
+		'a phone keeps the entries its person entered to change with no signal, and nobody else’s',
+		`${onFields.screens.length} ${onFulls.screens.length}`
+	);
+	check(
+		!!theirs?.id &&
+			!!firstId &&
+			onFulls.copy.includes(`/timesheet/${firstId}`) &&
+			!onFulls.copy.includes(`/timesheet/${theirs.id}`),
+		'and All entries’ copy for no signal holds only those',
+		String(onFulls.copy.length)
+	);
+
+	if (theirs?.id) await asField(`/api/time/${theirs.id}?version=1`, { method: 'DELETE' });
+	if (firstId) await asFull(`/api/time/${firstId}?version=1`, { method: 'DELETE' });
 }
 
 // Lines: added to a draft, and changed or taken off only by whoever added them.
