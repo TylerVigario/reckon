@@ -3,88 +3,36 @@
 	import ActionMenu from '#lib/ActionMenu.svelte';
 	import Dialog from '#lib/Dialog.svelte';
 	import Octicon from '#lib/Octicon.svelte';
-	import UnderlinePanels from '#lib/UnderlinePanels.svelte';
+	import CountSheet from '#lib/CountSheet.svelte';
+	import OfflineBanner from '#lib/OfflineBanner.svelte';
 	import { Decimal } from '#lib/decimal.ts';
+	import { flush, stockHeld } from '#lib/queue.ts';
 	import { dated, quantity } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import { readProblem } from '#lib/json.ts';
-	import { readCountLine, type Keep } from '#lib/count-fields.ts';
+	import { type Keep } from '#lib/count-fields.ts';
 	import { goto, refreshAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import type { PageProps } from './$types';
 
 	/**
-	 * A count. Being counted, it is a sheet in two tabs (#lib/UnderlinePanels):
-	 * what is still to count, and what has been -- each material with what is
-	 * on hand, and a box for how many are there, saved as it is left, so a
-	 * count can stop and carry on. Apply puts each difference right, asking
-	 * first; stock that moved since it was counted asks what to keep, as Odoo
-	 * asks (#lib/count-fields). Applied, it says what was counted and what
-	 * each difference moved and was worth.
+	 * A count. Being counted, it is a sheet (#lib/CountSheet), counted with a
+	 * signal or without. Apply puts each difference right, asking first, once
+	 * everything counted on this phone has arrived; stock that moved since it
+	 * was counted asks what to keep, as Odoo asks (#lib/count-fields). Applied,
+	 * it says what was counted and what each difference moved and was worth.
 	 */
 	let { data }: PageProps = $props();
 	const c = $derived(data.count);
 	const open = $derived(c.applied_at === null);
 	const lineOf = $derived(new Map(data.lines.map((l) => [l.material_id, l])));
-	const toCount = $derived(data.sheet.filter((m) => !lineOf.has(m.id)));
 	const counted = $derived(data.sheet.filter((m) => lineOf.has(m.id)));
 	const adjustedOf = $derived(new Map(data.adjustments.map((a) => [a.material_id, a])));
-	let part = $state('to');
+	/** How many figures on this count are still on this phone. */
+	let waiting = $state(0);
 
-	/** A figure as a box holds it: no trailing zeros. */
-	const plain = (v: string) => (v.includes('.') ? v.replace(/0+$/, '').replace(/\.$/, '') : v);
-	/** What the count found against what the shelf said then: "−5 ft", "+2 ft", or none. */
+	/** What the count found against what the shelf said then. */
 	const found = (l: { counted: string; on_hand: string }) => Decimal.from(l.counted).sub(l.on_hand);
-
-	// What is being typed, by material, until it is saved.
-	let drafts = $state<Record<string, string>>({});
-	let costs = $state<Record<string, string>>({});
-	let wrong = $state<Record<string, string>>({});
-	let saving = $state<Record<string, boolean>>({});
-
-	type Row = (typeof data.sheet)[number];
-	async function save(m: Row) {
-		const line = lineOf.get(m.id);
-		const raw = (drafts[m.id] ?? (line ? plain(line.counted) : '')).trim();
-		const cost = (costs[m.id] ?? (line?.cost_each ? plain(line.cost_each) : '')).trim();
-		if (
-			raw === (line ? plain(line.counted) : '') &&
-			cost === (line?.cost_each ? plain(line.cost_each) : '')
-		)
-			return;
-		const endpoint = `/api/counts/${c.id}/lines/${m.id}`;
-		let r: Response | null;
-		if (raw === '') {
-			saving[m.id] = true;
-			r = await fetch(endpoint, { method: 'DELETE' }).catch(() => null);
-		} else {
-			const fields = { counted: raw, cost_each: cost };
-			const why = readCountLine(fields, m.places).errors;
-			if (Object.keys(why).length) return void (wrong[m.id] = why.counted ?? why.cost_each);
-			saving[m.id] = true;
-			r = await fetch(endpoint, {
-				method: 'PUT',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ fields })
-			}).catch(() => null);
-		}
-		if (!r || !r.ok) {
-			saving[m.id] = false;
-			const b = r ? await readProblem(r) : {};
-			wrong[m.id] = r
-				? (b.errors?.counted ?? b.errors?.cost_each ?? b.detail ?? 'That did not save.')
-				: 'Not saved — no connection.';
-			return;
-		}
-		delete wrong[m.id];
-		await refreshAll();
-		delete drafts[m.id];
-		delete costs[m.id];
-		saving[m.id] = false;
-	}
-	const leave = (e: KeyboardEvent) => {
-		if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
-	};
 
 	// Applying: asked first; moved stock asks what to keep.
 	type Moved = {
@@ -105,6 +53,17 @@
 	async function apply() {
 		working = true;
 		problem = '';
+		// What is counted here goes first; a count is applied as the server has it.
+		await flush().catch(() => null);
+		const left = await stockHeld().then(
+			(h) => h.counted.filter((q) => q.counted.count === c.id && !q.refused).length,
+			() => 0
+		);
+		if (left > 0) {
+			working = false;
+			return void (problem =
+				'Some of what was counted on this phone has not arrived yet. Apply it once it has.');
+		}
 		const r = await fetch(`/api/counts/${c.id}/apply`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -138,63 +97,6 @@
 	}
 </script>
 
-{#snippet sheetRow(m: Row)}
-	{@const line = lineOf.get(m.id)}
-	{@const moves = line && !Decimal.from(line.on_hand).eq(m.on_hand)}
-	<div class="box-row cl">
-		<span class="what">
-			<label class="n" for="c-{m.id}">{m.name}</label>
-			<span class="sub">
-				{#if line}
-					{@const d = found(line)}
-					{d.isZero()
-						? 'Matches'
-						: `${d.lt(0) ? '−' : '+'}${quantity((d.lt(0) ? d.neg() : d).toString())} ${m.unit}`}
-					· {line.by}{moves ? ` · on hand was ${quantity(line.on_hand)} ${m.unit}` : ''}
-				{:else}
-					{quantity(m.on_hand)} {m.unit} on hand{m.active ? '' : ' · retired'}
-				{/if}
-			</span>
-		</span>
-		{#if moves}<span class="lab warn">Moved since</span>{/if}
-		<span class="tv">
-			<input
-				id="c-{m.id}"
-				class="ti"
-				inputmode="decimal"
-				autocomplete="off"
-				style="padding-right: calc({m.unit.length}ch + 24px)"
-				value={drafts[m.id] ?? (line ? plain(line.counted) : '')}
-				oninput={(e) => (drafts[m.id] = e.currentTarget.value)}
-				onchange={() => save(m)}
-				onkeydown={leave}
-				disabled={saving[m.id]}
-				aria-invalid={wrong[m.id] ? 'true' : undefined}
-				aria-describedby={wrong[m.id] ? `c-${m.id}-e` : undefined}
-			/>
-			<span class="tv-v" aria-hidden="true">{m.unit}</span>
-		</span>
-		{#if line && Number(m.on_hand) === 0 && Number(line.counted) > 0}
-			<span class="cost">
-				<label class="sub" for="c-{m.id}-cost">None on the shelf to cost it by: cost each</label>
-				<input
-					id="c-{m.id}-cost"
-					class="ti"
-					inputmode="decimal"
-					autocomplete="off"
-					value={costs[m.id] ?? (line.cost_each ? plain(line.cost_each) : '')}
-					oninput={(e) => (costs[m.id] = e.currentTarget.value)}
-					onchange={() => save(m)}
-					onkeydown={leave}
-				/>
-			</span>
-		{/if}
-		{#if wrong[m.id]}
-			<p class="fc-e full" id="c-{m.id}-e"><Octicon name="alert" />{wrong[m.id]}</p>
-		{/if}
-	</div>
-{/snippet}
-
 <Top
 	title="Count"
 	sub={open
@@ -225,6 +127,7 @@
 </Top>
 
 <div class="pad primer">
+	<OfflineBanner asOf={data.as_of} {waiting} />
 	{#if problem && applying === 'idle'}
 		<div class="banner crit" role="alert">
 			<Octicon name="alert" />
@@ -232,42 +135,12 @@
 		</div>
 	{/if}
 	{#if open}
-		<UnderlinePanels
-			label="This count"
-			id="count"
-			bind:selected={part}
-			tabs={[
-				{ id: 'to', label: 'To count', count: toCount.length },
-				{ id: 'done', label: 'Counted', count: counted.length }
-			]}
+		<CountSheet
+			count={c.id}
+			sheet={data.sheet}
+			lines={data.lines}
+			onwaiting={(n) => (waiting = n)}
 		/>
-		<div role="tabpanel" id="count-panel-to" aria-labelledby="count-tab-to" hidden={part !== 'to'}>
-			<section class="box" aria-label="To count">
-				{#each toCount as m (m.id)}
-					{@render sheetRow(m)}
-				{:else}
-					<p class="box-row muted">Everything has been counted. Apply puts the shelf right.</p>
-				{/each}
-			</section>
-		</div>
-		<div
-			role="tabpanel"
-			id="count-panel-done"
-			aria-labelledby="count-tab-done"
-			hidden={part !== 'done'}
-		>
-			<section class="box" aria-label="Counted">
-				{#each counted as m (m.id)}
-					{@render sheetRow(m)}
-				{:else}
-					<p class="box-row muted">Nothing counted yet. Type how many are there, under To count.</p>
-				{/each}
-			</section>
-		</div>
-		<p class="note">
-			Only what is counted changes. Each is saved as it is typed, so the count can stop and carry
-			on.
-		</p>
 	{:else}
 		<section class="box" aria-labelledby="counted-h">
 			<div class="box-h">
@@ -373,14 +246,6 @@
 	.box-row {
 		margin: 0;
 	}
-	.cl {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 8px 12px;
-		min-height: 64px;
-		box-sizing: border-box;
-	}
 	.done {
 		display: flex;
 		align-items: center;
@@ -402,39 +267,6 @@
 	.sub {
 		font-size: 12px;
 		color: var(--ink-3);
-	}
-	.lab {
-		flex: 0 0 auto;
-	}
-	.tv {
-		position: relative;
-		flex: 0 0 8.5rem;
-	}
-	.tv .ti {
-		text-align: right;
-	}
-	.tv-v {
-		position: absolute;
-		right: 12px;
-		top: 50%;
-		transform: translateY(-50%);
-		font-size: 13px;
-		color: var(--ink-3);
-		pointer-events: none;
-	}
-	.cost {
-		flex: 1 1 100%;
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		gap: 8px;
-	}
-	.cost .ti {
-		flex: 0 0 8.5rem;
-		text-align: right;
-	}
-	.full {
-		flex: 1 1 100%;
 	}
 	.fig {
 		flex: 0 0 auto;

@@ -34,8 +34,10 @@
 				>
 				<span class="sub">
 					{quantity(l.qty_received)}
-					{m.unit} for {money(l.ex_tax_cost)}, and {money(l.tax_paid)} tax{l.receipt_id
-						? ` · paid by ${l.paid_by ?? 'the business'}`
+					{m.unit}{l.ex_tax_cost !== null
+						? ` for ${money(l.ex_tax_cost)}, and ${money(l.tax_paid ?? '0')} tax${
+								l.receipt_id ? ` · paid by ${l.paid_by ?? 'the business'}` : ''
+							}`
 						: ''}
 				</span>
 			</span>

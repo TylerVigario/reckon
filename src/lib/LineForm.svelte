@@ -12,8 +12,11 @@
 		flush,
 		notKept,
 		waitingCount,
-		type QueuedLine
+		stockHeld,
+		type QueuedLine,
+		type ShownReceipt
 	} from '#lib/queue.ts';
+	import { withReceived } from '#lib/stock-held.ts';
 	import { pct, percent, quantity } from '#lib/format.ts';
 	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { readFromStock, readPassedOn } from '#lib/line-fields.ts';
@@ -117,7 +120,15 @@
 	// reason. Saving it queues it again under its own uuid, which clears the
 	// refusal.
 	let fixing = $state<QueuedLine | null>(null);
+	// Stock received on this phone and not yet sent is on the shelf here too,
+	// something new on it included (#lib/stock-held).
+	let received = $state<ShownReceipt[]>([]);
+	const offered = $derived(withReceived(data.stock, received));
 	onMount(() => {
+		void stockHeld().then(
+			(h) => (received = h.receipts.filter((q) => !q.refused).map((q) => q.receipt.shown)),
+			() => {}
+		);
 		void waitingCount().then(
 			(n) => (waiting = n),
 			() => {}
@@ -149,11 +160,11 @@
 	const stock = $derived(kind === 'material');
 	const bought = $derived(kind === 'bought');
 
-	type Item = (typeof data.stock)[number];
-	const item = $derived(data.stock.find((m) => m.id === materialId));
+	type Item = (typeof offered)[number];
+	const item = $derived(offered.find((m) => m.id === materialId));
 	const onHand = (m: Item) => m.shelf.lots.reduce((n, l) => n.add(l.qtyRemaining), Decimal.ZERO);
 	const shown = $derived(
-		data.stock.filter((m) =>
+		offered.filter((m) =>
 			`${m.name} ${m.sku ?? ''}`.toLowerCase().includes(find.trim().toLowerCase())
 		)
 	);
@@ -462,7 +473,7 @@
 						<span class="rec-m"
 							><span class="rec-t"
 								><span class="lt"
-									>{data.stock.length ? 'Nothing in stock by that name' : 'Nothing in stock'}</span
+									>{offered.length ? 'Nothing in stock by that name' : 'Nothing in stock'}</span
 								></span
 							></span
 						>

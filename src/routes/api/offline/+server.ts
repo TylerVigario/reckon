@@ -1,6 +1,14 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import { invoice, invoiceLine, timeEntry, trip } from '#lib/server/db/schema/index.ts';
+import {
+	invoice,
+	invoiceLine,
+	material,
+	materialLot,
+	stockCount,
+	timeEntry,
+	trip
+} from '#lib/server/db/schema/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { keptEntries, keptTrips } from '#lib/server/kept.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
@@ -22,6 +30,11 @@ import type { RequestHandler } from './$types';
  * last that are neither billed nor paid, each on its own screen, so an entry
  * is changed or removed on site.
  *
+ * And for someone with Full, the stock: Materials, each material that is
+ * offered or has stock on the shelf, with its Stock tab, Receive, and the
+ * count being counted, or the sheet one started on the phone is counted on --
+ * so stock is received, adjusted and counted with no signal.
+ *
  * The worker keeps each as a copy cut to that (#lib/offline-copy): this says
  * only which screens.
  *
@@ -32,7 +45,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 	const field = fieldOnly(locals);
 	const me = locals.user!.id;
 	const today = businessToday();
-	const [drafts, lines, trips, entries] = await Promise.all([
+	const [drafts, lines, trips, entries, stocked, counting] = await Promise.all([
 		db.select({ id: invoice.id }).from(invoice).where(eq(invoice.status, 'draft')),
 		// Lines added by hand on a draft: each opens on a screen of its own, to be
 		// changed or taken off on site too.
@@ -57,7 +70,22 @@ export const GET: RequestHandler = async ({ locals }) => {
 		db
 			.select({ id: timeEntry.id })
 			.from(timeEntry)
-			.where(keptEntries(me, today, locals.weekStart))
+			.where(keptEntries(me, today, locals.weekStart)),
+		// The catalogue is Full's (#lib/access).
+		field
+			? []
+			: db
+					.select({ id: material.id })
+					.from(material)
+					.where(
+						or(
+							eq(material.active, true),
+							sql`exists (select 1 from ${materialLot} l where l.material_id = ${material.id} and l.qty_remaining > 0)`
+						)
+					),
+		field
+			? []
+			: db.select({ id: stockCount.id }).from(stockCount).where(isNull(stockCount.appliedAt))
 	]);
 	return Response.json(
 		{
@@ -72,6 +100,15 @@ export const GET: RequestHandler = async ({ locals }) => {
 				]),
 				'/timesheet/all',
 				...entries.map((e) => `/timesheet/${e.id}`),
+				...(field
+					? []
+					: [
+							'/catalogue/materials',
+							...stocked.map((m) => `/catalogue/materials/${m.id}`),
+							'/catalogue/receipts/new',
+							'/catalogue/counts/on-phone',
+							...counting.map((c) => `/catalogue/counts/${c.id}`)
+						]),
 				'/trips',
 				'/trips/new',
 				...trips.flatMap((t) => [

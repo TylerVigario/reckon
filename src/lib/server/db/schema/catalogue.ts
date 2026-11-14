@@ -260,10 +260,16 @@ export const material = pgTable(
 		reorderLevel: decimal(12, 4),
 		active: boolean().default(true).notNull(),
 		/** Each save counts, so a change made from an old copy is told of one since. */
-		version: integer().default(1).notNull()
+		version: integer().default(1).notNull(),
+		/**
+		 * The uuid a phone made for it, where it was received there with no
+		 * signal: what a line drawing from it names until it arrives.
+		 */
+		clientUuid: uuid()
 	},
 	(t) => [
 		unique('material_sku_key').on(t.sku),
+		unique('material_client_uuid_key').on(t.clientUuid),
 		nonNegative('material_markup_pct_check', t.markupPct),
 		nonNegative('material_reorder_level_check', t.reorderLevel),
 		foreignKey({
@@ -321,9 +327,12 @@ export const stockReceipt = pgTable(
 		/** The receipt or invoice, as the phone shrank it, and its type. */
 		receipt: bytea(),
 		receiptType: text(),
+		/** The uuid it was made with, on the page or a phone: sent twice, it is one receipt. */
+		clientUuid: uuid(),
 		createdAt: createdAt()
 	},
 	(t) => [
+		unique('stock_receipt_client_uuid_key').on(t.clientUuid),
 		foreignKey({
 			name: 'stock_receipt_paid_by_fkey',
 			columns: [t.paidBy],
@@ -352,6 +361,8 @@ export const stockCount = pgTable(
 	{
 		id: id(),
 		countedOn: day().notNull(),
+		/** The uuid a phone started it with, where it was started there. */
+		clientUuid: uuid(),
 		createdBy: uuid().notNull(),
 		createdAt: createdAt(),
 		/** When it was applied, and by whom; empty while it is being counted. */
@@ -373,6 +384,7 @@ export const stockCount = pgTable(
 			'stock_count_applied_by_someone',
 			sql`(${t.appliedAt} IS NULL) = (${t.appliedBy} IS NULL)`
 		),
+		unique('stock_count_created_by_client_uuid_key').on(t.createdBy, t.clientUuid),
 		uniqueIndex('stock_count_one_open')
 			.on(sql`(${t.appliedAt} IS NULL)`)
 			.where(sql`${t.appliedAt} IS NULL`)
@@ -446,10 +458,13 @@ export const stockAdjustment = pgTable(
 		taxPaid: decimal(12, 4).default('0').notNull(),
 		/** The count it puts right, where a count made it. */
 		countId: uuid(),
+		/** The uuid it was made with, on the page or a phone: sent twice, it is one. */
+		clientUuid: uuid(),
 		createdBy: uuid().notNull(),
 		createdAt: createdAt()
 	},
 	(t) => [
+		unique('stock_adjustment_created_by_client_uuid_key').on(t.createdBy, t.clientUuid),
 		index('stock_adjustment_material').on(t.materialId, t.madeOn),
 		index('stock_adjustment_count').on(t.countId),
 		foreignKey({

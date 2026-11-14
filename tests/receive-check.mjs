@@ -584,23 +584,21 @@ check(
 const materialId = /** @type {string} */ (await evaluate(`location.pathname.split('/')[3]`));
 const refusedReceipt = /** @type {string} */ (
 	await run(async (/** @type {string} */ id) => {
+		// As a phone's queue sends one, made before it was retired.
 		const f = new FormData();
+		f.set('client_uuid', crypto.randomUUID());
 		f.set('received_on', new Date().toISOString().slice(0, 10));
 		f.set('tax_paid', '0');
 		f.set(
 			'items',
 			JSON.stringify([{ material_id: id, count: '1', per: '', price: '1.00', price_is: 'each' }])
 		);
-		const r = await fetch('/catalogue/receipts/new', {
-			method: 'POST',
-			headers: { 'x-sveltekit-action': 'true' },
-			body: f
-		});
-		return await r.text();
+		const r = await fetch('/api/receipts', { method: 'POST', body: f });
+		return `${r.status} ${await r.text()}`;
 	}, materialId)
 );
 check(
-	refusedReceipt.includes(`${RENAMED} is retired`),
+	refusedReceipt.startsWith('400 ') && refusedReceipt.includes(`${RENAMED} is retired`),
 	`a receipt naming it is refused (${refusedReceipt.slice(0, 200)})`
 );
 await go('/catalogue/materials');

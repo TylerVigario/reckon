@@ -400,6 +400,13 @@
       "when": 1794609503623,
       "tag": "0056_a_count_puts_the_shelf_right",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1794614593590,
+      "tag": "0057_stock_is_put_right_with_no_signal",
+      "breakpoints": true
     }
   ]
 }

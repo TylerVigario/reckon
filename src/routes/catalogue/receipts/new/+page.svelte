@@ -1,7 +1,17 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { enhance } from '$app/forms';
+	import { onMount, untrack } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import Top from '#lib/Top.svelte';
+	import OfflineBanner from '#lib/OfflineBanner.svelte';
+	import { splitTax } from '#lib/receipt-split.ts';
+	import {
+		enqueueReceipt,
+		findReceipt,
+		flush,
+		type QueuedReceipt,
+		type ShownReceived
+	} from '#lib/queue.ts';
 	import Dialog from '#lib/Dialog.svelte';
 	import UnderlinePanels from '#lib/UnderlinePanels.svelte';
 	import { Decimal, Ratio, sum } from '#lib/decimal.ts';
@@ -29,11 +39,18 @@
 	 * each is entered on its own and listed as a row -- the Ministry of
 	 * Justice's "add to a list", which it gives for anything longer than a few
 	 * short fields.
+	 *
+	 * Received on the phone first and sent by the queue (#lib/queue), as a line
+	 * is: with a signal it arrives at once and its receipt opens; without one
+	 * it waits, and what it puts on the shelf can go on a line meanwhile
+	 * (#lib/stock-held). Refused, it opens here again to be fixed.
 	 */
-	let { data, form }: PageProps = $props();
+	let { data }: PageProps = $props();
 
 	type Item = {
 		key: number;
+		/** The uuid made here for something new on it, which a line drawing it names until it arrives. */
+		newUuid: string;
 		materialId: string;
 		name: string;
 		unitId: string;
@@ -45,6 +62,7 @@
 	let made = 0;
 	const blank = (): Item => ({
 		key: made++,
+		newUuid: crypto.randomUUID(),
 		materialId: data.material ?? data.materials[0]?.id ?? '',
 		name: '',
 		unitId: data.units[0]?.id ?? '',
@@ -72,11 +90,42 @@
 		if (receiptWrong) part = 'receipt';
 		else if (itemsWrong) part = 'items';
 	}
-	$effect(() => {
-		if (form?.errors) {
-			errors = form.errors;
-			showWrong();
-		}
+	/** The uuid it is received with: kept while it is fixed, so it is one receipt. */
+	let uuid: string = crypto.randomUUID();
+	/** A receipt the server refused, opened again to be fixed: its paper kept unless another is chosen. */
+	let fixing = $state<QueuedReceipt | null>(null);
+	let why = $state('');
+	onMount(() => {
+		const id = page.url.searchParams.get('fix');
+		if (!id) return;
+		void findReceipt(id).then(
+			(q) => {
+				if (!q) return;
+				fixing = q;
+				uuid = q.receipt.client_uuid;
+				const f = q.receipt.fields;
+				supplier = f.supplier ?? '';
+				reference = f.reference ?? '';
+				day = f.received_on ?? day;
+				paidBy = f.paid_by ?? '';
+				tax = f.tax_paid ?? '';
+				items = q.receipt.items.map((i) => ({
+					key: made++,
+					newUuid: i.material_uuid || crypto.randomUUID(),
+					materialId: i.material_id ?? '',
+					name: i.name ?? '',
+					unitId: i.unit_id ?? '',
+					count: i.count ?? '',
+					per: i.per ?? '',
+					price: i.price ?? '',
+					priceIs: i.price_is === 'each' ? 'each' : 'all'
+				}));
+				errors = q.refused?.errors ?? {};
+				if (q.refused && !Object.keys(errors).length) why = q.refused.detail;
+				showWrong();
+			},
+			() => {}
+		);
 	});
 
 	/** The item open in the dialog: a copy, put back only when it reads right. */
@@ -95,6 +144,7 @@
 	/** "a ft", but "each" for what is counted each. */
 	const per = (it: Item) => (written(it) === 'each' ? 'each' : `a ${written(it)}`);
 	const fieldsOf = (it: Item) => ({
+		material_uuid: it.materialId ? '' : it.newUuid,
 		material_id: it.materialId,
 		name: it.name,
 		unit_id: it.unitId,
@@ -162,6 +212,96 @@
 	const wrongWith = (i: number) =>
 		Object.entries(errors).find(([k]) => k.startsWith(`items.${i}.`))?.[1] ?? null;
 	const errId = (key: string) => `r-${key.replaceAll('.', '-')}-e`;
+
+	/**
+	 * Keeps the receipt on this phone, paper and all, then sends what is
+	 * waiting. Arrived, its receipt opens; refused, it stays here to be fixed;
+	 * with no signal, Materials opens with it waiting there.
+	 */
+	async function save(e: SubmitEvent) {
+		e.preventDefault();
+		const formData = new FormData(e.currentTarget as HTMLFormElement);
+		const fields = Object.fromEntries(
+			[...formData.entries()].filter((x): x is [string, string] => typeof x[1] === 'string')
+		);
+		const sent = items.map(fieldsOf);
+		errors = readReceipt(
+			fields,
+			sent,
+			(raw) => {
+				const it = items[sent.indexOf(raw as (typeof sent)[number])];
+				return it ? (unitOf(it)?.places ?? null) : null;
+			},
+			data.places
+		).errors;
+		if (Object.keys(errors).length > 0) return showWrong();
+		saving = true;
+		why = '';
+		// A photo goes shrunk, so a receipt costs a few hundred kilobytes.
+		const file = formData.get('receipt');
+		const paper =
+			file instanceof File && file.size > 0
+				? await shrink(file)
+				: (fixing?.receipt.receipt ?? null);
+		const shelves = items.map(shelfOf);
+		const shares = splitTax(
+			totals.tax,
+			shelves.map((x) => x?.cost ?? '0'),
+			data.places
+		);
+		const shown: ShownReceived[] = items.map((it, n) => {
+			const u = unitOf(it);
+			return {
+				material_id: it.materialId || null,
+				material_uuid: it.materialId ? null : it.newUuid,
+				name: nameOf(it),
+				unit: u?.name ?? '',
+				short: u ? (u.short ?? u.name) : '',
+				places: u?.places ?? 0,
+				markup: shelves[n]?.markup ?? data.markup,
+				qty: shelves[n]?.qty ?? '0',
+				cost: shelves[n]?.cost ?? '0',
+				tax: shares[n] ?? '0'
+			};
+		});
+		try {
+			await enqueueReceipt({
+				client_uuid: uuid,
+				fields: {
+					received_on: fields.received_on ?? '',
+					supplier: fields.supplier ?? '',
+					reference: fields.reference ?? '',
+					paid_by: fields.paid_by ?? '',
+					tax_paid: fields.tax_paid ?? ''
+				},
+				items: sent,
+				receipt: paper,
+				made_at: new Date().toISOString(),
+				shown: {
+					supplier: fields.supplier || null,
+					received_on: fields.received_on ?? '',
+					total: totals.all,
+					items: shown
+				}
+			});
+		} catch {
+			why = 'This phone would not keep the receipt, so it is not received.';
+			saving = false;
+			return;
+		}
+		// A few seconds for the server to take it; no longer, on a weak signal.
+		await Promise.race([flush().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
+		const left = await findReceipt(uuid).catch(() => undefined);
+		if (!left) return void (await goto(resolve('/catalogue/receipts/[id]', { id: uuid })));
+		if (left.refused) {
+			fixing = left;
+			errors = left.refused.errors ?? {};
+			if (!Object.keys(errors).length) why = left.refused.detail;
+			saving = false;
+			return showWrong();
+		}
+		await goto(resolve('/catalogue/materials'), { invalidateAll: true });
+	}
 </script>
 
 {#snippet wrong(key: string, from: Record<string, string> = errors)}
@@ -178,40 +318,14 @@
 />
 
 <div class="pad primer">
-	<form
-		id="receive"
-		method="POST"
-		enctype="multipart/form-data"
-		novalidate
-		use:enhance={async ({ formData, cancel }) => {
-			const fields = Object.fromEntries(
-				[...formData.entries()].filter((e): e is [string, string] => typeof e[1] === 'string')
-			);
-			const sent = items.map(fieldsOf);
-			errors = readReceipt(
-				fields,
-				sent,
-				(raw) => {
-					const it = items[sent.indexOf(raw as (typeof sent)[number])];
-					return it ? (unitOf(it)?.places ?? null) : null;
-				},
-				data.places
-			).errors;
-			if (Object.keys(errors).length > 0) {
-				showWrong();
-				return cancel();
-			}
-			saving = true;
-			formData.set('items', JSON.stringify(sent));
-			// A photo goes shrunk, so a receipt costs a few hundred kilobytes.
-			const file = formData.get('receipt');
-			if (file instanceof File && file.size > 0) formData.set('receipt', await shrink(file));
-			return async ({ update }) => {
-				await update({ reset: false });
-				saving = false;
-			};
-		}}
-	>
+	<OfflineBanner asOf={data.as_of} />
+	{#if why}
+		<div class="banner crit" role="alert">
+			<Octicon name="alert" />
+			<div class="banner-m"><p class="banner-t">{why}</p></div>
+		</div>
+	{/if}
+	<form id="receive" novalidate onsubmit={save}>
 		<UnderlinePanels
 			label="Receiving stock"
 			id="rcv"

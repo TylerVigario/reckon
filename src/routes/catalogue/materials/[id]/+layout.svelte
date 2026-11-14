@@ -4,6 +4,10 @@
 	import Dialog from '#lib/Dialog.svelte';
 	import Octicon from '#lib/Octicon.svelte';
 	import RecordHead from '#lib/RecordHead.svelte';
+	import StockOnPhone from '#lib/StockOnPhone.svelte';
+	import OfflineBanner from '#lib/OfflineBanner.svelte';
+	import { enqueueAdjust, findAdjust, flush, waitingCount, type QueuedAdjust } from '#lib/queue.ts';
+	import { onMount } from 'svelte';
 	import { Decimal } from '#lib/decimal.ts';
 	import { quantity } from '#lib/format.ts';
 	import { unitPrice } from '#lib/money.svelte.ts';
@@ -27,6 +31,10 @@
 	 * its actions; Adjust opens a dialog to take some off the shelf or put some
 	 * on, how many, on which day, why, and a note (#lib/adjust-fields). Retire
 	 * and Offer again are in its menu, retiring asking first.
+	 *
+	 * An adjustment is kept on the phone first and sent by the queue
+	 * (#lib/queue), so it is made with no signal too; what is waiting, or was
+	 * refused, is said above the tabs, with Fix reopening Adjust with it.
 	 */
 	let { data, children }: LayoutProps = $props();
 	const m = $derived(data.material);
@@ -42,8 +50,13 @@
 	let errors = $state<Record<string, string>>({});
 	let problem = $state('');
 	let saving = $state(false);
+	/** The uuid it is made with: kept while it is fixed, so it is one adjustment. */
+	let uuid = '';
+	let onPhone = $state<{ refresh: () => Promise<void> }>();
+	let waiting = $state(0);
 
 	function adjust() {
+		uuid = crypto.randomUUID();
 		way = 'off';
 		qty = '';
 		day = data.today;
@@ -54,6 +67,33 @@
 		problem = '';
 		open = true;
 	}
+	/** An adjustment the server refused, opened again in Adjust to be fixed. */
+	function fix(q: QueuedAdjust) {
+		const f = q.adjust.fields;
+		uuid = q.adjust.client_uuid;
+		way = f.way === 'on' ? 'on' : 'off';
+		qty = f.qty ?? '';
+		day = f.made_on ?? data.today;
+		reason = (f.reason as AdjustReason) ?? 'used';
+		costEach = f.cost_each ?? '';
+		note = f.note ?? '';
+		errors = q.refused?.errors ?? {};
+		problem = q.refused && !Object.keys(errors).length ? q.refused.detail : '';
+		open = true;
+	}
+	onMount(() => {
+		void waitingCount().then(
+			(n) => (waiting = n),
+			() => {}
+		);
+		const id = page.url.searchParams.get('fix');
+		if (id)
+			void findAdjust(id).then(
+				(q) => q && q.adjust.material_id === m.id && fix(q),
+				() => {}
+			);
+	});
+
 	// The reason follows the way: a find is only put on.
 	$effect(() => {
 		if (!REASONS_FOR[way].includes(reason)) reason = REASONS_FOR[way][0];
@@ -82,22 +122,41 @@
 		};
 		errors = readAdjustment(fields, m.places).errors;
 		problem = '';
+		// More than the shelf holds, as this screen knows it, is refused here;
+		// the server says again, off the shelf as it is when it arrives.
+		if (!errors.qty && way === 'off')
+			try {
+				if (Decimal.from(qty).gt(m.on_hand))
+					errors.qty = `Only ${quantity(m.on_hand)} ${m.unit} of ${m.name} is on the shelf.`;
+			} catch {
+				/* not a figure; the rule above said so */
+			}
 		if (Object.keys(errors).length) return;
 		saving = true;
-		const r = await fetch(`/api/materials/${m.id}/adjustments`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ fields })
-		}).catch(() => null);
+		try {
+			await enqueueAdjust({
+				client_uuid: uuid,
+				material_id: m.id,
+				fields,
+				made_at: new Date().toISOString(),
+				shown: { name: m.name, unit: m.unit, way, qty, reason }
+			});
+		} catch {
+			saving = false;
+			return void (problem = 'This phone would not keep it, so it is not made.');
+		}
+		// A few seconds for the server to take it; no longer, on a weak signal.
+		await Promise.race([flush().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
+		const left = await findAdjust(uuid).catch(() => undefined);
 		saving = false;
-		if (!r) return void (problem = 'Not saved — no connection.');
-		if (!r.ok) {
-			const b = await readProblem(r);
-			errors = b.errors ?? {};
-			if (!Object.keys(errors).length) problem = b.detail ?? 'That did not save.';
+		if (left?.refused) {
+			errors = left.refused.errors ?? {};
+			if (!Object.keys(errors).length) problem = left.refused.detail;
+			await onPhone?.refresh();
 			return;
 		}
 		open = false;
+		await onPhone?.refresh();
 		await refreshAll();
 	}
 
@@ -172,6 +231,7 @@
 </Top>
 
 <div class="pad primer">
+	<OfflineBanner asOf={data.as_of} {waiting} />
 	<RecordHead label="{m.name}’s record" {tabs}>
 		{#snippet state()}
 			{#if !m.active}<span class="lab warn">Retired</span>{/if}
@@ -199,6 +259,7 @@
 			</div>
 		</div>
 	{/if}
+	<StockOnPhone bind:this={onPhone} material={m.id} today={data.today} onfix={fix} />
 	{#if failed}
 		<div class="banner crit" role="alert">
 			<Octicon name="alert" />

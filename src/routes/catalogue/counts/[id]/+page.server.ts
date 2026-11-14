@@ -12,6 +12,9 @@ import type { PageServerLoad } from './$types';
  * retired one with stock still on the shelf, with what is on hand now and
  * what was counted of each. Applied, it is what was counted, what the shelf
  * said then, and what each adjustment it made moved and was worth.
+ *
+ * The one being counted is kept for no signal (#lib/offline-copy): its sheet
+ * has quantities alone, so it is kept whole.
  */
 export const load: PageServerLoad = async ({ params }) => {
 	if (!UUID.test(params.id)) error(404, 'no such count');
@@ -73,6 +76,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		.map((m) => ({ ...m, on_hand: figures.of.get(m.id)!.on_hand }))
 		.filter((m) => m.active || Number(m.on_hand) > 0 || counted.has(m.id));
 	return {
+		as_of: new Date().toISOString(),
 		count: { ...count, applied_at: count.applied_at?.toISOString() ?? null },
 		sheet: count.applied_at ? sheet.filter((m) => counted.has(m.id)) : sheet,
 		lines,
