@@ -272,7 +272,7 @@ try {
 	);
 	const settings = await (await asFull('/settings/integrations')).text();
 	check(
-		settings.includes('last failed') && settings.includes('550'),
+		/last failed/i.test(settings) && settings.includes('550'),
 		'and Settings says so, with what the relay said'
 	);
 

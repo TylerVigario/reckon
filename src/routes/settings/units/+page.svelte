@@ -1,64 +1,99 @@
 <script lang="ts">
-	import Top from '#lib/Top.svelte';
-	import Ask from '#lib/Ask.svelte';
-	import Setting from '#lib/Setting.svelte';
-	import { parseAll } from '#lib/field-rules.ts';
-	import { parseUnitField, placesWord, PLACES, UNIT_FIELDS } from '#lib/unit-fields.ts';
-	import { readProblem } from '#lib/json.ts';
 	import { refreshAll } from '$app/navigation';
-	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
+	import Top from '#lib/Top.svelte';
+	import ActionMenu from '#lib/ActionMenu.svelte';
+	import Dialog from '#lib/Dialog.svelte';
+	import Octicon from '#lib/Octicon.svelte';
+	import { parseAll } from '#lib/field-rules.ts';
+	import { placesWord, PLACES, UNIT_FIELDS } from '#lib/unit-fields.ts';
+	import { readProblem } from '#lib/json.ts';
+	import type { PageProps } from './$types';
 
+	/**
+	 * What stock and lines are counted in: each unit, what is written beside a
+	 * figure in it, how finely it is counted, and how many materials are counted
+	 * in it. One is added, or changed, in a dialog holding the three; one no
+	 * material is counted in is deleted from its menu, asking first, as every
+	 * delete does: it cannot be undone.
+	 */
 	let { data }: PageProps = $props();
+	type Unit = (typeof data.units)[number];
 
 	const places = PLACES.map((n) => ({ value: String(n), label: placesWord(n) }));
 	const counted = (n: number) =>
-		n === 0 ? 'Nothing is counted in it' : `${n} material${n === 1 ? '' : 's'}`;
+		n === 0 ? 'nothing counted in it' : `${n} material${n === 1 ? '' : 's'}`;
+	const about = (u: Unit) =>
+		[
+			u.short && u.short !== u.name ? `written ${u.short}` : null,
+			placesWord(u.places).toLowerCase(),
+			counted(u.materials)
+		]
+			.filter(Boolean)
+			.join(' · ');
 
+	// The dialog: a new unit, or one being changed.
+	let open = $state(false);
+	let changing = $state<Unit | null>(null);
 	let name = $state('');
 	let short = $state('');
-	let newPlaces = $state('0');
-	let adding = $state(false);
+	let unitPlaces = $state('0');
+	let errors = $state<Record<string, string>>({});
 	let problem = $state('');
+	let saving = $state(false);
 
-	async function add() {
-		const fields = { name, short, places: newPlaces };
-		const local = parseAll(UNIT_FIELDS, fields).errors;
-		problem = local.name ?? local.short ?? local.places ?? '';
-		if (problem) return;
-		adding = true;
-		const r = await fetch('/api/units', {
-			method: 'POST',
+	function add() {
+		changing = null;
+		name = short = '';
+		unitPlaces = '0';
+		errors = {};
+		problem = '';
+		open = true;
+	}
+	function change(u: Unit) {
+		changing = u;
+		name = u.name;
+		short = u.short ?? '';
+		unitPlaces = String(u.places);
+		errors = {};
+		problem = '';
+		open = true;
+	}
+	async function save() {
+		const fields = { name, short, places: unitPlaces };
+		errors = parseAll(UNIT_FIELDS, fields).errors;
+		problem = '';
+		if (Object.keys(errors).length) return;
+		saving = true;
+		const r = await fetch(changing ? `/api/units/${changing.id}` : '/api/units', {
+			method: changing ? 'PATCH' : 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ fields })
 		}).catch(() => null);
-		adding = false;
+		saving = false;
 		if (!r?.ok) {
 			const p = r ? await readProblem(r) : null;
-			problem = p
-				? (p.errors?.name ?? p.errors?.short ?? p.errors?.places ?? 'That did not save.')
-				: 'Not saved — no connection.';
+			errors = p?.errors ?? {};
+			if (!Object.keys(errors).length)
+				problem = p ? (p.detail ?? 'That did not save.') : 'Not saved — no connection.';
 			return;
 		}
-		name = '';
-		short = '';
-		newPlaces = '0';
+		open = false;
 		await refreshAll();
 	}
 
-	// Deleting a unit no material is counted in asks first, as every delete
-	// does: it cannot be undone.
-	let deleting = $state<string | null>(null);
+	let deleting = $state<Unit | null>(null);
 	let working = $state(false);
-
-	async function remove(id: string) {
-		problem = '';
+	let failed = $state('');
+	async function remove() {
+		if (!deleting) return;
+		failed = '';
 		working = true;
-		const r = await fetch(`/api/units/${id}`, { method: 'DELETE' }).catch(() => null);
+		const r = await fetch(`/api/units/${deleting.id}`, { method: 'DELETE' }).catch(() => null);
 		working = false;
 		deleting = null;
 		if (!r?.ok) {
-			problem = r
+			failed = r
 				? ((await readProblem(r)).detail ?? 'Not deleted.')
 				: 'Not deleted — no connection.';
 			return;
@@ -67,6 +102,12 @@
 	}
 </script>
 
+{#snippet wrong(key: string)}
+	{#if errors[key]}
+		<p class="fc-e" id="u-{key}-e"><Octicon name="alert" />{errors[key]}</p>
+	{/if}
+{/snippet}
+
 <Top
 	title="Units"
 	sub="What stock and lines are counted in"
@@ -74,133 +115,145 @@
 	backLabel="Settings"
 />
 
-<div class="pad">
-	<div class="sec">
-		<div class="sec-h"><h2>Units</h2></div>
-		<div class="rows inset">
-			{#each data.units as u (u.id)}
-				<div class="unit">
-					<Setting
-						name="name"
-						key={u.id}
-						label={`Name · ${counted(u.materials)}`}
-						value={u.name}
-						endpoint="/api/units/{u.id}"
-						validate={parseUnitField}
-						onsaved={() => refreshAll()}
-					/>
-					<Setting
-						name="short"
-						key={u.id}
-						label="Written beside a figure"
-						value={u.short ?? ''}
-						placeholder={u.name}
-						endpoint="/api/units/{u.id}"
-						validate={parseUnitField}
-						onsaved={() => refreshAll()}
-					/>
-					<Setting
-						name="places"
-						key={u.id}
-						label="A quantity is counted"
-						value={String(u.places)}
-						options={places}
-						endpoint="/api/units/{u.id}"
-						validate={parseUnitField}
-						onsaved={() => refreshAll()}
-					/>
-					{#if !u.materials}
-						{#if deleting === u.id}
-							<Ask
-								tone="danger"
-								keep="Keep it"
-								go="Delete it for good"
-								going="Deleting…"
-								{working}
-								onkeep={() => (deleting = null)}
-								ongo={() => remove(u.id)}
-							>
-								<p>
-									Delete the unit {u.name}? No material is counted in it. This cannot be undone.
-								</p>
-							</Ask>
-						{:else}
-							<button type="button" class="btn sm gho" onclick={() => (deleting = u.id)}
-								>Delete {u.name}</button
-							>
-						{/if}
-					{/if}
-				</div>
-			{/each}
+<div class="pad primer">
+	{#if failed}
+		<div class="banner crit" role="alert">
+			<Octicon name="alert" />
+			<div class="banner-m"><p class="banner-t">{failed}</p></div>
+		</div>
+	{/if}
 
-			<div class="fld">
-				<label for="new-unit">A new unit</label>
-				<input
-					id="new-unit"
-					class="inp"
-					placeholder="box of 25"
-					bind:value={name}
-					onkeydown={(e) => e.key === 'Enter' && add()}
+	<section class="box" aria-labelledby="units-h">
+		<div class="box-h">
+			<h2 class="box-t" id="units-h">Units</h2>
+			<button type="button" class="btn sm" onclick={add}>Add unit</button>
+		</div>
+		{#each data.units as u (u.id)}
+			<div class="box-row" id="unit-{u.id}">
+				<span class="what">
+					<span class="n">{u.name}</span>
+					<span class="sub">{about(u)}</span>
+				</span>
+				<ActionMenu
+					label="Actions for {u.name}"
+					items={[
+						{ label: 'Change', onselect: () => change(u) },
+						...(u.materials
+							? []
+							: [
+									'divider' as const,
+									{ label: 'Delete', danger: true, onselect: () => void (deleting = u) }
+								])
+					]}
 				/>
 			</div>
-			<div class="fld">
-				<label for="new-short">Written beside a figure</label>
-				<input id="new-short" class="inp" placeholder="The name" bind:value={short} />
-			</div>
-			<div class="fld">
-				<label for="new-places">A quantity is counted</label>
-				<select id="new-places" class="inp" bind:value={newPlaces}>
-					{#each places as p (p.value)}<option value={p.value}>{p.label}</option>{/each}
-				</select>
-			</div>
-			<div class="fld">
-				<button type="button" class="btn pri" onclick={add} disabled={adding || !name.trim()}
-					>Add the unit</button
-				>
-				{#if problem}<small class="why">{problem}</small>{/if}
-			</div>
-		</div>
-	</div>
+		{:else}
+			<p class="box-row muted">None yet. Add unit adds the first.</p>
+		{/each}
+	</section>
 
-	<div class="rows notes">
-		<div class="rec">
-			<div class="rec-m">
-				<div class="rec-t"><span class="lt">hour · mile · each</span></div>
-				<div class="rec-s">
-					What a service is charged by. They are not on this list: they decide how time and trips
-					are counted.
-				</div>
-			</div>
-		</div>
-		<div class="rec">
-			<div class="rec-m">
-				<div class="rec-t"><span class="lt">A unit is named once and used everywhere</span></div>
-				<div class="rec-s">
-					Stock, a line and a price are counted in it. A box of 25 is a unit of its own: nothing
-					converts one unit into another. A line on an invoice keeps the name it was billed in.
-				</div>
-			</div>
-		</div>
-	</div>
+	<p class="note">
+		A unit is named once and used everywhere: stock, a line and a price are counted in it. A box of
+		25 is a unit of its own, and nothing converts one unit into another. A line on an invoice keeps
+		the name it was billed in.
+	</p>
+	<p class="note">
+		Hour, mile and each are what a service is charged by. They are not on this list: they decide how
+		time and trips are counted.
+	</p>
 </div>
 
+<Dialog
+	{open}
+	title={changing ? `Change ${changing.name}` : 'Add unit'}
+	go={changing ? 'Save unit' : 'Add unit'}
+	going="Saving…"
+	working={saving}
+	ongo={save}
+	onclose={() => (open = false)}
+>
+	<div class="form">
+		<div class="fc">
+			<label class="fc-l" for="u-name">Name<span aria-hidden="true"> *</span></label>
+			<input
+				id="u-name"
+				class="ti"
+				autocomplete="off"
+				required
+				placeholder="box of 25"
+				bind:value={name}
+				aria-invalid={errors.name ? 'true' : undefined}
+				aria-describedby={errors.name ? 'u-name-e' : undefined}
+			/>
+			{@render wrong('name')}
+		</div>
+		<div class="fc">
+			<label class="fc-l" for="u-short">Written beside a figure</label>
+			<input
+				id="u-short"
+				class="ti"
+				autocomplete="off"
+				placeholder={name || 'The name'}
+				bind:value={short}
+				aria-invalid={errors.short ? 'true' : undefined}
+				aria-describedby={errors.short ? 'u-short-e' : 'u-short-c'}
+			/>
+			{#if errors.short}
+				{@render wrong('short')}
+			{:else}
+				<p class="fc-c" id="u-short-c">Empty writes the name.</p>
+			{/if}
+		</div>
+		<div class="fc">
+			<label class="fc-l" for="u-places">A quantity is counted</label>
+			<select id="u-places" class="ti" bind:value={unitPlaces}>
+				{#each places as p (p.value)}<option value={p.value}>{p.label}</option>{/each}
+			</select>
+			{@render wrong('places')}
+		</div>
+		{#if problem}<p class="fc-e"><Octicon name="alert" />{problem}</p>{/if}
+	</div>
+</Dialog>
+
+<Dialog
+	open={deleting !== null}
+	title="Delete {deleting?.name ?? 'the unit'}?"
+	go="Delete it"
+	going="Deleting…"
+	tone="danger"
+	{working}
+	ongo={remove}
+	onclose={() => (deleting = null)}
+>
+	<p>No material is counted in it. This cannot be undone.</p>
+</Dialog>
+
 <style>
-	.unit {
+	.box-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 56px;
+		box-sizing: border-box;
+		margin: 0;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
-		padding-bottom: 14px;
-		border-bottom: 1px solid var(--borderColor-default);
+		gap: 2px;
 	}
-	.unit .btn {
-		align-self: flex-start;
-		color: var(--fgColor-danger);
+	.n {
+		font-weight: 600;
 	}
-	.notes {
-		margin-top: 22px;
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
 	}
-	.why {
-		color: var(--fgColor-danger);
-		font-size: 12.5px;
+	.form {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
 	}
 </style>

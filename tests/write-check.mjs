@@ -1595,10 +1595,11 @@ if (gallon.body?.id) {
 }
 // The foot, which the demo's raceway is counted in.
 const unitsPage = await (await fetch(`${base}/settings/units`, { headers: { cookie } })).text();
-const foot = unitsPage
-	.split('id="set-')
-	.find((chunk) => /^[0-9a-f-]{36}-name"/.test(chunk) && chunk.includes('value="foot"'))
-	?.slice(0, 36);
+const foot = [
+	...unitsPage.matchAll(
+		/id="unit-([0-9a-f-]{36})"[\s\S]*?class="n[^"]*">(?:\s|<!--[^>]*-->)*([^<]+)</g
+	)
+].find((m) => m[2].trim() === 'foot')?.[1];
 if (foot)
 	await check(
 		'a unit stock is counted in is not removed',
@@ -1663,10 +1664,12 @@ if (van.body?.id) {
 	);
 }
 // The Corolla, which the demo's trip today was driven in.
-const travelPage = await (await fetch(`${base}/settings/travel`, { headers: { cookie } })).text();
+const vehiclesPage = await (
+	await fetch(`${base}/settings/vehicles`, { headers: { cookie } })
+).text();
 const corolla = [
-	...travelPage.matchAll(
-		/href="[^"]*\/settings\/travel\/vehicles\/([0-9a-f-]{36})"[\s\S]*?class="rec-t"[^>]*>(?:\s|<!--[^>]*-->)*([^<&]+)/g
+	...vehiclesPage.matchAll(
+		/href="[^"]*\/settings\/vehicles\/([0-9a-f-]{36})"[\s\S]*?class="n[^"]*">(?:\s|<!--[^>]*-->)*([^<&]+)/g
 	)
 ].find((m) => m[2].trim() === 'Corolla')?.[1];
 if (corolla)
@@ -1677,7 +1680,7 @@ if (corolla)
 		undefined,
 		409
 	);
-else failures.push('could not find the Corolla on /settings/travel');
+else failures.push('could not find the Corolla on /settings/vehicles');
 
 // An SVG logo with a script in it, uploaded through the settings form the way
 // a browser would, and then asked for by someone who is not signed in. It is
@@ -1688,7 +1691,7 @@ else failures.push('could not find the Corolla on /settings/travel');
 		'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.cookie)</script></svg>';
 	const form = new FormData();
 	form.set('logo', new Blob([svg], { type: 'image/svg+xml' }), 'logo.svg');
-	const up = await fetch(`${base}/settings/business?/logo`, {
+	const up = await fetch(`${base}/settings/brand?/logo`, {
 		method: 'POST',
 		body: form,
 		headers: { cookie, origin: base, 'x-sveltekit-action': 'true', ...PROXY }
@@ -1710,18 +1713,16 @@ else failures.push('could not find the Corolla on /settings/travel');
 	console.log(`  ${ok ? '✓' : '✗'} an SVG logo is served under a policy that runs nothing`);
 
 	// The demo business has no logo; it is left without one.
-	await fetch(`${base}/settings/business?/clearLogo`, {
+	await fetch(`${base}/settings/brand?/clearLogo`, {
 		method: 'POST',
 		body: new FormData(),
 		headers: { cookie, origin: base, 'x-sveltekit-action': 'true', ...PROXY }
 	});
 }
 
-/** The value chosen in the list with this id, as the server drew it. */
-const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
-	const list = new RegExp(`<select[^>]*id="${id}"[^>]*>([\\s\\S]*?)</select>`).exec(html)?.[1];
-	return list ? (/<option value="([^"]*)" selected/.exec(list)?.[1] ?? '') : null;
-};
+/** What a detail of this name holds, as the server drew it (#lib/Detail). */
+const detailHeld = (/** @type {string} */ html, /** @type {string} */ name) =>
+	new RegExp(`data-detail="${name}" data-value="([^"]*)"`).exec(html)?.[1] ?? null;
 
 // Two clocks (#26). The server works in UTC. A person's own today -- their
 // timesheet, the day a new entry starts on -- follows the zone on their user
@@ -1781,12 +1782,12 @@ const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
 	const other = otherId;
 	const profile = await page('/profile');
 	const before = {
-		timezone: chosen(profile, 'set-timezone') ?? '',
-		locale: chosen(profile, 'set-locale') ?? '',
-		hour_cycle: chosen(profile, 'set-hour_cycle') ?? '',
-		week_start: chosen(profile, 'set-week_start') ?? ''
+		timezone: detailHeld(profile, 'timezone') ?? '',
+		locale: detailHeld(profile, 'locale') ?? '',
+		hour_cycle: detailHeld(profile, 'hour_cycle') ?? '',
+		week_start: detailHeld(profile, 'week_start') ?? ''
 	};
-	const business = chosen(await page('/settings/business'), 'set-timezone') || 'UTC';
+	const business = detailHeld(await page('/settings/region'), 'timezone') || 'UTC';
 	const setMine = (/** @type {string} */ name, /** @type {string} */ value) =>
 		call('PATCH', `/api/people/${me}`, { fields: { [name]: value } });
 	const setOwn = (/** @type {string} */ zone) => setMine('timezone', zone);

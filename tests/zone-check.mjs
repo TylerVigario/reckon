@@ -23,11 +23,9 @@ if (!base || !email) {
 /** @type {Record<string, string>} */
 const PROXY = base.startsWith('http:') ? { 'x-forwarded-proto': 'http' } : {};
 
-/** The value chosen in the list with this id, as the server drew it. */
-const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
-	const list = new RegExp(`<select[^>]*id="${id}"[^>]*>([\\s\\S]*?)</select>`).exec(html)?.[1];
-	return list ? (/<option value="([^"]*)" selected/.exec(list)?.[1] ?? '') : null;
-};
+/** What a detail of this name holds, as the server drew it (#lib/Detail). */
+const held = (/** @type {string} */ html, /** @type {string} */ name) =>
+	new RegExp(`data-detail="${name}" data-value="([^"]*)"`).exec(html)?.[1] ?? null;
 
 // HTTP, for setting things up and reading them back.
 const { cookie } = await signIn(base, email);
@@ -40,7 +38,7 @@ if (!me) {
 }
 const stored = async () => {
 	const html = await (await fetch(base + '/profile', { headers: { cookie } })).text();
-	return chosen(html, 'set-timezone');
+	return held(html, 'timezone');
 };
 const setOwn = (/** @type {string} */ zone) =>
 	fetch(`${base}/api/people/${me}`, {

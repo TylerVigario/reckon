@@ -1,150 +1,140 @@
 <script lang="ts">
-	import Top from '#lib/Top.svelte';
-	import Setting from '#lib/Setting.svelte';
-	import { unitPrice } from '#lib/money.svelte.ts';
-	import Day from '#lib/Day.svelte';
-	import { dated, miles } from '#lib/format.ts';
-	import type { PageProps } from './$types';
+	import { refreshAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import Top from '#lib/Top.svelte';
+	import Detail from '#lib/Detail.svelte';
+	import Octicon from '#lib/Octicon.svelte';
+	import Day from '#lib/Day.svelte';
+	import { unitPrice } from '#lib/money.svelte.ts';
+	import { parseField } from '#lib/settings-fields.ts';
+	import type { PageProps } from './$types';
 
+	/**
+	 * Where trips start and end -- the business's address, changed on Business
+	 * -- what a mile is charged at, the mileage service's dated price, and how a
+	 * trip's legs are put to the clients they were driven for, changed in place
+	 * (#lib/Detail).
+	 */
 	let { data }: PageProps = $props();
 	const o = $derived(data.operator);
-	// Whose it is, what it has been driven this year, and when it was retired.
-	const about = (v: { owner: string | null; retired_on: string | null; miles: string }) =>
-		[
-			v.owner ? `${v.owner}'s` : "The business's",
-			`${miles(v.miles)} on trips this year`,
-			v.owner ? null : 'pays nobody',
-			v.retired_on ? `retired ${dated(v.retired_on)}` : null
-		]
-			.filter(Boolean)
-			.join(' · ');
 </script>
 
 <Top
 	title="Travel"
-	sub="Where trips start, what a mile costs, and the vehicles"
+	sub="Where trips start, and what a mile is charged at"
 	back={resolve('/settings')}
 	backLabel="Settings"
 />
 
-<div class="pad">
-	<div class="sec">
-		<div class="sec-h"><h2>Base</h2></div>
-		<div class="rows">
-			<div class="rec">
-				<div class="rec-m">
-					<div class="rec-t">Trips start and end here</div>
-					<div class="rec-s">
-						{o?.address ?? 'No address set'} — the base every trip starts and ends at.
-					</div>
-				</div>
-				<div class="rec-n">
-					<a class="btn sm" href={resolve('/settings/business')}>Edit</a>
-				</div>
-			</div>
-		</div>
-	</div>
-
-	<div class="sec">
-		<div class="sec-h">
-			<h2>Vehicles</h2>
-			<span class="sp"></span>
-			<a class="btn sm" href={resolve('/settings/travel/vehicles/new')}>Add a vehicle</a>
-		</div>
-		<div class="rows">
-			{#each data.vehicles as v (v.id)}
-				<a
-					class="rec link"
-					class:gone={v.retired_on}
-					href={resolve('/settings/travel/vehicles/[id]', { id: v.id })}
+<div class="pad primer">
+	<section class="box" aria-labelledby="base-h">
+		<div class="box-h"><h2 class="box-t" id="base-h">Base</h2></div>
+		<div class="box-row kv">
+			<span class="kv-l">Trips start and end at</span>
+			<span class="kv-v">
+				<span
+					>{#if o?.address}{o.address}{:else}<span class="muted">No address yet</span>{/if}</span
 				>
-					<div class="rec-m">
-						<div class="rec-t">
-							{v.name}{#if v.retired_on}&nbsp;<span class="lt">· retired</span>{/if}
-						</div>
-						<div class="rec-s">{about(v)}</div>
-					</div>
-					<span class="arw" aria-hidden="true">›</span>
-				</a>
-			{:else}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t"><span class="lt">No vehicles yet</span></div>
-						<div class="rec-s">
-							A trip names what it was driven in, and its owner is who its miles pay
-						</div>
-					</div>
-				</div>
-			{/each}
+				<span class="kv-s">The business’s address</span>
+			</span>
+			<span class="kv-end">
+				<a class="ib" href={resolve('/settings/business')} aria-label="Change it on Business"
+					><Octicon name="pencil" /></a
+				>
+			</span>
 		</div>
-		<p class="aside">
-			Travel's vehicle rule pays a vehicle's owner, whoever drove it: a person's at their rule, the
-			business's to nobody. One that changes hands is retired and added again, so trips already
-			driven still pay who they paid.
-		</p>
-	</div>
+	</section>
 
-	<div class="sec">
-		<div class="sec-h"><h2>Rate</h2></div>
-		<div class="rows">
-			{#each data.rates as r (r.id)}
-				<div class="rec" class:acc={r.state === 'scheduled'}>
-					<div class="rec-m">
-						<div class="rec-t">{r.state === 'scheduled' ? 'Scheduled' : 'Current'}</div>
-						<div class="rec-s">
-							{r.service} · {r.state === 'scheduled' ? 'takes over' : 'effective'}
-							<Day iso={r.effective_from} />
-						</div>
-					</div>
-					<div class="rec-n">
-						<span class="rec-v">{unitPrice(r.rate)}</span><span class="rec-x">/mi</span>
-					</div>
-				</div>
-			{:else}
-				<div class="rec warn">
-					<div class="rec-m">
-						<div class="rec-t">Not priced</div>
-						<div class="rec-s">Mileage is a service; give it a dated price to bill any</div>
-					</div>
-					<div class="rec-n"><span class="rec-v mut">—</span></div>
-				</div>
-			{/each}
-			{#each data.history as h (h.id)}
-				<a class="rec link" href={resolve('/catalogue/services/[id]/history', { id: h.id })}>
-					<div class="rec-m">
-						<div class="rec-t"><span class="lt">Earlier rates</span></div>
-						<div class="rec-s">
-							{h.name} · {h.earlier} no longer in force, still priced on every line billed under them
-						</div>
-					</div>
-					<span class="arw" aria-hidden="true">›</span>
-				</a>
-			{/each}
-		</div>
-	</div>
+	<section class="box" aria-labelledby="rate-h">
+		<div class="box-h"><h2 class="box-t" id="rate-h">Rate</h2></div>
+		{#each data.rates as r (r.id)}
+			<div class="box-row line">
+				<span class="what">
+					<span class="n">{r.state === 'scheduled' ? 'Scheduled' : 'Current'}</span>
+					<span class="sub"
+						>{r.service} · {r.state === 'scheduled' ? 'takes over' : 'from'}
+						<Day iso={r.effective_from} /></span
+					>
+				</span>
+				{#if r.state === 'scheduled'}<span class="lab acc">Scheduled</span>{/if}
+				<span class="fig"
+					><span class="v">{unitPrice(r.rate)}</span><span class="sub">a mile</span></span
+				>
+			</div>
+		{:else}
+			<div class="box-row line">
+				<span class="what">
+					<span class="n">Not priced</span>
+					<span class="sub">Mileage is a service: give it a dated price to bill any.</span>
+				</span>
+				<span class="lab warn">No rate</span>
+			</div>
+		{/each}
+		{#each data.history as h (h.id)}
+			<a class="box-row line" href={resolve('/catalogue/services/[id]/history', { id: h.id })}>
+				<span class="what">
+					<span class="n">Earlier rates</span>
+					<span class="sub"
+						>{h.name} · {h.earlier} no longer in force, still priced on every line billed under them</span
+					>
+				</span>
+			</a>
+		{/each}
+	</section>
 
-	<div class="sec">
-		<div class="sec-h"><h2>How legs are assigned</h2></div>
-		<div class="rows inset">
-			<Setting
-				name="mileage_assignment"
-				label="Rule"
-				value={o?.mileage_assignment ?? 'actual'}
-				options={[
-					{ value: 'actual', label: 'Assign each leg to whoever caused it' },
-					{ value: 'round_trip_per_client', label: 'A full round trip per client' }
-				]}
-				hint="Never bill more miles than were driven"
-			/>
-		</div>
-	</div>
+	<section class="box" aria-labelledby="legs-h">
+		<div class="box-h"><h2 class="box-t" id="legs-h">Legs</h2></div>
+		<Detail
+			name="mileage_assignment"
+			label="Each leg"
+			value={o?.mileage_assignment ?? 'actual'}
+			options={[
+				{ value: 'actual', label: 'Goes to whoever caused it' },
+				{ value: 'round_trip_per_client', label: 'A full round trip for each client' }
+			]}
+			endpoint="/api/settings"
+			validate={parseField}
+			onsaved={() => refreshAll()}
+		>
+			{#snippet caption()}Never more miles are billed than were driven.{/snippet}
+		</Detail>
+	</section>
 </div>
 
 <style>
-	.aside {
-		margin: 8px 0 0;
-		font-size: 12.5px;
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 56px;
+		box-sizing: border-box;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
 		color: var(--fgColor-muted);
+	}
+	.lab {
+		flex: 0 0 auto;
+	}
+	.fig {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
+	}
+	.v {
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
 	}
 </style>

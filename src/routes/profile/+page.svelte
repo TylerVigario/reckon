@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { enhance } from '$app/forms';
-	import Setting from '#lib/Setting.svelte';
+	import Detail from '#lib/Detail.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import { parsePersonField } from '#lib/people-fields.ts';
 	import { parseDeviceField } from '#lib/device-fields.ts';
 	import { clock, clockSample, datedAt, weekdayName, zoneName } from '#lib/format.ts';
@@ -90,88 +91,87 @@
 	}
 </script>
 
-<div class="sec">
-	<div class="sec-h"><h2>How dates and figures read</h2></div>
-	<div class="rows inset">
-		{#if offer}
-			<div class="offer">
-				<span>Your browser is set to {localeName(offer)}.</span>
+{#if offer}
+	<div class="banner" role="status">
+		<Octicon name="info" />
+		<div class="banner-m">
+			<p class="banner-t">Your browser is set to {localeName(offer)}</p>
+			<p class="banner-d">
 				<button type="button" class="btn sm" disabled={taking} onclick={takeBrowser}
 					>Use {localeName(offer)}</button
 				>
-			</div>
-		{/if}
-		<Setting
-			name="locale"
-			label="Locale"
-			value={me.locale ?? ''}
-			options={localeOptions(me.locale, "The business's")}
-			hint={(current) => {
-				const own = ownName(current || data.businessLocale);
-				const named = current
-					? own
-						? `${own}. `
-						: ''
-					: `Following the business's: ${localeName(data.businessLocale)}${own ? `, ${own}` : ''}. `;
-				return `${named}The language dates are written in, the order of day and month, and the separators in figures.`;
-			}}
-			{endpoint}
-			validate={parsePersonField}
-			onsaved={redraw}
-		/>
-		<Setting
-			name="hour_cycle"
-			label="Time format"
-			value={me.hour_cycle ?? ''}
-			options={clocks}
-			{endpoint}
-			validate={parsePersonField}
-			onsaved={redraw}
-		/>
-		<Setting
-			name="week_start"
-			label="First day of the week"
-			value={me.week_start === null ? '' : String(me.week_start)}
-			options={weeks}
-			hint="Where All entries begins each week."
-			{endpoint}
-			validate={parsePersonField}
-			onsaved={redraw}
-		/>
+			</p>
+		</div>
 	</div>
-</div>
+{/if}
 
-<div class="sec">
-	<div class="sec-h"><h2>Your clock</h2></div>
-	<div class="rows inset">
-		<Setting
-			name="timezone"
-			label="Time zone"
-			value={me.timezone ?? ''}
-			options={zoneOptions(me.timezone, `The business's — ${zoneName(data.businessZone)}`)}
-			hint={me.timezone
-				? 'Your own, on every device. A phone in another zone asks before changing it.'
-				: 'Set from your browser when you first sign in.'}
-			{endpoint}
-			validate={parsePersonField}
-			onsaved={redraw}
-		/>
-	</div>
-</div>
+<section class="box" aria-labelledby="dates-h">
+	<div class="box-h"><h2 class="box-t" id="dates-h">Dates and times</h2></div>
+	<Detail
+		name="locale"
+		label="Locale"
+		value={me.locale ?? ''}
+		options={localeOptions(me.locale, "The business's")}
+		shown={me.locale ? localeName(me.locale) : `The business’s: ${localeName(data.businessLocale)}`}
+		hint={ownName(me.locale || data.businessLocale) ?? ''}
+		{endpoint}
+		validate={parsePersonField}
+		onsaved={redraw}
+	>
+		{#snippet caption()}
+			The language dates are written in, the order of day and month, and the separators in figures.
+		{/snippet}
+	</Detail>
+	<Detail
+		name="hour_cycle"
+		label="Time format"
+		value={me.hour_cycle ?? ''}
+		options={clocks}
+		{endpoint}
+		validate={parsePersonField}
+		onsaved={redraw}
+	/>
+	<Detail
+		name="week_start"
+		label="First day of the week"
+		value={me.week_start === null ? '' : String(me.week_start)}
+		options={weeks}
+		{endpoint}
+		validate={parsePersonField}
+		onsaved={redraw}
+	>
+		{#snippet caption()}Where All entries begins each week.{/snippet}
+	</Detail>
+	<Detail
+		name="timezone"
+		label="Time zone"
+		value={me.timezone ?? ''}
+		options={zoneOptions(me.timezone, `The business's — ${zoneName(data.businessZone)}`)}
+		hint={me.timezone ? '' : 'Set from your browser when you first sign in.'}
+		{endpoint}
+		validate={parsePersonField}
+		onsaved={redraw}
+	>
+		{#snippet caption()}
+			Your own, on every device. A phone in another zone asks before changing it.
+		{/snippet}
+	</Detail>
+</section>
 
-<div class="sec">
-	<div class="sec-h"><h2>Signing in</h2></div>
-	<div class="rows">
-		<!-- The address they sign in with, and whether it's proven theirs: by a
-		     link sent there (#lib/server/links). Changed on Team. -->
-		<div class="rec email">
-			<div class="rec-m">
-				<div class="rec-t">Email</div>
-				<div class="rec-s">
-					{me.email} ·
-					{#if me.email_verified || form?.confirmed}
-						<span class="ok">Confirmed</span>
-					{:else if form?.confirm}
+<section class="box" aria-labelledby="sign-h">
+	<div class="box-h"><h2 class="box-t" id="sign-h">Signing in</h2></div>
+	<!-- The address they sign in with, and whether it's proven theirs: by a
+	     link sent there (#lib/server/links). Changed on Team. -->
+	<div class="box-row kv">
+		<span class="kv-l">Email</span>
+		<span class="kv-v">
+			<span
+				>{me.email}
+				{#if me.email_verified || form?.confirmed}<span class="lab good">Confirmed</span>{/if}</span
+			>
+			{#if !(me.email_verified || form?.confirmed)}
+				<span class="kv-s">
+					{#if form?.confirm}
 						<span class="no" role="alert">{form.confirm}</span>
 					{:else if form?.sent || data.confirmation}
 						A link is on its way there. It works once, for an hour.
@@ -180,15 +180,17 @@
 					{:else}
 						Not confirmed yet. Confirm it’s yours so reckon can reach you there.
 					{/if}
-				</div>
-				{#if me.changing}
-					<div class="rec-s">
-						{me.changing.lapsed
-							? `The change to ${me.changing.to} lapsed: its link wasn’t used within the hour. ${data.full ? 'Send another from Team.' : `To have another sent, contact ${data.contact}.`}`
-							: `Changing to ${me.changing.to}. Use the link sent there, by ${clock(me.changing.until, personalZone())} on ${datedAt(me.changing.until, personalZone())}. Until then you sign in with this one.`}
-					</div>
-				{/if}
-			</div>
+				</span>
+			{/if}
+			{#if me.changing}
+				<span class="kv-s">
+					{me.changing.lapsed
+						? `The change to ${me.changing.to} lapsed: its link wasn’t used within the hour. ${data.full ? 'Send another from Team.' : `To have another sent, contact ${data.contact}.`}`
+						: `Changing to ${me.changing.to}. Use the link sent there, by ${clock(me.changing.until, personalZone())} on ${datedAt(me.changing.until, personalZone())}. Until then you sign in with this one.`}
+				</span>
+			{/if}
+		</span>
+		<span class="kv-end">
 			{#if !me.email_verified && !form?.confirmed && !changingNow}
 				<form method="POST" action="?/confirm" use:enhance>
 					<button type="submit" class="btn sm"
@@ -196,53 +198,30 @@
 					>
 				</form>
 			{/if}
-		</div>
+		</span>
 	</div>
-</div>
+</section>
 
-<div class="sec">
-	<div class="sec-h"><h2>On this device</h2></div>
-	<div class="rows inset">
-		<Setting
-			name="theme"
-			label="Theme"
-			value={data.theme ?? ''}
-			options={themes}
-			hint="This device only. Each device you sign in on keeps its own."
-			endpoint="/api/device"
-			validate={parseDeviceField}
-			onsaved={redraw}
-		/>
-	</div>
-</div>
+<section class="box" aria-labelledby="device-h">
+	<div class="box-h"><h2 class="box-t" id="device-h">On this device</h2></div>
+	<Detail
+		name="theme"
+		label="Theme"
+		value={data.theme ?? ''}
+		options={themes}
+		endpoint="/api/device"
+		validate={parseDeviceField}
+		onsaved={redraw}
+	>
+		{#snippet caption()}This device only. Each device you sign in on keeps its own.{/snippet}
+	</Detail>
+</section>
 
 <style>
-	.email {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-	}
-	.email form {
-		flex: 0 0 auto;
-	}
-	.email .btn {
-		white-space: nowrap;
-	}
-	.ok {
-		color: var(--fgColor-success);
-		font-weight: 600;
-	}
 	.no {
 		color: var(--fgColor-danger);
 	}
-	.offer {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 10px;
-		padding: 12px 14px;
-		background: var(--bgColor-accent-muted);
-		border-bottom: 1px solid var(--borderColor-default);
-		font-size: 14px;
+	.kv-end .btn {
+		white-space: nowrap;
 	}
 </style>

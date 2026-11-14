@@ -32,6 +32,7 @@
 		hint = '',
 		caption,
 		required = false,
+		swatch = false,
 		editable = true,
 		endpoint,
 		validate,
@@ -60,6 +61,8 @@
 		/** Under the field while it is changed: what to put in it. */
 		caption?: Snippet;
 		required?: boolean;
+		/** A colour: a square of it beside the value, and beside the field as it is typed. */
+		swatch?: boolean;
 		editable?: boolean;
 		/** Where it saves, as { fields: { [name]: value } }. */
 		endpoint: string;
@@ -163,13 +166,23 @@
 			leave();
 		}
 	}
+	/**
+	 * The swatch's colour, set through the CSSOM: a style attribute is refused
+	 * by the content security policy, and a colour typed a character at a time
+	 * cannot be a class. One that is not a colour yet is simply not applied.
+	 */
+	function paint(node: HTMLElement, colour: string) {
+		const set = (c: string) => node.style.setProperty('background', c || 'transparent');
+		set(colour);
+		return { update: set };
+	}
 	const focus = (node: HTMLElement) => {
 		node.focus();
 		if (node instanceof HTMLInputElement) node.select();
 	};
 </script>
 
-<div class="box-row kv">
+<div class="box-row kv" data-detail={name} data-value={value ?? ''}>
 	{#if editing}
 		<label class="kv-l" for="{id}-f"
 			>{label}{#if required}<span aria-hidden="true"> *</span>{/if}</label
@@ -189,20 +202,29 @@
 						{#each options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
 					</select>
 				{:else}
-					<input
-						id="{id}-f"
-						class="ti"
-						autocomplete="off"
-						{type}
-						{inputmode}
-						{placeholder}
-						{required}
-						bind:value={draft}
-						aria-invalid={error ? 'true' : undefined}
-						aria-describedby={about}
-						onkeydown={keys}
-						use:focus
-					/>
+					{#snippet field()}
+						<input
+							id="{id}-f"
+							class="ti"
+							autocomplete="off"
+							{type}
+							{inputmode}
+							{placeholder}
+							{required}
+							bind:value={draft}
+							aria-invalid={error ? 'true' : undefined}
+							aria-describedby={about}
+							onkeydown={keys}
+							use:focus
+						/>
+					{/snippet}
+					{#if swatch}
+						<span class="grow swatched">
+							<i class="sw" aria-hidden="true" use:paint={draft}></i>{@render field()}
+						</span>
+					{:else}
+						{@render field()}
+					{/if}
 				{/if}
 				<button type="button" class="btn sm pri" onclick={save} disabled={saving}
 					>{saving ? 'Saving…' : 'Save'}</button
@@ -221,6 +243,7 @@
 		<span class="kv-l">{label}</span>
 		<span class="kv-v">
 			<span>
+				{#if swatch && value}<i class="sw" aria-hidden="true" use:paint={value}></i>{/if}
 				{#if reads}{reads}{:else}<span class="muted">None</span>{/if}
 				{#if saved}<span class="kv-saved" role="status"><Octicon name="check" />Saved</span>{/if}
 			</span>
@@ -239,3 +262,31 @@
 		</span>
 	{/if}
 </div>
+
+<style>
+	/* A colour, as the square GitHub draws beside a label's. */
+	.sw {
+		display: inline-block;
+		flex: 0 0 auto;
+		width: 16px;
+		height: 16px;
+		margin-right: 6px;
+		vertical-align: -3px;
+		border: 1px solid var(--borderColor-default);
+		border-radius: var(--borderRadius-small);
+	}
+	.swatched {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.swatched .ti {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+	.swatched .sw {
+		width: 24px;
+		height: 24px;
+		margin: 0;
+	}
+</style>
