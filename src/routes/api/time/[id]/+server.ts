@@ -1,4 +1,5 @@
-import { and, desc, eq, notLike } from 'drizzle-orm';
+import { crewChange } from '#lib/crew-change.ts';
+import { and, desc, eq, inArray, notLike } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
 import {
 	invoice,
@@ -233,9 +234,23 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 			saved = await asUser(
 				locals.user!.id,
 				async (tx) => {
-					// The crew first: an entry stays a team's while it names one
-					// (team_keeps_its_crew), and a team's is replaced whole.
-					await tx.delete(timeEntryCrew).where(eq(timeEntryCrew.timeEntryId, params.id));
+					// Who leaves the crew first: an entry stays a team's while it
+					// names one (team_keeps_its_crew). Only who changed is taken
+					// off or put on, so its history says who did (0059).
+					const had = await tx
+						.select({ id: timeEntryCrew.userId })
+						.from(timeEntryCrew)
+						.where(eq(timeEntryCrew.timeEntryId, params.id));
+					const { gone, joined } = crewChange(
+						had.map((c) => c.id),
+						e.crew === 'team' ? e.crewIds : []
+					);
+					if (gone.length)
+						await tx
+							.delete(timeEntryCrew)
+							.where(
+								and(eq(timeEntryCrew.timeEntryId, params.id), inArray(timeEntryCrew.userId, gone))
+							);
 					const [row] = await tx
 						.update(timeEntry)
 						.set({
@@ -255,10 +270,10 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 						.where(and(eq(timeEntry.id, params.id), eq(timeEntry.version, entry.version)))
 						.returning({ version: timeEntry.version });
 					if (!row) throw new Stale();
-					if (e.crew === 'team')
+					if (joined.length)
 						await tx
 							.insert(timeEntryCrew)
-							.values(e.crewIds.map((userId) => ({ timeEntryId: params.id, userId })));
+							.values(joined.map((userId) => ({ timeEntryId: params.id, userId })));
 					return row;
 				},
 				when

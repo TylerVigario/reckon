@@ -10,6 +10,8 @@
  * name.
  */
 
+import { inSaves, whole } from './history-saves.ts';
+
 /** A row of record_history for the material, or for one of its prices. */
 export type MaterialHistoryRow = {
 	table: 'material' | 'material_price';
@@ -46,51 +48,38 @@ export type MaterialEvent = {
 	priced: { price: string | null; from: string } | null;
 };
 
-const json = (v: string | null): Record<string, unknown> => {
-	try {
-		const parsed: unknown = JSON.parse(v ?? '{}');
-		return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
-	} catch {
-		return {};
-	}
-};
+const json = whole;
 const text = (v: unknown) => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : null);
 
 /** The rows, in any order, as the events a person reads, newest first. */
 export function materialEvents(rows: readonly MaterialHistoryRow[]): MaterialEvent[] {
-	const sorted = [...rows].sort((a, b) => Date.parse(a.changed_at) - Date.parse(b.changed_at));
-	const events: MaterialEvent[] = [];
-	const bySave = new Map<string, MaterialEvent>();
-	for (const r of sorted) {
-		// Rows of one transaction are one save; with none, one moment and one person.
-		const key = r.xact !== null ? `x${r.xact}` : `t${r.changed_at}|${r.changed_by ?? ''}`;
-		let e = bySave.get(key);
-		if (!e) {
-			e = {
-				who: r.changed_by,
-				at: r.changed_at,
-				added: null,
-				offered: null,
-				changes: [],
-				markup: null,
-				priced: null
-			};
-			bySave.set(key, e);
-			events.push(e);
+	const events = inSaves(
+		rows,
+		(r): MaterialEvent => ({
+			who: r.changed_by,
+			at: r.changed_at,
+			added: null,
+			offered: null,
+			changes: [],
+			markup: null,
+			priced: null
+		}),
+		(e, r) => {
+			if (r.table === 'material_price') {
+				// A price given, or today's given again the same day.
+				const from = r.effective_from ?? text(json(r.new_value).effective_from);
+				if (from && r.field === '(added)')
+					e.priced = { price: text(json(r.new_value).price), from };
+				else if (from && r.field === 'price') e.priced = { price: r.new_value, from };
+				return;
+			}
+			if (r.field === '(added)') e.added = json(r.new_value);
+			else if (r.field === 'active') e.offered = r.new_value === 'true';
+			else if (r.field === 'markup_pct') e.markup = { from: r.old_value, to: r.new_value };
+			else if (r.field in DETAILS)
+				e.changes.push({ field: r.field as Detail, from: r.old_value, to: r.new_value });
 		}
-		if (r.table === 'material_price') {
-			// A price given, or today's given again the same day.
-			const from = r.effective_from ?? text(json(r.new_value).effective_from);
-			if (from && r.field === '(added)') e.priced = { price: text(json(r.new_value).price), from };
-			else if (from && r.field === 'price') e.priced = { price: r.new_value, from };
-			continue;
-		}
-		if (r.field === '(added)') e.added = json(r.new_value);
-		else if (r.field === 'active') e.offered = r.new_value === 'true';
-		else if (r.field === 'markup_pct') e.markup = { from: r.old_value, to: r.new_value };
-		else if (r.field in DETAILS)
-			e.changes.push({ field: r.field as Detail, from: r.old_value, to: r.new_value });
-	}
+	);
 	const order = Object.keys(DETAILS);
 	for (const e of events) e.changes.sort((a, b) => order.indexOf(a.field) - order.indexOf(b.field));
 	// Only what a person reads: a save that moved nothing said here is left out.

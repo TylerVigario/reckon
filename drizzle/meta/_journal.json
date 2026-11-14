@@ -414,6 +414,13 @@
       "when": 1794633069063,
       "tag": "0058_the_catalogue_is_changed_with_no_signal",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794671277897,
+      "tag": "0059_a_crew_and_a_service_keep_their_history",
+      "breakpoints": true
     }
   ]
 }

@@ -2266,6 +2266,89 @@ SELECT must_fail($$
 $$, 'a team entry with a crew made one person''s');
 
 \echo ''
+\echo '=== 43b. who is on a crew, and a service, keep their history ==='
+
+DO $$ BEGIN
+  IF (SELECT array_agg(new_value ORDER BY new_value) FROM record_history h
+        JOIN time_entry e ON e.id = h.row_id
+       WHERE h.table_name = 'time_entry' AND h.field = 'crew'
+         AND e.client_uuid = 'dddddddd-0000-4000-8000-000000000001')
+     IS DISTINCT FROM ARRAY['a0a0a0a0-0000-4000-8000-0000000000a1',
+                            'a0a0a0a0-0000-4000-8000-0000000000a2'] THEN
+    RAISE EXCEPTION 'UNDER-TIGHT: the crew put on was not in the entry''s history';
+  END IF;
+  RAISE NOTICE '  held      each person put on a crew is in the entry''s history';
+END $$;
+
+SELECT must_pass($$
+  DELETE FROM time_entry_crew
+   WHERE user_id = 'a0a0a0a0-0000-4000-8000-0000000000a2'
+     AND time_entry_id = (SELECT id FROM time_entry
+                           WHERE client_uuid = 'dddddddd-0000-4000-8000-000000000001')
+$$, 'Sam taken off the crew');
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM record_history h JOIN time_entry e ON e.id = h.row_id
+                  WHERE h.table_name = 'time_entry' AND h.field = 'crew'
+                    AND e.client_uuid = 'dddddddd-0000-4000-8000-000000000001'
+                    AND h.old_value = 'a0a0a0a0-0000-4000-8000-0000000000a2'
+                    AND h.new_value IS NULL) THEN
+    RAISE EXCEPTION 'UNDER-TIGHT: who was taken off the crew was not in its history';
+  END IF;
+  RAISE NOTICE '  held      who is taken off a crew is in the entry''s history';
+END $$;
+
+-- Sam back on, as the sections after have it.
+INSERT INTO time_entry_crew (time_entry_id, user_id)
+SELECT id, 'a0a0a0a0-0000-4000-8000-0000000000a2' FROM time_entry
+ WHERE client_uuid = 'dddddddd-0000-4000-8000-000000000001';
+
+INSERT INTO time_entry (id, client_uuid, worked_on, seconds, crew, worked_by, created_by,
+                        entity_id, site_id, service_id)
+SELECT '43b43b43-0000-4000-8000-000000000001', '43b43b43-0000-4000-8000-0000000000aa',
+       worked_on, seconds, 'team', NULL, created_by, entity_id, site_id, service_id
+  FROM time_entry WHERE client_uuid = 'dddddddd-0000-4000-8000-000000000001';
+INSERT INTO time_entry_crew (time_entry_id, user_id) VALUES
+  ('43b43b43-0000-4000-8000-000000000001','a0a0a0a0-0000-4000-8000-0000000000a1'),
+  ('43b43b43-0000-4000-8000-000000000001','a0a0a0a0-0000-4000-8000-0000000000a2');
+
+SELECT must_pass($$
+  DELETE FROM time_entry WHERE id = '43b43b43-0000-4000-8000-000000000001'
+$$, 'a team entry removed, its crew with it');
+
+DO $$ BEGIN
+  IF (SELECT count(*) FROM record_history
+       WHERE row_id = '43b43b43-0000-4000-8000-000000000001' AND field = 'crew') <> 2
+     OR NOT EXISTS (SELECT 1 FROM record_history
+                     WHERE row_id = '43b43b43-0000-4000-8000-000000000001'
+                       AND field = '(deleted)') THEN
+    RAISE EXCEPTION 'UNDER-TIGHT: a removed entry''s crew was written as taken off, or its removal not kept';
+  END IF;
+  RAISE NOTICE '  held      a removed entry says so once, not its crew one by one';
+END $$;
+
+SELECT must_pass($$
+  UPDATE service SET name = 'Field service, on site'
+   WHERE id = 'b5000000-0000-4000-8000-000000000055'
+$$, 'a service renamed');
+
+INSERT INTO service (id, code, name, unit) VALUES
+  ('43b43b43-0000-4000-8000-000000000002','gone-43b','Gone soon','each');
+DELETE FROM service WHERE id = '43b43b43-0000-4000-8000-000000000002';
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM record_history WHERE table_name = 'service' AND field = 'name'
+                    AND row_id = 'b5000000-0000-4000-8000-000000000055'
+                    AND new_value = 'Field service, on site')
+     OR (SELECT count(*) FROM record_history
+          WHERE row_id = '43b43b43-0000-4000-8000-000000000002'
+            AND field IN ('(added)', '(deleted)')) <> 2 THEN
+    RAISE EXCEPTION 'UNDER-TIGHT: a service''s change, adding or removal was not kept';
+  END IF;
+  RAISE NOTICE '  held      a service keeps when it was added, each change, and its removal';
+END $$;
+
+\echo ''
 \echo '=== 44. a trip names its vehicle, and its owner is who its miles pay ==='
 
 SELECT must_pass($$
