@@ -590,8 +590,8 @@
 							No vehicles yet. Someone with Full adds one in Settings → Travel, and its miles pay
 							its owner.
 						{:else}
-							No vehicles yet. <a href={resolve('/settings/travel/vehicles/new')}>Add one</a> in Settings
-							→ Travel, and its miles pay its owner.
+							No vehicles yet. <a href={resolve('/settings/vehicles/new')}>Add one</a> in Settings → Travel,
+							and its miles pay its owner.
 						{/if}
 					</small>
 				{/if}

@@ -8,7 +8,7 @@ import { jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
 import type { PageServerLoad } from './$types';
 
 /**
- * The settings menu: six screens, each saying what it is set to now -- the
+ * The settings menu: ten screens, each saying what it is set to now -- the
  * business's name, its terms, its tax rules -- so whether something is set up
  * is answered without opening it.
  */

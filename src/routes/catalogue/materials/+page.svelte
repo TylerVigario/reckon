@@ -177,7 +177,7 @@
 		<p class="note">
 			Each sells at {percent(data.markup)} over the {basis} cost before tax, unless it has a markup or
 			a price of its own. The markup and how stock is costed are set on
-			<a href={resolve('/settings/business')}>Business</a>.
+			<a href={resolve('/settings/pricing')}>Pricing</a>.
 		</p>
 	{/if}
 </div>

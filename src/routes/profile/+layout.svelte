@@ -18,7 +18,7 @@
 
 <Top title="Your profile" sub={data.user?.name ?? ''} back={resolve('/more')} backLabel="More" />
 
-<div class="pad">
+<div class="pad primer">
 	<RecordHead
 		label="Your profile"
 		tabs={[

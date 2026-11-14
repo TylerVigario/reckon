@@ -1,14 +1,15 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { SETTINGS_PAGES } from '#lib/settings-pages.ts';
+	import { SETTINGS_GROUPS } from '#lib/settings-pages.ts';
 	import type { LayoutProps } from './$types';
 
 	/**
 	 * Settings' screens, each with the list of them down its side on a wide
-	 * screen, as GitHub's settings are (Primer's NavList, its pattern for a
-	 * settings menu: six are more than a row of tabs holds). On a phone the
-	 * list is the Settings screen itself, and each screen opens over it.
+	 * screen, grouped under headings, as GitHub's settings are (Primer's
+	 * NavList, its pattern for a settings menu: ten are more than a row of tabs
+	 * holds). On a phone the list is the Settings screen itself, and each
+	 * screen opens over it.
 	 */
 	let { children }: LayoutProps = $props();
 
@@ -18,16 +19,22 @@
 {#if listed}
 	<div class="split">
 		<nav class="side primer" aria-label="Settings">
-			<ul class="navlist">
-				{#each SETTINGS_PAGES as p (p.route)}
-					<li>
-						<a
-							href={resolve(p.route)}
-							aria-current={page.route.id?.startsWith(p.route) ? 'page' : undefined}>{p.title}</a
-						>
-					</li>
-				{/each}
-			</ul>
+			{#each SETTINGS_GROUPS as g (g.title)}
+				<div class="navlist-g">
+					<h2 class="navlist-h">{g.title}</h2>
+					<ul class="navlist">
+						{#each g.pages as p (p.route)}
+							<li>
+								<a
+									href={resolve(p.route)}
+									aria-current={page.route.id?.startsWith(p.route) ? 'page' : undefined}
+									>{p.title}</a
+								>
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{/each}
 		</nav>
 		<div class="main">{@render children()}</div>
 	</div>

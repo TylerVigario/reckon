@@ -273,6 +273,41 @@
 	background: var(--bgColor-accent-emphasis);
 }
 
+/* A NavList's groups, each under its heading, as Primer groups a long
+   settings menu; and an item's description beside its label, muted, cut short
+   where the row runs out (ActionList's inline description). */
+.primer .navlist-g {
+	display: flex;
+	flex-direction: column;
+	gap: var(--base-size-2);
+}
+.primer .navlist-g + .navlist-g {
+	margin-top: var(--base-size-8);
+	padding-top: var(--base-size-8);
+	border-top: 1px solid var(--borderColor-muted);
+}
+.primer .navlist-h {
+	margin: 0;
+	padding: var(--base-size-6) var(--base-size-8);
+	font-size: var(--text-body-size-small);
+	font-weight: var(--base-text-weight-semibold);
+	color: var(--fgColor-muted);
+}
+.primer .navlist a .navlist-t {
+	flex: 0 0 auto;
+}
+.primer .navlist a .navlist-d {
+	flex: 1 1 auto;
+	min-width: 0;
+	margin-left: var(--base-size-8);
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: var(--text-body-size-small);
+	font-weight: var(--base-text-weight-normal);
+	color: var(--fgColor-muted);
+}
+
 /* Primer's SegmentedControl: one list's scopes, the one shown pressed in. */
 .primer .seg {
 	display: inline-flex;

@@ -82,6 +82,11 @@ const DETAIL = [
 		pick: (h) => first(h, /\/reports\/pay\/([0-9a-f-]{36})"/g)
 	},
 	{ list: '/clients', path: (id) => `/clients/${id}/sites/new`, pick: aClient },
+	{
+		list: '/settings/vehicles',
+		path: (id) => `/settings/vehicles/${id}`,
+		pick: (h) => first(h, /\/settings\/vehicles\/([0-9a-f-]{36})"/g)
+	},
 	...['', '/contacts', '/tax'].map((tab) => ({
 		list: '/clients/harbor-light-dental/sites',
 		path: (/** @type {string} */ path) => path + tab,
@@ -121,9 +126,15 @@ const ROUTES = [
 	'/team/security-log',
 	'/settings',
 	'/settings/business',
+	'/settings/brand',
+	'/settings/region',
 	'/settings/invoicing',
+	'/settings/pricing',
 	'/settings/tax',
 	'/settings/travel',
+	'/settings/vehicles',
+	'/settings/vehicles/new',
+	'/settings/units',
 	'/settings/integrations'
 ];
 

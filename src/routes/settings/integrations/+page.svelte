@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import Top from '#lib/Top.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import { datedAt } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import type { PageProps } from './$types';
@@ -18,92 +19,118 @@
 	backLabel="Settings"
 />
 
-<div class="pad">
-	<div class="sec">
-		<div class="rows">
-			{#each data.integrations as i (i.name)}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t">{i.title}</div>
-						<div class="rec-s">
-							{i.sub}{i.detail ? ` · ${i.detail}` : ''}
-						</div>
-						<div class="rec-c">
-							{#if i.connected}
-								<span class="chip good"><span class="dot"></span>Connected</span>
-								{#if i.checked_at}<span class="chip"
-										>{i.name === 'email' ? 'last sent' : 'proven'} {when(i.checked_at)}</span
-									>{/if}
-							{:else}
-								<span class="chip">not connected</span>
-							{/if}
-							{#if i.name === 'email' && data.emailFailing}
-								<span class="chip warn"
-									>{data.emailFailing.waiting ? 'waiting since' : 'last failed'}
-									{when(data.emailFailing.at)}</span
-								>
-							{/if}
-						</div>
-						{#if i.name === 'email' && data.emailFailing}
-							<p class="said">The relay said: {data.emailFailing.said}</p>
-						{/if}
-						{#if i.name === 'email' && i.connected}
-							<form
-								class="test"
-								method="POST"
-								action="?/test"
-								use:enhance={() => {
-									testing = true;
-									return async ({ update }) => {
-										await update();
-										testing = false;
-									};
-								}}
-							>
-								<button class="btn" type="submit" disabled={testing}>
-									{testing ? 'Sending…' : 'Send a test email'}
-								</button>
-								{#if form?.tested}
-									<p class="said" role="status">
-										{form.tested.sent
-											? `Sent to ${form.tested.to}. Check that it arrived.`
-											: `Not sent. ${form.tested.said}`}
-									</p>
-								{/if}
-							</form>
-						{/if}
-					</div>
+<div class="pad primer">
+	<section class="box" aria-labelledby="int-h">
+		<div class="box-h"><h2 class="box-t" id="int-h">Integrations</h2></div>
+		{#each data.integrations as i (i.name)}
+			<div class="box-row int">
+				<div class="top">
+					<span class="what">
+						<span class="n">{i.title}</span>
+						<span class="sub">{i.sub}{i.detail ? ` · ${i.detail}` : ''}</span>
+					</span>
+					{#if i.connected}
+						<span class="lab good">Connected</span>
+					{:else}
+						<span class="lab">Not connected</span>
+					{/if}
 				</div>
-			{/each}
-		</div>
-	</div>
+				{#if i.connected && i.checked_at}
+					<p class="said">{i.name === 'email' ? 'Last sent' : 'Proven'} {when(i.checked_at)}.</p>
+				{/if}
+				{#if i.name === 'email' && data.emailFailing}
+					<p class="said warn">
+						<Octicon name="alert" />{data.emailFailing.waiting ? 'Waiting since' : 'Last failed'}
+						{when(data.emailFailing.at)}. The relay said: {data.emailFailing.said}
+					</p>
+				{/if}
+				{#if i.name === 'email' && i.connected}
+					<form
+						class="test"
+						method="POST"
+						action="?/test"
+						use:enhance={() => {
+							testing = true;
+							return async ({ update }) => {
+								await update();
+								testing = false;
+							};
+						}}
+					>
+						<button class="btn sm" type="submit" disabled={testing}>
+							{testing ? 'Sending…' : 'Send a test email'}
+						</button>
+						{#if form?.tested}
+							<p class="said" role="status">
+								{form.tested.sent
+									? `Sent to ${form.tested.to}. Check that it arrived.`
+									: `Not sent. ${form.tested.said}`}
+							</p>
+						{/if}
+					</form>
+				{/if}
+			</div>
+		{/each}
+	</section>
 
 	{#if data.mapping.length}
-		<div class="sec">
-			<div class="sec-h"><h2>Account mapping</h2></div>
-			<div class="rows">
-				{#each data.mapping as m (m.role)}
-					<div class="rec">
-						<div class="rec-m"><div class="rec-t">{m.role.replace(/_/g, ' ')}</div></div>
-						<div class="rec-n"><span class="rec-v mut">{m.account}</span></div>
-					</div>
-				{/each}
-			</div>
-		</div>
+		<section class="box" aria-labelledby="map-h">
+			<div class="box-h"><h2 class="box-t" id="map-h">Account mapping</h2></div>
+			{#each data.mapping as m (m.role)}
+				<div class="box-row kv">
+					<span class="kv-l">{m.role.replace(/_/g, ' ')}</span>
+					<span class="kv-v"><span>{m.account}</span></span>
+				</div>
+			{/each}
+		</section>
 	{/if}
 </div>
 
 <style>
-	.said {
-		margin: 6px 0 0;
-		font-size: 13.5px;
+	.int {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.top {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
 		color: var(--fgColor-muted);
 		overflow-wrap: anywhere;
 	}
+	.lab {
+		flex: 0 0 auto;
+	}
+	.said {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		margin: 0;
+		font-size: 12px;
+		color: var(--fgColor-muted);
+		overflow-wrap: anywhere;
+	}
+	.said.warn {
+		color: var(--fgColor-attention);
+	}
 	.test {
-		margin-top: 10px;
-		display: grid;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
 		gap: 4px;
-		justify-items: start;
 	}
 </style>
