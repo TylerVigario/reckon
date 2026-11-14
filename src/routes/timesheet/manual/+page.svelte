@@ -5,7 +5,16 @@
 	import Top from '#lib/Top.svelte';
 	import EntryForm from '#lib/EntryForm.svelte';
 	import type { EntryFields, EntrySeed } from '#lib/entry-form.ts';
-	import { enqueue, find, flush, secondsOf, type Queued } from '#lib/queue.ts';
+	import {
+		enqueue,
+		find,
+		flush,
+		secondsOf,
+		servicesHeld,
+		type Queued,
+		type ServiceEntry
+	} from '#lib/queue.ts';
+	import { pricesAdded, servicesAdded } from '#lib/services-held.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -21,6 +30,26 @@
 	 */
 	let { data }: PageProps = $props();
 	const field = untrack(() => data.user?.access === 'field');
+
+	// A service added on this phone and not yet sent can be chosen at once
+	// (#lib/services-held). The entry waits for it.
+	let held = $state<ServiceEntry[] | null>(null);
+	onMount(() => {
+		void servicesHeld().then(
+			(rows) => (held = rows.filter((q) => !q.refused).map((q) => q.service)),
+			() => (held = [])
+		);
+	});
+	const choices = $derived({
+		...data,
+		services: servicesAdded(data.services, held ?? [], (s) => ({
+			id: s.client_uuid,
+			name: s.fields.name,
+			unit: s.fields.unit as (typeof data.services)[number]['unit'],
+			bill_to_nearest_seconds: s.fields.unit === 'hour' ? 60 : null
+		})),
+		prices: pricesAdded(data.prices, held ?? [], data.people.length)
+	});
 
 	let fixing = $state<Queued | null>(null);
 	onMount(async () => {
@@ -70,9 +99,11 @@
 />
 
 <div class="pad">
-	{#key fixing?.entry.client_uuid}
+	<!-- Drawn at once from the server's choices; drawn again with any service
+	     waiting on this phone among them, which the form takes only as it opens. -->
+	{#key `${fixing?.entry.client_uuid}|${held?.length ?? 0}`}
 		<EntryForm
-			choices={data}
+			{choices}
 			{field}
 			{seed}
 			saveLabel={fixing ? 'Save and send again' : 'Save entry'}

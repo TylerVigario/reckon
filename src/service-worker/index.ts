@@ -28,9 +28,10 @@ import { OFFLINE_COPY, SESSION_UNUSED_DAYS } from '#lib/offline-copy.ts';
  * not yet billed, with its Change, so a trip is recorded or put right on the
  * road.
  *
- * And, for someone with Full, the stock: Materials, each material with its
- * Stock tab, Receive, and the count being counted or one started on the
- * phone, with quantities alone, so stock is received, adjusted and counted in
+ * And, for someone with Full, the catalogue: Materials, each material with
+ * its Stock and Details tabs, Receive, the count being counted or one started
+ * on the phone, and New service -- what anything cost left out -- so stock is
+ * received, adjusted and counted, a material changed and a service added, in
  * a shop or a van with no signal; the queue sends it. The queue sends it when there is a signal, and Google's route takes
  * the place of miles the phone could only estimate.
  *
@@ -84,11 +85,11 @@ const OFFLINE_DATA = OFFLINE_SCREENS.map(dataOf);
  * The data of the screens the list may name: the invoices list, New draft, a
  * draft started on the phone and its Add a line, and a draft, its Add a line,
  * and each line added by hand with its Change; All entries and a time entry;
- * the trips list, New trip, and a trip with its Change; Materials, a material,
- * Receive, and a count.
+ * the trips list, New trip, and a trip with its Change; Materials, a material
+ * and its Details, Receive, a count, and New service.
  */
 const LISTED_DATA =
-	/^\/(invoices(\/new|\/on-phone(\/add)?|\/[0-9a-f-]{36}(\/add|\/lines\/[0-9a-f-]{36}(\/change)?)?)?|timesheet\/(all|[0-9a-f-]{36})|trips(\/new|\/[0-9a-f-]{36}(\/change)?)?|catalogue\/(materials(\/[0-9a-f-]{36})?|receipts\/new|counts\/(on-phone|[0-9a-f-]{36})))\/__data\.json$/;
+	/^\/(invoices(\/new|\/on-phone(\/add)?|\/[0-9a-f-]{36}(\/add|\/lines\/[0-9a-f-]{36}(\/change)?)?)?|timesheet\/(all|[0-9a-f-]{36})|trips(\/new|\/[0-9a-f-]{36}(\/change)?)?|catalogue\/(materials(\/[0-9a-f-]{36}(\/details)?)?|receipts\/new|services\/new|counts\/(on-phone|[0-9a-f-]{36})))\/__data\.json$/;
 
 /** The screens kept now, as listed: the ones always kept, and the ones the server last listed. */
 let listed: string[] | null = null;

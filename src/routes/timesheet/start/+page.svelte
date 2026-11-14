@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { pct } from '#lib/format.ts';
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import { servicesHeld, type ServiceEntry } from '#lib/queue.ts';
+	import { pricesAdded, servicesAdded } from '#lib/services-held.ts';
 	import { goto } from '$app/navigation';
 	import Top from '#lib/Top.svelte';
 	import { start } from '#lib/timers.ts';
@@ -10,6 +12,25 @@
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
+
+	// A service added on this phone and not yet sent can be timed at once
+	// (#lib/services-held); the entry waits for it.
+	let held = $state<ServiceEntry[]>([]);
+	onMount(() => {
+		void servicesHeld().then(
+			(rows) => (held = rows.filter((q) => !q.refused).map((q) => q.service)),
+			() => {}
+		);
+	});
+	const services = $derived(
+		servicesAdded(data.services, held, (s) => ({
+			id: s.client_uuid,
+			name: s.fields.name,
+			unit: s.fields.unit as (typeof data.services)[number]['unit'],
+			bill_to_nearest_seconds: s.fields.unit === 'hour' ? 60 : null
+		}))
+	);
+	const prices = $derived(pricesAdded(data.prices, held, data.people.length));
 
 	// Someone with Field enters only work they were on (#lib/access): their own,
 	// or a team's with them on it.
@@ -61,9 +82,9 @@
 
 	const sites = $derived(data.entities.find((e) => e.id === entityId)?.sites ?? []);
 	const site = $derived(sites.find((s) => s.id === siteId));
-	const service = $derived(data.services.find((s) => s.id === serviceId));
+	const service = $derived(services.find((s) => s.id === serviceId));
 
-	const rate = $derived(rateFor(data.prices, serviceId, entityId, heads));
+	const rate = $derived(rateFor(prices, serviceId, entityId, heads));
 
 	function go() {
 		why = '';
@@ -129,7 +150,7 @@
 			<label for="s-service">What</label>
 			<span class="inp-wrap">
 				<select id="s-service" class="inp" bind:value={serviceId}>
-					{#each data.services as sv (sv.id)}<option value={sv.id}>{sv.name}</option>{/each}
+					{#each services as sv (sv.id)}<option value={sv.id}>{sv.name}</option>{/each}
 				</select>
 				<span class="hint">
 					{rate ? `${unitPrice(rate)}/${service?.unit === 'mile' ? 'mi' : 'h'}` : 'not priced'}

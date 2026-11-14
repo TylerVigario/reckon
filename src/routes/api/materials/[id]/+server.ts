@@ -6,6 +6,7 @@ import { pgError } from '#lib/server/field-errors.ts';
 import { problem } from '#lib/server/problem.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { readBody } from '#lib/json.ts';
+import { madeAt } from '#lib/server/made-at.ts';
 import { MATERIAL_WORDS, parseMaterialField } from '#lib/material-fields.ts';
 import type { RequestHandler } from './$types';
 
@@ -113,12 +114,16 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		}
 
 	try {
-		const [saved] = await asUser(locals.user!.id, (tx) =>
-			tx
-				.update(t.material)
-				.set(row)
-				.where(eq(t.material.id, m.id))
-				.returning({ version: t.material.version })
+		const [saved] = await asUser(
+			locals.user!.id,
+			(tx) =>
+				tx
+					.update(t.material)
+					.set(row)
+					.where(eq(t.material.id, m.id))
+					.returning({ version: t.material.version }),
+			// Made on a phone with no signal, its history says when (#lib/queue).
+			madeAt(typeof body.made_at === 'string' ? body.made_at : '')
 		);
 		return Response.json({ saved: sent, version: saved.version });
 	} catch (e) {

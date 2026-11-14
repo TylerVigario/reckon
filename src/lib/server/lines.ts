@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { materialNamed } from '#lib/server/named.ts';
 import { asUser, db, type Tx } from './db/index.ts';
 import * as t from './db/schema/index.ts';
 import { RECEIPT_TYPES } from './db/schema/catalogue.ts';
@@ -118,20 +119,6 @@ export function materials(ids?: string[]) {
 }
 
 /**
- * The material a line names: by its id, or by the uuid a phone made for it
- * where it was received there with no signal and has arrived since. The id
- * as named where neither finds one.
- */
-async function materialNamed(id: string): Promise<string> {
-	if (!UUID.test(id)) return id;
-	const [m] = await db
-		.select({ id: t.material.id })
-		.from(t.material)
-		.where(or(eq(t.material.id, id), eq(t.material.clientUuid, id)));
-	return m?.id ?? id;
-}
-
-/**
  * What Add a line needs besides the draft and its sites, to say what a line
  * will bill as it is typed with no signal: who might have paid, the business's
  * terms, and what is on the shelf.
@@ -146,6 +133,7 @@ export async function formTerms() {
 		db
 			.select({
 				markup: t.operator.purchaseMarkupPct,
+				stock: t.operator.defaultMarkupPct,
 				rules: t.operator.taxRuleSet,
 				costing: t.operator.stockCosting
 			})
@@ -157,6 +145,9 @@ export async function formTerms() {
 	return {
 		people,
 		markup: op?.markup ?? '0',
+		// What stock sells at over its cost where a material has no markup of
+		// its own: for a material repriced on the phone (#lib/stock-held).
+		stock_markup: op?.stock ?? '0',
 		rules: op?.rules ?? 'none',
 		costing: op?.costing ?? 'average',
 		places,

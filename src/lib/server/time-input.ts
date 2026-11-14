@@ -1,3 +1,4 @@
+import { serviceNamed } from '#lib/server/named.ts';
 import { problem } from './problem.ts';
 import { knownZone } from './zones.ts';
 import { UUID } from '#lib/field-rules.ts';
@@ -86,8 +87,10 @@ export async function readTimeEntry(
 	const text = (f: string) => (typeof body[f] === 'string' ? body[f] : null);
 	const optionalText = (f: string) => (body[f] === undefined || body[f] === null ? null : text(f));
 
-	const serviceId = text('service_id');
-	if (serviceId === null) return no('service_id', 'Expected text.');
+	const named = text('service_id');
+	if (named === null) return no('service_id', 'Expected text.');
+	// By its id, or by the uuid a phone made for one added there (#lib/server/named).
+	const serviceId = await serviceNamed(named);
 
 	let length: Pick<TimeInput, 'workedOn' | 'seconds' | 'startedAt' | 'endedAt' | 'zone'>;
 	if (timed) {

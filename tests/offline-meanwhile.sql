@@ -49,3 +49,14 @@ DELETE FROM time_entry
  WHERE note = 'Labelled the patch panel'
    AND created_by = (SELECT id FROM "user" WHERE email = 'avery@kestrel.example');
 COMMIT;
+
+-- The patch lead the phone renames, Sam renames too: the phone's arrives to
+-- find his, and keeps both for its person to choose between.
+BEGIN;
+DO $$ BEGIN
+  PERFORM set_config('reckon.user_id',
+                     (SELECT id::text FROM "user" WHERE email = 'sam@kestrel.example'), true);
+END $$;
+UPDATE material SET name = 'Fibre patch lead · LC-LC · 3 m, yellow'
+ WHERE name = 'Fibre patch lead · LC-LC · 3 m';
+COMMIT;

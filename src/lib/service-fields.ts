@@ -65,6 +65,27 @@ export function parseServiceField(field: string, raw: string): Parsed {
 /** What a new service needs before it can exist: a name, and what it is charged per. */
 export const NEW_SERVICE_FIELDS = { name, unit: oneOf(UNITS) };
 
+/**
+ * What a new service charges every client, said as it is added: what a phone
+ * with no signal has to say then, since the service's own screen, where a
+ * price is set, cannot open until it arrives. Empty is no price yet. Not the
+ * price table's own rules -- its rate is required -- so kept apart from them.
+ */
+export const FIRST_PRICE_FIELDS = {
+	rate: optional(decimal(12, 4)),
+	additional_rate: orDefault('0', decimal(12, 4))
+};
+
+/** A new service as a whole: what it is, and what it first charges, if anything. */
+export function readNewService(fields: Record<string, unknown>) {
+	const what = parseAll(NEW_SERVICE_FIELDS, fields);
+	const price = parseAll(FIRST_PRICE_FIELDS, fields);
+	const errors = { ...what.errors, ...price.errors };
+	if (price.values.rate === null && Number(price.values.additional_rate) > 0 && !errors.rate)
+		errors.rate = 'What it charges for the first person, before each one after.';
+	return { values: { ...what.values, ...price.values }, errors };
+}
+
 export const PRICE_FIELDS = {
 	// Empty is every client.
 	entity_id: optional(anId),

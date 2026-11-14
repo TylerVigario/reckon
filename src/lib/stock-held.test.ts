@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { withReceived, type Stocked } from './stock-held.ts';
+import { withChanged, withReceived, type Stocked } from './stock-held.ts';
 import type { ShownReceipt } from './queue.ts';
 
 const raceway: Stocked = {
@@ -72,5 +72,48 @@ describe('stock received on this phone', () => {
 
 	it('leaves the shelf as the server said with nothing waiting', () => {
 		expect(withReceived([raceway], [])).toEqual([raceway]);
+	});
+});
+
+describe('a material changed on this phone', () => {
+	const change = (kind: 'fields' | 'price', fields: Record<string, string>) => ({
+		key: `${kind}|r`,
+		kind,
+		material_id: 'r',
+		version: 1,
+		base: {},
+		fields,
+		made_at: '2026-11-13T12:00:00Z',
+		shown: { name: 'Raceway' }
+	});
+
+	it('is offered as changed: its name, and what it sells at', () => {
+		const [r] = withChanged(
+			[raceway],
+			[
+				change('fields', { name: 'Raceway, white' }),
+				change('price', { by: 'price', markup_pct: '', price: '1.25' })
+			],
+			'20'
+		);
+		expect([r.name, r.listed]).toEqual(['Raceway, white', '1.25']);
+	});
+
+	it('goes back to the business’s markup, or takes one of its own', () => {
+		const [own] = withChanged(
+			[raceway],
+			[change('price', { by: 'markup', markup_pct: '40', price: '' })],
+			'20'
+		);
+		const [business] = withChanged(
+			[raceway],
+			[change('price', { by: 'business', markup_pct: '', price: '' })],
+			'20'
+		);
+		expect([own.markup, own.listed, business.markup]).toEqual(['40', null, '20']);
+	});
+
+	it('is not offered once retired', () => {
+		expect(withChanged([raceway], [change('fields', { active: 'false' })], '20')).toEqual([]);
 	});
 });

@@ -11,7 +11,7 @@
 	import { Decimal } from '#lib/decimal.ts';
 	import { quantity } from '#lib/format.ts';
 	import { unitPrice } from '#lib/money.svelte.ts';
-	import { readProblem } from '#lib/json.ts';
+	import { changeMaterial } from '#lib/material-change.ts';
 	import {
 		readAdjustment,
 		REASON_WORDS,
@@ -163,24 +163,25 @@
 	let retiring = $state(false);
 	let offering = $state(false);
 	let failed = $state('');
-	/** Offered or not, from the save the record is at (#lib/Detail's merge). */
+	/**
+	 * Offered or not, from the save the record is at, kept on the phone and
+	 * sent as any change to it is (#lib/material-change).
+	 */
 	async function setOffered(active: boolean) {
 		offering = true;
 		failed = '';
-		const r = await fetch(`/api/materials/${m.id}`, {
-			method: 'PATCH',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				fields: { active: String(active) },
-				version: m.version,
-				base: { active: String(m.active) }
-			})
+		const came = await changeMaterial({
+			kind: 'fields',
+			material_id: m.id,
+			version: m.version,
+			base: { active: String(m.active) },
+			fields: { active: String(active) },
+			made_at: new Date().toISOString(),
+			shown: { name: m.name }
 		}).catch(() => null);
 		offering = false;
-		if (!r?.ok)
-			failed = r
-				? ((await readProblem(r)).detail ?? 'That did not save.')
-				: 'Not saved — no connection.';
+		if (!came) failed = 'This phone would not keep it, so it is not changed.';
+		else if (came.state === 'refused') failed = came.refused.detail;
 		await refreshAll();
 	}
 	const menu = $derived(

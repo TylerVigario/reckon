@@ -27,7 +27,9 @@
 		validate,
 		onsaved,
 		version,
-		onconflict
+		onconflict,
+		send,
+		oncancel
 	}: {
 		/** The field as the endpoint names it. */
 		name: string;
@@ -57,6 +59,19 @@
 		 */
 		version?: number;
 		onconflict?: () => void | Promise<void>;
+		/**
+		 * Where a record is changed on the phone first and sent by the queue
+		 * (#lib/queue), how it is kept there: given what this detail is now and
+		 * what it said, and the save it began from. A reason to show under the
+		 * field, where the server refused it at once; nothing where it is kept.
+		 */
+		send?: (
+			fields: Record<string, string>,
+			version: number | undefined,
+			base: Record<string, string>
+		) => Promise<string | null>;
+		/** Cancel, where it was refused: the change is let go. */
+		oncancel?: () => void | Promise<void>;
 	} = $props();
 
 	const id = $props.id();
@@ -77,6 +92,7 @@
 		editing = true;
 	}
 	function leave() {
+		if (error) void oncancel?.();
 		editing = false;
 		error = '';
 	}
@@ -85,6 +101,14 @@
 		if (!parsed.ok) return void (error = parsed.why);
 		if (draft === (value ?? '')) return leave();
 		saving = true;
+		if (send) {
+			const refused = await send({ [name]: draft }, version, { [name]: value ?? '' });
+			saving = false;
+			if (refused) return void (error = refused);
+			await onsaved?.();
+			editing = false;
+			return;
+		}
 		const r = await fetch(endpoint, {
 			method: 'PATCH',
 			headers: { 'content-type': 'application/json' },

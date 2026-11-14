@@ -63,6 +63,15 @@ import type { EntryConflict } from './entry-merge.ts';
  * answers with: its own, or one opened elsewhere meanwhile, which it joins.
  * One material counted twice on one count is its latest figure.
  *
+ * THE CATALOGUE -- a service added, with its price for every client, and a
+ * material changed -- waits in two more. A service goes first of all: a time
+ * entry, a change to one or a trip may name it by the uuid made for it here,
+ * and waits for it. A material's change goes with the stock, before the lines:
+ * one change to a material, a field at a time folded in, each saying the save
+ * it began from and what it said then, so the server merges it with a change
+ * made meanwhile and what both changed is kept here for a person to decide;
+ * and its pricing, on its own, the same way.
+ *
  * EACH IS ITS MAKER'S (#lib/owner). Everything written here is stamped with
  * whoever was signed in to make it, and only they see it, send it, or let it
  * go -- whenever they next sign in on this phone. Someone else signed in here
@@ -81,6 +90,8 @@ const RECEIPTS = 'receipts';
 const ADJUSTS = 'adjustments';
 const COUNTS = 'counts';
 const COUNTED = 'counted';
+const SERVICES = 'services';
+const MATERIAL_CHANGES = 'material_changes';
 type Store =
 	| typeof STORE
 	| typeof LINES
@@ -91,7 +102,9 @@ type Store =
 	| typeof RECEIPTS
 	| typeof ADJUSTS
 	| typeof COUNTS
-	| typeof COUNTED;
+	| typeof COUNTED
+	| typeof SERVICES
+	| typeof MATERIAL_CHANGES;
 /** Where the queue lived before IndexedDB. Read once, emptied once moved. */
 const OLD_KEY = 'reckon.queue';
 
@@ -162,6 +175,12 @@ function isEntry(e: unknown): e is Entry {
 	);
 }
 
+/**
+ * Dispatched on the window each time something here is written, sent or let
+ * go, so a screen that shows what waits reads it again.
+ */
+export const QUEUE_CHANGED = 'reckon:queue';
+
 /** Said when someone else on this phone has a change waiting for the same line or trip. */
 export const SOMEONE_ELSES =
 	'Someone else signed in on this phone has a change to this waiting. It goes when they next sign in here.';
@@ -198,9 +217,9 @@ function open(): Promise<IDBDatabase> {
 	opening ??= new Promise<IDBDatabase>((resolve, reject) => {
 		// 2: lines joined time entries; 3: drafts started here; 4: changes to
 		// lines; 5: trips; 6: changes to time entries; 7: stock received,
-		// adjusted and counted. A phone on an earlier one keeps what it has and
-		// gains the stores it lacks.
-		const req = indexedDB.open(DB, 7);
+		// adjusted and counted; 8: services added and materials changed. A phone
+		// on an earlier one keeps what it has and gains the stores it lacks.
+		const req = indexedDB.open(DB, 8);
 		req.onupgradeneeded = () => {
 			const db = req.result;
 			if (!db.objectStoreNames.contains(STORE))
@@ -223,6 +242,10 @@ function open(): Promise<IDBDatabase> {
 				db.createObjectStore(COUNTS, { keyPath: 'count.client_uuid' });
 			if (!db.objectStoreNames.contains(COUNTED))
 				db.createObjectStore(COUNTED, { keyPath: 'counted.key' });
+			if (!db.objectStoreNames.contains(SERVICES))
+				db.createObjectStore(SERVICES, { keyPath: 'service.client_uuid' });
+			if (!db.objectStoreNames.contains(MATERIAL_CHANGES))
+				db.createObjectStore(MATERIAL_CHANGES, { keyPath: 'change.key' });
 		};
 		req.onsuccess = () => {
 			// A later version opening this database in another tab has to be
@@ -259,7 +282,11 @@ function tx<T>(
 				let result: T | undefined;
 				const req = work(t.objectStore(store));
 				if (req) req.onsuccess = () => (result = req.result);
-				t.oncomplete = () => resolve(result);
+				t.oncomplete = () => {
+					resolve(result);
+					// What shows the queue reads it again (QUEUE_CHANGED).
+					if (mode === 'readwrite') globalThis.dispatchEvent?.(new Event(QUEUE_CHANGED));
+				};
 				t.onerror = () => reject(t.error ?? new Error('the queue refused a write'));
 				t.onabort = () => reject(t.error ?? new Error('the queue abandoned a write'));
 			})
@@ -388,7 +415,9 @@ export async function claimUnowned(): Promise<void> {
 		RECEIPTS,
 		ADJUSTS,
 		COUNTS,
-		COUNTED
+		COUNTED,
+		SERVICES,
+		MATERIAL_CHANGES
 	] as const)
 		await tx(
 			'readwrite',
@@ -504,7 +533,30 @@ async function post(): Promise<Flushed> {
 		if (p === 'refused') refused++;
 		return p;
 	};
-	for (const q of (await all()).filter((q) => !q.refused)) {
+	// A service added here goes first: an entry or a trip may name it.
+	for (const q of (await allServices()).filter((q) => !q.refused)) {
+		const p = await postOne(
+			() =>
+				fetch('/api/services', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						client_uuid: q.service.client_uuid,
+						fields: q.service.fields,
+						from: q.service.from,
+						made_at: q.service.made_at
+					})
+				}),
+			(why) => settleService(q, { ...q, refused: why }),
+			() => settleService(q, null)
+		);
+		if (count(p) === 'offline') return { sent, refused };
+	}
+	// What names a service still on this phone waits for it.
+	const waitingServices = new Set((await allServices()).map((q) => q.service.client_uuid));
+	for (const q of (await all()).filter(
+		(q) => !q.refused && !waitingServices.has(q.entry.service_id)
+	)) {
 		const p = await postOne(
 			() =>
 				fetch('/api/time', {
@@ -518,7 +570,9 @@ async function post(): Promise<Flushed> {
 		// No connection. The rest would fail the same way; they all wait.
 		if (count(p) === 'offline') return { sent, refused };
 	}
-	for (const q of (await allTimeChanges()).filter((q) => !q.refused)) {
+	for (const q of (await allTimeChanges()).filter(
+		(q) => !q.refused && !waitingServices.has(q.change.fields.service_id ?? '')
+	)) {
 		const p = await postOne<EntryConflict>(
 			() => sendTimeChange(q.change),
 			(why) => settleTimeChange(q, { ...q, refused: why }),
@@ -586,6 +640,36 @@ async function post(): Promise<Flushed> {
 		);
 		if (count(p) === 'offline') return { sent, refused };
 	}
+	for (const q of (await allMaterialChanges()).filter((q) => !q.refused)) {
+		const c = q.change;
+		const p = await postOne<MaterialConflict>(
+			() =>
+				c.kind === 'fields'
+					? fetch(`/api/materials/${c.material_id}`, {
+							method: 'PATCH',
+							headers: { 'content-type': 'application/json' },
+							body: JSON.stringify({
+								fields: c.fields,
+								version: c.version,
+								base: c.base,
+								made_at: c.made_at
+							})
+						})
+					: fetch(`/api/materials/${c.material_id}/price`, {
+							method: 'POST',
+							headers: { 'content-type': 'application/json' },
+							body: JSON.stringify({
+								fields: c.fields,
+								base: c.base,
+								from: c.from,
+								made_at: c.made_at
+							})
+						}),
+			(why) => settleMaterialChange(q, { ...q, refused: why }),
+			() => settleMaterialChange(q, null)
+		);
+		if (count(p) === 'offline') return { sent, refused };
+	}
 	const waitingCounts = new Set((await allCounts()).map((q) => q.count.client_uuid));
 	for (const q of (await allCounted()).filter(
 		(q) => !q.refused && !waitingCounts.has(q.counted.count)
@@ -634,7 +718,9 @@ async function post(): Promise<Flushed> {
 		);
 		if (count(p) === 'offline') return { sent, refused };
 	}
-	for (const q of (await allTrips()).filter((q) => !q.refused)) {
+	for (const q of (await allTrips()).filter(
+		(q) => !q.refused && !waitingServices.has(tripService(q.trip.body))
+	)) {
 		const p = await postOne(
 			() =>
 				fetch(q.trip.trip_id ? `/api/trips/${q.trip.trip_id}` : '/api/trips', {
@@ -650,12 +736,19 @@ async function post(): Promise<Flushed> {
 	return { sent, refused };
 }
 
+/** The service a trip's miles bill as, where it names one. */
+function tripService(body: unknown): string {
+	const id = (body as { service_id?: unknown } | null)?.service_id;
+	return typeof id === 'string' ? id : '';
+}
+
 let chain: Promise<unknown> = Promise.resolve();
 
 /**
- * Posts everything waiting, oldest first: time, then changes to time, then
- * drafts, then stock -- receipts, adjustments, counts and what is counted on
- * them -- then lines, then changes to lines, then trips. One flush at a time: a second call
+ * Posts everything waiting, oldest first: services added, then time, then
+ * changes to time, then drafts, then stock -- receipts, adjustments, changes
+ * to materials, counts and what is counted on them -- then lines, then changes
+ * to lines, then trips. One flush at a time: a second call
  * runs after the first, so it sees whatever was queued before it was made, and
  * no entry is ever out on two posts at once.
  */
@@ -952,15 +1045,18 @@ export async function discardTrip(key: string): Promise<void> {
 
 /** Everything of the signed-in person's waiting to send -- time and changes to it, drafts, stock, lines, changes to lines and trips -- leaving out what was refused. */
 export async function waitingCount(): Promise<number> {
-	const [time, timeChanges, drafts, lines, changes, trips, stock] = await Promise.all([
-		held(),
-		allTimeChanges(),
-		allDrafts(),
-		allLines(),
-		allChanges(),
-		allTrips(),
-		stockHeld()
-	]);
+	const [time, timeChanges, drafts, lines, changes, trips, stock, services, materials] =
+		await Promise.all([
+			held(),
+			allTimeChanges(),
+			allDrafts(),
+			allLines(),
+			allChanges(),
+			allTrips(),
+			stockHeld(),
+			allServices(),
+			allMaterialChanges()
+		]);
 	const waiting = (rows: { refused?: unknown }[]) => rows.filter((q) => !q.refused).length;
 	return (
 		time.waiting +
@@ -972,7 +1068,9 @@ export async function waitingCount(): Promise<number> {
 		waiting(stock.receipts) +
 		waiting(stock.adjusts) +
 		waiting(stock.counts) +
-		waiting(stock.counted)
+		waiting(stock.counted) +
+		waiting(services) +
+		waiting(materials)
 	);
 }
 
@@ -1365,3 +1463,208 @@ export async function stockHeld(): Promise<{
 	]);
 	return { receipts, adjusts, counts, counted };
 }
+
+/**
+ * A SERVICE ADDED ON THIS PHONE: what it is called and charged per, and what
+ * it charges every client from the day it was added, if anything -- as New
+ * service names them (#lib/service-fields readNewService). A time entry or a
+ * trip that uses it names it by this uuid until it arrives.
+ */
+export type ServiceEntry = {
+	client_uuid: string;
+	fields: { name: string; unit: string; rate: string; additional_rate: string };
+	/** The day it was added on this phone, from which its price runs. */
+	from: string;
+	made_at?: string;
+};
+
+export type QueuedService = {
+	service: ServiceEntry;
+	owner?: string;
+	queued_at: number;
+	refused?: Refusal;
+};
+
+/** Writes a service added here; one queued again under its uuid replaces it. */
+export async function enqueueService(e: ServiceEntry): Promise<void> {
+	keep();
+	const owner = maker();
+	await tx(
+		'readwrite',
+		(s) => s.put({ service: e, queued_at: Date.now(), owner } satisfies QueuedService),
+		SERVICES
+	);
+}
+
+async function allServices(): Promise<QueuedService[]> {
+	const rows = (await tx<QueuedService[]>('readonly', (s) => s.getAll(), SERVICES)) ?? [];
+	return mine(rows).sort((a, b) => a.queued_at - b.queued_at);
+}
+
+/** Every service added on this phone and not yet arrived, oldest first. */
+export const servicesHeld = allServices;
+
+/** One service added here, to be fixed. */
+export async function findService(client_uuid: string): Promise<QueuedService | undefined> {
+	return ifMine(await tx<QueuedService>('readonly', (s) => s.get(client_uuid), SERVICES));
+}
+
+/** Lets go of a service added here. A person's decision. */
+export async function discardService(client_uuid: string): Promise<void> {
+	await discardIn(SERVICES, client_uuid);
+}
+
+const settleService = (q: QueuedService, next: QueuedService | null) =>
+	settleIn(SERVICES, q.service.client_uuid, q, next);
+
+/**
+ * A CHANGE TO A MATERIAL made on this phone: its fields as Details names them
+ * (#lib/material-fields), or what it sells at, said as one choice. Fields carry
+ * the save they began from and what each said then; a pricing, what it sold
+ * at then and the day it was set here.
+ */
+export type MaterialChange = {
+	/** `${kind}|${material_id}`: one of each to a material. */
+	key: string;
+	kind: 'fields' | 'price';
+	material_id: string;
+	/** The save of the material the change began from: fields only. */
+	version: number;
+	base: Record<string, string>;
+	fields: Record<string, string>;
+	/** The day a pricing was set on this phone. */
+	from?: string;
+	made_at: string;
+	shown: { name: string };
+};
+
+/** What a change ran into: a field someone else changed meanwhile, and what to. */
+export type MaterialConflict = {
+	field: string;
+	theirs: unknown;
+	by?: string | null;
+	version?: number;
+};
+
+export type QueuedMaterialChange = {
+	change: MaterialChange;
+	owner?: string;
+	queued_at: number;
+	refused?: Refusal<MaterialConflict>;
+};
+
+/** The key a material's change of one kind is kept under. */
+export const materialChangeKey = (kind: MaterialChange['kind'], material: string) =>
+	`${kind}|${material}`;
+
+/**
+ * Writes a change to a material. A second change of the same kind before the
+ * first has gone is folded into it: its fields join the first's, and each
+ * keeps the save and the value it began from, so the merge is against what
+ * this phone first saw. A pricing is the latest one. Either clears a refusal.
+ */
+export async function enqueueMaterialChange(
+	c: Omit<MaterialChange, 'key'>,
+	fresh = false
+): Promise<void> {
+	keep();
+	const owner = maker();
+	const key = materialChangeKey(c.kind, c.material_id);
+	const had = fresh
+		? undefined
+		: ifMine(await tx<QueuedMaterialChange>('readonly', (s) => s.get(key), MATERIAL_CHANGES));
+	// Folded into one waiting: it began where that one did. Into one refused
+	// for what was changed meanwhile: this begins from what it is now.
+	const change: MaterialChange =
+		had && c.kind === 'fields'
+			? had.refused
+				? {
+						...c,
+						key,
+						base: { ...had.change.base, ...c.base },
+						fields: { ...had.change.fields, ...c.fields }
+					}
+				: {
+						...c,
+						key,
+						version: had.change.version,
+						base: { ...c.base, ...had.change.base },
+						fields: { ...had.change.fields, ...c.fields }
+					}
+			: { ...c, key };
+	await tx(
+		'readwrite',
+		(s) => s.put({ change, queued_at: Date.now(), owner } satisfies QueuedMaterialChange),
+		MATERIAL_CHANGES
+	);
+}
+
+async function allMaterialChanges(): Promise<QueuedMaterialChange[]> {
+	const rows =
+		(await tx<QueuedMaterialChange[]>('readonly', (s) => s.getAll(), MATERIAL_CHANGES)) ?? [];
+	return mine(rows).sort((a, b) => a.queued_at - b.queued_at);
+}
+
+/** Every change to a material on this phone, or one material's. */
+export async function materialChangesHeld(material?: string): Promise<QueuedMaterialChange[]> {
+	const rows = await allMaterialChanges();
+	return material ? rows.filter((q) => q.change.material_id === material) : rows;
+}
+
+/** Lets go of a change to a material, or of one field of it. A person's decision. */
+export async function discardMaterialChange(key: string, field?: string): Promise<void> {
+	const q = ifMine(await tx<QueuedMaterialChange>('readonly', (s) => s.get(key), MATERIAL_CHANGES));
+	if (!q) return;
+	if (!field || q.change.kind === 'price') return void (await discardIn(MATERIAL_CHANGES, key));
+	const fields = Object.fromEntries(Object.entries(q.change.fields).filter(([k]) => k !== field));
+	const base = Object.fromEntries(Object.entries(q.change.base).filter(([k]) => k !== field));
+	if (Object.keys(fields).length === 0) return void (await discardIn(MATERIAL_CHANGES, key));
+	await tx(
+		'readwrite',
+		(s) =>
+			s.put({
+				...q,
+				change: { ...q.change, fields, base },
+				refused: undefined,
+				queued_at: Date.now()
+			} satisfies QueuedMaterialChange),
+		MATERIAL_CHANGES
+	);
+}
+
+/**
+ * Keeps this change over one made meanwhile: sent again, beginning from what
+ * the server said it is now. A person's decision.
+ */
+export async function keepMine(key: string): Promise<void> {
+	const q = ifMine(await tx<QueuedMaterialChange>('readonly', (s) => s.get(key), MATERIAL_CHANGES));
+	const c = q?.refused?.conflict;
+	if (!q || !c) return;
+	const theirs = (v: unknown) =>
+		typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? String(v) : '';
+	const next: MaterialChange =
+		q.change.kind === 'price'
+			? {
+					...q.change,
+					base: Object.fromEntries(
+						Object.entries((c.theirs ?? {}) as Record<string, unknown>).map(([k, v]) => [
+							k,
+							theirs(v)
+						])
+					)
+				}
+			: {
+					...q.change,
+					version: c.version ?? q.change.version,
+					base: { ...q.change.base, [c.field]: theirs(c.theirs) }
+				};
+	await tx(
+		'readwrite',
+		(s) =>
+			s.put({ change: next, queued_at: Date.now(), owner: q.owner } satisfies QueuedMaterialChange),
+		MATERIAL_CHANGES
+	);
+}
+
+const settleMaterialChange = (q: QueuedMaterialChange, next: QueuedMaterialChange | null) =>
+	settleIn(MATERIAL_CHANGES, q.change.key, q, next);

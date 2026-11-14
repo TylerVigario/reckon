@@ -1873,7 +1873,7 @@ SELECT must_pass($$
 $$, 'a count still being counted, thrown away');
 
 \echo ''
-\echo '=== 36e. stock made on a phone is made once ==='
+\echo '=== 36e. stock and services made on a phone are made once ==='
 
 INSERT INTO stock_receipt (received_on, client_uuid)
 VALUES ('2026-10-05','36e36e36-0000-4000-8000-000000000001');
@@ -1911,6 +1911,16 @@ SELECT must_pass($$
   VALUES ('66666666-6666-6666-6666-666666666666','2026-10-05','on',1,'found',0.31,
           '36e36e36-0000-4000-8000-000000000003','a0a0a0a0-0000-4000-8000-0000000000a2')
 $$, 'the same uuid from someone else''s phone, theirs');
+
+SELECT must_pass($$
+  INSERT INTO service (code, name, unit, client_uuid)
+  VALUES ('cable-pulling-36e', 'Cable pulling', 'hour', '36e36e36-0000-4000-8000-000000000004')
+$$, 'a service added on a phone, with the uuid it made');
+
+SELECT must_fail($$
+  INSERT INTO service (code, name, unit, client_uuid)
+  VALUES ('cable-pulling-36e-2', 'Cable pulling', 'hour', '36e36e36-0000-4000-8000-000000000004')
+$$, 'one service sent twice from a phone, made twice');
 
 \echo ''
 \echo '=== 37. what was bought or paid for says who paid, and keeps its receipt ==='

@@ -46,23 +46,17 @@ export const load: LayoutServerLoad = async ({ params, url }) => {
 	const copy = isOfflineCopy(url);
 	const worth = figures.of.get(found.id)!;
 	return {
-		// Kept for no signal with quantities alone (#lib/offline-copy): what it
-		// cost and sells at need a connection.
+		// Kept for no signal with quantities, and how it is priced -- the
+		// business's markup, its own, or a set price -- which is changed there
+		// (#lib/offline-copy). What it cost, and what that makes it sell at, need
+		// a connection.
 		copy,
 		as_of: new Date().toISOString(),
 		material: copy
-			? {
-					...found,
-					...worth,
-					own_markup: null,
-					ex_tax: null,
-					tax_paid: null,
-					price: null,
-					listed: null
-				}
+			? { ...found, ...worth, ex_tax: null, tax_paid: null, price: null }
 			: { ...found, ...worth },
 		// The business's own markup, which one with none of its own sells at.
-		markup: copy ? null : figures.markup,
+		markup: figures.markup,
 		costing: figures.costing,
 		adjusted: adjusted.n,
 		// Whether any of it has been received: its unit is then fixed.

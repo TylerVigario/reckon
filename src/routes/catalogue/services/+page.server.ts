@@ -1,4 +1,4 @@
-import { businessToday } from '#lib/server/calendar.ts';
+import { businessToday, personalToday } from '#lib/server/calendar.ts';
 import { asc, desc, eq, gte, isNull, or, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { agreement, agreementService, entity, service, site } from '#lib/server/db/schema/index.ts';
@@ -58,6 +58,8 @@ export const load: PageServerLoad = async () => {
 	]);
 
 	return {
+		// The day a count to take refused figures is started on (#lib/StockOnPhone).
+		today: personalToday(),
 		services: services.map((s) => ({
 			...s,
 			// What is in force or about to be. What was is on the service's own

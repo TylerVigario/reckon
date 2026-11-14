@@ -10,25 +10,36 @@
 	import {
 		discardAdjust,
 		discardCounted,
+		discardMaterialChange,
 		discardReceipt,
+		discardService,
 		flush,
+		keepMine,
+		materialChangesHeld,
+		QUEUE_CHANGED,
 		recount,
+		servicesHeld,
 		stockHeld,
 		type QueuedAdjust,
 		type QueuedCount,
 		type QueuedCounted,
-		type QueuedReceipt
+		type QueuedMaterialChange,
+		type QueuedReceipt,
+		type QueuedService
 	} from './queue.ts';
 
 	/**
-	 * STOCK WORK ON THIS PHONE (#lib/queue): receipts, adjustments and counts
-	 * made here, waiting to send, and any the server refused -- kept, with its
-	 * reason, until it is fixed or let go; nothing at all when there is none. Letting go is for good, so it takes
+	 * CATALOGUE WORK ON THIS PHONE (#lib/queue): receipts, adjustments, counts,
+	 * changes to materials and services added here, waiting to send, and any
+	 * the server refused -- kept, with its reason, until it is fixed or let go;
+	 * nothing at all when there is none. A change to something someone else
+	 * changed meanwhile asks which to keep. Letting go is for good, so it takes
 	 * a second tap. Sends what is waiting when it opens and whenever the phone
-	 * is back online, and fetches the screen again once something arrives.
+	 * is back online, reads again whenever the queue changes, and fetches the
+	 * screen again once something arrives.
 	 *
-	 * On Materials, all of it; on a material's screen (`material`), its own
-	 * adjustments alone.
+	 * On Materials and Services, all of it; on a material's screen
+	 * (`material`), its own adjustments and changes alone.
 	 */
 	let {
 		material,
@@ -46,13 +57,21 @@
 	let adjusts = $state<QueuedAdjust[]>([]);
 	let counts = $state<QueuedCount[]>([]);
 	let counted = $state<QueuedCounted[]>([]);
+	let changes = $state<QueuedMaterialChange[]>([]);
+	let services = $state<QueuedService[]>([]);
 	async function read() {
 		try {
-			const h = await stockHeld();
+			const [h, c, sv] = await Promise.all([
+				stockHeld(),
+				materialChangesHeld(material),
+				material ? Promise.resolve([] as QueuedService[]) : servicesHeld()
+			]);
 			receipts = material ? [] : h.receipts;
 			adjusts = material ? h.adjusts.filter((q) => q.adjust.material_id === material) : h.adjusts;
 			counts = material ? [] : h.counts;
 			counted = material ? [] : h.counted;
+			changes = c;
+			services = sv;
 		} catch {
 			/* a phone that will not open its queue shows the server's alone */
 		}
@@ -68,11 +87,43 @@
 	onMount(() => {
 		void read().then(send);
 		const back = () => void send();
+		const again = () => void read();
 		addEventListener('online', back);
-		return () => removeEventListener('online', back);
+		addEventListener(QUEUE_CHANGED, again);
+		return () => {
+			removeEventListener('online', back);
+			removeEventListener(QUEUE_CHANGED, again);
+		};
 	});
 	/** Read again: after Adjust keeps one here. */
 	export const refresh = read;
+	/** Keep this change over theirs, and send it again. */
+	async function mine(q: QueuedMaterialChange) {
+		await keepMine(q.change.key).catch(() => {});
+		await send();
+	}
+	/** What a change of a material says, in a few words. */
+	const changeWords = (q: QueuedMaterialChange) =>
+		q.change.kind === 'price'
+			? 'What it sells at'
+			: Object.keys(q.change.fields)
+					.map((f) => FIELD_WORDS[f] ?? f)
+					.join(', ');
+	const FIELD_WORDS: Record<string, string> = {
+		name: 'Name',
+		brand: 'Brand',
+		sku: 'SKU',
+		unit_id: 'Counted in',
+		taxable: 'Taxed',
+		active: 'Offered'
+	};
+	/** A value as a person reads it. */
+	const said = (v: unknown) =>
+		v === null || v === undefined || v === ''
+			? 'nothing'
+			: typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+				? `“${String(v)}”`
+				: 'another price';
 
 	let confirming = $state<string | null>(null);
 	async function letGo(key: string, go: () => Promise<void>) {
@@ -95,7 +146,6 @@
 		).catch(() => {});
 		await send();
 	}
-	const any = $derived(receipts.length + adjusts.length + counts.length + counted.length > 0);
 	const waitingCounted = $derived(counted.filter((q) => !q.refused).length);
 	/** Each piece of work just waiting, in a few words: one row for all of it. */
 	const waiting = $derived([
@@ -113,13 +163,27 @@
 			),
 		...(counts.length || waitingCounted
 			? [`${waitingCounted} counted${counts.length ? ', on a count started here' : ''}`]
-			: [])
+			: []),
+		// On a material's own screen, its Details says what of it waits.
+		...changes
+			.filter((q) => !q.refused && !material)
+			.map((q) => `${changeWords(q)} of ${q.change.shown.name} changed`),
+		...services.filter((q) => !q.refused).map((q) => `${q.service.fields.name}, a new service`)
 	]);
+	/** Whether there is a row to show: what waits, and anything refused. */
+	const any = $derived(
+		waiting.length > 0 ||
+			receipts.some((q) => q.refused) ||
+			adjusts.some((q) => q.refused) ||
+			counted.some((q) => q.refused) ||
+			changes.some((q) => q.refused) ||
+			services.some((q) => q.refused)
+	);
 </script>
 
-{#snippet discard(key: string, go: () => Promise<void>)}
+{#snippet discard(key: string, go: () => Promise<void>, label = 'Discard')}
 	<button type="button" class="btn sm" onclick={() => letGo(key, go)}>
-		{confirming === key ? 'Tap again to discard' : 'Discard'}
+		{confirming === key ? `Tap again to ${label.toLowerCase()}` : label}
 	</button>
 {/snippet}
 
@@ -192,6 +256,59 @@
 						{@render discard(q.adjust.client_uuid, () => discardAdjust(q.adjust.client_uuid))}
 					</span>
 				{/if}
+			</div>
+		{/each}
+		{#each changes.filter((q) => q.refused) as q (q.change.key)}
+			{@const c = q.refused?.conflict}
+			<div class="box-row held bad">
+				<span class="what">
+					<span class="n">{changeWords(q)} of {q.change.shown.name}</span>
+					{#if c}
+						<span class="sub"
+							>Yours: {q.change.kind === 'price' ? 'another price' : said(q.change.fields[c.field])} ·
+							theirs: {said(c.theirs)}</span
+						>
+					{/if}
+					<span class="why"
+						><Octicon name="alert" />{c
+							? `${c.by ?? 'Someone'} changed it meanwhile.`
+							: `Refused: ${q.refused?.detail}`}</span
+					>
+				</span>
+				<span class="acts">
+					{#if c}
+						<button type="button" class="btn sm pri" onclick={() => mine(q)}>Keep mine</button>
+						{@render discard(
+							q.change.key,
+							() => discardMaterialChange(q.change.key),
+							'Keep theirs'
+						)}
+					{:else}
+						<a
+							class="btn sm pri"
+							href={resolve('/catalogue/materials/[id]/details', { id: q.change.material_id })}
+							>Fix</a
+						>
+						{@render discard(q.change.key, () => discardMaterialChange(q.change.key))}
+					{/if}
+				</span>
+			</div>
+		{/each}
+		{#each services.filter((q) => q.refused) as q (q.service.client_uuid)}
+			<div class="box-row held bad">
+				<span class="what">
+					<span class="n">{q.service.fields.name}, a new service</span>
+					<span class="why"><Octicon name="alert" />Refused: {q.refused?.detail}</span>
+				</span>
+				<span class="acts">
+					<a
+						class="btn sm pri"
+						href={resolve(
+							`/catalogue/services/new?fix=${encodeURIComponent(q.service.client_uuid)}`
+						)}>Fix</a
+					>
+					{@render discard(q.service.client_uuid, () => discardService(q.service.client_uuid))}
+				</span>
 			</div>
 		{/each}
 		{#if refusedCounted.length}

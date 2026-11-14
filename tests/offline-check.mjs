@@ -167,7 +167,7 @@ const stored = (/** @type {string} */ key) =>
  */
 const inQueue = (/** @type {string} */ body) =>
 	evaluate(`new Promise((resolve) => {
-		const req = indexedDB.open('reckon', 7);
+		const req = indexedDB.open('reckon', 8);
 		req.onupgradeneeded = () => {
 			const db = req.result;
 			if (!db.objectStoreNames.contains('queue'))
@@ -186,7 +186,9 @@ const inQueue = (/** @type {string} */ body) =>
 				['receipts', 'receipt.client_uuid'],
 				['adjustments', 'adjust.client_uuid'],
 				['counts', 'count.client_uuid'],
-				['counted', 'counted.key']
+				['counted', 'counted.key'],
+				['services', 'service.client_uuid'],
+				['material_changes', 'change.key']
 			])
 				if (!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath });
 		};
@@ -259,6 +261,9 @@ const ENTRIES = 'offline-check.entries';
 const STOCK = 'offline-check.stock';
 /** Something new received with no signal, and how many came. */
 const TIES = 'Cable ties · 8 in';
+/** The demo's patch lead, renamed with no signal; and a service added with none. */
+const FIBRE = 'Fibre patch lead · LC-LC · 3 m';
+const SERVICE = 'Cable pulling';
 /** How much stock work waits on the phone, in all four of its stores. */
 const stockQueued = () =>
 	inQueue(`const stores = ['receipts', 'adjustments', 'counts', 'counted'];
@@ -1095,10 +1100,93 @@ if (phase === 'offline') {
 	);
 	// The receipt, the adjustment, the count started and what is counted on it.
 	check((await stockQueued()) === 4, `all of it waits on the phone (${await stockQueued()})`);
+	// THE CATALOGUE WITH NO SIGNAL: the patch lead renamed, which Sam renames
+	// too meanwhile (tests/offline-meanwhile.sql); the access point given a set
+	// price; and a service added with its price, and an hour entered under it.
+	await go(`/catalogue/materials/${fibre}/details`);
+	await evaluate(`document.querySelector('[data-edit="name"]')?.click()`);
+	await settle(300);
+	await run((/** @type {string} */ v) => {
+		const f = /** @type {HTMLInputElement} */ (document.activeElement);
+		f.value = v;
+		f.dispatchEvent(new Event('input', { bubbles: true }));
+	}, `${FIBRE}, OS2`);
+	await click('Save');
+	await settle(5500);
+	const renamed = /** @type {string} */ (await text());
+	check(
+		renamed.includes(`${FIBRE}, OS2`) && renamed.includes('Waiting to send'),
+		'the patch lead is renamed with no server, and its Details says it waits'
+	);
+	await go('/catalogue/materials');
+	const ap = /** @type {string} */ (
+		await run(
+			() =>
+				[...document.querySelectorAll('a.box-row')]
+					.find((a) => a.textContent?.includes('Access point'))
+					?.getAttribute('href')
+					?.split('/')
+					.pop() ?? ''
+		)
+	);
+	await go(`/catalogue/materials/${ap}/details`);
+	await evaluate(`document.querySelector('[aria-label="Change what it sells at"]')?.click()`);
+	await settle(400);
+	await run(() =>
+		/** @type {HTMLInputElement | null} */ (
+			document.querySelector('dialog[open] input[name="p-by"][value="price"]')
+		)?.click()
+	);
+	await settle(200);
+	await typeIn('#p-price', '149.00');
+	await evaluate(`document.querySelector('dialog[open] [data-go]')?.click()`);
+	await settle(5500);
+	check(
+		/\$149\.00 each/.test(await text()) && (await text()).includes('waiting to send'),
+		'the access point is given a set price with no server'
+	);
+	await go('/catalogue/services/new');
+	await typeIn('#n-name', SERVICE);
+	await typeIn('#n-rate', '80');
+	await typeIn('#n-more', '50');
+	await click('Add the service');
+	await settle(5500);
+	check(
+		(await text()).includes(`${SERVICE} is on this phone, waiting to send`),
+		'a service is added with no server, priced for every client'
+	);
+	await go('/timesheet/manual');
+	await settle(1000);
+	const offeredService = /** @type {boolean} */ (
+		await run(
+			(/** @type {string} */ name) =>
+				[...(document.querySelector('#m-service')?.querySelectorAll('option') ?? [])].some(
+					(o) => o.textContent?.trim() === name
+				),
+			SERVICE
+		)
+	);
+	await run((/** @type {string} */ client) => {
+		const s = /** @type {HTMLSelectElement} */ (document.querySelector('#m-entity'));
+		s.value = client;
+		s.dispatchEvent(new Event('change', { bubbles: true }));
+	}, PINECREST);
+	await settle(200);
+	await choose('#m-service', SERVICE);
+	await typeIn('#m-start', '07:00');
+	await typeIn('#m-length', '1:00');
+	await typeIn('#m-note', 'Pulled cable, offline');
+	await settle(200);
+	await click('Save entry');
+	await settle(5500);
+	check(
+		offeredService && ((await queued()) ?? []).length > 0 && (await stockQueued()) === 4,
+		'it can be chosen in Add past work at once, and an hour is entered under it'
+	);
 	await run(
 		(/** @type {string} */ key, /** @type {string} */ value) => localStorage.setItem(key, value),
 		STOCK,
-		JSON.stringify({ fibre })
+		JSON.stringify({ fibre, ap })
 	);
 
 	// TWO WEEKS WITHOUT THE SERVER: the session has ended there, and the phone
@@ -1601,6 +1689,41 @@ if (phase === 'back') {
 			theCount.includes('−2 each') &&
 			theCount.includes('Moved since'),
 		`the count holds the leads counted on the phone, and says one was used since (${countHref} ${theCount.slice(theCount.lastIndexOf('Fibre patch lead'), theCount.lastIndexOf('Fibre patch lead') + 200)})`
+	);
+
+	// THE CATALOGUE ARRIVES: the access point's price and the service, with the
+	// hour entered under it; the patch lead's name, which Sam changed too, is
+	// kept on the phone with both, until Keep mine puts it over his.
+	const { ap } = JSON.parse(
+		/** @type {string} */ (await evaluate(`localStorage.getItem(${JSON.stringify(STOCK)}) ?? '{}'`))
+	);
+	await go('/catalogue/materials');
+	const clashed = /** @type {string} */ (await text());
+	check(
+		clashed.includes(`Yours: “${FIBRE}, OS2”`) &&
+			clashed.includes(`theirs: “${FIBRE}, yellow”`) &&
+			clashed.includes('Keep mine'),
+		`the rename Sam made too is kept on the phone with both names${clashed.includes('Keep mine') ? '' : ` (${clashed.slice(clashed.indexOf('On this phone'), clashed.indexOf('On this phone') + 300)})`}`
+	);
+	await click('Keep mine');
+	await settle(4000);
+	await go('/catalogue/materials');
+	const afterMine = /** @type {string} */ (await text());
+	check(
+		afterMine.includes(`${FIBRE}, OS2`) &&
+			!afterMine.includes('Keep mine') &&
+			/\$149\.00/.test(afterMine),
+		'Keep mine puts the name over his, and the access point sells at its new price'
+	);
+	await go(`/catalogue/materials/${ap}/details`);
+	check((await text()).includes('A set price'), 'the access point is priced at a set price');
+	await go('/catalogue/services');
+	const services = /** @type {string} */ (await text());
+	await go('/timesheet/all');
+	const pulled = /** @type {string} */ (await text());
+	check(
+		services.includes(SERVICE) && pulled.includes('Pulled cable, offline'),
+		'the service arrives, and the hour entered under it with it'
 	);
 
 	await evaluate(`document.querySelector('form[action="/logout"]')?.requestSubmit()`);

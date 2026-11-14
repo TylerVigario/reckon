@@ -30,10 +30,11 @@ import type { RequestHandler } from './$types';
  * last that are neither billed nor paid, each on its own screen, so an entry
  * is changed or removed on site.
  *
- * And for someone with Full, the stock: Materials, each material that is
- * offered or has stock on the shelf, with its Stock tab, Receive, and the
- * count being counted, or the sheet one started on the phone is counted on --
- * so stock is received, adjusted and counted with no signal.
+ * And for someone with Full, the catalogue: Materials, each material that is
+ * offered or has stock on the shelf, with its Stock and Details tabs, Receive,
+ * the count being counted, or the sheet one started on the phone is counted
+ * on, and New service -- so stock is received, adjusted and counted, a
+ * material changed and a service added, with no signal.
  *
  * The worker keeps each as a copy cut to that (#lib/offline-copy): this says
  * only which screens.
@@ -104,7 +105,11 @@ export const GET: RequestHandler = async ({ locals }) => {
 					? []
 					: [
 							'/catalogue/materials',
-							...stocked.map((m) => `/catalogue/materials/${m.id}`),
+							...stocked.flatMap((m) => [
+								`/catalogue/materials/${m.id}`,
+								`/catalogue/materials/${m.id}/details`
+							]),
+							'/catalogue/services/new',
 							'/catalogue/receipts/new',
 							'/catalogue/counts/on-phone',
 							...counting.map((c) => `/catalogue/counts/${c.id}`)
