@@ -907,6 +907,19 @@ await check(
 if (sid) {
 	const at = `/api/services/${sid}`;
 	await check('it renames', 'PATCH', at, { fields: { name: `Checked ${stamp}` } }, 200);
+	{
+		// Its History keeps the rename, and who made it (0059).
+		const page = await (
+			await fetch(`${base}/catalogue/services/${sid}/history`, { headers: H })
+		).text();
+		const kept =
+			page.includes(`Write check ${stamp}`) &&
+			page.includes(`Checked ${stamp}`) &&
+			page.includes('Changes, newest first');
+		if (kept) passed++;
+		else failures.push('its History keeps the rename: not found on the page');
+		console.log(`  ${kept ? '✓' : '✗'} its History keeps the rename`);
+	}
 	await check(
 		'moving it off hours clears its increment',
 		'PATCH',
