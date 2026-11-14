@@ -2,6 +2,7 @@
 	import Top from '#lib/Top.svelte';
 	import UnderlineNav from '#lib/UnderlineNav.svelte';
 	import { entityTabs } from '#lib/section-tabs.ts';
+	import { names } from '#lib/format.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 	let { data }: PageProps = $props();
@@ -14,44 +15,61 @@
 	backLabel="More"
 />
 
-<div class="pad">
-	<div class="primer">
-		<UnderlineNav
-			label="Entities"
-			items={entityTabs('contacts', {
-				clients: data.counts.clients,
-				contacts: data.contacts.length
-			})}
-		/>
-	</div>
-	<div class="sec">
-		<div class="rows">
-			{#each data.contacts as c (c.id)}
-				<a class="rec link" href={resolve('/clients/contacts/[id]', { id: c.id })}>
-					<div class="rec-m">
-						<div class="rec-t">{c.name}</div>
-						<div class="rec-s">
-							{[c.email, c.phone, c.note].filter(Boolean).join(' · ') || 'no details on file'}
-						</div>
-						{#if c.clients.length || c.sites.length}
-							<div class="rec-c">
-								{#each c.primary_for as who (who)}
-									<span class="chip acc">gets invoices · {who}</span>
-								{/each}
-								{#each c.clients.filter((x) => !c.primary_for.includes(x)) as who (who)}
-									<span class="chip">{who}</span>
-								{/each}
-								{#each c.sites as site (site)}<span class="chip">{site}</span>{/each}
-							</div>
-						{/if}
-					</div>
-					<span class="arw" aria-hidden="true">›</span>
-				</a>
-			{:else}
-				<div class="rec">
-					<div class="rec-m"><div class="rec-t"><span class="lt">No contacts yet</span></div></div>
-				</div>
-			{/each}
-		</div>
-	</div>
+<div class="pad primer">
+	<UnderlineNav
+		label="Entities"
+		items={entityTabs('contacts', {
+			clients: data.counts.clients,
+			contacts: data.contacts.length
+		})}
+	/>
+
+	<section class="box" aria-labelledby="contacts-h">
+		<div class="box-h"><h2 class="box-t" id="contacts-h">Contacts</h2></div>
+		{#each data.contacts as c (c.id)}
+			<a class="box-row" href={resolve('/clients/contacts/[id]', { id: c.id })}>
+				<span class="what">
+					<span class="n">{c.name}</span>
+					<span class="sub">
+						{[c.email, c.phone, c.note].filter(Boolean).join(' · ') || 'No details yet'}
+					</span>
+					{#if c.clients.length}
+						<span class="sub">
+							{[
+								...c.clients.map((who) =>
+									c.primary_for.includes(who) ? `${who}, gets its invoices` : who
+								),
+								...(c.sites.length ? [`at ${names(c.sites)}`] : [])
+							].join(' · ')}
+						</span>
+					{/if}
+				</span>
+			</a>
+		{:else}
+			<p class="box-row muted">No contacts yet.</p>
+		{/each}
+	</section>
 </div>
+
+<style>
+	.box-row {
+		min-height: 64px;
+		box-sizing: border-box;
+		margin: 0;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		overflow-wrap: anywhere;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
+	}
+</style>

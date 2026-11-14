@@ -186,7 +186,7 @@ export const PATCH: RequestHandler = async (event) => {
 		throw e;
 	}
 
-	if (!after) return staleRead('This site', event.url.pathname);
+	if (!after) return staleRead('this site', event.url.pathname);
 	return withVersion(
 		Response.json({ saved: row, priced, unmeasured, version: after.version }),
 		after.version

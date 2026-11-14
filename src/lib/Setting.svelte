@@ -35,9 +35,7 @@
 		endpoint = '/api/settings',
 		key = '',
 		validate = parseField,
-		onsaved,
-		version = null,
-		onversion
+		onsaved
 	}: {
 		name: string;
 		label: string;
@@ -68,14 +66,6 @@
 		 * away from a 404.
 		 */
 		onsaved?: (value: string) => void;
-		/**
-		 * The row version this page read, sent as If-Match so a save cannot
-		 * silently overwrite somebody else's. Null means the endpoint does not
-		 * check -- not that this one may skip it.
-		 */
-		version?: string | null;
-		/** The version after a successful save, so the next field can use it. */
-		onversion?: (version: string) => void;
 		/** Where this field saves. Settings by default; a service says its own. */
 		endpoint?: string;
 		/** Distinguishes fields of the same name on one page -- one row per service. */
@@ -135,10 +125,7 @@
 		try {
 			const r = await fetch(endpoint, {
 				method: 'PATCH',
-				headers: {
-					'content-type': 'application/json',
-					...(version ? { 'if-match': `"${version}"` } : {})
-				},
+				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ fields: { [name]: sent } })
 			});
 			const out = r.ok ? ((await readJson(r).catch(() => ({}))) as Saved) : await readProblem(r);
@@ -152,11 +139,6 @@
 				if (current === sent) current = canonical;
 				stored = canonical;
 				status = 'ok';
-				// Every field on this row shares one version, so a save by any
-				// of them moves it for all of them -- otherwise the second
-				// field to save would be told it was stale by the first.
-				const v = (out as Saved).version;
-				if (v) onversion?.(v);
 				onsaved?.(canonical);
 				clearOk = setTimeout(() => {
 					if (status === 'ok') status = 'idle';
@@ -171,10 +153,7 @@
 				const { errors, detail, title } = out as ProblemLike;
 				const keyed = errors?.[name];
 				const first = errors ? Object.values(errors)[0] : null;
-				why =
-					r.status === 412
-						? (detail ?? 'Somebody else changed this. Reload before saving again.')
-						: (keyed ?? first ?? detail ?? title ?? `Not saved (${r.status}).`);
+				why = keyed ?? first ?? detail ?? title ?? `Not saved (${r.status}).`;
 			}
 		} catch {
 			// The value stays in the box and `stored` still holds the old one,

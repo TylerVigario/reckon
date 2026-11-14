@@ -5,11 +5,11 @@ import { problem } from './problem.ts';
 /**
  * Stops one person's save from silently erasing another's.
  *
- * Several people, per-field autosave, and a PATCH that is last-write-wins: two
- * people open a client, both blur a field, and the earlier edit is gone with
- * nothing on screen to say so. Per-field saving makes that MORE likely than a
- * form with a save button, not less -- there is no moment where either is told
- * the page is stale.
+ * Several people, one detail saved at a time, and a PATCH that is
+ * last-write-wins: two people open a client, both save a detail, and the
+ * earlier is gone with nothing on screen to say so. Saving a detail at a time
+ * makes that MORE likely than one form for the lot, not less -- there is no
+ * moment where either is told the screen is stale.
  *
  * This is HTTP conditional requests, RFC 9110: the page says which version it
  * read, and the write is refused if the row has moved since.
@@ -55,12 +55,15 @@ export function preconditionOf(event: RequestEvent): Precondition {
 	return { ok: true, version };
 }
 
-/** What the caller is told when the row moved under them. */
+/**
+ * What the caller is told when the row moved under them. A screen fetches the
+ * row again on being told (#lib/Detail), so saving again puts theirs over it.
+ */
 export const staleRead = (what: string, instance?: string) =>
 	problem(
 		'conflict',
 		412,
-		`${what} changed since this page read it. Reload to see the current values before saving again.`,
+		`Somebody saved ${what} since this screen read it. Save puts yours over theirs; Cancel keeps theirs.`,
 		{ instance }
 	);
 

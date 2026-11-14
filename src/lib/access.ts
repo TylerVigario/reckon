@@ -107,6 +107,8 @@ export const REACH = {
 	'/clients/[id]/contacts': 'field',
 	'/clients/[id]/sites': 'field',
 	'/clients/[id]/sites/[site]': 'field',
+	'/clients/[id]/sites/[site]/contacts': 'field',
+	'/clients/[id]/sites/[site]/tax': 'field',
 
 	// Their own pay, to read.
 	'/reports/pay/[person]': 'field',
@@ -123,6 +125,7 @@ export const REACH = {
 	'/api/drafts': 'full',
 	'/api/invoices/[id]/send': 'full',
 	'/unbilled': 'full',
+	'/clients/[id]/details': 'full',
 	'/clients/[id]/sites/new': 'full',
 	'/api/clients/[id]': 'full',
 	'/api/clients/[id]/sites': 'full',

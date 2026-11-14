@@ -38,7 +38,7 @@
 		required
 		{endpoint}
 		validate={parseAgreementField}
-		onsaved={refreshAll}
+		onsaved={() => refreshAll()}
 	/>
 	<Detail
 		name="billing_interval"
@@ -47,7 +47,7 @@
 		options={INTERVALS}
 		{endpoint}
 		validate={parseAgreementField}
-		onsaved={refreshAll}
+		onsaved={() => refreshAll()}
 	/>
 	<Detail
 		name="billing_anchor_day"
@@ -57,7 +57,7 @@
 		hint="Of each period. A 31st charges on the last day of a shorter month."
 		{endpoint}
 		validate={parseAgreementField}
-		onsaved={refreshAll}
+		onsaved={() => refreshAll()}
 	/>
 	<Detail
 		name="starts_on"
@@ -67,7 +67,7 @@
 		shown={dated(a.starts_on)}
 		{endpoint}
 		validate={parseAgreementField}
-		onsaved={refreshAll}
+		onsaved={() => refreshAll()}
 	/>
 	<Detail
 		name="final_period_proration"
@@ -76,7 +76,7 @@
 		options={PRORATIONS}
 		{endpoint}
 		validate={parseAgreementField}
-		onsaved={refreshAll}
+		onsaved={() => refreshAll()}
 	/>
 	<Detail
 		name="contact_id"
@@ -88,6 +88,6 @@
 		]}
 		{endpoint}
 		validate={parseAgreementField}
-		onsaved={refreshAll}
+		onsaved={() => refreshAll()}
 	/>
 </section>

@@ -100,6 +100,6 @@ export const PATCH: RequestHandler = async (event) => {
 		throw e;
 	}
 
-	if (!after) return staleRead('This client', event.url.pathname);
+	if (!after) return staleRead('this client', event.url.pathname);
 	return withVersion(Response.json({ saved: row, version: after.version }), after.version);
 };

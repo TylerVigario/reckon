@@ -14,13 +14,10 @@ import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
 /**
- * A client's Details: how they are billed, what they have agreed to, their
- * credit and tax, and their recent invoices. What they owe heads every tab
- * (+layout); where they are is Sites, and who to ask for, Contacts.
- *
- * No tax rate: a rate is a site's, not the client's, and shown on the site.
- * A client is not a place -- two clients can work at one address, and one
- * client can work in two districts.
+ * A client's Overview: what they have agreed to and what they have been
+ * invoiced, and the credit they have to spend. What they owe heads every tab
+ * (+layout); where they are is Sites, who to ask for, Contacts, and how they
+ * pay and are taxed, Details.
  *
  * Someone with Field reads where a client is, to work there, and nothing of
  * what they owe, have agreed to or been invoiced (#lib/access), so for them a
@@ -37,27 +34,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 	const {
 		rows: [client]
-	} = await db.execute<{
-		id: string;
-		slug: string;
-		version: string;
-		name: string;
-		active: boolean;
-		terms: number | null;
-		default_terms: number;
-		payment_method: string | null;
-		tax_exempt: boolean;
-		certificate: string | null;
-		expires_on: string | null;
-		credit: string;
-	}>(sql`
-		select ${e.id} as id, ${e.slug} as slug, ${e.name} as name, ${e.active} as active,
-		       ${e}.xmin::text as version,
-		       ${e.termsDays} as terms,
-		       (select ${t.operator.defaultTermsDays} from ${t.operator}) as default_terms,
-		       ${e.paymentMethod} as payment_method, ${e.taxExempt} as tax_exempt,
-		       ${e.exemptionCertificate} as certificate,
-		       ${e.exemptionExpiresOn}::text as expires_on,
+	} = await db.execute<{ id: string; slug: string; credit: string }>(sql`
+		select ${e.id} as id, ${e.slug} as slug,
 		       -- Notes and what has been applied from them, each added up on its
 		       -- own: joined first, a note applied twice would count twice.
 		       ((select coalesce(sum(${cn.amount}), 0) from ${cn} where ${cn.entityId} = ${e.id})

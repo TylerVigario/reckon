@@ -183,10 +183,12 @@
 </script>
 
 <div class="addr">
-	<label for="address-input">
-		{label}
-		{#if placeId}<span class="ok">✓ a real place</span>{/if}
-	</label>
+	{#if label}
+		<label for="address-input">
+			{label}
+			{#if placeId}<span class="ok">A real place</span>{/if}
+		</label>
+	{/if}
 	<input
 		bind:this={input}
 		id="address-input"
@@ -267,42 +269,50 @@
 </div>
 
 <style>
+	/* Primer's FormControl: its label above the field, its TextInput, and its
+	   caption under it, in the colour of what it says. */
 	.addr {
 		position: relative;
 		display: grid;
-		gap: 0.3rem;
+		gap: var(--base-size-6);
 	}
 	label {
-		font-size: 0.85rem;
-		color: var(--fgColor-muted);
 		display: flex;
-		gap: 0.5rem;
+		gap: var(--base-size-8);
 		align-items: baseline;
+		font-size: var(--text-body-size-medium);
+		font-weight: var(--base-text-weight-semibold);
+		color: var(--fgColor-default);
 	}
 	.ok {
+		font-size: var(--text-body-size-small);
+		font-weight: var(--base-text-weight-normal);
 		color: var(--fgColor-success);
-		font-size: 0.78rem;
 	}
 	input {
+		width: 100%;
+		min-height: max(var(--control-medium-size), var(--control-minTarget-auto, 0px));
+		box-sizing: border-box;
+		padding: 0 var(--base-size-12);
 		font: inherit;
+		font-size: var(--text-body-size-medium);
 		color: var(--fgColor-default);
 		background: var(--bgColor-default);
 		border: 1px solid var(--borderColor-default);
-		border-radius: 8px;
-		padding: 0.55rem 0.65rem;
-		width: 100%;
-		box-sizing: border-box;
+		border-radius: var(--borderRadius-medium);
 	}
 	input:disabled {
-		color: var(--fgColor-muted);
+		color: var(--fgColor-disabled);
+		background: var(--bgColor-disabled);
 		cursor: not-allowed;
 	}
 	input:focus-visible {
-		outline: 2px solid var(--borderColor-accent-emphasis);
-		outline-offset: 1px;
+		outline: 2px solid var(--focus-outlineColor);
+		outline-offset: -1px;
+		border-color: var(--borderColor-accent-emphasis);
 	}
 	.hint {
-		font-size: 0.78rem;
+		font-size: var(--text-body-size-small);
 		color: var(--fgColor-muted);
 	}
 	.warn {
@@ -311,40 +321,49 @@
 	.good {
 		color: var(--fgColor-success);
 	}
+	/* Primer's ActionList in an overlay: the suggestions, the one pointed at
+	   shaded. */
 	ul {
 		position: absolute;
 		z-index: 5;
 		top: 100%;
 		left: 0;
 		right: 0;
-		margin: 0.25rem 0 0;
-		padding: 0.25rem;
+		margin: var(--base-size-4) 0 0;
+		padding: var(--base-size-8);
 		list-style: none;
-		background: var(--bgColor-default);
+		background: var(--overlay-bgColor);
 		border: 1px solid var(--borderColor-default);
-		border-radius: 8px;
+		border-radius: var(--borderRadius-large);
 		box-shadow: var(--shadow-floating-small);
 		max-height: 15rem;
 		overflow-y: auto;
 	}
 	li {
-		padding: 0.55rem 0.6rem;
-		border-radius: 6px;
+		padding: var(--base-size-8);
+		border-radius: var(--borderRadius-medium);
 		cursor: pointer;
-		font-size: 0.9rem;
 	}
 	li.active {
-		background: color-mix(in srgb, var(--bgColor-accent-emphasis) 14%, transparent);
+		background: var(--control-transparent-bgColor-hover);
 	}
 	.attribution {
 		cursor: default;
 		display: flex;
 		justify-content: flex-end;
-		padding: 0.3rem 0.5rem 0.1rem;
-		border-top: 1px solid var(--borderColor-default);
-		margin-top: 0.25rem;
+		padding: var(--base-size-4) var(--base-size-8) 0;
+		border-top: 1px solid var(--borderColor-muted);
+		margin-top: var(--base-size-4);
+		border-radius: 0;
 	}
 	.attribution img {
 		opacity: 0.7;
+	}
+	@media (pointer: coarse) {
+		input {
+			min-height: 44px;
+			/* iOS zooms into a field set smaller than this. */
+			font-size: 16px;
+		}
 	}
 </style>
