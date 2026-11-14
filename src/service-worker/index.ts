@@ -26,7 +26,12 @@ import { OFFLINE_COPY, SESSION_UNUSED_DAYS } from '#lib/offline-copy.ts';
  *
  * Trips too: the list, New trip, and each trip the person drove whose miles are
  * not yet billed, with its Change, so a trip is recorded or put right on the
- * road. The queue sends it when there is a signal, and Google's route takes
+ * road.
+ *
+ * And, for someone with Full, the stock: Materials, each material with its
+ * Stock tab, Receive, and the count being counted or one started on the
+ * phone, with quantities alone, so stock is received, adjusted and counted in
+ * a shop or a van with no signal; the queue sends it. The queue sends it when there is a signal, and Google's route takes
  * the place of miles the phone could only estimate.
  *
  * EVERY SCREEN IS KEPT AS A COPY OF ITS OWN, cut to what can be done with it
@@ -79,10 +84,11 @@ const OFFLINE_DATA = OFFLINE_SCREENS.map(dataOf);
  * The data of the screens the list may name: the invoices list, New draft, a
  * draft started on the phone and its Add a line, and a draft, its Add a line,
  * and each line added by hand with its Change; All entries and a time entry;
- * the trips list, New trip, and a trip with its Change.
+ * the trips list, New trip, and a trip with its Change; Materials, a material,
+ * Receive, and a count.
  */
 const LISTED_DATA =
-	/^\/(invoices(\/new|\/on-phone(\/add)?|\/[0-9a-f-]{36}(\/add|\/lines\/[0-9a-f-]{36}(\/change)?)?)?|timesheet\/(all|[0-9a-f-]{36})|trips(\/new|\/[0-9a-f-]{36}(\/change)?)?)\/__data\.json$/;
+	/^\/(invoices(\/new|\/on-phone(\/add)?|\/[0-9a-f-]{36}(\/add|\/lines\/[0-9a-f-]{36}(\/change)?)?)?|timesheet\/(all|[0-9a-f-]{36})|trips(\/new|\/[0-9a-f-]{36}(\/change)?)?|catalogue\/(materials(\/[0-9a-f-]{36})?|receipts\/new|counts\/(on-phone|[0-9a-f-]{36})))\/__data\.json$/;
 
 /** The screens kept now, as listed: the ones always kept, and the ones the server last listed. */
 let listed: string[] | null = null;

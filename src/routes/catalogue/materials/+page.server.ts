@@ -1,7 +1,9 @@
 import { asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
+import { personalToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
 import { materialFigures } from '#lib/server/stock.ts';
+import { isOfflineCopy } from '#lib/offline-copy.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -14,7 +16,7 @@ import type { PageServerLoad } from './$types';
  * of what is on the shelf or the oldest lot's, as the business costs its stock
  * (#lib/stock-draw).
  */
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ url }) => {
 	const materials = await db
 		.select({
 			id: t.material.id,
@@ -45,11 +47,21 @@ export const load: PageServerLoad = async () => {
 			.orderBy(desc(t.stockCount.countedOn))
 			.limit(1)
 	]);
+	// Kept for no signal with quantities alone (#lib/offline-copy): what each
+	// cost and sells at need a connection.
+	const copy = isOfflineCopy(url);
 	return {
+		as_of: new Date().toISOString(),
+		today: personalToday(),
 		open: open ?? null,
 		lastCounted: last?.on ?? null,
-		materials: materials.map((m) => ({ ...m, ...figures.of.get(m.id)! })),
-		markup: figures.markup,
+		materials: materials.map((m) => {
+			const f = figures.of.get(m.id)!;
+			return copy
+				? { ...m, ...f, ex_tax: null, tax_paid: null, price: null, listed: null }
+				: { ...m, ...f };
+		}),
+		markup: copy ? null : figures.markup,
 		costing: figures.costing
 	};
 };

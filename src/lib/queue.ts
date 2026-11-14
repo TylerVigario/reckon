@@ -55,6 +55,14 @@ import type { EntryConflict } from './entry-merge.ts';
  * again, and what the trips list shows of it meanwhile. A change names the trip
  * it changes, and a second change before the first has gone takes its place.
  *
+ * STOCK -- a receipt received, an adjustment, a count started and what is
+ * counted on it -- waits in four more, and goes after drafts and before lines:
+ * a line may draw a material received here, which names it by the uuid made
+ * for it until the receipt arrives, and waits for it. A count started here
+ * goes before what is counted on it, which then names the count the server
+ * answers with: its own, or one opened elsewhere meanwhile, which it joins.
+ * One material counted twice on one count is its latest figure.
+ *
  * EACH IS ITS MAKER'S (#lib/owner). Everything written here is stamped with
  * whoever was signed in to make it, and only they see it, send it, or let it
  * go -- whenever they next sign in on this phone. Someone else signed in here
@@ -69,8 +77,21 @@ const DRAFTS = 'drafts';
 const CHANGES = 'changes';
 const TRIPS = 'trips';
 const TIME_CHANGES = 'time_changes';
+const RECEIPTS = 'receipts';
+const ADJUSTS = 'adjustments';
+const COUNTS = 'counts';
+const COUNTED = 'counted';
 type Store =
-	typeof STORE | typeof LINES | typeof DRAFTS | typeof CHANGES | typeof TRIPS | typeof TIME_CHANGES;
+	| typeof STORE
+	| typeof LINES
+	| typeof DRAFTS
+	| typeof CHANGES
+	| typeof TRIPS
+	| typeof TIME_CHANGES
+	| typeof RECEIPTS
+	| typeof ADJUSTS
+	| typeof COUNTS
+	| typeof COUNTED;
 /** Where the queue lived before IndexedDB. Read once, emptied once moved. */
 const OLD_KEY = 'reckon.queue';
 
@@ -176,9 +197,10 @@ let opening: Promise<IDBDatabase> | null = null;
 function open(): Promise<IDBDatabase> {
 	opening ??= new Promise<IDBDatabase>((resolve, reject) => {
 		// 2: lines joined time entries; 3: drafts started here; 4: changes to
-		// lines; 5: trips; 6: changes to time entries. A phone on an earlier one
-		// keeps what it has and gains the stores it lacks.
-		const req = indexedDB.open(DB, 6);
+		// lines; 5: trips; 6: changes to time entries; 7: stock received,
+		// adjusted and counted. A phone on an earlier one keeps what it has and
+		// gains the stores it lacks.
+		const req = indexedDB.open(DB, 7);
 		req.onupgradeneeded = () => {
 			const db = req.result;
 			if (!db.objectStoreNames.contains(STORE))
@@ -193,6 +215,14 @@ function open(): Promise<IDBDatabase> {
 				db.createObjectStore(TRIPS, { keyPath: 'trip.key' });
 			if (!db.objectStoreNames.contains(TIME_CHANGES))
 				db.createObjectStore(TIME_CHANGES, { keyPath: 'change.entry_id' });
+			if (!db.objectStoreNames.contains(RECEIPTS))
+				db.createObjectStore(RECEIPTS, { keyPath: 'receipt.client_uuid' });
+			if (!db.objectStoreNames.contains(ADJUSTS))
+				db.createObjectStore(ADJUSTS, { keyPath: 'adjust.client_uuid' });
+			if (!db.objectStoreNames.contains(COUNTS))
+				db.createObjectStore(COUNTS, { keyPath: 'count.client_uuid' });
+			if (!db.objectStoreNames.contains(COUNTED))
+				db.createObjectStore(COUNTED, { keyPath: 'counted.key' });
 		};
 		req.onsuccess = () => {
 			// A later version opening this database in another tab has to be
@@ -348,7 +378,18 @@ async function someoneElses(store: Store, key: string): Promise<boolean> {
 export async function claimUnowned(): Promise<void> {
 	const id = currentOwner();
 	if (!id) return;
-	for (const store of [STORE, LINES, DRAFTS, CHANGES, TRIPS, TIME_CHANGES] as const)
+	for (const store of [
+		STORE,
+		LINES,
+		DRAFTS,
+		CHANGES,
+		TRIPS,
+		TIME_CHANGES,
+		RECEIPTS,
+		ADJUSTS,
+		COUNTS,
+		COUNTED
+	] as const)
 		await tx(
 			'readwrite',
 			(s) => {
@@ -498,10 +539,85 @@ async function post(): Promise<Flushed> {
 		);
 		if (count(p) === 'offline') return { sent, refused };
 	}
-	// A line for a draft that has not arrived waits for it.
+	// Stock, before the lines that may draw it.
+	for (const q of (await allReceipts()).filter((q) => !q.refused)) {
+		const p = await postOne(
+			() => fetch('/api/receipts', { method: 'POST', body: receiptForm(q.receipt) }),
+			(why) => settleReceipt(q, { ...q, refused: why }),
+			() => settleReceipt(q, null)
+		);
+		if (count(p) === 'offline') return { sent, refused };
+	}
+	for (const q of (await allAdjusts()).filter((q) => !q.refused)) {
+		const p = await postOne(
+			() =>
+				fetch(`/api/materials/${q.adjust.material_id}/adjustments`, {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						client_uuid: q.adjust.client_uuid,
+						fields: q.adjust.fields,
+						made_at: q.adjust.made_at
+					})
+				}),
+			(why) => settleAdjust(q, { ...q, refused: why }),
+			() => settleAdjust(q, null)
+		);
+		if (count(p) === 'offline') return { sent, refused };
+	}
+	for (const q of (await allCounts()).filter((q) => !q.refused)) {
+		// What is counted on it names the count the server answers with.
+		let id = '';
+		const p = await postOne(
+			async () => {
+				const r = await fetch('/api/counts', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify(q.count)
+				});
+				if (r.ok) id = ((await r.clone().json()) as { id: string }).id;
+				return r;
+			},
+			(why) => settleCount(q, { ...q, refused: why }),
+			async () => {
+				await renameCount(q.count.client_uuid, id);
+				await settleCount(q, null);
+			}
+		);
+		if (count(p) === 'offline') return { sent, refused };
+	}
+	const waitingCounts = new Set((await allCounts()).map((q) => q.count.client_uuid));
+	for (const q of (await allCounted()).filter(
+		(q) => !q.refused && !waitingCounts.has(q.counted.count)
+	)) {
+		const at = `/api/counts/${q.counted.count}/lines/${q.counted.material_id}`;
+		const p = await postOne(
+			() =>
+				q.counted.fields.counted === ''
+					? fetch(at, { method: 'DELETE' })
+					: fetch(at, {
+							method: 'PUT',
+							headers: { 'content-type': 'application/json' },
+							body: JSON.stringify({ fields: q.counted.fields, made_at: q.counted.made_at })
+						}),
+			(why) => settleCounted(q, { ...q, refused: why }),
+			() => settleCounted(q, null)
+		);
+		if (count(p) === 'offline') return { sent, refused };
+	}
+	// A line for a draft that has not arrived waits for it, and one drawing
+	// something new received here waits for its receipt.
 	const waitingDrafts = new Set((await allDrafts()).map((q) => q.draft.client_uuid));
+	const waitingStock = new Set(
+		(await allReceipts()).flatMap((q) =>
+			q.receipt.shown.items.flatMap((i) => (i.material_uuid ? [i.material_uuid] : []))
+		)
+	);
 	for (const q of (await allLines()).filter(
-		(q) => !q.refused && !waitingDrafts.has(q.line.invoice_id)
+		(q) =>
+			!q.refused &&
+			!waitingDrafts.has(q.line.invoice_id) &&
+			!waitingStock.has(q.line.fields.material_id ?? '')
 	)) {
 		const p = await postOne(
 			() => fetch('/api/lines', { method: 'POST', body: formOf(q.line) }),
@@ -538,7 +654,8 @@ let chain: Promise<unknown> = Promise.resolve();
 
 /**
  * Posts everything waiting, oldest first: time, then changes to time, then
- * drafts, then lines, then changes to lines, then trips. One flush at a time: a second call
+ * drafts, then stock -- receipts, adjustments, counts and what is counted on
+ * them -- then lines, then changes to lines, then trips. One flush at a time: a second call
  * runs after the first, so it sees whatever was queued before it was made, and
  * no entry is ever out on two posts at once.
  */
@@ -833,23 +950,29 @@ export async function discardTrip(key: string): Promise<void> {
 	await discardIn(TRIPS, key);
 }
 
-/** Everything of the signed-in person's waiting to send -- time and changes to it, drafts, lines, changes to lines and trips -- leaving out what was refused. */
+/** Everything of the signed-in person's waiting to send -- time and changes to it, drafts, stock, lines, changes to lines and trips -- leaving out what was refused. */
 export async function waitingCount(): Promise<number> {
-	const [time, timeChanges, drafts, lines, changes, trips] = await Promise.all([
+	const [time, timeChanges, drafts, lines, changes, trips, stock] = await Promise.all([
 		held(),
 		allTimeChanges(),
 		allDrafts(),
 		allLines(),
 		allChanges(),
-		allTrips()
+		allTrips(),
+		stockHeld()
 	]);
+	const waiting = (rows: { refused?: unknown }[]) => rows.filter((q) => !q.refused).length;
 	return (
 		time.waiting +
-		timeChanges.filter((q) => !q.refused).length +
-		drafts.filter((q) => !q.refused).length +
-		lines.filter((q) => !q.refused).length +
-		changes.filter((q) => !q.refused).length +
-		trips.filter((q) => !q.refused).length
+		waiting(timeChanges) +
+		waiting(drafts) +
+		waiting(lines) +
+		waiting(changes) +
+		waiting(trips) +
+		waiting(stock.receipts) +
+		waiting(stock.adjusts) +
+		waiting(stock.counts) +
+		waiting(stock.counted)
 	);
 }
 
@@ -959,4 +1082,286 @@ export function secondsOf(e: Pick<Entry, 'started_at' | 'ended_at' | 'minutes'>)
 	if (e.started_at && e.ended_at)
 		return Math.max(1, Math.round((Date.parse(e.ended_at) - Date.parse(e.started_at)) / 1000));
 	return (e.minutes ?? 0) * 60;
+}
+
+/**
+ * A RECEIPT RECEIVED ON THIS PHONE, waiting to be sent: its fields and items as
+ * Receive names them -- which is how the server reads them (#lib/stock-fields)
+ * -- the uuid made here for anything new on it, and the paper, as this phone
+ * shrank it.
+ */
+export type ReceiptEntry = {
+	client_uuid: string;
+	fields: Record<string, string>;
+	items: Record<string, string>[];
+	receipt?: Blob | null;
+	/** When it was received, on this phone. */
+	made_at?: string;
+	shown: ShownReceipt;
+};
+
+/** What a receipt puts on the shelf, as this phone worked it out: for showing, and drawing from. */
+export type ShownReceipt = {
+	supplier: string | null;
+	received_on: string;
+	total: string;
+	items: ShownReceived[];
+};
+
+/** One item on a receipt received here: what it is, and what it put on the shelf. */
+export type ShownReceived = {
+	/** A material in the catalogue, by its id; or something new, by the uuid made here. */
+	material_id: string | null;
+	material_uuid: string | null;
+	name: string;
+	/** Its unit's name, how it is written beside a figure, and the places it counts in. */
+	unit: string;
+	short: string;
+	places: number;
+	/** The markup it sells at: its own, or the business's. */
+	markup: string;
+	qty: string;
+	/** What all of it cost before tax, and its share of the receipt's tax. */
+	cost: string;
+	tax: string;
+};
+
+export type QueuedReceipt = {
+	receipt: ReceiptEntry;
+	/** Who made it (#lib/owner). */
+	owner?: string;
+	queued_at: number;
+	refused?: Refusal;
+};
+
+/** The form a receipt is posted as: its uuid, fields, items and paper. */
+function receiptForm(r: ReceiptEntry): FormData {
+	const f = new FormData();
+	f.set('client_uuid', r.client_uuid);
+	for (const [k, v] of Object.entries(r.fields)) f.set(k, v);
+	f.set('items', JSON.stringify(r.items));
+	if (r.made_at) f.set('made_at', r.made_at);
+	if (r.receipt) f.set('receipt', r.receipt, 'receipt');
+	return f;
+}
+
+/**
+ * Writes a receipt. Resolves once it is committed; one with a client_uuid
+ * already queued replaces it, which is how a refused one is fixed.
+ */
+export async function enqueueReceipt(r: ReceiptEntry): Promise<void> {
+	keep();
+	const owner = maker();
+	await tx(
+		'readwrite',
+		(s) => s.put({ receipt: r, queued_at: Date.now(), owner } satisfies QueuedReceipt),
+		RECEIPTS
+	);
+}
+
+async function allReceipts(): Promise<QueuedReceipt[]> {
+	const rows = (await tx<QueuedReceipt[]>('readonly', (s) => s.getAll(), RECEIPTS)) ?? [];
+	return mine(rows).sort((a, b) => a.queued_at - b.queued_at);
+}
+
+/** One receipt received here, to be fixed. */
+export async function findReceipt(client_uuid: string): Promise<QueuedReceipt | undefined> {
+	return ifMine(await tx<QueuedReceipt>('readonly', (s) => s.get(client_uuid), RECEIPTS));
+}
+
+/** Lets go of a receipt. Only ever a person's decision, made on purpose. */
+export async function discardReceipt(client_uuid: string): Promise<void> {
+	await discardIn(RECEIPTS, client_uuid);
+}
+
+const settleReceipt = (q: QueuedReceipt, next: QueuedReceipt | null) =>
+	settleIn(RECEIPTS, q.receipt.client_uuid, q, next);
+
+/**
+ * AN ADJUSTMENT MADE ON THIS PHONE: which material, its fields as Adjust
+ * names them (#lib/adjust-fields), and what it is, for showing.
+ */
+export type AdjustEntry = {
+	client_uuid: string;
+	material_id: string;
+	fields: Record<string, string>;
+	made_at?: string;
+	shown: { name: string; unit: string; way: 'off' | 'on'; qty: string; reason: string };
+};
+
+export type QueuedAdjust = {
+	adjust: AdjustEntry;
+	owner?: string;
+	queued_at: number;
+	refused?: Refusal;
+};
+
+/** Writes an adjustment; one queued again under its uuid replaces it. */
+export async function enqueueAdjust(a: AdjustEntry): Promise<void> {
+	keep();
+	const owner = maker();
+	await tx(
+		'readwrite',
+		(s) => s.put({ adjust: a, queued_at: Date.now(), owner } satisfies QueuedAdjust),
+		ADJUSTS
+	);
+}
+
+async function allAdjusts(): Promise<QueuedAdjust[]> {
+	const rows = (await tx<QueuedAdjust[]>('readonly', (s) => s.getAll(), ADJUSTS)) ?? [];
+	return mine(rows).sort((a, b) => a.queued_at - b.queued_at);
+}
+
+/** One adjustment made here, to be fixed. */
+export async function findAdjust(client_uuid: string): Promise<QueuedAdjust | undefined> {
+	return ifMine(await tx<QueuedAdjust>('readonly', (s) => s.get(client_uuid), ADJUSTS));
+}
+
+/** Lets go of an adjustment. A person's decision. */
+export async function discardAdjust(client_uuid: string): Promise<void> {
+	await discardIn(ADJUSTS, client_uuid);
+}
+
+const settleAdjust = (q: QueuedAdjust, next: QueuedAdjust | null) =>
+	settleIn(ADJUSTS, q.adjust.client_uuid, q, next);
+
+/**
+ * A COUNT STARTED ON THIS PHONE, on a day, with no count open when it last
+ * heard: what is counted on it names it by this uuid until it arrives.
+ */
+export type CountEntry = { client_uuid: string; counted_on: string; made_at?: string };
+
+export type QueuedCount = {
+	count: CountEntry;
+	owner?: string;
+	queued_at: number;
+	refused?: Refusal;
+};
+
+/** Writes a count started here. */
+export async function enqueueCount(c: CountEntry): Promise<void> {
+	keep();
+	const owner = maker();
+	await tx(
+		'readwrite',
+		(s) => s.put({ count: c, queued_at: Date.now(), owner } satisfies QueuedCount),
+		COUNTS
+	);
+}
+
+async function allCounts(): Promise<QueuedCount[]> {
+	const rows = (await tx<QueuedCount[]>('readonly', (s) => s.getAll(), COUNTS)) ?? [];
+	return mine(rows).sort((a, b) => a.queued_at - b.queued_at);
+}
+
+/** One count started here, while it waits. */
+export async function findCount(client_uuid: string): Promise<QueuedCount | undefined> {
+	return ifMine(await tx<QueuedCount>('readonly', (s) => s.get(client_uuid), COUNTS));
+}
+
+const settleCount = (q: QueuedCount, next: QueuedCount | null) =>
+	settleIn(COUNTS, q.count.client_uuid, q, next);
+
+/**
+ * ONE MATERIAL COUNTED ON THIS PHONE: on which count -- the server's id, or the
+ * uuid of one started here -- how many, what the shelf said here when it was
+ * counted, and a cost each where it asked for one. Counted none at all is "0";
+ * a figure taken back is an empty count, which takes the material off the
+ * count. One to a count and material: counted again, the latest figure.
+ */
+export type CountedEntry = {
+	/** `${count}|${material_id}`: one to a count and material. */
+	key: string;
+	count: string;
+	material_id: string;
+	fields: { counted: string; cost_each: string; on_hand: string };
+	made_at?: string;
+	shown: { name: string; unit: string };
+};
+
+export type QueuedCounted = {
+	counted: CountedEntry;
+	owner?: string;
+	queued_at: number;
+	refused?: Refusal;
+};
+
+/** The key one material counted on one count is kept under. */
+export const countedKey = (count: string, material: string) => `${count}|${material}`;
+
+/** Writes a figure counted; a later one for the same count and material replaces it. */
+export async function enqueueCounted(c: Omit<CountedEntry, 'key'>): Promise<void> {
+	keep();
+	const owner = maker();
+	const counted = { ...c, key: countedKey(c.count, c.material_id) };
+	await tx(
+		'readwrite',
+		(s) => s.put({ counted, queued_at: Date.now(), owner } satisfies QueuedCounted),
+		COUNTED
+	);
+}
+
+async function allCounted(): Promise<QueuedCounted[]> {
+	const rows = (await tx<QueuedCounted[]>('readonly', (s) => s.getAll(), COUNTED)) ?? [];
+	return mine(rows).sort((a, b) => a.queued_at - b.queued_at);
+}
+
+/** Lets go of a figure counted. A person's decision. */
+export async function discardCounted(key: string): Promise<void> {
+	await discardIn(COUNTED, key);
+}
+
+const settleCounted = (q: QueuedCounted, next: QueuedCounted | null) =>
+	settleIn(COUNTED, q.counted.key, q, next);
+
+/**
+ * What is counted on a count started here names the count the server answered
+ * with, once it has: its own, or the one it joined.
+ */
+async function renameCount(from: string, to: string) {
+	if (!to || from === to) return;
+	for (const q of (await allCounted()).filter((q) => q.counted.count === from)) {
+		const counted = { ...q.counted, count: to, key: countedKey(to, q.counted.material_id) };
+		await tx(
+			'readwrite',
+			(s) => {
+				s.delete(q.counted.key);
+				s.put({ ...q, counted });
+			},
+			COUNTED
+		);
+	}
+}
+
+/**
+ * Puts figures refused because their count was applied before they arrived on
+ * a count started here, so they go to whichever count is open when they do. A
+ * person's decision, made on purpose.
+ */
+export async function recount(keys: string[], today: string): Promise<string> {
+	const fresh = crypto.randomUUID();
+	await enqueueCount({ client_uuid: fresh, counted_on: today, made_at: new Date().toISOString() });
+	for (const key of keys) {
+		const q = ifMine(await tx<QueuedCounted>('readonly', (s) => s.get(key), COUNTED));
+		if (!q) continue;
+		await discardIn(COUNTED, key);
+		await enqueueCounted({ ...q.counted, count: fresh });
+	}
+	return fresh;
+}
+
+/** Every piece of stock work on this phone, waiting or refused, oldest first. */
+export async function stockHeld(): Promise<{
+	receipts: QueuedReceipt[];
+	adjusts: QueuedAdjust[];
+	counts: QueuedCount[];
+	counted: QueuedCounted[];
+}> {
+	const [receipts, adjusts, counts, counted] = await Promise.all([
+		allReceipts(),
+		allAdjusts(),
+		allCounts(),
+		allCounted()
+	]);
+	return { receipts, adjusts, counts, counted };
 }

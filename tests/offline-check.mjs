@@ -167,7 +167,7 @@ const stored = (/** @type {string} */ key) =>
  */
 const inQueue = (/** @type {string} */ body) =>
 	evaluate(`new Promise((resolve) => {
-		const req = indexedDB.open('reckon', 6);
+		const req = indexedDB.open('reckon', 7);
 		req.onupgradeneeded = () => {
 			const db = req.result;
 			if (!db.objectStoreNames.contains('queue'))
@@ -182,6 +182,13 @@ const inQueue = (/** @type {string} */ body) =>
 				db.createObjectStore('trips', { keyPath: 'trip.key' });
 			if (!db.objectStoreNames.contains('time_changes'))
 				db.createObjectStore('time_changes', { keyPath: 'change.entry_id' });
+			for (const [store, keyPath] of [
+				['receipts', 'receipt.client_uuid'],
+				['adjustments', 'adjust.client_uuid'],
+				['counts', 'count.client_uuid'],
+				['counted', 'counted.key']
+			])
+				if (!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath });
 		};
 		req.onerror = () => resolve(null);
 		req.onsuccess = () => {
@@ -248,6 +255,18 @@ const CHANGED = 'offline-check.changed';
 const TRIPS = 'offline-check.trips';
 /** Where the time entries changed and removed with no signal are, kept between runs. */
 const ENTRIES = 'offline-check.entries';
+/** Where the stock received, adjusted and counted with no signal is kept between runs. */
+const STOCK = 'offline-check.stock';
+/** Something new received with no signal, and how many came. */
+const TIES = 'Cable ties · 8 in';
+/** How much stock work waits on the phone, in all four of its stores. */
+const stockQueued = () =>
+	inQueue(`const stores = ['receipts', 'adjustments', 'counts', 'counted'];
+		const t = db.transaction(stores);
+		let n = 0;
+		for (const s of stores) t.objectStore(s).count().onsuccess = (e) => (n += e.target.result);
+		t.oncomplete = () => done(n);
+		t.onerror = () => done(null);`);
 /** Where Avery's own trip, changed with no signal, is kept between runs. */
 const OWN_TRIP = 'offline-check.own-trip';
 /** Sam's drive today, in the demo: someone else's, so never kept on Avery's phone. */
@@ -488,6 +507,17 @@ if (phase === 'online') {
 		trip.includes('needs a connection') &&
 			!/Billed|Paid for the vehicle|Not over-billed|\$\d/.test(trip),
 		'her trip is kept as the drive, with nothing it bills or pays'
+	);
+
+	const materials = await keptAt('/catalogue/materials');
+	const materialsData = await keptAt('/catalogue/materials/__data.json');
+	check(
+		materials.includes('Fibre patch lead') &&
+			!/\$\d/.test(materials) &&
+			!/"ex_tax":"\d|"price":"\d/.test(materialsData) &&
+			have.includes('/catalogue/receipts/new') &&
+			have.includes('/catalogue/counts/on-phone'),
+		'Materials, Receive and a count are kept, the stock with quantities alone'
 	);
 
 	const install = await send('Page.getInstallabilityErrors');
@@ -947,6 +977,128 @@ if (phase === 'offline') {
 	} else failures.push('could not find Avery’s own trip');
 	await evaluate(
 		`localStorage.setItem(${JSON.stringify(TRIPS)}, ${JSON.stringify(JSON.stringify({ newKey, own, driven }))})`
+	);
+
+	// STOCK WITH NO SIGNAL (#lib/queue): Materials with quantities alone; a
+	// receipt with something new on it, drawn on a line at once; an
+	// adjustment; and a count, started on the phone.
+	await go('/catalogue/materials');
+	const fibre = /** @type {string} */ (
+		await run(
+			() =>
+				[...document.querySelectorAll('a.box-row')]
+					.find((a) => a.textContent?.includes('Fibre patch lead'))
+					?.getAttribute('href')
+					?.split('/')
+					.pop() ?? ''
+		)
+	);
+	check(
+		(await heading()) === 'Catalogue' && !!fibre && !/\$\d/.test(await text()),
+		'Materials opens with no server, with quantities alone'
+	);
+	await go('/catalogue/receipts/new');
+	check((await heading()) === 'Receive stock', 'Receive opens with no server');
+	await typeIn('#r-from', 'Corner Hardware');
+	await evaluate(`document.querySelector('#rcv-tab-items').click()`);
+	await settle(300);
+	await click('Add an item');
+	await settle(400);
+	await run(() => {
+		const s = /** @type {HTMLSelectElement} */ (document.querySelector('#d-item'));
+		s.value = '';
+		s.dispatchEvent(new Event('change', { bubbles: true }));
+	});
+	await settle(300);
+	await typeIn('#d-name', TIES);
+	await choose('#d-unit', 'each');
+	await typeIn('#d-count', '100');
+	await typeIn('#d-price', '12.00');
+	await click('Add item');
+	await settle(400);
+	await click('Receive');
+	await settle(6000);
+	const received = /** @type {string} */ (await text());
+	check(
+		(await evaluate('location.pathname')) === '/catalogue/materials' &&
+			received.includes('Received from Corner Hardware') &&
+			received.includes('Waiting to send'),
+		'a receipt with something new on it waits on the phone, and Materials says so'
+	);
+	const phoneDraft = /** @type {string} */ (
+		await evaluate(`localStorage.getItem(${JSON.stringify(STARTED)}) ?? ''`)
+	);
+	await go(`/invoices/on-phone/add?draft=${encodeURIComponent(phoneDraft)}`);
+	await settle(1500);
+	const offering = /** @type {string} */ (await text());
+	check(
+		offering.includes(TIES) && offering.includes('100 each on the shelf'),
+		'what it put on the shelf can go on a line at once'
+	);
+	await run(
+		(/** @type {string} */ name) =>
+			/** @type {HTMLButtonElement | undefined} */ (
+				[...document.querySelectorAll('button.rec')].find((b) => b.textContent?.includes(name))
+			)?.click(),
+		TIES
+	);
+	await settle(200);
+	await typeIn('#l-qty', '10');
+	await click('Add the line');
+	await settle(5500);
+	check(
+		((await linesQueued()) ?? []).some((l) => l.description === TIES),
+		'10 of them go on the draft started on the phone, waiting with it'
+	);
+	await go(`/catalogue/materials/${fibre}`);
+	await click('Adjust');
+	await settle(400);
+	await typeIn('#a-qty', '1');
+	await click('Take it off');
+	await settle(5500);
+	const adjusted = /** @type {string} */ (await text());
+	check(
+		adjusted.includes('Take 1 each off') && adjusted.includes('Waiting to send'),
+		'a patch lead used in the shop waits on the phone, on its own screen'
+	);
+	await go('/catalogue/materials');
+	await click('Count');
+	await settle(3000);
+	const counting = /** @type {string} */ (await evaluate('location.pathname + location.search'));
+	// Two short of what the sheet says is on hand.
+	const onHand = Number(
+		/** @type {string} */ (
+			await run(
+				(/** @type {string} */ id) =>
+					document
+						.querySelector(`#c-${id}`)
+						?.closest('.cl')
+						?.textContent?.match(/([\d,.]+) each on hand/)?.[1]
+						?.replace(/,/g, '') ?? 'NaN',
+				fibre
+			)
+		)
+	);
+	await typeIn(`#c-${fibre}`, String(onHand - 2));
+	await run(
+		(/** @type {string} */ sel) =>
+			document.querySelector(sel)?.dispatchEvent(new Event('change', { bubbles: true })),
+		`#c-${fibre}`
+	);
+	await settle(5500);
+	const countedHere = /** @type {string} */ (await text());
+	check(
+		counting.startsWith('/catalogue/counts/on-phone?count=') &&
+			countedHere.includes('On this phone') &&
+			countedHere.includes('−2 each'),
+		`a count is started on the phone, and the patch leads counted 2 short (${counting} ${countedHere.slice(countedHere.lastIndexOf('Fibre patch lead'), countedHere.lastIndexOf('Fibre patch lead') + 160)})`
+	);
+	// The receipt, the adjustment, the count started and what is counted on it.
+	check((await stockQueued()) === 4, `all of it waits on the phone (${await stockQueued()})`);
+	await run(
+		(/** @type {string} */ key, /** @type {string} */ value) => localStorage.setItem(key, value),
+		STOCK,
+		JSON.stringify({ fibre })
 	);
 
 	// TWO WEEKS WITHOUT THE SERVER: the session has ended there, and the phone
@@ -1415,6 +1567,41 @@ if (phase === 'back') {
 			'her own trip has the change'
 		);
 	}
+
+	// THE STOCK ARRIVES, before the lines that draw it: the receipt with
+	// something new on it, then the 10 drawn from it, the patch lead used, and
+	// the count started on the phone -- open now, its figure showing the lead
+	// used since it was counted.
+	const { fibre } = JSON.parse(
+		/** @type {string} */ (await evaluate(`localStorage.getItem(${JSON.stringify(STOCK)}) ?? '{}'`))
+	);
+	await go('/catalogue/materials');
+	const stocked = /** @type {string} */ (await text());
+	const countHref = /** @type {string} */ (
+		await evaluate(
+			`[...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'Carry on counting')?.getAttribute('href') ?? ''`
+		)
+	);
+	check(
+		(await stockQueued()) === 0 &&
+			new RegExp(`${TIES}.*90 each left`).test(stocked) &&
+			stocked.includes('A count is open'),
+		`the receipt arrives with something new on it, the line takes 10, and the count is open${(await stockQueued()) === 0 ? '' : ` (${await stockQueued()} still on the phone)`}`
+	);
+	await go(`/catalogue/materials/${fibre}/adjustments`);
+	const used = /** @type {string} */ (await text());
+	check(
+		used.includes('Used in the shop') && used.includes('−1 each'),
+		'the patch lead used arrives'
+	);
+	await go(countHref || '/catalogue/materials');
+	const theCount = /** @type {string} */ (await text());
+	check(
+		theCount.includes('Fibre patch lead') &&
+			theCount.includes('−2 each') &&
+			theCount.includes('Moved since'),
+		`the count holds the leads counted on the phone, and says one was used since (${countHref} ${theCount.slice(theCount.lastIndexOf('Fibre patch lead'), theCount.lastIndexOf('Fibre patch lead') + 200)})`
+	);
 
 	await evaluate(`document.querySelector('form[action="/logout"]')?.requestSubmit()`);
 	await settle(2500);

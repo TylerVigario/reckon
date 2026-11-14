@@ -118,6 +118,20 @@ export function materials(ids?: string[]) {
 }
 
 /**
+ * The material a line names: by its id, or by the uuid a phone made for it
+ * where it was received there with no signal and has arrived since. The id
+ * as named where neither finds one.
+ */
+async function materialNamed(id: string): Promise<string> {
+	if (!UUID.test(id)) return id;
+	const [m] = await db
+		.select({ id: t.material.id })
+		.from(t.material)
+		.where(or(eq(t.material.id, id), eq(t.material.clientUuid, id)));
+	return m?.id ?? id;
+}
+
+/**
  * What Add a line needs besides the draft and its sites, to say what a line
  * will bill as it is typed with no signal: who might have paid, the business's
  * terms, and what is on the shelf.
@@ -484,7 +498,7 @@ async function fromTheShelf(
 		id?: string;
 	}
 ): Promise<Added> {
-	const id = input.fields.material_id ?? '';
+	const id = await materialNamed(input.fields.material_id ?? '');
 	const [m] = UUID.test(id) ? await materials([id]) : [];
 	const { values, errors } = readFromStock(input.fields, m?.places ?? null);
 	if (id && !m && !errors.material_id) errors.material_id = 'That item no longer exists.';

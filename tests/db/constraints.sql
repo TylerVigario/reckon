@@ -1873,6 +1873,46 @@ SELECT must_pass($$
 $$, 'a count still being counted, thrown away');
 
 \echo ''
+\echo '=== 36e. stock made on a phone is made once ==='
+
+INSERT INTO stock_receipt (received_on, client_uuid)
+VALUES ('2026-10-05','36e36e36-0000-4000-8000-000000000001');
+
+SELECT must_fail($$
+  INSERT INTO stock_receipt (received_on, client_uuid)
+  VALUES ('2026-10-05','36e36e36-0000-4000-8000-000000000001')
+$$, 'one receipt sent twice from a phone, made twice');
+
+INSERT INTO material (name, unit_id, client_uuid)
+VALUES ('Cable ties - 8 in, black', (SELECT id FROM unit WHERE name = 'each'),
+        '36e36e36-0000-4000-8000-000000000002');
+
+SELECT must_fail($$
+  INSERT INTO material (name, unit_id, client_uuid)
+  VALUES ('Cable ties - 8 in, white', (SELECT id FROM unit WHERE name = 'each'),
+          '36e36e36-0000-4000-8000-000000000002')
+$$, 'two materials named by the one uuid a phone made');
+
+INSERT INTO stock_adjustment (material_id, made_on, way, qty, reason, ex_tax_cost, client_uuid,
+                              created_by)
+VALUES ('66666666-6666-6666-6666-666666666666','2026-10-05','on',1,'found',0.31,
+        '36e36e36-0000-4000-8000-000000000003','a0a0a0a0-0000-4000-8000-0000000000a1');
+
+SELECT must_fail($$
+  INSERT INTO stock_adjustment (material_id, made_on, way, qty, reason, ex_tax_cost, client_uuid,
+                                created_by)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-10-05','on',1,'found',0.31,
+          '36e36e36-0000-4000-8000-000000000003','a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'one adjustment sent twice from a phone, made twice');
+
+SELECT must_pass($$
+  INSERT INTO stock_adjustment (material_id, made_on, way, qty, reason, ex_tax_cost, client_uuid,
+                                created_by)
+  VALUES ('66666666-6666-6666-6666-666666666666','2026-10-05','on',1,'found',0.31,
+          '36e36e36-0000-4000-8000-000000000003','a0a0a0a0-0000-4000-8000-0000000000a2')
+$$, 'the same uuid from someone else''s phone, theirs');
+
+\echo ''
 \echo '=== 37. what was bought or paid for says who paid, and keeps its receipt ==='
 
 -- A draft of its own: section 16's went out, and a sent invoice takes no lines.

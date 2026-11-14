@@ -1,6 +1,7 @@
 /**
  * What may be said about stock counted: how many of one material are there,
- * and, where the shelf has nothing to cost what turned up by, what one cost.
+ * what the shelf said where it was counted, and, where the shelf has nothing
+ * to cost what turned up by, what one cost.
  * Nothing at all is a count too -- the shelf is empty -- so none is a figure
  * here, not a refusal.
  *
@@ -22,9 +23,21 @@ export const COUNT_LINE_FIELDS = {
 	cost_each: optional(decimal(12, 4))
 };
 
+/**
+ * What the shelf said where it was counted -- on a phone, perhaps hours before
+ * it arrives -- so what moved since is told. Empty is the shelf now, which the
+ * column is filled with; so it is not one of the column's own rules.
+ */
+export const SEEN_FIELDS = {
+	on_hand: optional(decimal(12, 4))
+};
+
 /** A material counted: each field, and no more places than its unit counts in. */
 export function readCountLine(fields: Record<string, unknown>, places: number | null) {
-	const { values, errors } = parseAll(COUNT_LINE_FIELDS, fields);
+	const line = parseAll(COUNT_LINE_FIELDS, fields);
+	const seen = parseAll(SEEN_FIELDS, fields);
+	const values = { ...line.values, ...seen.values };
+	const errors = { ...line.errors, ...seen.errors };
 	if (!errors.counted) {
 		const why = countError(String(values.counted), places, '');
 		if (why) errors.counted = why;

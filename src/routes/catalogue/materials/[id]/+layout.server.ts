@@ -5,14 +5,16 @@ import * as t from '#lib/server/db/schema/index.ts';
 import { personalToday } from '#lib/server/calendar.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { materialFigures } from '#lib/server/stock.ts';
+import { isOfflineCopy } from '#lib/offline-copy.ts';
 import type { LayoutServerLoad } from './$types';
 
 /**
  * One material as a record: what it is, what is on hand and what it sells at,
  * and what one on the shelf costs now -- what its head says, and what Adjust
- * works from, whichever tab is open. Each tab loads its own part.
+ * works from, whichever tab is open. Each tab loads its own part. Kept for no
+ * signal with its Stock tab, so it is adjusted there.
  */
-export const load: LayoutServerLoad = async ({ params }) => {
+export const load: LayoutServerLoad = async ({ params, url }) => {
 	if (!UUID.test(params.id)) error(404, 'no such material');
 	const [found] = await db
 		.select({
@@ -41,10 +43,26 @@ export const load: LayoutServerLoad = async ({ params }) => {
 			.where(eq(t.stockAdjustment.materialId, found.id)),
 		db.select({ n: count() }).from(t.materialLot).where(eq(t.materialLot.materialId, found.id))
 	]);
+	const copy = isOfflineCopy(url);
+	const worth = figures.of.get(found.id)!;
 	return {
-		material: { ...found, ...figures.of.get(found.id)! },
+		// Kept for no signal with quantities alone (#lib/offline-copy): what it
+		// cost and sells at need a connection.
+		copy,
+		as_of: new Date().toISOString(),
+		material: copy
+			? {
+					...found,
+					...worth,
+					own_markup: null,
+					ex_tax: null,
+					tax_paid: null,
+					price: null,
+					listed: null
+				}
+			: { ...found, ...worth },
 		// The business's own markup, which one with none of its own sells at.
-		markup: figures.markup,
+		markup: copy ? null : figures.markup,
 		costing: figures.costing,
 		adjusted: adjusted.n,
 		// Whether any of it has been received: its unit is then fixed.

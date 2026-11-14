@@ -43,6 +43,8 @@ export async function putRight(
 		note: string | null;
 		costEach: string | null;
 		countId?: string | null;
+		/** The uuid it was made with, on the page or a phone. */
+		clientUuid?: string | null;
 		userId: string;
 	}
 ): Promise<string> {
@@ -55,6 +57,7 @@ export async function putRight(
 		reason: a.reason,
 		note: a.note,
 		countId: a.countId ?? null,
+		clientUuid: a.clientUuid ?? null,
 		createdBy: a.userId
 	};
 	if (a.way === 'off') {
