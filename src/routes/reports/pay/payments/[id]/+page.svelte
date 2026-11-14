@@ -115,7 +115,7 @@
 	}
 	.lt {
 		font-weight: 400;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.sec + .rows {
 		margin-top: 18px;
@@ -123,6 +123,6 @@
 	.aside {
 		margin: 12px 0 0;
 		font-size: 12.5px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 </style>

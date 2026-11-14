@@ -255,6 +255,6 @@
 		align-items: center;
 	}
 	.bad {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 </style>

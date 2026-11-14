@@ -111,18 +111,18 @@
 		width: 40px;
 		height: 40px;
 		padding: 0;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 		background: transparent;
-		border: 1px solid var(--line);
+		border: 1px solid var(--borderColor-default);
 		border-radius: 6px;
 		cursor: pointer;
 	}
 	.trigger:hover {
-		color: var(--ink);
-		background: var(--surface-2);
+		color: var(--fgColor-default);
+		background: var(--bgColor-muted);
 	}
 	.trigger:focus-visible {
-		outline: 2px solid var(--accent);
+		outline: 2px solid var(--borderColor-accent-emphasis);
 		outline-offset: 1px;
 	}
 	ul {
@@ -133,16 +133,16 @@
 		min-width: 200px;
 		max-width: min(320px, calc(100vw - 16px));
 		list-style: none;
-		color: var(--ink);
-		background: var(--surface);
-		border: 1px solid var(--line);
+		color: var(--fgColor-default);
+		background: var(--bgColor-default);
+		border: 1px solid var(--borderColor-default);
 		border-radius: 12px;
-		box-shadow: 0 8px 24px rgb(20 26 43 / 0.18);
+		box-shadow: var(--shadow-floating-small);
 	}
 	li[role='separator'] {
 		height: 1px;
 		margin: 8px 0;
-		background: var(--line-soft);
+		background: var(--borderColor-muted);
 	}
 	button[role='menuitem'] {
 		display: flex;
@@ -165,23 +165,23 @@
 	}
 	button[role='menuitem']:hover,
 	button[role='menuitem']:focus-visible {
-		background: var(--surface-2);
+		background: var(--bgColor-muted);
 		outline: none;
 	}
 	button.danger {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	button.danger:hover,
 	button.danger:focus-visible {
-		background: var(--crit-wash);
+		background: var(--bgColor-danger-muted);
 	}
 	button[aria-disabled='true'] {
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		cursor: not-allowed;
 	}
 	.why {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	@media (pointer: coarse) {
 		.trigger {

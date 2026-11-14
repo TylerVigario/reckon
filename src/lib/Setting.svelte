@@ -293,16 +293,16 @@
 	}
 	.state {
 		font-size: 10px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		/* Reserved whether or not it says anything, so a field does not shift
 		   the ones under it the moment it saves. */
 		min-height: 1em;
 	}
 	.bad :global(.inp) {
-		border-color: var(--warn);
+		border-color: var(--borderColor-attention-emphasis);
 	}
 	.why {
-		color: var(--warn);
+		color: var(--fgColor-attention);
 		font-size: 12px;
 	}
 	.swatch {
@@ -314,7 +314,7 @@
 		width: 1.8rem;
 		height: 1.8rem;
 		border-radius: 6px;
-		border: 1px solid var(--line);
+		border: 1px solid var(--borderColor-default);
 		flex: none;
 	}
 </style>

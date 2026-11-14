@@ -1,12 +1,12 @@
 <script lang="ts">
-	/** One Octicon (#lib/octicons), drawn in the colour of the text around it. */
+	/** One Octicon (#lib/octicons, Primer's own), drawn in the colour of the text around it. */
 	import { OCTICON, type OcticonName } from './octicons';
 
 	let { name }: { name: OcticonName } = $props();
 </script>
 
 <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-	<path d={OCTICON[name]} />
+	{#each OCTICON[name] as d (d)}<path {d} />{/each}
 </svg>
 
 <style>

@@ -100,8 +100,8 @@ async function screens(): Promise<string[]> {
 	}
 	return [...OFFLINE_SCREENS, ...listed];
 }
-/** What the offline screens draw with besides the shell: the operator's colour and mark. */
-const OPERATOR = ['/operator/theme.css', '/operator/logo'];
+/** What the offline screens draw with besides the shell: the operator's mark. */
+const OPERATOR = ['/operator/logo'];
 
 const signedOut = (response: Response) =>
 	response.redirected && new URL(response.url).pathname === '/login';

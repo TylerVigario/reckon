@@ -190,17 +190,17 @@
 		flex-direction: column;
 		gap: 6px;
 		padding-bottom: 14px;
-		border-bottom: 1px solid var(--line);
+		border-bottom: 1px solid var(--borderColor-default);
 	}
 	.unit .btn {
 		align-self: flex-start;
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	.notes {
 		margin-top: 22px;
 	}
 	.why {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 		font-size: 12.5px;
 	}
 </style>

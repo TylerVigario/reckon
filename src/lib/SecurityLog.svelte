@@ -84,28 +84,28 @@
 	}
 	.ev-detail {
 		font-size: 14px;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 	}
 	.ev-meta {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0 6px;
 		font-size: 13px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		font-variant-numeric: tabular-nums;
 	}
 	.ev-meta > * + *::before {
 		content: '· ';
 	}
 	.ev-address {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-size: 12px;
 	}
 	.more {
 		font-weight: 600;
 	}
 	.muted {
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		margin: 0;
 	}
 </style>

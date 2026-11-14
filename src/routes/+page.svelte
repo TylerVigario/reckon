@@ -329,12 +329,12 @@
 	/* What each age of unbilled work is worth, coloured by how urgent the age is.
 	   Classes, not a style attribute, which the content security policy refuses. */
 	.rec-v.good {
-		color: var(--good);
+		color: var(--fgColor-success);
 	}
 	.rec-v.warn {
-		color: var(--warn);
+		color: var(--fgColor-attention);
 	}
 	.rec-v.crit {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 </style>

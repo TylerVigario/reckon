@@ -100,12 +100,12 @@
 	}
 	.e {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		overflow-wrap: anywhere;
 	}
 	.as {
 		flex: 0 0 auto;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 	}
 	.lab {
 		flex: 0 0 auto;

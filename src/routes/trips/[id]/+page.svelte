@@ -338,9 +338,9 @@
 	.aside {
 		margin: 0;
 		font-size: 12.5px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.why.bad {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 </style>

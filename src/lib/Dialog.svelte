@@ -87,14 +87,14 @@
 	dialog {
 		width: min(440px, calc(100vw - 32px));
 		padding: 0;
-		color: var(--ink);
-		background: var(--surface);
-		border: 1px solid var(--line);
+		color: var(--fgColor-default);
+		background: var(--bgColor-default);
+		border: 1px solid var(--borderColor-default);
 		border-radius: 12px;
-		box-shadow: 0 8px 24px rgb(20 26 43 / 0.24);
+		box-shadow: var(--shadow-floating-large);
 	}
 	dialog::backdrop {
-		background: rgb(20 26 43 / 0.45);
+		background: var(--overlay-backdrop-bgColor);
 	}
 	header {
 		display: flex;
@@ -115,15 +115,15 @@
 		width: 32px;
 		height: 32px;
 		padding: 0;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		background: none;
 		border: 0;
 		border-radius: 6px;
 		cursor: pointer;
 	}
 	.x:hover {
-		color: var(--ink);
-		background: var(--surface-2);
+		color: var(--fgColor-default);
+		background: var(--bgColor-muted);
 	}
 	.body {
 		padding: 0 16px 16px;
@@ -141,13 +141,13 @@
 		justify-content: flex-end;
 		gap: 8px;
 		padding: 16px;
-		border-top: 1px solid var(--line-soft);
+		border-top: 1px solid var(--borderColor-muted);
 	}
 	footer .btn {
 		border-radius: 6px;
 	}
 	footer .btn:not(.pri, .danger) {
-		background: var(--surface-2);
+		background: var(--bgColor-muted);
 	}
 	@media (pointer: coarse) {
 		.x {

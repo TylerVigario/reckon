@@ -16,14 +16,7 @@ describe('who reaches a route', () => {
 
 	it('opens without signing in only the sign-in page, what it uses, the client link and an emailed one', () => {
 		expect(needing('open')).toEqual(
-			[
-				'/login',
-				'/link',
-				'/manifest.webmanifest',
-				'/operator/logo',
-				'/operator/theme.css',
-				'/invoice/[token]'
-			].sort()
+			['/login', '/link', '/manifest.webmanifest', '/operator/logo', '/invoice/[token]'].sort()
 		);
 	});
 

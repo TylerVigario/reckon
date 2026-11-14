@@ -222,7 +222,7 @@
 		top: 50%;
 		transform: translateY(-50%);
 		font-size: 13px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		pointer-events: none;
 	}
 	.keep {
@@ -231,6 +231,6 @@
 		align-items: center;
 		gap: 8px 12px;
 		padding: 16px;
-		background: var(--surface-2);
+		background: var(--bgColor-muted);
 	}
 </style>

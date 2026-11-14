@@ -100,16 +100,16 @@
 		min-height: 48px;
 		box-sizing: border-box;
 		padding: calc(4px + env(safe-area-inset-top)) var(--pad) 4px;
-		background: var(--surface);
+		background: var(--bgColor-default);
 	}
 	.fold {
-		background: var(--surface);
+		background: var(--bgColor-default);
 		padding: 0 var(--pad) 10px;
-		border-bottom: 1px solid var(--line);
+		border-bottom: 1px solid var(--borderColor-default);
 	}
 	/* Alone, the bar is the whole header, and draws its own edge. */
 	.bar:last-child {
-		border-bottom: 1px solid var(--line);
+		border-bottom: 1px solid var(--borderColor-default);
 		padding-bottom: 8px;
 	}
 	/* Scrolls rather than wraps: a trail is one line, and the bar one row. */
@@ -129,22 +129,22 @@
 		display: none;
 	}
 	.crumbs a {
-		color: var(--accent);
+		color: var(--fgColor-accent);
 		text-decoration: none;
 	}
 	.crumbs a:hover {
 		text-decoration: underline;
 	}
 	.sep {
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	h1 {
-		font-family: var(--f-display);
+		font-family: var(--fontStack-sansSerif);
 		font-weight: 700;
 		font-size: 19px;
 		line-height: 1.25;
 		letter-spacing: -0.01em;
-		color: var(--display-ink);
+		color: var(--fgColor-default);
 		margin: 0;
 		flex: 1 1 auto;
 		min-width: 0;
@@ -153,7 +153,7 @@
 		margin: 2px 0 0;
 		font-size: 12.5px;
 		line-height: 1.4;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.act {
 		display: flex;
@@ -170,7 +170,7 @@
 		padding: 6px 12px 6px 8px;
 		margin-left: -6px;
 		font-size: 14.5px;
-		color: var(--accent);
+		color: var(--fgColor-accent);
 		text-decoration: none;
 		border-radius: 8px;
 	}
@@ -195,10 +195,10 @@
 			overflow: hidden;
 			white-space: nowrap;
 			text-overflow: ellipsis;
-			font-family: var(--f-display);
+			font-family: var(--fontStack-sansSerif);
 			font-weight: 700;
 			font-size: 15px;
-			color: var(--display-ink);
+			color: var(--fgColor-default);
 			opacity: 0;
 			animation: appear linear both;
 			animation-timeline: scroll(root);
@@ -217,7 +217,7 @@
 	}
 	@keyframes edge {
 		to {
-			box-shadow: 0 1px 0 var(--line);
+			box-shadow: 0 1px 0 var(--borderColor-default);
 		}
 	}
 

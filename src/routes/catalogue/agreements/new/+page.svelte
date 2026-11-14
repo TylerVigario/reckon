@@ -194,6 +194,6 @@
 		align-items: center;
 		gap: 8px 12px;
 		padding: 16px;
-		background: var(--surface-2);
+		background: var(--bgColor-muted);
 	}
 </style>

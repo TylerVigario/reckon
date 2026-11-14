@@ -211,14 +211,14 @@
 		overflow-wrap: anywhere;
 	}
 	.kv-v {
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 	}
 	.who {
 		flex: 1 1 auto;
 	}
 	.sub {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.end {
 		display: flex;
@@ -248,7 +248,7 @@
 		margin-left: 6px;
 		font-size: 12px;
 		font-weight: 600;
-		color: var(--good);
+		color: var(--fgColor-success);
 	}
 	.lab {
 		flex: 0 0 auto;

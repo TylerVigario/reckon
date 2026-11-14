@@ -71,13 +71,13 @@
 	}
 	.sub {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.v {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-weight: 600;
 	}
 	.v.off {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 </style>

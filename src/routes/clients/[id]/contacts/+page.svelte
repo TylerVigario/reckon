@@ -157,18 +157,18 @@
 		overflow-wrap: anywhere;
 	}
 	.kv-v {
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 	}
 	.who {
 		flex: 1 1 auto;
 	}
 	.sub {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.at {
 		flex: 0 1 auto;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 		text-align: right;
 	}
 	.end {

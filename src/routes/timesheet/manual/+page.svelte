@@ -124,12 +124,12 @@
 
 <style>
 	.why.bad {
-		border-left-color: var(--crit);
-		color: var(--crit);
+		border-left-color: var(--borderColor-danger-emphasis);
+		color: var(--fgColor-danger);
 	}
 	.aside {
 		margin: 0;
 		font-size: 12.5px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 </style>

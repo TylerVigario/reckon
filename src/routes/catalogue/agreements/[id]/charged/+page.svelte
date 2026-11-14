@@ -42,7 +42,7 @@
 		flex: 0 0 auto;
 	}
 	.v {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-weight: 600;
 	}
 </style>

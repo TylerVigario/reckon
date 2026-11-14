@@ -470,8 +470,8 @@
 		margin: 0 0 14px;
 	}
 	.why.bad {
-		border-left-color: var(--crit);
-		color: var(--crit);
+		border-left-color: var(--borderColor-danger-emphasis);
+		color: var(--fgColor-danger);
 	}
 	.waits {
 		margin: 0;
@@ -508,15 +508,15 @@
 		width: 18px;
 		height: 18px;
 		border-radius: 50%;
-		border: 2px solid var(--line);
+		border: 2px solid var(--borderColor-default);
 		flex: none;
 	}
 	.pick.on .radio {
-		border-color: var(--accent);
-		box-shadow: inset 0 0 0 4px var(--card);
-		background: var(--accent);
+		border-color: var(--borderColor-accent-emphasis);
+		box-shadow: inset 0 0 0 4px var(--bgColor-default);
+		background: var(--bgColor-accent-emphasis);
 	}
 	.pick.on {
-		background: var(--accent-wash);
+		background: var(--bgColor-accent-muted);
 	}
 </style>

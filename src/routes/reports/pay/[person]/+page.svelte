@@ -384,7 +384,7 @@
 		margin-top: 4px;
 		width: 18px;
 		height: 18px;
-		accent-color: var(--accent);
+		accent-color: var(--fgColor-accent);
 	}
 	.sub .rec-t,
 	.sub .rec-v {
@@ -392,18 +392,18 @@
 	}
 	.lt {
 		font-weight: 400;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.why {
 		margin: 0;
 	}
 	.why.bad {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	.aside {
 		margin: 0;
 		font-size: 12.5px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.sec + .rows,
 	.rows + .sec,

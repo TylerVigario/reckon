@@ -190,7 +190,7 @@
 	}
 	.lt {
 		font-weight: 400;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 	}
 	.line {
 		display: flex;
@@ -201,7 +201,7 @@
 	}
 	.line.past .n,
 	.line.past .v {
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.what {
 		flex: 1 1 auto;
@@ -216,7 +216,7 @@
 	}
 	.sub {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.lab {
 		flex: 0 0 auto;
@@ -230,7 +230,7 @@
 		text-align: right;
 	}
 	.v {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-weight: 600;
 	}
 </style>

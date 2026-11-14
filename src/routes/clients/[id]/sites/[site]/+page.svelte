@@ -477,7 +477,7 @@
 
 <style>
 	.why {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	.acts {
 		display: flex;
@@ -491,7 +491,7 @@
 		width: 100%;
 	}
 	.bad {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	.cdtfa {
 		display: flex;
@@ -522,7 +522,7 @@
 		overflow-wrap: anywhere;
 	}
 	.kv-v {
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 	}
 	.rt {
 		font-variant-numeric: tabular-nums;
@@ -530,7 +530,7 @@
 	.sub,
 	.more {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.more {
 		min-height: 0;
@@ -544,7 +544,7 @@
 		flex: 1 1 auto;
 	}
 	.r {
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 		font-variant-numeric: tabular-nums;
 	}
 	/* Primer's inline message: an icon and a line, in the colour of what happened. */
@@ -567,13 +567,13 @@
 		margin-top: 2px;
 	}
 	.im.good {
-		color: var(--good);
+		color: var(--fgColor-success);
 	}
 	.im.warn {
-		color: var(--warn);
+		color: var(--fgColor-attention);
 	}
 	.im.crit {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	@media (max-width: 543px) {
 		.kv {

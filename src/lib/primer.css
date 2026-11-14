@@ -1,118 +1,120 @@
-/* Primer's shapes (primer.style, MIT), in reckon's own colours and type.
+/* Primer's shapes (primer.style, MIT), drawn in Primer's own primitives
+   (@primer/primitives): its colours, type, sizes and radii, by their tokens.
    Primer is the design reckon is built to, and screens move to it one at a
    time: a screen drawn to it puts .primer on its content, and every rule here
-   sits under that class, so a screen not yet moved is untouched.
+   sits under that class.
 
    A box is a bordered card whose header row has the muted background and
    whose rows are split by the muted border, as Primer's BorderBox is. A label
    is a sentence-case pill, its border and text in the colour of the state. A
    form control has its label above the field and its caption or error below.
-   Controls are 44px on a touch screen, as Apple's guidelines ask, where
-   Primer's are 32px: reckon is used standing on a job. */
+   A control is Primer's medium size on a mouse and Primer's own touch target
+   on a touch screen (control-minTarget-auto, 44px): reckon is used standing
+   on a job. */
 
 .primer {
-	font-size: 14px;
+	font-size: var(--text-body-size-medium);
 }
 
 .primer .box {
-	background: var(--surface);
-	border: 1px solid var(--line);
-	border-radius: 6px;
+	background: var(--bgColor-default);
+	border: 1px solid var(--borderColor-default);
+	border-radius: var(--borderRadius-medium);
 	overflow: hidden;
 }
 .primer .box-h {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 12px;
+	gap: var(--base-size-12);
 	min-height: 48px;
 	box-sizing: border-box;
-	padding: 8px 16px;
-	background: var(--surface-2);
-	border-bottom: 1px solid var(--line);
+	padding: var(--base-size-8) var(--base-size-16);
+	background: var(--bgColor-muted);
+	border-bottom: 1px solid var(--borderColor-default);
 }
 .primer .box-t {
 	margin: 0;
-	font-size: 14px;
-	font-weight: 600;
+	font-size: var(--text-body-size-medium);
+	font-weight: var(--base-text-weight-semibold);
 }
 .primer .box-row {
-	padding: 12px 16px;
+	padding: var(--base-size-12) var(--base-size-16);
 }
 .primer .box-row + .box-row {
-	border-top: 1px solid var(--line-soft);
+	border-top: 1px solid var(--borderColor-muted);
 }
 .primer a.box-row {
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: var(--base-size-12);
 	color: inherit;
 	text-decoration: none;
 }
 .primer a.box-row:hover {
-	background: var(--surface-2);
+	background: var(--bgColor-muted);
 }
 .primer a.box-row:focus-visible {
-	outline: 2px solid var(--accent);
+	outline: 2px solid var(--focus-outlineColor);
 	outline-offset: -2px;
 }
 
 .primer .lab {
 	display: inline-flex;
 	align-items: center;
-	gap: 4px;
+	gap: var(--base-size-4);
 	min-height: 22px;
 	box-sizing: border-box;
-	padding: 0 8px;
-	font-size: 12px;
+	padding: 0 var(--base-size-8);
+	font-size: var(--text-body-size-small);
 	line-height: 1;
 	white-space: nowrap;
-	color: var(--ink-2);
-	border: 1px solid var(--line);
-	border-radius: 999px;
+	color: var(--fgColor-muted);
+	border: 1px solid var(--borderColor-default);
+	border-radius: var(--borderRadius-full);
 }
 .primer .lab.good {
-	color: var(--good);
-	border-color: var(--good);
+	color: var(--fgColor-success);
+	border-color: var(--borderColor-success-emphasis);
 }
 .primer .lab.warn {
-	color: var(--warn);
-	border-color: var(--warn);
+	color: var(--fgColor-attention);
+	border-color: var(--borderColor-attention-emphasis);
 }
 .primer .lab.crit {
-	color: var(--crit);
-	border-color: var(--crit);
+	color: var(--fgColor-danger);
+	border-color: var(--borderColor-danger-emphasis);
 }
 .primer .lab.acc {
-	color: var(--accent);
-	border-color: var(--accent);
+	color: var(--fgColor-accent);
+	border-color: var(--borderColor-accent-emphasis);
 }
 
 .primer .count {
 	display: inline-block;
 	min-width: 20px;
 	box-sizing: border-box;
-	padding: 0 6px;
-	font-size: 12px;
-	font-weight: 600;
+	padding: 0 var(--base-size-6);
+	font-size: var(--text-body-size-small);
+	font-weight: var(--base-text-weight-semibold);
 	line-height: 18px;
 	text-align: center;
-	color: var(--ink);
-	background: var(--sunken);
-	border-radius: 999px;
+	color: var(--fgColor-default);
+	background: var(--counter-bgColor-muted);
+	border-radius: var(--borderRadius-full);
 }
 
 .primer .ava {
 	flex: 0 0 auto;
 	display: grid;
 	place-items: center;
-	width: 32px;
-	height: 32px;
+	width: var(--base-size-32);
+	height: var(--base-size-32);
 	border-radius: 50%;
-	font-size: 12px;
-	font-weight: 600;
-	color: var(--accent);
-	background: var(--accent-wash);
+	font-size: var(--text-body-size-small);
+	font-weight: var(--base-text-weight-semibold);
+	color: var(--fgColor-accent);
+	background: var(--bgColor-accent-muted);
 }
 
 /* Primer's UnderlineNav: the views of one section, the current one underlined.
@@ -122,28 +124,28 @@
    scrolls up and down by that pixel too, with a scrollbar to say so. */
 .primer .unav {
 	display: flex;
-	gap: 8px;
-	box-shadow: inset 0 -1px 0 var(--line);
+	gap: var(--base-size-8);
+	box-shadow: inset 0 -1px 0 var(--borderColor-default);
 	overflow-x: auto;
 }
 .primer .unav a {
 	display: inline-flex;
 	align-items: center;
-	gap: 8px;
+	gap: var(--base-size-8);
 	min-height: 48px;
-	padding: 0 8px;
+	padding: 0 var(--base-size-8);
 	white-space: nowrap;
-	color: var(--ink-2);
+	color: var(--fgColor-muted);
 	text-decoration: none;
 	border-bottom: 2px solid transparent;
 }
 .primer .unav a:hover {
-	color: var(--ink);
+	color: var(--fgColor-default);
 }
 .primer .unav a[aria-current='page'] {
-	color: var(--ink);
-	font-weight: 600;
-	border-bottom-color: var(--accent);
+	color: var(--fgColor-default);
+	font-weight: var(--base-text-weight-semibold);
+	border-bottom-color: var(--underlineNav-borderColor-active);
 }
 
 /* Primer's NavList: a settings menu down the side, the current one marked. */
@@ -153,24 +155,24 @@
 	list-style: none;
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--base-size-2);
 }
 .primer .navlist a {
 	position: relative;
 	display: flex;
 	align-items: center;
-	min-height: 32px;
-	padding: 0 8px;
-	border-radius: 6px;
-	color: var(--ink);
+	min-height: max(var(--control-medium-size), var(--control-minTarget-auto, 0px));
+	padding: 0 var(--base-size-8);
+	border-radius: var(--borderRadius-medium);
+	color: var(--fgColor-default);
 	text-decoration: none;
 }
 .primer .navlist a:hover {
-	background: var(--sunken);
+	background: var(--bgColor-inset);
 }
 .primer .navlist a[aria-current='page'] {
-	font-weight: 600;
-	background: var(--sunken);
+	font-weight: var(--base-text-weight-semibold);
+	background: var(--bgColor-inset);
 }
 .primer .navlist a[aria-current='page']::after {
 	content: '';
@@ -179,40 +181,40 @@
 	top: 6px;
 	bottom: 6px;
 	width: 4px;
-	border-radius: 6px;
-	background: var(--accent);
+	border-radius: var(--borderRadius-medium);
+	background: var(--bgColor-accent-emphasis);
 }
 
 /* Primer's SegmentedControl: one list's scopes, the one shown pressed in. */
 .primer .seg {
 	display: inline-flex;
 	align-self: flex-start;
-	padding: 2px;
-	border-radius: 6px;
-	background: var(--sunken);
+	padding: var(--base-size-2);
+	border-radius: var(--borderRadius-medium);
+	background: var(--bgColor-inset);
 }
 .primer .seg a {
 	display: inline-flex;
 	align-items: center;
-	min-height: 32px;
-	padding: 0 12px;
+	min-height: max(var(--control-medium-size), var(--control-minTarget-auto, 0px));
+	padding: 0 var(--base-size-12);
 	border: 1px solid transparent;
-	border-radius: 5px;
-	color: var(--ink-2);
+	border-radius: var(--borderRadius-small);
+	color: var(--fgColor-muted);
 	text-decoration: none;
 	white-space: nowrap;
 }
 .primer .seg a[aria-current='page'] {
-	color: var(--ink);
-	font-weight: 600;
-	background: var(--surface);
-	border-color: var(--line);
+	color: var(--fgColor-default);
+	font-weight: var(--base-text-weight-semibold);
+	background: var(--bgColor-default);
+	border-color: var(--borderColor-default);
 }
 
 .primer .fc {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: var(--base-size-6);
 	min-width: 0;
 	margin: 0;
 	padding: 0;
@@ -220,47 +222,47 @@
 }
 .primer .fc-l {
 	padding: 0;
-	font-size: 14px;
-	font-weight: 600;
-	color: var(--ink);
+	font-size: var(--text-body-size-medium);
+	font-weight: var(--base-text-weight-semibold);
+	color: var(--fgColor-default);
 }
 .primer .fc-c {
 	margin: 0;
-	font-size: 12px;
-	color: var(--ink-3);
+	font-size: var(--text-body-size-small);
+	color: var(--fgColor-muted);
 }
 .primer .fc-e {
 	margin: 0;
 	display: flex;
 	align-items: center;
-	gap: 4px;
-	font-size: 12px;
-	font-weight: 600;
-	color: var(--crit);
+	gap: var(--base-size-4);
+	font-size: var(--text-body-size-small);
+	font-weight: var(--base-text-weight-semibold);
+	color: var(--fgColor-danger);
 }
 .primer .ti {
 	width: 100%;
-	min-height: 40px;
+	min-height: max(var(--control-medium-size), var(--control-minTarget-auto, 0px));
 	box-sizing: border-box;
-	padding: 0 12px;
+	padding: 0 var(--base-size-12);
 	font: inherit;
-	font-size: 14px;
-	color: var(--ink);
-	background: var(--surface);
-	border: 1px solid var(--line);
-	border-radius: 6px;
+	font-size: var(--text-body-size-medium);
+	color: var(--fgColor-default);
+	background: var(--bgColor-default);
+	border: 1px solid var(--borderColor-default);
+	border-radius: var(--borderRadius-medium);
 }
 .primer .ti:focus-visible {
-	outline: 2px solid var(--accent);
+	outline: 2px solid var(--focus-outlineColor);
 	outline-offset: -1px;
-	border-color: var(--accent);
+	border-color: var(--borderColor-accent-emphasis);
 }
 .primer .ti[aria-invalid='true'] {
-	border-color: var(--crit);
+	border-color: var(--borderColor-danger-emphasis);
 }
 .primer select.ti {
 	appearance: none;
-	padding-right: 32px;
+	padding-right: var(--base-size-32);
 	background-image:
 		linear-gradient(45deg, transparent 50%, currentColor 50%),
 		linear-gradient(135deg, currentColor 50%, transparent 50%);
@@ -276,108 +278,108 @@
 /* A choice, with what it means under it: Primer's RadioGroup with captions. */
 .primer .rad {
 	display: flex;
-	gap: 8px;
+	gap: var(--base-size-8);
 	align-items: flex-start;
-	padding: 8px 0;
+	padding: var(--base-size-8) 0;
 	cursor: pointer;
 }
 .primer .rad input {
 	flex: 0 0 auto;
 	width: 16px;
 	height: 16px;
-	margin: 2px 0 0;
-	accent-color: var(--accent);
+	margin: var(--base-size-2) 0 0;
+	accent-color: var(--fgColor-accent);
 }
 .primer .rad-t {
 	display: block;
-	font-weight: 600;
+	font-weight: var(--base-text-weight-semibold);
 }
 .primer .rad-c {
 	display: block;
-	margin-top: 2px;
-	font-size: 12px;
-	color: var(--ink-3);
+	margin-top: var(--base-size-2);
+	font-size: var(--text-body-size-small);
+	color: var(--fgColor-muted);
 }
 
 .primer .btn {
 	/* A link drawn as a button is the height of a button beside it. */
 	box-sizing: border-box;
-	border-radius: 6px;
+	border-radius: var(--borderRadius-medium);
 }
 .primer .btn:not(.pri, .danger) {
-	background: var(--surface-2);
+	background: var(--bgColor-muted);
 }
 
 .primer .ib {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 32px;
-	height: 32px;
+	width: max(var(--control-medium-size), var(--control-minTarget-auto, 0px));
+	height: max(var(--control-medium-size), var(--control-minTarget-auto, 0px));
 	padding: 0;
-	color: var(--ink-3);
+	color: var(--fgColor-muted);
 	background: transparent;
 	border: 0;
-	border-radius: 6px;
+	border-radius: var(--borderRadius-medium);
 	cursor: pointer;
 }
 .primer .ib:hover {
-	color: var(--ink);
-	background: var(--surface-2);
+	color: var(--fgColor-default);
+	background: var(--bgColor-muted);
 }
 .primer .ib:focus-visible {
-	outline: 2px solid var(--accent);
+	outline: 2px solid var(--focus-outlineColor);
 	outline-offset: -2px;
 }
 
 /* Primer's Banner: what happened, for a page that didn't reload to say so. */
 .primer .banner {
 	display: flex;
-	gap: 12px;
-	padding: 16px;
-	color: var(--ink);
-	background: var(--surface-2);
-	border: 1px solid var(--line);
-	border-radius: 6px;
+	gap: var(--base-size-12);
+	padding: var(--base-size-16);
+	color: var(--fgColor-default);
+	background: var(--bgColor-muted);
+	border: 1px solid var(--borderColor-default);
+	border-radius: var(--borderRadius-medium);
 }
 .primer .banner.good {
-	background: var(--good-wash);
-	border-color: var(--good);
+	background: var(--bgColor-success-muted);
+	border-color: var(--borderColor-success-emphasis);
 }
 .primer .banner > svg {
 	margin-top: 1px;
 }
 .primer .banner.good > svg {
-	color: var(--good);
+	color: var(--fgColor-success);
 }
 .primer .banner.warn {
-	background: var(--warn-wash);
-	border-color: var(--warn);
+	background: var(--bgColor-attention-muted);
+	border-color: var(--borderColor-attention-emphasis);
 }
 .primer .banner.warn > svg {
-	color: var(--warn);
+	color: var(--fgColor-attention);
 }
 .primer .banner.crit {
-	background: var(--crit-wash);
-	border-color: var(--crit);
+	background: var(--bgColor-danger-muted);
+	border-color: var(--borderColor-danger-emphasis);
 }
 .primer .banner.crit > svg {
-	color: var(--crit);
+	color: var(--fgColor-danger);
 }
 .primer .banner-m {
 	flex: 1 1 auto;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: var(--base-size-8);
 }
 .primer .banner-t {
 	margin: 0;
-	font-weight: 600;
+	font-weight: var(--base-text-weight-semibold);
 }
 .primer .banner-d {
 	margin: 0;
-	color: var(--ink-2);
+	color: var(--fgColor-muted);
 }
 
 /* A secret shown once, beside the button that copies it. */
@@ -385,32 +387,32 @@
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 8px;
-	padding: 4px 4px 4px 12px;
-	background: var(--surface);
-	border: 1px solid var(--line);
-	border-radius: 6px;
+	gap: var(--base-size-8);
+	padding: var(--base-size-4) var(--base-size-4) var(--base-size-4) var(--base-size-12);
+	background: var(--bgColor-default);
+	border: 1px solid var(--borderColor-default);
+	border-radius: var(--borderRadius-medium);
 }
 .primer .secret code {
 	/* Whole, never broken at a hyphen into what reads as two: Copy goes below
 	   it instead, on a screen too narrow for both. */
 	flex: 1 1 auto;
 	white-space: nowrap;
-	font-family: var(--f-mono);
-	font-size: 14px;
+	font-family: var(--fontStack-monospace);
+	font-size: var(--text-body-size-medium);
 }
 
 .primer .muted {
-	color: var(--ink-3);
+	color: var(--fgColor-muted);
 }
 .primer .note {
 	margin: 0;
-	font-size: 12px;
-	color: var(--ink-3);
+	font-size: var(--text-body-size-small);
+	color: var(--fgColor-muted);
 }
 .primer .note a,
 .primer a.lk {
-	color: var(--accent);
+	color: var(--fgColor-accent);
 	text-decoration: none;
 }
 .primer .note a:hover,

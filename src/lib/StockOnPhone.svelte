@@ -361,14 +361,14 @@
 	}
 	.sub {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.why {
 		display: flex;
 		gap: 6px;
 		align-items: flex-start;
 		font-size: 13px;
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	.acts {
 		display: flex;

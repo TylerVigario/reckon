@@ -212,7 +212,7 @@
 				label="Accent colour"
 				value={o?.accent_colour}
 				placeholder="#4f6d8a"
-				hint="Set, never guessed from the mark — extracting a colour from an image gets it wrong on the logos that matter most."
+				hint="For the emails and invoices it sends, and the installed app's frame. Set, never guessed from the mark — extracting a colour from an image gets it wrong on the logos that matter most."
 				swatch
 			/>
 		</div>
@@ -277,12 +277,12 @@
 <style>
 	.msg {
 		padding: 10px 14px;
-		border-radius: var(--r);
+		border-radius: var(--borderRadius-medium);
 		font-size: 14px;
 	}
 	.warn {
-		background: var(--warn-wash);
-		color: var(--warn);
+		background: var(--bgColor-attention-muted);
+		color: var(--fgColor-attention);
 	}
 	.logo {
 		display: flex;
@@ -296,19 +296,19 @@
 	}
 	.none {
 		margin: 0;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		font-size: 13.5px;
 	}
 	small {
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		font-size: 12px;
 	}
 	.why {
-		color: var(--warn);
+		color: var(--fgColor-attention);
 	}
 	.state {
 		font-size: 10px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.fld > label {
 		display: flex;

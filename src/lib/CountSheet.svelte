@@ -269,7 +269,7 @@
 	}
 	.sub {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.lab {
 		flex: 0 0 auto;
@@ -287,7 +287,7 @@
 		top: 50%;
 		transform: translateY(-50%);
 		font-size: 13px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		pointer-events: none;
 	}
 	.cost {

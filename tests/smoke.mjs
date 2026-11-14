@@ -144,16 +144,6 @@ if (email) {
 
 let bad = 0;
 
-// Signed out, the operator's stylesheet must come back as a stylesheet: the
-// sign-in page links it, and a redirect to the sign-in page here is HTML the
-// browser refuses to apply.
-{
-	const r = await fetch(base + '/operator/theme.css', { headers: PROXY, redirect: 'manual' });
-	const ok = r.status === 200 && (r.headers.get('content-type') ?? '').startsWith('text/css');
-	if (!ok) bad++;
-	console.log(`  ${ok ? '✓' : '✗'} ${String(r.status).padEnd(3)} /operator/theme.css, signed out`);
-}
-
 // A sign-in link whose next names another site, as a browser reads
 // "/\example.com". Opened while signed in, it lands at home -- not off the
 // site, and not on an error page. Signing in through it is the page's own

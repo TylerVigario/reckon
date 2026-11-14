@@ -124,13 +124,13 @@
 		max-width: 260px;
 	}
 	.brandhd b {
-		font-family: var(--f-display);
+		font-family: var(--fontStack-sansSerif);
 		font-size: 22px;
-		color: var(--display-ink);
+		color: var(--fgColor-default);
 	}
 	.brandhd span {
 		font-size: 13px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 
 	.sec {
@@ -138,9 +138,9 @@
 		flex-direction: column;
 	}
 	.rows {
-		background: var(--surface);
-		border: 1px solid var(--line);
-		border-radius: var(--r);
+		background: var(--bgColor-default);
+		border: 1px solid var(--borderColor-default);
+		border-radius: var(--borderRadius-medium);
 		overflow: hidden;
 	}
 	.rec {
@@ -148,7 +148,7 @@
 		align-items: center;
 		gap: 12px;
 		padding: 12px 14px;
-		border-bottom: 1px solid var(--line-soft);
+		border-bottom: 1px solid var(--borderColor-muted);
 		min-height: 56px;
 		box-sizing: border-box;
 		color: inherit;
@@ -168,13 +168,13 @@
 	}
 	.rec-s {
 		font-size: 13.5px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		margin-top: 3px;
 		line-height: 1.4;
 	}
 	.arw {
-		color: var(--ink-3);
-		font-family: var(--f-mono);
+		color: var(--fgColor-muted);
+		font-family: var(--fontStack-monospace);
 		font-size: 16px;
 	}
 
@@ -185,16 +185,16 @@
 	}
 	.out span {
 		font-size: 13px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.out button {
 		font: inherit;
 		font-size: 13px;
 		padding: 7px 14px;
-		border: 1px solid var(--line);
+		border: 1px solid var(--borderColor-default);
 		border-radius: 999px;
-		background: var(--surface);
-		color: var(--ink-2);
+		background: var(--bgColor-default);
+		color: var(--fgColor-muted);
 		cursor: pointer;
 	}
 </style>

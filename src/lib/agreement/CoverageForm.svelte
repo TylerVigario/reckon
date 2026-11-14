@@ -188,7 +188,7 @@
 		top: 50%;
 		transform: translateY(-50%);
 		font-size: 13px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		pointer-events: none;
 	}
 </style>
