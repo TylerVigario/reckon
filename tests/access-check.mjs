@@ -166,7 +166,7 @@ const [fullMore, fieldMore, fullPay] = await Promise.all([
 /** @type {Record<string, string>} */
 const idOf = {};
 for (const chunk of fullPay.split('/reports/pay/').slice(1)) {
-	const name = /class="rec-t">\s*([^<&]+)/.exec(chunk)?.[1]?.trim();
+	const name = /class="n[^"]*">(?:\s|<!--[^>]*-->)*([^<&]+)/.exec(chunk)?.[1]?.trim();
 	if (name && /^[0-9a-f-]{36}"/.test(chunk)) idOf[name] = chunk.slice(0, 36);
 }
 const me = [...linked(fieldMore, '/reports/pay')][0];

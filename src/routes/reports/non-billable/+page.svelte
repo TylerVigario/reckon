@@ -18,41 +18,72 @@
 
 <Top title="Reports" back={resolve('/more')} backLabel="More" />
 
-<div class="pad">
-	<div class="primer"><UnderlineNav label="Reports" items={reportTabs('non-billable')} /></div>
+<div class="pad primer">
+	<UnderlineNav label="Reports" items={reportTabs('non-billable')} />
 
-	<div class="sec">
-		<div class="sec-h">
-			<h2>{data.month.label}</h2>
-			<span class="sp"></span>
-			<span class="chip">{hours(data.given.hours, 'glance')}</span>
+	<section class="box" aria-labelledby="given-h">
+		<div class="box-h">
+			<h2 class="box-t" id="given-h">{data.month.label}</h2>
+			<span class="count">{hours(data.given.hours, 'glance')}</span>
 		</div>
-		<div class="rows">
-			{#each data.given.rows as g (g.service)}
-				<div class="rec">
-					<div class="rec-m"><div class="rec-t">{g.service}</div></div>
-					<div class="rec-n">
-						<span class="rec-v mut">{money(g.worth)}</span>
-						<span class="rec-x">{hours(g.hours)}</span>
-					</div>
-				</div>
-			{:else}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t"><span class="lt">Nothing given away</span></div>
-						<div class="rec-s">Every hour worked in {data.month.label} went on an invoice</div>
-					</div>
-				</div>
-			{/each}
-			{#if data.given.rows.length}
-				<div class="rec tot">
-					<div class="rec-m"><div class="rec-t">What the business cost itself</div></div>
-					<div class="rec-n">
-						<span class="rec-v">{money(data.given.worth)}</span>
-						<span class="rec-x">{hours(data.given.hours)}</span>
-					</div>
-				</div>
-			{/if}
-		</div>
-	</div>
+		{#each data.given.rows as g (g.service)}
+			<div class="box-row line">
+				<span class="what"><span class="n">{g.service}</span></span>
+				<span class="fig">
+					<span class="v muted">{money(g.worth)}</span>
+					<span class="sub">{hours(g.hours)}</span>
+				</span>
+			</div>
+		{:else}
+			<p class="box-row muted">
+				Nothing given away: every hour worked in {data.month.label} went on an invoice.
+			</p>
+		{/each}
+		{#if data.given.rows.length}
+			<div class="box-row line tot">
+				<span class="what"><span class="n">What the business cost itself</span></span>
+				<span class="fig">
+					<span class="v">{money(data.given.worth)}</span>
+					<span class="sub">{hours(data.given.hours)}</span>
+				</span>
+			</div>
+		{/if}
+	</section>
 </div>
+
+<style>
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 56px;
+		box-sizing: border-box;
+		margin: 0;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
+	}
+	.fig {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
+		text-align: right;
+	}
+	.v {
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
+	}
+	.tot {
+		background: var(--bgColor-muted);
+	}
+</style>
