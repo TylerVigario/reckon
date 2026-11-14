@@ -665,7 +665,7 @@
 	}
 	.sub {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.lab {
 		flex: 0 0 auto;
@@ -687,18 +687,18 @@
 		top: 50%;
 		transform: translateY(-50%);
 		font-size: 13px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		pointer-events: none;
 	}
 	.shelf {
 		margin: 0;
 		font-size: 13px;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 	}
 	.v {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-weight: 600;
-		color: var(--ink);
+		color: var(--fgColor-default);
 	}
 	/* What it all comes to, and Receive, pinned above the bar of sections on a
 	   phone (it is --tabh tall, its border and the safe area under it) and at
@@ -713,15 +713,15 @@
 		gap: 8px;
 		margin-inline: calc(-1 * var(--pad));
 		padding: 12px var(--pad);
-		background: var(--surface);
-		border-top: 1px solid var(--line);
+		background: var(--bgColor-default);
+		border-top: 1px solid var(--borderColor-default);
 	}
 	@media (min-width: 1180px) {
 		.foot {
 			bottom: 16px;
 			margin-inline: 0;
 			margin-bottom: 16px;
-			border: 1px solid var(--line);
+			border: 1px solid var(--borderColor-default);
 			border-radius: 6px;
 		}
 	}
@@ -732,11 +732,11 @@
 		justify-content: space-between;
 		gap: 4px 12px;
 		font-size: 13px;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 	}
 	.sum .all {
 		font-weight: 600;
-		color: var(--ink);
+		color: var(--fgColor-default);
 	}
 	.keep {
 		display: flex;

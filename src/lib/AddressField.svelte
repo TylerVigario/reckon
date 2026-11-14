@@ -274,42 +274,42 @@
 	}
 	label {
 		font-size: 0.85rem;
-		color: var(--ink-soft);
+		color: var(--fgColor-muted);
 		display: flex;
 		gap: 0.5rem;
 		align-items: baseline;
 	}
 	.ok {
-		color: var(--good);
+		color: var(--fgColor-success);
 		font-size: 0.78rem;
 	}
 	input {
 		font: inherit;
-		color: var(--ink);
-		background: var(--ground);
-		border: 1px solid var(--line);
+		color: var(--fgColor-default);
+		background: var(--bgColor-default);
+		border: 1px solid var(--borderColor-default);
 		border-radius: 8px;
 		padding: 0.55rem 0.65rem;
 		width: 100%;
 		box-sizing: border-box;
 	}
 	input:disabled {
-		color: var(--ink-faint);
+		color: var(--fgColor-muted);
 		cursor: not-allowed;
 	}
 	input:focus-visible {
-		outline: 2px solid var(--accent);
+		outline: 2px solid var(--borderColor-accent-emphasis);
 		outline-offset: 1px;
 	}
 	.hint {
 		font-size: 0.78rem;
-		color: var(--ink-faint);
+		color: var(--fgColor-muted);
 	}
 	.warn {
-		color: var(--warn);
+		color: var(--fgColor-attention);
 	}
 	.good {
-		color: var(--good);
+		color: var(--fgColor-success);
 	}
 	ul {
 		position: absolute;
@@ -320,10 +320,10 @@
 		margin: 0.25rem 0 0;
 		padding: 0.25rem;
 		list-style: none;
-		background: var(--card);
-		border: 1px solid var(--line);
+		background: var(--bgColor-default);
+		border: 1px solid var(--borderColor-default);
 		border-radius: 8px;
-		box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+		box-shadow: var(--shadow-floating-small);
 		max-height: 15rem;
 		overflow-y: auto;
 	}
@@ -334,14 +334,14 @@
 		font-size: 0.9rem;
 	}
 	li.active {
-		background: color-mix(in srgb, var(--accent) 14%, transparent);
+		background: color-mix(in srgb, var(--bgColor-accent-emphasis) 14%, transparent);
 	}
 	.attribution {
 		cursor: default;
 		display: flex;
 		justify-content: flex-end;
 		padding: 0.3rem 0.5rem 0.1rem;
-		border-top: 1px solid var(--line);
+		border-top: 1px solid var(--borderColor-default);
 		margin-top: 0.25rem;
 	}
 	.attribution img {

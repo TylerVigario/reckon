@@ -229,11 +229,11 @@
 		white-space: nowrap;
 	}
 	.ok {
-		color: var(--good);
+		color: var(--fgColor-success);
 		font-weight: 600;
 	}
 	.no {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	.offer {
 		display: flex;
@@ -241,8 +241,8 @@
 		align-items: center;
 		gap: 10px;
 		padding: 12px 14px;
-		background: var(--accent-wash);
-		border-bottom: 1px solid var(--line);
+		background: var(--bgColor-accent-muted);
+		border-bottom: 1px solid var(--borderColor-default);
 		font-size: 14px;
 	}
 </style>

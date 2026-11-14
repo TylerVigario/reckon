@@ -678,11 +678,11 @@
 		gap: 15px;
 	}
 	.lbl {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-size: 10px;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.inp-wrap {
 		position: relative;
@@ -694,8 +694,8 @@
 		top: 50%;
 		transform: translateY(-50%);
 		font-size: 13px;
-		color: var(--ink-3);
-		font-family: var(--f-mono);
+		color: var(--fgColor-muted);
+		font-family: var(--fontStack-monospace);
 		pointer-events: none;
 	}
 	#l-qty + .hint {
@@ -720,11 +720,11 @@
 		display: block;
 	}
 	.pick .rec.on {
-		background: var(--accent-wash);
-		box-shadow: inset 3px 0 0 var(--accent);
+		background: var(--bgColor-accent-muted);
+		box-shadow: inset 3px 0 0 var(--borderColor-accent-emphasis);
 	}
 	.pick button.rec:focus-visible {
-		outline: 2px solid var(--accent);
+		outline: 2px solid var(--borderColor-accent-emphasis);
 		outline-offset: -2px;
 	}
 	.bill {
@@ -732,12 +732,12 @@
 		flex-direction: column;
 		gap: 6px;
 		padding: 12px 14px;
-		border-radius: var(--r);
-		background: var(--accent-wash);
-		border: 1px solid var(--accent-line);
+		border-radius: var(--borderRadius-medium);
+		background: var(--bgColor-accent-muted);
+		border: 1px solid var(--borderColor-accent-muted);
 	}
 	.why {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 		font-size: 12.5px;
 	}
 	button.btn[disabled] {

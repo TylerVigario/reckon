@@ -453,12 +453,12 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 		overflow-wrap: anywhere;
 	}
 	.sub {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.end {
 		display: flex;
@@ -485,7 +485,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		color: var(--good);
+		color: var(--fgColor-success);
 		font-weight: 600;
 	}
 	.change {
@@ -508,7 +508,7 @@
 		margin-left: 6px;
 		font-size: 12px;
 		font-weight: 600;
-		color: var(--good);
+		color: var(--fgColor-success);
 	}
 	/* Label above value on a phone, the pencil beside both. */
 	@media (max-width: 543px) {

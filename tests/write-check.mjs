@@ -2004,9 +2004,9 @@ const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
 			headers: H,
 			body: JSON.stringify({ fields: { theme } })
 		});
-	/** The theme a page was drawn in, as the cookies given leave it. */
+	/** The theme a page was drawn in, as the cookies given leave it: Primer's colour mode. */
 	const drawnIn = async (/** @type {string} */ path, /** @type {string} */ jar) =>
-		/<html[^>]*\sdata-theme="([^"]*)"/.exec(
+		/<html[^>]*\sdata-color-mode="([^"]*)"/.exec(
 			await (await fetch(base + path, { headers: { cookie: jar } })).text()
 		)?.[1] ?? null;
 	const sent = (/** @type {Response} */ r) =>
@@ -2030,7 +2030,7 @@ const chosen = (/** @type {string} */ html, /** @type {string} */ id) => {
 	const signedOut = await drawnIn('/login', theme);
 	const without = await drawnIn('/profile', cookie);
 	record(
-		signedIn === 'dark' && signedOut === 'dark' && without === '',
+		signedIn === 'dark' && signedOut === 'dark' && without === 'auto',
 		"a page is drawn in the device's theme from the first paint, signed in or not",
 		`profile ${signedIn}, sign-in ${signedOut}, without the cookie ${without}`
 	);

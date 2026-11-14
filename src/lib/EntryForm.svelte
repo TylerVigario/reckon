@@ -405,11 +405,11 @@
 		gap: 15px;
 	}
 	.lbl {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-size: 10px;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	/* The hint sits inside the box. */
 	.inp-wrap {
@@ -422,16 +422,16 @@
 		top: 50%;
 		transform: translateY(-50%);
 		font-size: 13px;
-		color: var(--ink-3);
-		font-family: var(--f-mono);
+		color: var(--fgColor-muted);
+		font-family: var(--fontStack-monospace);
 		pointer-events: none;
 	}
 	.why.bad {
-		border-left-color: var(--crit);
-		color: var(--crit);
+		border-left-color: var(--borderColor-danger-emphasis);
+		color: var(--fgColor-danger);
 	}
 	select.inp:disabled {
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	button.btn[disabled] {
 		opacity: 0.6;

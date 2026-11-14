@@ -91,7 +91,7 @@
 		gap: 15px;
 	}
 	.why {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 		font-size: 12.5px;
 	}
 	button.btn[disabled] {

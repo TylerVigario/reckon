@@ -92,13 +92,9 @@
 <style>
 	:global(body) {
 		margin: 0;
-		font:
-			16px/1.5 system-ui,
-			-apple-system,
-			'Segoe UI',
-			sans-serif;
-		background: light-dark(#eff1f4, #14171c);
-		color: light-dark(#14181f, #e8ebf0);
+		font: 16px/1.5 var(--fontStack-sansSerif);
+		background: var(--bgColor-inset);
+		color: var(--fgColor-default);
 	}
 	main {
 		min-height: 100dvh;
@@ -113,8 +109,8 @@
 		gap: 0.9rem;
 		padding: 1.5rem;
 		border-radius: 12px;
-		background: light-dark(#fff, #1d2128);
-		border: 1px solid light-dark(#d9dee6, #2f353f);
+		background: var(--bgColor-default);
+		border: 1px solid var(--borderColor-default);
 	}
 	h1 {
 		margin: 0 0 0.2rem;
@@ -125,21 +121,21 @@
 		display: grid;
 		gap: 0.35rem;
 		font-size: 0.8rem;
-		color: light-dark(#5a6472, #a3adbc);
+		color: var(--fgColor-muted);
 	}
 	input {
 		font: inherit;
 		min-height: 3rem;
 		padding: 0.6rem 0.7rem;
 		border-radius: 8px;
-		border: 1px solid light-dark(#d9dee6, #2f353f);
-		background: light-dark(#eff1f4, #14171c);
+		border: 1px solid var(--borderColor-default);
+		background: var(--bgColor-default);
 		color: inherit;
 	}
 	.lede {
 		margin: 0;
 		font-size: 0.88rem;
-		color: light-dark(#5a6472, #a3adbc);
+		color: var(--fgColor-muted);
 	}
 	button {
 		display: grid;
@@ -152,8 +148,8 @@
 		min-height: 3.2rem;
 		border: 0;
 		border-radius: 8px;
-		background: #273142;
-		color: #fff;
+		background: var(--button-primary-bgColor-rest);
+		color: var(--button-primary-fgColor-rest);
 		text-decoration: none;
 		cursor: pointer;
 	}
@@ -169,7 +165,7 @@
 		padding: 0.55rem 0.7rem;
 		border-radius: 8px;
 		font-size: 0.88rem;
-		color: #b3462e;
-		background: color-mix(in srgb, #b3462e 13%, transparent);
+		color: var(--fgColor-danger);
+		background: var(--bgColor-danger-muted);
 	}
 </style>

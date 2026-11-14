@@ -55,7 +55,7 @@
 		height: 122px;
 		border-radius: 8px;
 		overflow: hidden;
-		border: 1px solid var(--line);
+		border: 1px solid var(--borderColor-default);
 		flex: none;
 		box-sizing: border-box;
 	}
@@ -70,7 +70,7 @@
 		font-size: 11px;
 		overflow-wrap: anywhere;
 		text-align: center;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 	}
 	.addshot {
 		display: flex;
@@ -78,20 +78,20 @@
 		align-items: center;
 		justify-content: center;
 		gap: 4px;
-		background: var(--surface-2);
+		background: var(--bgColor-muted);
 		border-style: dashed;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 		font-size: 12px;
 		cursor: pointer;
 	}
 	/* Keyboard focus is on the input out of sight; it shows on the tile. */
 	.picker:has(.hidden-file:focus-visible) .addshot {
-		outline: 2px solid var(--accent);
+		outline: 2px solid var(--borderColor-accent-emphasis);
 	}
 	.plus {
 		font-size: 24px;
 		line-height: 1;
-		color: var(--accent);
+		color: var(--fgColor-accent);
 	}
 	.hidden-file {
 		position: absolute;

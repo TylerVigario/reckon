@@ -482,12 +482,12 @@
 		margin-top: 5px;
 	}
 	.why.bad {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	/* Why the server would not take it, in its words. */
 	.refusal {
 		margin-top: 6px;
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	.acts {
 		display: flex;
@@ -497,7 +497,7 @@
 	/* When a running timer started, which a tap corrects. */
 	.since {
 		font: inherit;
-		color: var(--accent);
+		color: var(--fgColor-accent);
 		background: none;
 		border: 0;
 		padding: 0;

@@ -17,6 +17,20 @@
 	import { CLIENT_PAGE, LINK_PAGE } from '#lib/client-link.ts';
 	import { opens } from '#lib/access.ts';
 	// Primer's shapes, for the screens drawn to it so far (#lib/primer.css).
+	// Primer's primitives: its colours, light and dark, and its sizes and type.
+	import '@primer/primitives/dist/css/functional/themes/light.css';
+	import '@primer/primitives/dist/css/functional/themes/dark.css';
+	import '@primer/primitives/dist/css/base/size/size.css';
+	import '@primer/primitives/dist/css/base/typography/typography.css';
+	import '@primer/primitives/dist/css/functional/size/border.css';
+	import '@primer/primitives/dist/css/functional/size/radius.css';
+	import '@primer/primitives/dist/css/functional/size/size.css';
+	import '@primer/primitives/dist/css/functional/size/size-coarse.css';
+	import '@primer/primitives/dist/css/functional/size/size-fine.css';
+	import '@primer/primitives/dist/css/functional/typography/typography.css';
+	// Noto, as press sets its documents in, bundled.
+	import '@fontsource-variable/noto-sans';
+	import '@fontsource-variable/noto-sans-mono';
 	import '#lib/primer.css';
 
 	let { data, children }: LayoutProps = $props();
@@ -44,7 +58,7 @@
 	// Set again in the profile, the page redraws without coming back from the
 	// server whole, so <html> is moved to match here.
 	$effect(() => {
-		document.documentElement.dataset.theme = data.theme ?? '';
+		document.documentElement.dataset.colorMode = data.theme || 'auto';
 	});
 
 	// The service worker keeps Today, the Time screens and the drafts for when
@@ -210,15 +224,14 @@
 
 <svelte:head>
 	<title>{name}</title>
-	<!-- The operator's colour, as a stylesheet of this origin's rather than a style
-	     attribute, which the content security policy refuses. Keyed by the colour,
-	     so a new one is a new URL and the old one can be cached for good. -->
-	{#if accent}<link rel="stylesheet" href={`/operator/theme.css?${accent.slice(1)}`} />{/if}
 	<!-- Named outright: no icon named sends every browser to ask for a
 	     /favicon.ico that does not exist. -->
 	<link rel="icon" href={tabIcon} />
 	<link rel="apple-touch-icon" href={appleIcon} />
 	<link rel="manifest" href="/manifest.webmanifest" />
+	<!-- The business's own colour colours what is its: the installed app's
+	     frame, as its manifest does, and the emails and invoices it sends. The
+	     app itself is drawn in Primer's. -->
 	<meta name="theme-color" content={accent || '#1d6f9c'} />
 </svelte:head>
 
@@ -331,68 +344,25 @@
 {/if}
 
 <style>
-	/* Press's own faces, subset to what the interface draws. The same Montserrat
-	   and Open Sans the PDF is set in, because both come out of press --
-	   an invoice on screen and the same invoice on paper should not be set in
-	   two different voices. */
-	@font-face {
-		font-family: 'VTS Display';
-		src: url('/fonts/vts-display-400.woff2') format('woff2');
-		font-weight: 400;
-		font-display: swap;
-	}
-	@font-face {
-		font-family: 'VTS Display';
-		src: url('/fonts/vts-display-700.woff2') format('woff2');
-		font-weight: 700;
-		font-display: swap;
-	}
-	@font-face {
-		font-family: 'VTS Text';
-		src: url('/fonts/vts-text-400.woff2') format('woff2');
-		font-weight: 400;
-		font-display: swap;
-	}
-	@font-face {
-		font-family: 'VTS Text';
-		src: url('/fonts/vts-text-700.woff2') format('woff2');
-		font-weight: 700;
-		font-display: swap;
-	}
-	@font-face {
-		font-family: 'VTS Mono';
-		src: url('/fonts/vts-mono-400.woff2') format('woff2');
-		font-weight: 400;
-		font-display: swap;
-	}
+	/* PRIMER'S OWN PRIMITIVES (@primer/primitives, MIT), bundled and imported
+	   above: its colours, in its light and dark themes, which <html> names
+	   (data-color-mode, data-light-theme, data-dark-theme -- the device's own
+	   choice, unless this device is set to one, #lib/device-fields), and its
+	   sizes, type and radii. reckon draws with Primer's tokens alone; what is
+	   its own is the layout below.
 
+	   The type is Noto -- Noto Sans and Noto Sans Mono, bundled (OFL-1.1) --
+	   which Primer's own font stack names, and which press sets its documents
+	   in, so an invoice on screen and on paper speak in one voice. Primer's
+	   stacks keep their own fallbacks behind it. */
 	:global(:root) {
-		--paper: light-dark(#eef1f5, #0d1219);
-		--surface: light-dark(#fff, #161d29);
-		--surface-2: light-dark(#f4f6fa, #1c2431);
-		--sunken: light-dark(#e6eaf1, #111823);
-		--line: light-dark(#d4dae4, #2c3646);
-		--line-soft: light-dark(#e4e8ef, #222b39);
-		--ink: light-dark(#141a2b, #e4e9f2);
-		--ink-2: light-dark(#4a5468, #9daabd);
-		--ink-3: light-dark(#7b8698, #6f7c90);
-		--brand: light-dark(#4f6d8a, #8ea4bd);
-		--brand-deep: light-dark(#3b546e, #4f6d8a);
-		--display-ink: light-dark(#273142, #e4e9f2);
-		--accent: light-dark(#1d6f9c, #5aaed6);
-		--accent-ink: light-dark(#fff, #06202e);
-		--accent-wash: light-dark(#e2eef6, #13303f);
-		--accent-line: light-dark(#a9cde3, #2c5f7d);
-		--good: light-dark(#2e7554, #63c294);
-		--good-wash: light-dark(#dcede3, #143326);
-		--warn: light-dark(#8a6614, #d9a93f);
-		--warn-wash: light-dark(#f5e9cc, #3a2e0f);
-		--crit: light-dark(#a2382f, #e0796d);
-		--crit-wash: light-dark(#f7dedb, #3d1b17);
-		--f-display: 'VTS Display', 'Montserrat', system-ui, sans-serif;
-		--f-text: 'VTS Text', 'Open Sans', system-ui, sans-serif;
-		--f-mono: 'VTS Mono', 'Liberation Mono', ui-monospace, monospace;
-		--r: 10px;
+		--fontStack-sansSerif:
+			'Noto Sans Variable', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica,
+			Arial, sans-serif;
+		--fontStack-system: var(--fontStack-sansSerif);
+		--fontStack-monospace:
+			'Noto Sans Mono Variable', 'Noto Sans Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo,
+			Consolas, 'Liberation Mono', monospace;
 		--pad: 16px;
 		--tabh: 60px;
 		/* The reading column. Width is capped by content type -- records, prose,
@@ -400,23 +370,13 @@
 		   a narrow figure leaves a desert down both sides of a wide
 		   monitor. */
 		--col: 1200px;
-		/* Each colour is light-dark(light, dark), and color-scheme picks which: the
-		   device's own, unless this device is set to one (#lib/device-fields), which
-		   the server writes onto <html> as data-theme. Form controls and scrollbars
-		   follow it too. */
+		/* Form controls and scrollbars follow the theme <html> names. */
 		color-scheme: light dark;
-
-		/* Second names for the same colours, still used by some pages. */
-		--ground: var(--paper);
-		--card: var(--surface);
-		--ink-soft: var(--ink-2);
-		--ink-faint: var(--ink-3);
-		--radius: var(--r);
 	}
-	:global(:root[data-theme='light']) {
+	:global(:root[data-color-mode='light']) {
 		color-scheme: light;
 	}
-	:global(:root[data-theme='dark']) {
+	:global(:root[data-color-mode='dark']) {
 		color-scheme: dark;
 	}
 
@@ -428,16 +388,16 @@
 
 	:global(body) {
 		margin: 0;
-		background: var(--paper);
-		color: var(--ink);
-		font-family: var(--f-text);
+		background: var(--bgColor-default);
+		color: var(--fgColor-default);
+		font-family: var(--fontStack-sansSerif);
 		font-size: 16px;
 		line-height: 1.5;
 		-webkit-font-smoothing: antialiased;
 		-webkit-text-size-adjust: 100%;
 	}
 	:global(a) {
-		color: var(--accent);
+		color: var(--fgColor-accent);
 	}
 
 	/* ================================================================ system ==
@@ -470,11 +430,11 @@
 		padding: 0 2px 8px;
 	}
 	:global(.sec-h h2) {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-size: 10.5px;
 		letter-spacing: 0.13em;
 		text-transform: uppercase;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		font-weight: 400;
 		margin: 0;
 	}
@@ -482,9 +442,9 @@
 		margin-left: auto;
 	}
 	:global(.rows) {
-		background: var(--surface);
-		border: 1px solid var(--line);
-		border-radius: var(--r);
+		background: var(--bgColor-default);
+		border: 1px solid var(--borderColor-default);
+		border-radius: var(--borderRadius-medium);
 		overflow: hidden;
 	}
 
@@ -495,7 +455,7 @@
 		align-items: flex-start;
 		gap: 12px;
 		padding: 12px 14px;
-		border-bottom: 1px solid var(--line-soft);
+		border-bottom: 1px solid var(--borderColor-muted);
 		min-height: 56px;
 		box-sizing: border-box;
 		color: inherit;
@@ -505,16 +465,16 @@
 		border-bottom: 0;
 	}
 	:global(.rec.warn) {
-		background: var(--warn-wash);
+		background: var(--bgColor-attention-muted);
 	}
 	:global(.rec.crit) {
-		background: var(--crit-wash);
+		background: var(--bgColor-danger-muted);
 	}
 	:global(.rec.acc) {
-		background: var(--accent-wash);
+		background: var(--bgColor-accent-muted);
 	}
 	:global(.rec.tot) {
-		background: var(--sunken);
+		background: var(--bgColor-inset);
 	}
 	:global(.rec.tot .rec-t),
 	:global(.rec.tot .rec-v) {
@@ -527,8 +487,8 @@
 		align-items: center;
 	}
 	:global(.rec .arw) {
-		color: var(--ink-3);
-		font-family: var(--f-mono);
+		color: var(--fgColor-muted);
+		font-family: var(--fontStack-monospace);
 		font-size: 16px;
 		align-self: center;
 	}
@@ -543,11 +503,11 @@
 	}
 	:global(.rec-t .lt) {
 		font-weight: 400;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	:global(.rec-s) {
 		font-size: 13.5px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		margin-top: 3px;
 		line-height: 1.4;
 	}
@@ -563,7 +523,7 @@
 		text-align: right;
 	}
 	:global(.rec-v) {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-variant-numeric: tabular-nums;
 		font-size: 15px;
 		font-weight: 700;
@@ -571,17 +531,17 @@
 		display: block;
 	}
 	:global(.rec-x) {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-variant-numeric: tabular-nums;
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		white-space: nowrap;
 		display: block;
 		margin-top: 3px;
 	}
 	:global(.rec-v.mut),
 	:global(.rec-x.mut) {
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		font-weight: 400;
 	}
 
@@ -589,36 +549,36 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-size: 10px;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
 		padding: 3px 7px;
 		border-radius: 11px;
-		border: 1px solid var(--line);
-		color: var(--ink-2);
-		background: var(--surface-2);
+		border: 1px solid var(--borderColor-default);
+		color: var(--fgColor-muted);
+		background: var(--bgColor-muted);
 		white-space: nowrap;
 	}
 	:global(.chip.good) {
-		color: var(--good);
-		border-color: var(--good);
-		background: var(--good-wash);
+		color: var(--fgColor-success);
+		border-color: var(--borderColor-success-emphasis);
+		background: var(--bgColor-success-muted);
 	}
 	:global(.chip.warn) {
-		color: var(--warn);
-		border-color: var(--warn);
-		background: var(--warn-wash);
+		color: var(--fgColor-attention);
+		border-color: var(--borderColor-attention-emphasis);
+		background: var(--bgColor-attention-muted);
 	}
 	:global(.chip.crit) {
-		color: var(--crit);
-		border-color: var(--crit);
-		background: var(--crit-wash);
+		color: var(--fgColor-danger);
+		border-color: var(--borderColor-danger-emphasis);
+		background: var(--bgColor-danger-muted);
 	}
 	:global(.chip.acc) {
-		color: var(--accent);
-		border-color: var(--accent-line);
-		background: var(--accent-wash);
+		color: var(--fgColor-accent);
+		border-color: var(--borderColor-accent-muted);
+		background: var(--bgColor-accent-muted);
 	}
 	:global(.chip .dot) {
 		width: 5px;
@@ -629,7 +589,7 @@
 
 	:global(.none) {
 		margin: 0;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		font-size: 14.5px;
 		max-width: 46ch;
 	}
@@ -641,25 +601,25 @@
 		gap: 10px;
 	}
 	:global(.tile) {
-		background: var(--surface);
-		border: 1px solid var(--line);
-		border-radius: var(--r);
+		background: var(--bgColor-default);
+		border: 1px solid var(--borderColor-default);
+		border-radius: var(--borderRadius-medium);
 		padding: 13px 14px;
 	}
 	:global(.tile.wide) {
 		grid-column: 1 / -1;
 	}
 	:global(.tile .k) {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-size: 10px;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		display: block;
 		margin-bottom: 7px;
 	}
 	:global(.tile .v) {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-variant-numeric: tabular-nums;
 		font-weight: 700;
 		font-size: 24px;
@@ -671,17 +631,17 @@
 		font-size: 19px;
 	}
 	:global(.tile .v.good) {
-		color: var(--good);
+		color: var(--fgColor-success);
 	}
 	:global(.tile .v.crit) {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	:global(.tile .v.warn) {
-		color: var(--warn);
+		color: var(--fgColor-attention);
 	}
 	:global(.tile .s) {
 		font-size: 12.5px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		margin-top: 5px;
 		display: block;
 	}
@@ -698,7 +658,7 @@
 	:global(.seeall) {
 		margin-left: auto;
 		font-size: 13px;
-		color: var(--accent);
+		color: var(--fgColor-accent);
 		text-decoration: none;
 		display: inline-flex;
 		align-items: center;
@@ -712,46 +672,63 @@
 		line-height: 1;
 	}
 
+	/* Primer's Button: its default, primary and danger variants in its own
+	   button tokens, rest and hover; its medium size on a mouse, and Primer's
+	   own touch target (control-minTarget-auto, 44px) on a touch screen. */
 	:global(.btn) {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: 7px;
-		font-family: var(--f-text);
-		font-size: 14px;
-		font-weight: 600;
-		min-height: 40px;
-		padding: 8px 14px;
-		border-radius: 8px;
-		border: 1px solid var(--line);
-		background: var(--surface);
-		color: var(--ink);
+		gap: var(--base-size-8);
+		font-family: var(--fontStack-sansSerif);
+		font-size: var(--text-body-size-medium);
+		font-weight: var(--base-text-weight-medium);
+		min-height: max(var(--control-medium-size), var(--control-minTarget-auto, 0px));
+		padding: 0 var(--control-medium-paddingInline-normal);
+		border-radius: var(--borderRadius-medium);
+		border: 1px solid var(--button-default-borderColor-rest);
+		background: var(--button-default-bgColor-rest);
+		color: var(--button-default-fgColor-rest);
+		box-shadow: var(--button-default-shadow-resting);
 		text-decoration: none;
 		cursor: pointer;
 	}
+	:global(.btn:hover:not(:disabled)) {
+		background: var(--button-default-bgColor-hover);
+		border-color: var(--button-default-borderColor-hover);
+	}
 	:global(.btn.pri) {
-		background: var(--accent);
-		border-color: var(--accent);
-		color: var(--accent-ink);
+		background: var(--button-primary-bgColor-rest);
+		border-color: var(--button-primary-borderColor-rest);
+		color: var(--button-primary-fgColor-rest);
+	}
+	:global(.btn.pri:hover:not(:disabled)) {
+		background: var(--button-primary-bgColor-hover);
+		border-color: var(--button-primary-borderColor-hover);
 	}
 	:global(.btn.gho) {
 		background: transparent;
-		color: var(--ink-2);
+		border-color: transparent;
+		box-shadow: none;
+		color: var(--fgColor-muted);
 	}
-	/* What cannot be taken back: outlined where it is offered, solid where it
-	   is confirmed (#lib/Ask). */
+	/* What cannot be taken back: Primer's danger button where it is offered,
+	   filled where it is confirmed (#lib/Ask). */
 	:global(.btn.danger) {
-		color: var(--crit);
-		border-color: var(--crit);
+		color: var(--button-danger-fgColor-rest);
+		background: var(--button-danger-bgColor-rest);
+		border-color: var(--button-danger-borderColor-rest);
 	}
+	:global(.btn.danger:hover:not(:disabled)),
 	:global(.btn.danger.solid) {
-		background: var(--crit);
-		color: var(--surface);
+		color: var(--button-danger-fgColor-hover);
+		background: var(--button-danger-bgColor-hover);
+		border-color: var(--button-danger-borderColor-hover);
 	}
 	:global(.btn.sm) {
-		min-height: 34px;
-		padding: 5px 11px;
-		font-size: 13px;
+		min-height: max(var(--control-small-size), var(--control-minTarget-auto, 0px));
+		padding: 0 var(--control-small-paddingInline-normal);
+		font-size: var(--text-body-size-small);
 	}
 	:global(.btn.blk) {
 		width: 100%;
@@ -790,17 +767,17 @@
 		gap: 6px;
 	}
 	:global(.fld > label) {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-size: 10px;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	:global(.inp) {
-		border: 1px solid var(--line);
+		border: 1px solid var(--borderColor-default);
 		border-radius: 8px;
-		background: var(--surface);
-		color: var(--ink);
+		background: var(--bgColor-default);
+		color: var(--fgColor-default);
 		font: inherit;
 		font-size: 16px;
 		min-height: 50px;
@@ -814,17 +791,17 @@
 	}
 	:global(.inp:focus-visible),
 	:global(.seg button:focus-visible) {
-		outline: 2px solid var(--accent);
+		outline: 2px solid var(--borderColor-accent-emphasis);
 		outline-offset: 1px;
 	}
 	:global(.inp .hint) {
 		font-size: 13px;
-		color: var(--ink-3);
-		font-family: var(--f-mono);
+		color: var(--fgColor-muted);
+		font-family: var(--fontStack-monospace);
 		white-space: nowrap;
 	}
 	:global(.inp.mut) {
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	/* The platform's arrow ignores the padding above it; drawn here it lines up
 	   with the text. */
@@ -846,7 +823,7 @@
 	   is faster to read than a select, and says what the alternatives are. */
 	:global(.seg) {
 		display: flex;
-		border: 1px solid var(--line);
+		border: 1px solid var(--borderColor-default);
 		border-radius: 8px;
 		overflow: hidden;
 	}
@@ -860,18 +837,18 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		color: var(--ink-2);
-		background: var(--surface);
+		color: var(--fgColor-muted);
+		background: var(--bgColor-default);
 		border: 0;
-		border-right: 1px solid var(--line);
+		border-right: 1px solid var(--borderColor-default);
 		cursor: pointer;
 	}
 	:global(.seg button:last-child) {
 		border-right: 0;
 	}
 	:global(.seg button.on) {
-		background: var(--accent);
-		color: var(--accent-ink);
+		background: var(--bgColor-accent-emphasis);
+		color: var(--fgColor-onEmphasis);
 		font-weight: 600;
 	}
 	:global(.tog) {
@@ -883,7 +860,7 @@
 		background: none;
 		border: 0;
 		padding: 0;
-		color: var(--ink);
+		color: var(--fgColor-default);
 		font-family: inherit;
 		cursor: pointer;
 	}
@@ -891,7 +868,7 @@
 		width: 44px;
 		height: 26px;
 		border-radius: 13px;
-		background: var(--line);
+		background: var(--borderColor-default);
 		position: relative;
 		flex: 0 0 auto;
 	}
@@ -903,11 +880,11 @@
 		width: 20px;
 		height: 20px;
 		border-radius: 50%;
-		background: var(--surface);
-		box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+		background: var(--bgColor-default);
+		box-shadow: var(--shadow-resting-small);
 	}
 	:global(.tog.on .sw) {
-		background: var(--accent);
+		background: var(--bgColor-accent-emphasis);
 	}
 	:global(.tog.on .sw)::after {
 		left: auto;
@@ -927,7 +904,7 @@
 		top: 10px;
 		bottom: 10px;
 		width: 1px;
-		background: var(--line);
+		background: var(--borderColor-default);
 	}
 	:global(.leg) {
 		position: relative;
@@ -941,8 +918,8 @@
 		width: 9px;
 		height: 9px;
 		border-radius: 50%;
-		background: var(--surface);
-		border: 2px solid var(--accent);
+		background: var(--bgColor-default);
+		border: 2px solid var(--borderColor-accent-emphasis);
 	}
 	:global(.leg .stop) {
 		font-size: 15px;
@@ -950,7 +927,7 @@
 	}
 	:global(.leg .det) {
 		font-size: 13px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		margin-top: 2px;
 	}
 	:global(.btnrow .btn) {
@@ -961,26 +938,26 @@
 	   rather than having happened. Bordered in the brand colour so it reads as
 	   live at arm's length, which is how it is read -- on a phone, on a roof. */
 	:global(.timer-card) {
-		background: var(--surface);
-		border: 1px solid var(--brand);
-		border-radius: var(--r);
+		background: var(--bgColor-default);
+		border: 1px solid var(--borderColor-emphasis);
+		border-radius: var(--borderRadius-medium);
 		padding: 18px;
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
 	}
 	:global(.timer) {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-variant-numeric: tabular-nums;
 		font-weight: 700;
 		font-size: 46px;
 		line-height: 1;
 		letter-spacing: -0.035em;
-		color: var(--brand-deep);
+		color: var(--fgColor-default);
 	}
 	:global(.timer small) {
 		font-size: 24px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	:global(.chips) {
 		display: flex;
@@ -994,7 +971,7 @@
 	}
 	:global(.hr) {
 		height: 1px;
-		background: var(--line-soft);
+		background: var(--borderColor-muted);
 	}
 	:global(.kv) {
 		display: flex;
@@ -1004,10 +981,10 @@
 		font-size: 14px;
 	}
 	:global(.kv .k) {
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 	}
 	:global(.kv .v) {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-variant-numeric: tabular-nums;
 		text-align: right;
 	}
@@ -1019,12 +996,12 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		background: var(--warn-wash);
-		color: var(--warn);
+		background: var(--bgColor-attention-muted);
+		color: var(--fgColor-attention);
 		padding: 10px var(--pad);
 		font-size: 13px;
-		font-family: var(--f-mono);
-		border-bottom: 1px solid var(--line);
+		font-family: var(--fontStack-monospace);
+		border-bottom: 1px solid var(--borderColor-default);
 	}
 
 	.app {
@@ -1047,8 +1024,8 @@
 		flex-direction: column;
 		gap: 10px;
 		padding: 12px var(--pad);
-		background: var(--accent-wash);
-		border-bottom: 1px solid var(--accent-line);
+		background: var(--bgColor-accent-muted);
+		border-bottom: 1px solid var(--borderColor-accent-muted);
 		font-size: 14px;
 	}
 	.zone-ask p {
@@ -1068,8 +1045,8 @@
 		justify-content: space-between;
 		gap: 12px;
 		padding: 10px var(--pad);
-		background: var(--accent-wash);
-		border-bottom: 1px solid var(--accent-line);
+		background: var(--bgColor-accent-muted);
+		border-bottom: 1px solid var(--borderColor-accent-muted);
 		font-size: 14px;
 	}
 
@@ -1087,8 +1064,8 @@
 		z-index: 40;
 		display: grid;
 		grid-template-columns: repeat(5, 1fr);
-		background: var(--surface);
-		border-top: 1px solid var(--line);
+		background: var(--bgColor-default);
+		border-top: 1px solid var(--borderColor-default);
 		padding-bottom: env(safe-area-inset-bottom);
 	}
 	.tabbar a {
@@ -1103,15 +1080,15 @@
 		min-height: var(--tabh);
 		padding: 7px 2px;
 		font-size: 10.5px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		text-decoration: none;
 		border-top: 2px solid transparent;
 		margin-top: -1px;
 	}
 	.tabbar a[aria-current='page'] {
-		color: var(--accent);
-		border-top-color: var(--brand);
-		background: var(--accent-wash);
+		color: var(--fgColor-accent);
+		border-top-color: var(--borderColor-emphasis);
+		background: var(--bgColor-accent-muted);
 	}
 
 	/* Below the rail's width there is no rail; the tab bar is the navigation. */
@@ -1152,14 +1129,14 @@
 			display: grid;
 			grid-template-columns: 236px 1fr;
 			min-height: 100dvh;
-			background: var(--surface-2);
+			background: var(--bgColor-muted);
 		}
 		.rail {
 			display: flex;
 			flex-direction: column;
 			gap: 20px;
 			padding: 20px 0;
-			border-right: 1px solid var(--line);
+			border-right: 1px solid var(--borderColor-default);
 			position: sticky;
 			top: 0;
 			align-self: start;
@@ -1178,11 +1155,11 @@
 			display: block;
 		}
 		.rail-mark span {
-			font-family: var(--f-display);
+			font-family: var(--fontStack-sansSerif);
 			font-weight: 700;
 			font-size: 15px;
 			letter-spacing: 0.01em;
-			color: var(--display-ink);
+			color: var(--fgColor-default);
 		}
 		.rail-nav {
 			display: flex;
@@ -1194,22 +1171,22 @@
 			gap: 9px;
 			padding: 10px 18px;
 			font-size: 14.5px;
-			color: var(--ink-2);
+			color: var(--fgColor-muted);
 			text-decoration: none;
 			border-left: 2px solid transparent;
 			min-height: 44px;
 			box-sizing: border-box;
 		}
 		.rail-nav a[aria-current='page'] {
-			color: var(--accent);
-			border-left-color: var(--brand);
-			background: var(--accent-wash);
+			color: var(--fgColor-accent);
+			border-left-color: var(--borderColor-emphasis);
+			background: var(--bgColor-accent-muted);
 		}
 		.rail-nav .cnt {
 			margin-left: auto;
-			font-family: var(--f-mono);
+			font-family: var(--fontStack-monospace);
 			font-size: 11px;
-			color: var(--ink-3);
+			color: var(--fgColor-muted);
 			font-variant-numeric: tabular-nums;
 		}
 		.rail-foot {
@@ -1223,9 +1200,9 @@
 			width: 26px;
 			height: 26px;
 			border-radius: 50%;
-			background: var(--accent);
-			color: var(--accent-ink);
-			font-family: var(--f-mono);
+			background: var(--bgColor-accent-emphasis);
+			color: var(--fgColor-onEmphasis);
+			font-family: var(--fontStack-monospace);
 			font-size: 10.5px;
 			font-weight: 700;
 			display: grid;
@@ -1243,11 +1220,11 @@
 		}
 		.rail-foot .who {
 			font-size: 13.5px;
-			color: var(--ink-2);
+			color: var(--fgColor-muted);
 		}
 		.rail-foot .me:hover .who,
 		.rail-foot .me[aria-current='page'] .who {
-			color: var(--ink);
+			color: var(--fgColor-default);
 			text-decoration: underline;
 		}
 		.rail-foot button {
@@ -1255,10 +1232,10 @@
 			font: inherit;
 			font-size: 12px;
 			padding: 4px 9px;
-			border: 1px solid var(--line);
+			border: 1px solid var(--borderColor-default);
 			border-radius: 999px;
-			background: var(--surface);
-			color: var(--ink-3);
+			background: var(--bgColor-default);
+			color: var(--fgColor-muted);
 			cursor: pointer;
 		}
 
@@ -1272,7 +1249,7 @@
 		:global(.pad) {
 			padding: 22px max(24px, calc((100% - var(--col)) / 2)) 40px;
 			gap: 22px;
-			background: var(--surface);
+			background: var(--bgColor-default);
 			min-height: calc(100dvh - 70px);
 		}
 		:global(.tiles) {

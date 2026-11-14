@@ -114,7 +114,7 @@
 		align-items: center;
 		gap: 14px;
 		padding-bottom: 14px;
-		border-bottom: 2px solid var(--accent);
+		border-bottom: 2px solid var(--borderColor-accent-emphasis);
 	}
 	.logo {
 		max-height: 48px;
@@ -125,11 +125,11 @@
 		flex-direction: column;
 		gap: 2px;
 		font-size: 13px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.from strong {
 		font-size: 18px;
-		color: var(--ink);
+		color: var(--fgColor-default);
 	}
 	.head h1 {
 		margin: 0;
@@ -140,15 +140,15 @@
 	}
 	.head .dates {
 		font-size: 13px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.lt {
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.other {
 		margin: 0;
 		font-size: 13px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		text-align: center;
 	}
 </style>

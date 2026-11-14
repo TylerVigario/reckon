@@ -53,7 +53,7 @@
 		}
 		.main {
 			min-width: 0;
-			border-left: 1px solid var(--line);
+			border-left: 1px solid var(--borderColor-default);
 		}
 	}
 </style>

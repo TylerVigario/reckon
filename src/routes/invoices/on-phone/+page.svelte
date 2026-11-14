@@ -171,7 +171,7 @@
 
 <style>
 	.refusal {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	.lt {
 		margin: 0 0 14px;

@@ -78,9 +78,9 @@
 
 <style>
 	.ask {
-		background: var(--surface);
-		border: 1px solid var(--line);
-		border-radius: var(--r);
+		background: var(--bgColor-default);
+		border: 1px solid var(--borderColor-default);
+		border-radius: var(--borderRadius-medium);
 		padding: 14px;
 		margin-bottom: 16px;
 		display: flex;
@@ -88,7 +88,7 @@
 		gap: 12px;
 	}
 	.ask.danger {
-		border-color: var(--crit);
+		border-color: var(--borderColor-danger-emphasis);
 	}
 	.what {
 		display: flex;

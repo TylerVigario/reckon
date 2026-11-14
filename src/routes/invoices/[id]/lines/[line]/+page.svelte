@@ -466,9 +466,9 @@
 		width: 100%;
 		max-height: 420px;
 		object-fit: contain;
-		border-radius: var(--r);
-		border: 1px solid var(--line);
-		background: var(--card);
+		border-radius: var(--borderRadius-medium);
+		border: 1px solid var(--borderColor-default);
+		background: var(--bgColor-default);
 	}
 	.stack {
 		display: flex;
@@ -480,7 +480,7 @@
 		margin-top: 16px;
 	}
 	.why {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	.waits {
 		margin: 0 0 14px;
@@ -517,15 +517,15 @@
 		width: 18px;
 		height: 18px;
 		border-radius: 50%;
-		border: 2px solid var(--line);
+		border: 2px solid var(--borderColor-default);
 		flex: none;
 	}
 	.pick.on .radio {
-		border-color: var(--accent);
-		box-shadow: inset 0 0 0 4px var(--card);
-		background: var(--accent);
+		border-color: var(--borderColor-accent-emphasis);
+		box-shadow: inset 0 0 0 4px var(--bgColor-default);
+		background: var(--bgColor-accent-emphasis);
 	}
 	.pick.on {
-		background: var(--accent-wash);
+		background: var(--bgColor-accent-muted);
 	}
 </style>

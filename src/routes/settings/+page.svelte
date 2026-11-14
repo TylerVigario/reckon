@@ -75,6 +75,6 @@
 <style>
 	/* What it is set to: the thing worth reading, so a shade stronger than a description. */
 	.status {
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 	}
 </style>

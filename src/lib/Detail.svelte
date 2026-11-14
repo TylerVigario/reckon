@@ -235,11 +235,11 @@
 		gap: 2px;
 		min-width: 0;
 		overflow-wrap: anywhere;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 	}
 	.sub {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.end {
 		display: flex;
@@ -269,7 +269,7 @@
 		margin-left: 6px;
 		font-size: 12px;
 		font-weight: 600;
-		color: var(--good);
+		color: var(--fgColor-success);
 	}
 	/* Label above value on a phone, the pencil beside both. */
 	@media (max-width: 543px) {

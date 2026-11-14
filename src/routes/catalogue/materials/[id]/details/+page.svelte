@@ -353,11 +353,11 @@
 		flex-direction: column;
 		gap: 2px;
 		min-width: 0;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 	}
 	.sub {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.end {
 		display: flex;
@@ -377,7 +377,7 @@
 		top: 50%;
 		transform: translateY(-50%);
 		font-size: 13px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		pointer-events: none;
 	}
 	@media (max-width: 543px) {

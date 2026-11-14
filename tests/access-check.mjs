@@ -545,12 +545,12 @@ const entry = (/** @type {Record<string, unknown>} */ extra) => ({
 			asFull(p)
 		)
 	);
-	const theme = await asFull('/operator/theme.css');
+	const logo = await asFull('/operator/logo');
 	check(
 		// SvelteKit's own data answers say `private, no-store`.
 		answers.every((r) => /\bno-store\b/.test(r.headers.get('cache-control') ?? '')) &&
-			/max-age/.test(theme.headers.get('cache-control') ?? ''),
-		'every screen and answer says no-store, and the operator’s stylesheet keeps its own',
+			(logo.status !== 200 || /max-age/.test(logo.headers.get('cache-control') ?? '')),
+		'every screen and answer says no-store, and the operator’s mark keeps its own',
 		answers.map((r) => r.headers.get('cache-control')).join(' | ')
 	);
 

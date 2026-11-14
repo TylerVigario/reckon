@@ -79,22 +79,22 @@
 		padding: 0 8px;
 		white-space: nowrap;
 		font: inherit;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 		background: none;
 		border: 0;
 		border-bottom: 2px solid transparent;
 		cursor: pointer;
 	}
 	button:hover {
-		color: var(--ink);
+		color: var(--fgColor-default);
 	}
 	button[aria-selected='true'] {
-		color: var(--ink);
+		color: var(--fgColor-default);
 		font-weight: 600;
-		border-bottom-color: var(--accent);
+		border-bottom-color: var(--borderColor-accent-emphasis);
 	}
 	button:focus-visible {
-		outline: 2px solid var(--accent);
+		outline: 2px solid var(--borderColor-accent-emphasis);
 		outline-offset: -2px;
 	}
 	.flag {
@@ -105,8 +105,8 @@
 		height: 18px;
 		font-size: 12px;
 		font-weight: 700;
-		color: var(--surface);
-		background: var(--crit);
+		color: var(--fgColor-onEmphasis);
+		background: var(--bgColor-danger-emphasis);
 		border-radius: 999px;
 	}
 </style>

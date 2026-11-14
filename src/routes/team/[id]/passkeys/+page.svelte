@@ -164,7 +164,7 @@
 	}
 	.e {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		overflow-wrap: anywhere;
 	}
 </style>

@@ -53,7 +53,6 @@ export const REACH = {
 	'/link': 'open',
 	'/manifest.webmanifest': 'open',
 	'/operator/logo': 'open',
-	'/operator/theme.css': 'open',
 	'/invoice/[token]': 'open',
 
 	// The shell, and what anyone signed in does to their own session and device.

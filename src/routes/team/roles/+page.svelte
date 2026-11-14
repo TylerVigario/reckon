@@ -278,15 +278,15 @@
 		font-size: 12px;
 		font-weight: 600;
 		text-align: left;
-		color: var(--ink-2);
-		background: var(--surface-2);
-		border-bottom: 1px solid var(--line);
+		color: var(--fgColor-muted);
+		background: var(--bgColor-muted);
+		border-bottom: 1px solid var(--borderColor-default);
 	}
 	td {
 		height: 52px;
 		padding: 6px 16px;
 		vertical-align: middle;
-		border-top: 1px solid var(--line-soft);
+		border-top: 1px solid var(--borderColor-muted);
 	}
 	tbody tr:first-child td {
 		border-top: 0;
@@ -336,7 +336,7 @@
 		tr {
 			position: relative;
 			padding: 12px 16px;
-			border-top: 1px solid var(--line-soft);
+			border-top: 1px solid var(--borderColor-muted);
 		}
 		tbody tr:first-child {
 			border-top: 0;
@@ -351,7 +351,7 @@
 		}
 		td:not(.name, .act)[data-label]::before {
 			content: attr(data-label) ': ';
-			color: var(--ink-3);
+			color: var(--fgColor-muted);
 		}
 		tr.editing td[data-label]::before {
 			content: none;

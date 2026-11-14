@@ -97,7 +97,7 @@
 	.said {
 		margin: 6px 0 0;
 		font-size: 13.5px;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 		overflow-wrap: anywhere;
 	}
 	.test {

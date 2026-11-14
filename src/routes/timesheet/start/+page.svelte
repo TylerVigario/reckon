@@ -243,11 +243,11 @@
 		gap: 15px;
 	}
 	.lbl {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-size: 10px;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.inp-wrap {
 		position: relative;
@@ -259,16 +259,16 @@
 		top: 50%;
 		transform: translateY(-50%);
 		font-size: 13px;
-		color: var(--ink-3);
-		font-family: var(--f-mono);
+		color: var(--fgColor-muted);
+		font-family: var(--fontStack-monospace);
 		pointer-events: none;
 	}
 	.why.bad {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	.aside {
 		margin: 0;
 		font-size: 12.5px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 </style>

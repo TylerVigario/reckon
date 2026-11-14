@@ -118,6 +118,6 @@
 		margin-top: 4px;
 	}
 	.gone .rec-t {
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 </style>

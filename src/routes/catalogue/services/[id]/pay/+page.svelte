@@ -179,7 +179,7 @@
 	}
 	.sub {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 	.lab {
 		flex: 0 0 auto;
@@ -207,17 +207,17 @@
 	th {
 		font-size: 12px;
 		font-weight: 600;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 		text-align: right;
 		padding: 8px 16px;
-		border-bottom: 1px solid var(--line);
+		border-bottom: 1px solid var(--borderColor-default);
 		white-space: nowrap;
 	}
 	td {
 		padding: 10px 16px;
-		border-bottom: 1px solid var(--line-soft);
+		border-bottom: 1px solid var(--borderColor-muted);
 		text-align: right;
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
 	}
@@ -232,6 +232,6 @@
 	}
 	td.kept {
 		font-weight: 700;
-		color: var(--good);
+		color: var(--fgColor-success);
 	}
 </style>

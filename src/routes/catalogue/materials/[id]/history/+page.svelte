@@ -98,10 +98,10 @@
 	}
 	.lt {
 		font-weight: 400;
-		color: var(--ink-2);
+		color: var(--fgColor-muted);
 	}
 	.sub {
 		font-size: 12px;
-		color: var(--ink-3);
+		color: var(--fgColor-muted);
 	}
 </style>

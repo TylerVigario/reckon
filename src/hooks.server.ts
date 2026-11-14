@@ -276,9 +276,10 @@ const app: Handle = async ({ event, resolve }) => {
 	}
 
 	// The theme goes on <html> before the page leaves, so the first paint is in
-	// it. Empty, it matches neither theme's rule and the device's own decides.
+	// it: Primer's colour mode (@primer/primitives), light or dark where this
+	// device is set to one, and auto -- the device's own -- where it is not.
 	const response = await resolve(event, {
-		transformPageChunk: ({ html }) => html.replace('%theme%', event.locals.theme ?? '')
+		transformPageChunk: ({ html }) => html.replace('%theme%', event.locals.theme || 'auto')
 	});
 	// And one a route refused itself: everything reckon answers 403 is that.
 	if (event.locals.user && response.status === 403) await refusedForAccess(event);

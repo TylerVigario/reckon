@@ -562,7 +562,7 @@
 	/* Why the server would not take a line, in its words. */
 	.refusal {
 		margin-top: 6px;
-		color: var(--crit);
+		color: var(--fgColor-danger);
 	}
 	.acts {
 		display: flex;
@@ -570,7 +570,7 @@
 		margin-top: 10px;
 	}
 	.link-text {
-		font-family: var(--f-mono);
+		font-family: var(--fontStack-monospace);
 		font-size: 13px;
 		overflow-wrap: anywhere;
 	}

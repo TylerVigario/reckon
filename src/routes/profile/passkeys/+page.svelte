@@ -159,7 +159,7 @@
 	.offer {
 		padding: 1rem;
 		border-radius: 12px;
-		border: 1px solid var(--line, #d9dee6);
+		border: 1px solid var(--borderColor-default);
 	}
 	.offer h2 {
 		margin: 0 0 0.4rem;
@@ -167,7 +167,7 @@
 	}
 	.lede {
 		margin: 0.4rem 0;
-		color: var(--muted, #5a6472);
+		color: var(--fgColor-muted);
 		font-size: 0.9rem;
 	}
 	.acts {
