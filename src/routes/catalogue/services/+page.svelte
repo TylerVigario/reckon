@@ -1,4 +1,5 @@
 <script lang="ts">
+	import StockOnPhone from '#lib/StockOnPhone.svelte';
 	import Top from '#lib/Top.svelte';
 	import UnderlineNav from '#lib/UnderlineNav.svelte';
 	import { catalogueTabs } from '#lib/section-tabs.ts';
@@ -88,6 +89,7 @@
 
 <div class="pad primer">
 	<UnderlineNav label="Catalogue" items={catalogueTabs('services')} />
+	<StockOnPhone today={data.today} />
 
 	{#each [{ key: 'offered', head: 'Offered', list: offered }, { key: 'retired', head: 'Retired', list: retired }] as group (group.key)}
 		{#if group.list.length || group.key === 'offered'}

@@ -39,3 +39,16 @@ describe('what a material sells at', () => {
 		expect(readPricing({ by: 'cost', markup_pct: '', price: '' }).errors.by).toBeTruthy();
 	});
 });
+
+describe('what a material sells at, as one choice', () => {
+	it('is a set price in force, else its own markup, else the business’s', async () => {
+		const { pricedBy } = await import('./material-fields.ts');
+		expect(pricedBy({ markup_pct: '40', listed: '1.25' })).toEqual({
+			by: 'price',
+			markup_pct: null,
+			price: '1.25'
+		});
+		expect(pricedBy({ markup_pct: '40', listed: null }).by).toBe('markup');
+		expect(pricedBy({ markup_pct: null, listed: null }).by).toBe('business');
+	});
+});

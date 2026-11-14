@@ -1,5 +1,5 @@
-import { error } from '@sveltejs/kit';
-import { count, eq } from 'drizzle-orm';
+import { error, redirect } from '@sveltejs/kit';
+import { count, eq, or } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import * as t from '#lib/server/db/schema/index.ts';
@@ -11,6 +11,9 @@ import type { LayoutServerLoad } from './$types';
  * One service as a record: what it is, what every client pays for it now, and
  * what would keep it from being deleted -- what its head and its menu say,
  * whichever tab is open. Each tab loads its own part.
+ *
+ * Opened by the uuid it was added with, too -- where New service goes once the
+ * queue has sent it -- which answers with its own address.
  */
 export const load: LayoutServerLoad = async ({ params }) => {
 	if (!UUID.test(params.id)) error(404, 'no such service');
@@ -27,8 +30,9 @@ export const load: LayoutServerLoad = async ({ params }) => {
 			minimum_charge: t.service.minimumCharge
 		})
 		.from(t.service)
-		.where(eq(t.service.id, params.id));
+		.where(or(eq(t.service.id, params.id), eq(t.service.clientUuid, params.id)));
 	if (!service) error(404, 'no such service');
+	if (service.id !== params.id) redirect(303, `/catalogue/services/${service.id}`);
 
 	const uses = (table: typeof t.timeEntry | typeof t.tripLeg | typeof t.agreementService) =>
 		db.select({ n: count() }).from(table).where(eq(table.serviceId, service.id));

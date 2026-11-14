@@ -12,11 +12,13 @@
 		flush,
 		notKept,
 		waitingCount,
+		materialChangesHeld,
 		stockHeld,
+		type MaterialChange,
 		type QueuedLine,
 		type ShownReceipt
 	} from '#lib/queue.ts';
-	import { withReceived } from '#lib/stock-held.ts';
+	import { withChanged, withReceived } from '#lib/stock-held.ts';
 	import { pct, percent, quantity } from '#lib/format.ts';
 	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { readFromStock, readPassedOn } from '#lib/line-fields.ts';
@@ -51,6 +53,8 @@
 			sites: { id: string; label: string | null; rate_pct: string | null }[];
 			people: { id: string; name: string }[];
 			markup: string;
+			/** What stock sells at over its cost, where a material has no markup of its own. */
+			stock_markup?: string;
 			rules: RuleSet;
 			costing: Costing;
 			places: number;
@@ -123,8 +127,16 @@
 	// Stock received on this phone and not yet sent is on the shelf here too,
 	// something new on it included (#lib/stock-held).
 	let received = $state<ShownReceipt[]>([]);
-	const offered = $derived(withReceived(data.stock, received));
+	// And a material changed on this phone is offered as changed.
+	let changed = $state<MaterialChange[]>([]);
+	const offered = $derived(
+		withChanged(withReceived(data.stock, received), changed, data.stock_markup ?? data.markup)
+	);
 	onMount(() => {
+		void materialChangesHeld().then(
+			(rows) => (changed = rows.filter((q) => !q.refused).map((q) => q.change)),
+			() => {}
+		);
 		void stockHeld().then(
 			(h) => (received = h.receipts.filter((q) => !q.refused).map((q) => q.receipt.shown)),
 			() => {}

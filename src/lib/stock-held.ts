@@ -8,7 +8,7 @@
  */
 import { Decimal } from './decimal.ts';
 import type { Shelf } from './stock-draw.ts';
-import type { ShownReceipt } from './queue.ts';
+import type { MaterialChange, ShownReceipt } from './queue.ts';
 
 /** A material as Add a line offers it: what it is, how it sells, and its shelf. */
 export type Stocked = {
@@ -79,4 +79,41 @@ export function withReceived(
 		})
 	);
 	return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * What Add a line offers, with each change to a material still on this phone
+ * made to it: its name, SKU and whether it is taxed as changed, what it sells
+ * at as repriced -- a set price, its own markup, or the business's
+ * (`stockMarkup`) -- and none retired. A line is priced again when it arrives.
+ */
+export function withChanged(
+	stock: readonly Stocked[],
+	changes: readonly MaterialChange[],
+	stockMarkup: string
+): Stocked[] {
+	const fieldsOf = (id: string) =>
+		changes.find((c) => c.kind === 'fields' && c.material_id === id)?.fields ?? {};
+	const priceOf = (id: string) =>
+		changes.find((c) => c.kind === 'price' && c.material_id === id)?.fields;
+	return stock
+		.flatMap((m) => {
+			const f = fieldsOf(m.id);
+			if (f.active === 'false') return [];
+			const p = priceOf(m.id);
+			return [
+				{
+					...m,
+					name: f.name || m.name,
+					sku: f.sku === undefined ? m.sku : f.sku || null,
+					taxable: f.taxable === undefined ? m.taxable : f.taxable === 'true',
+					...(p
+						? p.by === 'price'
+							? { listed: p.price }
+							: { listed: null, markup: p.by === 'markup' ? p.markup_pct : stockMarkup }
+						: {})
+				}
+			];
+		})
+		.sort((a, b) => a.name.localeCompare(b.name));
 }

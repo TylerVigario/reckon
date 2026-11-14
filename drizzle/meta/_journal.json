@@ -407,6 +407,13 @@
       "when": 1794614593590,
       "tag": "0057_stock_is_put_right_with_no_signal",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1794633069063,
+      "tag": "0058_the_catalogue_is_changed_with_no_signal",
+      "breakpoints": true
     }
   ]
 }

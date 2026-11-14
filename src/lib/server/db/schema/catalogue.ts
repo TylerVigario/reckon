@@ -83,9 +83,15 @@ export const service = pgTable(
 		 */
 		billToNearestSeconds: integer(),
 		/** The least one entry of it bills, whatever its quantity. Null for none. */
-		minimumCharge: money()
+		minimumCharge: money(),
+		/**
+		 * The uuid a phone made for it, where it was added there with no signal:
+		 * what a time entry or a trip using it names until it arrives.
+		 */
+		clientUuid: uuid()
 	},
 	(t) => [
+		unique('service_client_uuid_key').on(t.clientUuid),
 		unique('service_code_key').on(t.code),
 		index('service_time_tracked')
 			.on(t.timeTracked)

@@ -1,11 +1,21 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Detail from '#lib/Detail.svelte';
 	import Dialog from '#lib/Dialog.svelte';
 	import Octicon from '#lib/Octicon.svelte';
 	import { percent } from '#lib/format.ts';
 	import { unitPrice } from '#lib/money.svelte.ts';
-	import { readProblem } from '#lib/json.ts';
 	import { parseMaterialField, readPricing, type PricedBy } from '#lib/material-fields.ts';
+	import { changeMaterial } from '#lib/material-change.ts';
+	import {
+		discardMaterialChange,
+		materialChangeKey,
+		materialChangesHeld,
+		QUEUE_CHANGED,
+		type QueuedMaterialChange
+	} from '#lib/queue.ts';
+	import { todayIn } from '#lib/format.ts';
+	import { personalZone } from '#lib/zone.svelte.ts';
 	import { refreshAll } from '$app/navigation';
 	import type { PageProps } from './$types';
 
@@ -18,14 +28,83 @@
 	 *
 	 * What it is counted in is fixed once any of it has been received, and says
 	 * so, as Odoo and ERPNext refuse that change once stock has moved.
+	 *
+	 * Each change is kept on the phone first and sent by the queue (#lib/
+	 * material-change), so it is made with no signal too: what waits is shown
+	 * here as it will be, and what someone else changed meanwhile is said, to
+	 * save over or let go, as online.
 	 */
 	let { data }: PageProps = $props();
-	const m = $derived(data.material);
 	const endpoint = $derived(`/api/materials/${data.material.id}`);
+
+	// What waits on this phone, shown as it will be.
+	let held = $state<QueuedMaterialChange[]>([]);
+	const read = async () =>
+		(held = await materialChangesHeld(data.material.id).catch(() => [] as QueuedMaterialChange[]));
+	onMount(() => {
+		void read();
+		const again = () => void read();
+		addEventListener(QUEUE_CHANGED, again);
+		return () => removeEventListener(QUEUE_CHANGED, again);
+	});
+	const waitingFields = $derived(
+		held.find((q) => q.change.kind === 'fields' && !q.refused)?.change.fields ?? {}
+	);
+	const waitingPrice = $derived(
+		held.find((q) => q.change.kind === 'price' && !q.refused)?.change.fields
+	);
+	const m = $derived({
+		...data.material,
+		...('name' in waitingFields ? { name: waitingFields.name } : {}),
+		...('brand' in waitingFields ? { brand: waitingFields.brand || null } : {}),
+		...('sku' in waitingFields ? { sku: waitingFields.sku || null } : {}),
+		...('unit_id' in waitingFields ? { unit_id: waitingFields.unit_id } : {}),
+		...('taxable' in waitingFields ? { taxable: waitingFields.taxable === 'true' } : {}),
+		...(waitingPrice
+			? {
+					listed: waitingPrice.by === 'price' ? waitingPrice.price : null,
+					own_markup: waitingPrice.by === 'markup' ? waitingPrice.markup_pct : null,
+					price: waitingPrice.by === 'price' ? waitingPrice.price : null
+				}
+			: {})
+	});
+	/** Under a detail: what it means, and that it waits on this phone. */
+	const note = (field: string, hint = '') =>
+		[field in waitingFields ? 'Waiting to send.' : '', hint].filter(Boolean).join(' ');
 	const per = $derived(m.unit === 'each' ? 'each' : `a ${m.unit}`);
 	const by = $derived<PricedBy>(
 		m.listed !== null ? 'price' : m.own_markup !== null ? 'markup' : 'business'
 	);
+
+	/**
+	 * A detail, kept on the phone and sent. Refused at once -- something wrong
+	 * with it, or changed meanwhile -- the reason is said under it; changed
+	 * meanwhile, the screen is fetched again so Save puts this over theirs.
+	 */
+	async function send(
+		fields: Record<string, string>,
+		version: number | undefined,
+		base: Record<string, string>
+	) {
+		const came = await changeMaterial({
+			kind: 'fields',
+			material_id: data.material.id,
+			version: version ?? data.material.version,
+			base,
+			fields,
+			made_at: new Date().toISOString(),
+			shown: { name: data.material.name }
+		}).catch(() => null);
+		if (!came) return 'This phone would not keep it, so it is not changed.';
+		if (came.state === 'sent') await refreshAll();
+		if (came.state !== 'refused') return null;
+		if (came.refused.conflict) await refreshAll();
+		const [field] = Object.keys(fields);
+		return came.refused.errors?.[field] ?? came.refused.detail;
+	}
+	/** Cancel on a refused detail: let it go, and keep what is there. */
+	const letGo = (field: string) => () =>
+		discardMaterialChange(materialChangeKey('fields', data.material.id), field);
 	const YES_NO = [
 		{ value: 'true', label: 'Yes' },
 		{ value: 'false', label: 'No' }
@@ -46,6 +125,11 @@
 		problem = '';
 		pricing = true;
 	}
+	/**
+	 * What it sells at, kept on the phone and sent, from the day it is set
+	 * here, with what it sold at when the dialog opened: changed elsewhere
+	 * meanwhile, it is said, and Save puts this over it.
+	 */
 	async function savePricing() {
 		const fields = {
 			by: choice,
@@ -56,21 +140,37 @@
 		problem = '';
 		if (Object.keys(errors).length) return;
 		saving = true;
-		const r = await fetch(`${endpoint}/price`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ fields })
+		const server = data.material;
+		const came = await changeMaterial({
+			kind: 'price',
+			material_id: server.id,
+			version: 0,
+			base: {
+				by: server.listed !== null ? 'price' : server.own_markup !== null ? 'markup' : 'business',
+				markup_pct: server.own_markup ?? '',
+				price: server.listed ?? ''
+			},
+			fields,
+			from: todayIn(personalZone()),
+			made_at: new Date().toISOString(),
+			shown: { name: server.name }
 		}).catch(() => null);
 		saving = false;
-		if (!r) return void (problem = 'Not saved — no connection.');
-		if (!r.ok) {
-			const b = await readProblem(r);
-			errors = b.errors ?? {};
-			if (!Object.keys(errors).length) problem = b.detail ?? 'That did not save.';
+		if (!came) return void (problem = 'This phone would not keep it, so it is not changed.');
+		if (came.state === 'refused') {
+			errors = came.refused.errors ?? {};
+			if (!Object.keys(errors).length) problem = came.refused.detail;
+			if (came.refused.conflict) await refreshAll();
 			return;
 		}
 		pricing = false;
-		await refreshAll();
+		if (came.state === 'sent') await refreshAll();
+	}
+	/** Cancel on a refused pricing: let it go, and keep what is there. */
+	async function closePricing() {
+		pricing = false;
+		if (held.some((q) => q.change.kind === 'price' && q.refused))
+			await discardMaterialChange(materialChangeKey('price', data.material.id));
 	}
 </script>
 
@@ -78,59 +178,63 @@
 	<div class="box-h"><h2 class="box-t" id="is-h">What it is</h2></div>
 	<Detail
 		name="name"
+		oncancel={letGo('name')}
 		label="Name"
 		value={m.name}
+		hint={note('name')}
 		required
 		{endpoint}
 		version={m.version}
 		validate={parseMaterialField}
-		onsaved={refreshAll}
-		onconflict={refreshAll}
+		{send}
 	/>
 	<Detail
 		name="brand"
+		oncancel={letGo('brand')}
 		label="Brand"
 		value={m.brand}
+		hint={note('brand')}
 		{endpoint}
 		version={m.version}
 		validate={parseMaterialField}
-		onsaved={refreshAll}
-		onconflict={refreshAll}
+		{send}
 	/>
 	<Detail
 		name="sku"
+		oncancel={letGo('sku')}
 		label="SKU"
 		value={m.sku}
+		hint={note('sku')}
 		{endpoint}
 		version={m.version}
 		validate={parseMaterialField}
-		onsaved={refreshAll}
-		onconflict={refreshAll}
+		{send}
 	/>
 	<Detail
 		name="unit_id"
+		oncancel={letGo('unit_id')}
 		label="Counted in"
 		value={m.unit_id}
 		shown={data.units.find((u) => u.id === m.unit_id)?.name}
 		options={data.units.map((u) => ({ value: u.id, label: u.name }))}
 		editable={!data.received}
-		hint={data.received ? 'Fixed once some is received.' : ''}
+		hint={note('unit_id', data.received ? 'Fixed once some is received.' : '')}
 		{endpoint}
 		version={m.version}
 		validate={parseMaterialField}
-		onsaved={refreshAll}
-		onconflict={refreshAll}
+		{send}
 	/>
 	<Detail
 		name="taxable"
+		oncancel={letGo('taxable')}
 		label="Taxed"
 		value={String(m.taxable)}
+		hint={note('taxable')}
 		options={YES_NO}
 		{endpoint}
 		version={m.version}
 		validate={parseMaterialField}
-		onsaved={refreshAll}
-		onconflict={refreshAll}
+		{send}
 	/>
 </section>
 
@@ -140,16 +244,22 @@
 		<span class="kv-l">Sells at</span>
 		<span class="kv-v">
 			<span
-				>{m.price
-					? `${unitPrice(m.price)} ${per}`
-					: 'Nothing yet: none on the shelf to cost it by'}</span
+				>{m.listed !== null
+					? `${unitPrice(m.listed)} ${per}`
+					: m.price
+						? `${unitPrice(m.price)} ${per}`
+						: data.copy
+							? 'Worked out with a connection'
+							: 'Nothing yet: none on the shelf to cost it by'}</span
 			>
 			<span class="sub">
 				{by === 'price'
 					? 'A set price'
 					: by === 'markup'
 						? `${percent(m.own_markup ?? '0')} over what one cost, its own markup`
-						: `${percent(data.markup ?? '0')} over what one cost, the business’s markup`}
+						: `${percent(data.markup ?? '0')} over what one cost, the business’s markup`}{waitingPrice
+					? ' · waiting to send'
+					: ''}
 			</span>
 		</span>
 		<span class="end">
@@ -167,7 +277,7 @@
 	going="Saving…"
 	working={saving}
 	ongo={savePricing}
-	onclose={() => (pricing = false)}
+	onclose={closePricing}
 >
 	<fieldset class="fc">
 		<legend class="fc-l">Priced by</legend>

@@ -71,3 +71,16 @@ export function readPricing(fields: Record<string, unknown>) {
 		errors.price = 'What it sells at, a unit.';
 	return { values, errors };
 }
+
+/** A material's pricing as one choice, and the figure that choice carries. */
+export type Pricing = { by: PricedBy; markup_pct: string | null; price: string | null };
+
+/**
+ * What a material sells at, as the choice it is: a set price where one is in
+ * force, else its own markup where it has one, else the business's.
+ */
+export function pricedBy(m: { markup_pct: string | null; listed: string | null }): Pricing {
+	if (m.listed !== null) return { by: 'price', markup_pct: null, price: m.listed };
+	if (m.markup_pct !== null) return { by: 'markup', markup_pct: m.markup_pct, price: null };
+	return { by: 'business', markup_pct: null, price: null };
+}

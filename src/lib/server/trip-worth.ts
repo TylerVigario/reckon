@@ -1,3 +1,4 @@
+import { serviceNamed } from '#lib/server/named.ts';
 import { and, asc, eq } from 'drizzle-orm';
 import { Decimal, sum } from '#lib/decimal.ts';
 import type { Leg } from '#lib/trip-legs.ts';
@@ -25,6 +26,8 @@ export async function mileServiceFor(
 	asked: string | null
 ): Promise<{ id: string } | { why: string }> {
 	const services = await mileServices();
+	// By its id, or by the uuid a phone made for one added there (#lib/server/named).
+	if (asked) asked = await serviceNamed(asked);
 	if (asked) {
 		return services.some((s) => s.id === asked)
 			? { id: asked }

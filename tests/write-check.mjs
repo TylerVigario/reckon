@@ -878,17 +878,32 @@ await check(
 	'a service with no name is refused',
 	'POST',
 	'/api/services',
-	{ fields: { name: '', unit: 'hour' } },
+	{ fields: { name: '', unit: 'hour' }, client_uuid: crypto.randomUUID() },
 	400
 );
+await check(
+	'a service with no uuid it was added with is refused',
+	'POST',
+	'/api/services',
+	{ fields: { name: `Write check ${stamp}`, unit: 'hour' } },
+	400
+);
+const added = crypto.randomUUID();
 const svc = await check(
 	'a service is made',
 	'POST',
 	'/api/services',
-	{ fields: { name: `Write check ${stamp}`, unit: 'hour' } },
+	{ fields: { name: `Write check ${stamp}`, unit: 'hour' }, client_uuid: added },
 	201
 );
 const sid = svc.body?.id;
+await check(
+	'sent twice, as a phone retrying would, it is the one service',
+	'POST',
+	'/api/services',
+	{ fields: { name: `Write check ${stamp}`, unit: 'hour' }, client_uuid: added },
+	(r) => r.status === 200 && r.body?.id === sid
+);
 if (sid) {
 	const at = `/api/services/${sid}`;
 	await check('it renames', 'PATCH', at, { fields: { name: `Checked ${stamp}` } }, 200);
