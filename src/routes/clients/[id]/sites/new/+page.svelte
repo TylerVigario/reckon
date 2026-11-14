@@ -7,15 +7,16 @@
 	import { readJson, readProblem } from '#lib/json.ts';
 	import { resolve } from '$app/paths';
 	import AddressField from '#lib/AddressField.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import type { Resolved } from '#lib/google.ts';
 
 	let { data }: PageProps = $props();
 
 	/**
-	 * A new site is one form, not a row that saves itself field by field.
+	 * A new site is one form, not details changed one at a time.
 	 *
-	 * Everywhere else here saves on blur, because the thing already exists and
-	 * a field is a correction to it. A site does not exist until CDTFA has
+	 * A site's Details are changed one at a time, because it already exists
+	 * and each is a correction to it. A site does not exist until CDTFA has
 	 * priced its address, and the address is three fields -- so there is
 	 * nothing to save until all of them are in, and asking CDTFA after each
 	 * keystroke would be asking about addresses nobody means.
@@ -154,6 +155,12 @@
 	);
 </script>
 
+{#snippet wrong(key: string)}
+	{#if show(key)}
+		<p class="fc-e" id="n-{key}-e"><Octicon name="alert" />{show(key)}</p>
+	{/if}
+{/snippet}
+
 <Top
 	title="New site"
 	sub={data.client.name}
@@ -164,97 +171,133 @@
 	]}
 />
 
-<div class="pad">
-	<div class="sec">
-		<div class="sec-h">
-			<h2>Where the work happens</h2>
-			<span class="sp"></span>
-			<span class="chip">CDTFA prices it on save</span>
-		</div>
-		<div class="rows">
-			<div class="rec add">
-				<div class="rec-m">
-					<label class="fld">
-						<span>What this client calls it</span>
-						<input class="inp" bind:value={label} placeholder="Main Street office" />
-						{#if show('label')}<small class="bad">{show('label')}</small>{/if}
-					</label>
-					<label class="fld">
-						<span>In the URL</span>
-						<input
-							class="inp"
-							value={slug}
-							placeholder="the-market"
-							oninput={(e) => {
-								slugTouched = true;
-								slugTyped = toSlug(e.currentTarget.value);
-							}}
-						/>
-						<small class="lt">
-							/clients/{data.client.slug}/sites/{slug || '…'}
-						</small>
-						{#if show('slug')}<small class="bad">{show('slug')}</small>{/if}
-					</label>
-					<div class="fld">
-						<AddressField label="Address" bind:value={address} onchosen={choose} />
-						{#if addressWhy}<small class="bad">{addressWhy}</small>{/if}
-					</div>
-					<div class="duo">
-						<label class="fld">
-							<span>Round trip, miles</span>
-							<input
-								class="inp"
-								bind:value={miles}
-								inputmode="decimal"
-								placeholder={google?.miles ?? ''}
-							/>
-							{#if show('typed_round_trip_miles')}
-								<small class="bad">{show('typed_round_trip_miles')}</small>
-							{/if}
-						</label>
-						<label class="fld">
-							<span>Drive time, minutes</span>
-							<input
-								class="inp"
-								bind:value={minutes}
-								inputmode="numeric"
-								placeholder={google?.minutes === null || google?.minutes === undefined
-									? ''
-									: String(google.minutes)}
-							/>
-							{#if show('typed_drive_minutes')}
-								<small class="bad">{show('typed_drive_minutes')}</small>
-							{/if}
-						</label>
-					</div>
-					<small class="lt">{whose || 'Google works these out when the address is chosen.'}</small>
-					{#if saying}<div class="rec-s bad">{saying}</div>{/if}
-					<div class="acts">
-						<button class="btn pri" onclick={create} disabled={saving}>
-							{saving ? 'Asking CDTFA…' : 'Create and price it'}
-						</button>
-						<a class="btn" href={resolve('/clients/[id]/sites', { id: data.client.slug })}>Cancel</a
-						>
-					</div>
+<div class="pad primer">
+	<form
+		class="box"
+		novalidate
+		onsubmit={(e) => {
+			e.preventDefault();
+			void create();
+		}}
+	>
+		<div class="box-row form">
+			<div class="fc">
+				<label class="fc-l" for="n-label">Name<span aria-hidden="true"> *</span></label>
+				<input
+					id="n-label"
+					class="ti"
+					autocomplete="off"
+					required
+					bind:value={label}
+					aria-invalid={show('label') ? 'true' : undefined}
+					aria-describedby={show('label') ? 'n-label-e' : 'n-label-c'}
+				/>
+				{#if show('label')}
+					{@render wrong('label')}
+				{:else}
+					<p class="fc-c" id="n-label-c">What this client calls it: Main Street office.</p>
+				{/if}
+			</div>
+			<div class="fc">
+				<label class="fc-l" for="n-slug">In the URL<span aria-hidden="true"> *</span></label>
+				<input
+					id="n-slug"
+					class="ti"
+					autocomplete="off"
+					required
+					value={slug}
+					oninput={(e) => {
+						slugTouched = true;
+						slugTyped = toSlug(e.currentTarget.value);
+					}}
+					aria-invalid={show('slug') ? 'true' : undefined}
+					aria-describedby={show('slug') ? 'n-slug-e' : 'n-slug-c'}
+				/>
+				{#if show('slug')}
+					{@render wrong('slug')}
+				{:else}
+					<p class="fc-c" id="n-slug-c">/clients/{data.client.slug}/sites/{slug || '…'}</p>
+				{/if}
+			</div>
+			<div class="fc">
+				<AddressField label="Address" bind:value={address} onchosen={choose} />
+				{#if addressWhy}<p class="fc-e"><Octicon name="alert" />{addressWhy}</p>{/if}
+			</div>
+			<div class="duo">
+				<div class="fc">
+					<label class="fc-l" for="n-miles">Round trip, miles</label>
+					<input
+						id="n-miles"
+						class="ti"
+						autocomplete="off"
+						inputmode="decimal"
+						bind:value={miles}
+						placeholder={google?.miles ?? ''}
+						aria-invalid={show('typed_round_trip_miles') ? 'true' : undefined}
+						aria-describedby={show('typed_round_trip_miles')
+							? 'n-typed_round_trip_miles-e'
+							: 'n-whose'}
+					/>
+					{@render wrong('typed_round_trip_miles')}
+				</div>
+				<div class="fc">
+					<label class="fc-l" for="n-minutes">Drive time, minutes</label>
+					<input
+						id="n-minutes"
+						class="ti"
+						autocomplete="off"
+						inputmode="numeric"
+						bind:value={minutes}
+						placeholder={google?.minutes === null || google?.minutes === undefined
+							? ''
+							: String(google.minutes)}
+						aria-invalid={show('typed_drive_minutes') ? 'true' : undefined}
+						aria-describedby={show('typed_drive_minutes') ? 'n-typed_drive_minutes-e' : 'n-whose'}
+					/>
+					{@render wrong('typed_drive_minutes')}
 				</div>
 			</div>
+			<p class="fc-c" id="n-whose">
+				{whose || 'Google works these out once the address is chosen.'}
+			</p>
 		</div>
-	</div>
+		<div class="box-row keep">
+			<button type="submit" class="btn pri" disabled={saving}
+				>{saving ? 'Asking CDTFA…' : 'Create and price it'}</button
+			>
+			<a class="btn" href={resolve('/clients/[id]/sites', { id: data.client.slug })}>Cancel</a>
+			<p class="fc-c">CDTFA prices it as it is made.</p>
+			{#if saying}<p class="fc-e"><Octicon name="alert" />{saying}</p>{/if}
+		</div>
+	</form>
 </div>
 
 <style>
-	.rec.add .rec-m {
+	.form {
 		display: flex;
 		flex-direction: column;
+		gap: 20px;
+		padding: 16px;
+	}
+	.fc {
+		max-width: 440px;
+	}
+	.duo {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
 		gap: 12px;
-		width: 100%;
+		max-width: 440px;
 	}
-	.acts {
+	.keep {
 		display: flex;
-		gap: 8px;
+		flex-wrap: wrap;
 		align-items: center;
+		gap: 8px 12px;
+		padding: 16px;
+		background: var(--bgColor-muted);
 	}
-	.bad {
-		color: var(--fgColor-danger);
+	.keep .fc-c,
+	.keep .fc-e {
+		flex: 1 0 100%;
 	}
 </style>

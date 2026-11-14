@@ -8,8 +8,8 @@
 	import { resolve } from '$app/paths';
 
 	/**
-	 * A client's Contacts: their people, each opening their own page, and who
-	 * of them the invoices go to. Someone with Field reads them, to know whom
+	 * A client's Contacts: who of them the invoices go to, in a box of its own,
+	 * then their people, each opening their own page. Someone with Field reads them, to know whom
 	 * to ask for, and changes nothing (#lib/access).
 	 */
 	let { data }: PageProps = $props();
@@ -51,116 +51,102 @@
 	}
 </script>
 
-<div class="primer">
-	<section class="box" aria-labelledby="contacts-h">
-		<div class="box-h">
-			<h2 class="box-t" id="contacts-h">Contacts</h2>
-			{#if !field && data.contacts.length}
-				<a class="btn sm" href={resolve('/clients/[id]/contacts/new', { id: c.slug })}
+{#if !field && data.contacts.length}
+	<section class="box" aria-labelledby="bills-h">
+		<div class="box-h"><h2 class="box-t" id="bills-h">Invoices</h2></div>
+		<div class="box-row kv">
+			<span class="kv-l">Go to</span>
+			<span class="kv-v">
+				{#if bills}
+					<span>{bills.name}</span>
+					<span class="kv-s">{bills.email ?? 'No email yet'}</span>
+				{:else}
+					<span>Nobody yet</span>
+					<span class="kv-s">An invoice has no one to go to.</span>
+				{/if}
+			</span>
+			<span class="kv-end">
+				<button type="button" class="ib" aria-label="Change who gets invoices" onclick={choose}
+					><Octicon name="pencil" /></button
+				>
+			</span>
+		</div>
+	</section>
+{/if}
+
+<section class="box" aria-labelledby="contacts-h">
+	<div class="box-h">
+		<h2 class="box-t" id="contacts-h">Contacts</h2>
+		{#if !field && data.contacts.length}
+			<a class="btn sm" href={resolve('/clients/[id]/contacts/new', { id: c.slug })}>Add contact</a>
+		{/if}
+	</div>
+	{#if data.contacts.length}
+		{#each data.contacts as p (p.id)}
+			<a class="box-row" href={resolve('/clients/contacts/[id]', { id: p.id })}>
+				<span class="who">
+					<span class="n">{p.name}</span>
+					<span class="sub">{[p.email, p.phone].filter(Boolean).join(' · ')}</span>
+				</span>
+				{#if p.sites.length}<span class="at">At {names(p.sites)}</span>{/if}
+			</a>
+		{/each}
+	{:else}
+		<div class="box-row blank">
+			<p class="blank-t">No contacts yet</p>
+			{#if !field}
+				<p class="muted">Add someone to send this client’s invoices to.</p>
+				<a class="btn pri sm" href={resolve('/clients/[id]/contacts/new', { id: c.slug })}
 					>Add contact</a
 				>
 			{/if}
 		</div>
-		{#if data.contacts.length}
-			{#if !field}
-				<div class="box-row kv">
-					<span class="kv-l">Invoices go to</span>
-					<span class="kv-v">
-						{#if bills}
-							<span>{bills.name}</span>
-							<span class="sub">{bills.email ?? 'No email yet'}</span>
-						{:else}
-							<span>Nobody yet</span>
-							<span class="sub">An invoice has no one to go to.</span>
-						{/if}
-					</span>
-					<span class="end">
-						<button type="button" class="ib" aria-label="Change who gets invoices" onclick={choose}
-							><Octicon name="pencil" /></button
-						>
-					</span>
-				</div>
-			{/if}
-			{#each data.contacts as p (p.id)}
-				<a class="box-row" href={resolve('/clients/contacts/[id]', { id: p.id })}>
-					<span class="who">
-						<span class="n">{p.name}</span>
-						<span class="sub">{[p.email, p.phone].filter(Boolean).join(' · ')}</span>
-					</span>
-					{#if p.sites.length}<span class="at">At {names(p.sites)}</span>{/if}
-				</a>
-			{/each}
-		{:else}
-			<div class="box-row blank">
-				<p class="blank-t">No contacts yet</p>
-				{#if !field}
-					<p class="muted">Add someone to send this client’s invoices to.</p>
-					<a class="btn pri sm" href={resolve('/clients/[id]/contacts/new', { id: c.slug })}
-						>Add contact</a
-					>
-				{/if}
-			</div>
-		{/if}
-	</section>
-
-	{#if !field}
-		<Dialog
-			open={picking}
-			title="Who gets {c.name}’s invoices?"
-			go="Update"
-			going="Updating…"
-			{working}
-			ongo={billTo}
-			onclose={() => (picking = false)}
-		>
-			<fieldset class="fc">
-				<legend class="fc-l">Invoices go to</legend>
-				{#each data.contacts as p (p.id)}
-					<label class="rad">
-						<input type="radio" name="bills" value={p.id} bind:group={pick} />
-						<span>
-							<span class="rad-t">{p.name}</span>
-							<span class="rad-c">{p.email ?? 'No email yet. Add one on their page.'}</span>
-						</span>
-					</label>
-				{/each}
-			</fieldset>
-			{#if pickError}
-				<p class="fc-e"><Octicon name="alert" />{pickError}</p>
-			{/if}
-		</Dialog>
 	{/if}
-</div>
+</section>
+
+{#if !field}
+	<Dialog
+		open={picking}
+		title="Who gets {c.name}’s invoices?"
+		go="Update"
+		going="Updating…"
+		{working}
+		ongo={billTo}
+		onclose={() => (picking = false)}
+	>
+		<fieldset class="fc">
+			<legend class="fc-l">Invoices go to</legend>
+			{#each data.contacts as p (p.id)}
+				<label class="rad">
+					<input type="radio" name="bills" value={p.id} bind:group={pick} />
+					<span>
+						<span class="rad-t">{p.name}</span>
+						<span class="rad-c">{p.email ?? 'No email yet. Add one on their page.'}</span>
+					</span>
+				</label>
+			{/each}
+		</fieldset>
+		{#if pickError}
+			<p class="fc-e"><Octicon name="alert" />{pickError}</p>
+		{/if}
+	</Dialog>
+{/if}
 
 <style>
-	/* Contacts, drawn to Primer (#lib/primer.css) ahead of the rest of the page. */
 	.box-row {
 		min-height: 56px;
 		box-sizing: border-box;
 	}
-	.kv {
-		display: grid;
-		grid-template-columns: minmax(0, 30%) minmax(0, 1fr) auto;
-		align-items: center;
-		gap: 4px 16px;
-	}
-	.kv-l,
 	.n {
 		font-weight: 600;
 	}
-	.kv-v,
 	.who {
+		flex: 1 1 auto;
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
 		min-width: 0;
 		overflow-wrap: anywhere;
-	}
-	.kv-v {
-		color: var(--fgColor-muted);
-	}
-	.who {
-		flex: 1 1 auto;
 	}
 	.sub {
 		font-size: 12px;
@@ -171,11 +157,7 @@
 		color: var(--fgColor-muted);
 		text-align: right;
 	}
-	.end {
-		display: flex;
-		justify-content: flex-end;
-		min-width: 32px;
-	}
+	/* Primer's Blankslate, in the box. */
 	.blank {
 		display: flex;
 		flex-direction: column;
@@ -191,23 +173,5 @@
 	}
 	.blank .muted {
 		margin: 0;
-	}
-	/* Label above value on a phone, the pencil beside both. */
-	@media (max-width: 543px) {
-		.kv {
-			grid-template-columns: minmax(0, 1fr) auto;
-		}
-		.kv-l {
-			grid-column: 1;
-			grid-row: 1;
-		}
-		.kv-v {
-			grid-column: 1;
-			grid-row: 2;
-		}
-		.end {
-			grid-column: 2;
-			grid-row: 1 / span 2;
-		}
 	}
 </style>

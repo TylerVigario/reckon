@@ -49,9 +49,9 @@ export const entityTabs = (
 ];
 
 /**
- * Where a client opens for someone: on Details for Full, and on Sites for
- * Field, who sees nothing of what is on Details (#lib/access). A link to a
- * client goes there directly, rather than through Details turning them away.
+ * Where a client opens for someone: on Overview for Full, and on Sites for
+ * Field, who sees nothing of what is on Overview (#lib/access). A link to a
+ * client goes there directly, rather than through Overview turning them away.
  */
 export const clientOpens = (slug: string, access: Access | null | undefined) =>
 	access === 'full'

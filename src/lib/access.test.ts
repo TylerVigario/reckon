@@ -67,6 +67,8 @@ describe('who reaches a route', () => {
 				'/clients/[id]/contacts',
 				'/clients/[id]/sites',
 				'/clients/[id]/sites/[site]',
+				'/clients/[id]/sites/[site]/contacts',
+				'/clients/[id]/sites/[site]/tax',
 				'/reports/pay/[person]',
 				'/reports/pay/[person]/paid',
 				'/reports/pay/payments/[id]'

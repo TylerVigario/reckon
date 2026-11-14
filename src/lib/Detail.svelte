@@ -1,16 +1,24 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import Octicon from './Octicon.svelte';
 	import type { Parsed } from './field-rules.ts';
-	import { readProblem } from './json.ts';
+	import { readJson, readProblem } from './json.ts';
 
 	/**
 	 * One detail of a record, as Primer draws it in a box: its label, what it
 	 * is, and a pencil that opens it in place -- the field, Save and Cancel --
-	 * as a contact's details are. Enter saves, Escape leaves it as it was.
+	 * as Primer's saving pattern asks. Enter saves, Escape leaves it as it was.
 	 *
 	 * Checked here first with the same rule the server keeps (`validate`), so a
 	 * wrong value costs no request; the server checks again regardless, and what
 	 * it refuses is said under the field.
+	 *
+	 * A record kept on the phone first is sent its own way (`send`). Any other
+	 * is saved here, and where it says which version of the row this screen
+	 * read (`ifMatch`), the save is refused if somebody has saved the row since
+	 * (RFC 9110 If-Match, #lib/server/concurrent): the screen is fetched again
+	 * and the reason said, so Save puts this one over theirs and Cancel keeps
+	 * theirs.
 	 */
 	let {
 		name,
@@ -20,13 +28,16 @@
 		options = null,
 		type = 'text',
 		inputmode,
+		placeholder,
 		hint = '',
+		caption,
 		required = false,
 		editable = true,
 		endpoint,
 		validate,
 		onsaved,
 		version,
+		ifMatch,
 		onconflict,
 		send,
 		oncancel
@@ -39,25 +50,27 @@
 		/** How it reads when not being changed, where that is not the value itself. */
 		shown?: string;
 		options?: { value: string; label: string }[] | null;
-		/** A text field's kind: "date" for a day. */
-		type?: 'text' | 'date';
+		/** A text field's kind: "date" for a day, "email", "tel". */
+		type?: 'text' | 'date' | 'email' | 'tel';
 		inputmode?: 'decimal' | 'numeric';
-		/** Under it: what it means. */
+		/** Greyed in the empty field: what an empty one stands for. */
+		placeholder?: string;
+		/** Under it, changed or not: what it means now. */
 		hint?: string;
+		/** Under the field while it is changed: what to put in it. */
+		caption?: Snippet;
 		required?: boolean;
 		editable?: boolean;
 		/** Where it saves, as { fields: { [name]: value } }. */
 		endpoint: string;
 		validate: (name: string, raw: string) => Parsed;
-		/** After the server has kept it. */
-		onsaved?: () => void | Promise<void>;
-		/**
-		 * The save the record is at, where it counts them: sent with what this
-		 * detail said then, so a change someone made since is not written over
-		 * unseen. Told of one, it says so and is fetched again; Save again puts
-		 * this one over it, Cancel keeps theirs.
-		 */
+		/** After the server has kept it, with what it kept. */
+		onsaved?: (value: string) => void | Promise<void>;
+		/** The save the record is at, where it counts them, handed to `send`. */
 		version?: number;
+		/** The version of the row this screen read, sent as If-Match. */
+		ifMatch?: string | null;
+		/** Somebody saved the row since: the screen is fetched again. */
 		onconflict?: () => void | Promise<void>;
 		/**
 		 * Where a record is changed on the phone first and sent by the queue
@@ -85,6 +98,7 @@
 	const reads = $derived(
 		shown ?? (options ? options.find((o) => o.value === (value ?? ''))?.label : value) ?? ''
 	);
+	const about = $derived(error || caption || hint ? `${id}-c` : undefined);
 
 	function edit() {
 		draft = value ?? '';
@@ -105,17 +119,17 @@
 			const refused = await send({ [name]: draft }, version, { [name]: value ?? '' });
 			saving = false;
 			if (refused) return void (error = refused);
-			await onsaved?.();
+			await onsaved?.(draft);
 			editing = false;
 			return;
 		}
 		const r = await fetch(endpoint, {
 			method: 'PATCH',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				fields: { [name]: draft },
-				...(version === undefined ? {} : { version, base: { [name]: value ?? '' } })
-			})
+			headers: {
+				'content-type': 'application/json',
+				...(ifMatch ? { 'if-match': `"${ifMatch}"` } : {})
+			},
+			body: JSON.stringify({ fields: { [name]: draft } })
 		}).catch(() => null);
 		if (!r) {
 			saving = false;
@@ -123,11 +137,17 @@
 		}
 		if (!r.ok) {
 			const problem = await readProblem(r);
-			if (r.status === 409) await onconflict?.();
+			if (r.status === 412) await onconflict?.();
 			saving = false;
 			return void (error = problem.errors?.[name] ?? problem.detail ?? 'That did not save.');
 		}
-		await onsaved?.();
+		const out = (await readJson(r).catch(() => null)) as { saved?: Record<string, unknown> } | null;
+		const kept = out?.saved?.[name];
+		await onsaved?.(
+			typeof kept === 'string' || typeof kept === 'number' || typeof kept === 'boolean'
+				? String(kept)
+				: draft
+		);
 		saving = false;
 		editing = false;
 		saved = true;
@@ -155,14 +175,14 @@
 			>{label}{#if required}<span aria-hidden="true"> *</span>{/if}</label
 		>
 		<div class="kv-edit">
-			<div class="ie">
+			<div class="kv-ie">
 				{#if options}
 					<select
 						id="{id}-f"
 						class="ti"
 						bind:value={draft}
 						aria-invalid={error ? 'true' : undefined}
-						aria-describedby={error || hint ? `${id}-c` : undefined}
+						aria-describedby={about}
 						onkeydown={keys}
 						use:focus
 					>
@@ -175,10 +195,11 @@
 						autocomplete="off"
 						{type}
 						{inputmode}
+						{placeholder}
 						{required}
 						bind:value={draft}
 						aria-invalid={error ? 'true' : undefined}
-						aria-describedby={error || hint ? `${id}-c` : undefined}
+						aria-describedby={about}
 						onkeydown={keys}
 						use:focus
 					/>
@@ -190,6 +211,8 @@
 			</div>
 			{#if error}
 				<p class="fc-e" id="{id}-c"><Octicon name="alert" />{error}</p>
+			{:else if caption}
+				<p class="fc-c" id="{id}-c">{@render caption()}</p>
 			{:else if hint}
 				<p class="fc-c" id="{id}-c">{hint}</p>
 			{/if}
@@ -199,11 +222,11 @@
 		<span class="kv-v">
 			<span>
 				{#if reads}{reads}{:else}<span class="muted">None</span>{/if}
-				{#if saved}<span class="saved" role="status"><Octicon name="check" />Saved</span>{/if}
+				{#if saved}<span class="kv-saved" role="status"><Octicon name="check" />Saved</span>{/if}
 			</span>
-			{#if hint}<span class="sub">{hint}</span>{/if}
+			{#if hint}<span class="kv-s">{hint}</span>{/if}
 		</span>
-		<span class="end">
+		<span class="kv-end">
 			{#if editable}
 				<button
 					type="button"
@@ -216,81 +239,3 @@
 		</span>
 	{/if}
 </div>
-
-<style>
-	.kv {
-		display: grid;
-		grid-template-columns: minmax(0, 30%) minmax(0, 1fr) auto;
-		align-items: center;
-		gap: 4px 16px;
-		min-height: 56px;
-		box-sizing: border-box;
-	}
-	.kv-l {
-		font-weight: 600;
-	}
-	.kv-v {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		min-width: 0;
-		overflow-wrap: anywhere;
-		color: var(--fgColor-muted);
-	}
-	.sub {
-		font-size: 12px;
-		color: var(--fgColor-muted);
-	}
-	.end {
-		display: flex;
-		justify-content: flex-end;
-		min-width: 32px;
-	}
-	.kv-edit {
-		grid-column: 2 / -1;
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-	.ie {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 8px;
-	}
-	.ie .ti {
-		flex: 1 1 14rem;
-		width: auto;
-	}
-	.saved {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		margin-left: 6px;
-		font-size: 12px;
-		font-weight: 600;
-		color: var(--fgColor-success);
-	}
-	/* Label above value on a phone, the pencil beside both. */
-	@media (max-width: 543px) {
-		.kv {
-			grid-template-columns: minmax(0, 1fr) auto;
-		}
-		.kv-l {
-			grid-column: 1;
-			grid-row: 1;
-		}
-		.kv-v {
-			grid-column: 1;
-			grid-row: 2;
-		}
-		.end {
-			grid-column: 2;
-			grid-row: 1 / span 2;
-		}
-		.kv-edit {
-			grid-column: 1 / -1;
-			grid-row: 2;
-		}
-	}
-</style>

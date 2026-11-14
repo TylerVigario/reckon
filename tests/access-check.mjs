@@ -257,8 +257,9 @@ for (const tab of ['', '/paid']) {
 	const slug = [...clients.matchAll(/\/clients\/([a-z0-9-]+)"/g)]
 		.map((m) => m[1])
 		.find((x) => x !== 'contacts' && x !== 'new');
-	// Details is billing, tax and invoices, all Full's: Field opens a client on
-	// its Sites, and its head says nothing of what it owes.
+	// Overview is what a client has agreed to and been invoiced, Full's: Field
+	// opens a client on its Sites, and its head says nothing of what it owes.
+	// Details, how it pays and is taxed, is beyond Field (the table above).
 	const [toFull, fieldDetails, sitesFull, sitesField, contactsFull, contactsField] =
 		await Promise.all([
 			page(asFull, `/clients/${slug}`),
@@ -281,7 +282,8 @@ for (const tab of ['', '/paid']) {
 		'nor what it owes, at the head of every tab'
 	);
 	check(
-		contactsFull.includes('Invoices go to') &&
+		contactsFull.includes('id="bills-h"') &&
+			!contactsField.includes('id="bills-h"') &&
 			!contactsField.includes('Invoices go to') &&
 			contactsField.includes('/clients/contacts/'),
 		"Field reads a client's contacts, and not who the invoices go to"
@@ -302,8 +304,8 @@ for (const tab of ['', '/paid']) {
 	const bills = pages.find((p) => p.full.includes('Gets invoices'));
 	check(
 		!!bills &&
-			bills.full.includes('aria-label="Edit email"') &&
-			!bills.field.includes('aria-label="Edit email"') &&
+			bills.full.includes('aria-label="Change email"') &&
+			!bills.field.includes('aria-label="Change email"') &&
 			!bills.field.includes('Gets invoices') &&
 			!bills.field.includes('invoices are sent here'),
 		'Field reads a contact, changes nothing, and is not told whose invoices go to them'
@@ -313,7 +315,7 @@ for (const tab of ['', '/paid']) {
 		page(asField, '/clients/contacts')
 	]);
 	check(
-		listFull.includes('gets invoices') && !listField.includes('gets invoices'),
+		listFull.includes('gets its invoices') && !listField.includes('gets its invoices'),
 		'nor on the list of contacts'
 	);
 }

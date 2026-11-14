@@ -75,18 +75,19 @@ const DETAIL = [
 	{ list: '/clients', path: (id) => `/clients/${id}`, pick: aClient },
 	{ list: '/clients', path: (id) => `/clients/${id}/sites`, pick: aClient },
 	{ list: '/clients', path: (id) => `/clients/${id}/contacts`, pick: aClient },
+	{ list: '/clients', path: (id) => `/clients/${id}/details`, pick: aClient },
 	{
 		list: '/reports/pay',
 		path: (id) => `/reports/pay/${id}/paid`,
 		pick: (h) => first(h, /\/reports\/pay\/([0-9a-f-]{36})"/g)
 	},
 	{ list: '/clients', path: (id) => `/clients/${id}/sites/new`, pick: aClient },
-	{
+	...['', '/contacts', '/tax'].map((tab) => ({
 		list: '/clients/harbor-light-dental/sites',
-		path: (path) => path,
-		pick: (h) =>
+		path: (/** @type {string} */ path) => path + tab,
+		pick: (/** @type {string} */ h) =>
 			first(h, /(\/clients\/[a-z0-9-]+\/sites\/[a-z0-9-]+)"/g, (path) => !path.endsWith('/new'))
-	}
+	}))
 ];
 const ROUTES = [
 	'/',

@@ -10,10 +10,10 @@
 	/**
 	 * One client, as a record: their name heading it, whether they are worked
 	 * for and what they owe under it, then their tabs, each its own address --
-	 * Details, their billing, tax, retainer and recent invoices; Sites, where
-	 * the work is; Contacts, whom to ask for and send the invoices to. Someone
-	 * with Field has Sites and Contacts, and nothing of what a client owes
-	 * (#lib/access).
+	 * Overview, what they have agreed to and been invoiced; Sites, where the
+	 * work is; Contacts, whom to ask for and send the invoices to; Details, how
+	 * they pay and are taxed. Someone with Field has Sites and Contacts, and
+	 * nothing of what a client owes (#lib/access).
 	 *
 	 * A site, and the forms that add one or a contact, are screens of their
 	 * own under the client, with their own heads.
@@ -23,7 +23,12 @@
 	const c = $derived(data.client);
 	const field = $derived(data.user?.access === 'field');
 	const id = $derived({ id: c.slug });
-	const TABBED = ['/clients/[id]', '/clients/[id]/sites', '/clients/[id]/contacts'];
+	const TABBED = [
+		'/clients/[id]',
+		'/clients/[id]/sites',
+		'/clients/[id]/contacts',
+		'/clients/[id]/details'
+	];
 	const tabbed = $derived(TABBED.includes(page.route.id ?? ''));
 	const tabs = $derived<Tab[]>([
 		...(field
@@ -31,7 +36,7 @@
 			: [
 					{
 						href: resolve('/clients/[id]', id),
-						label: 'Details',
+						label: 'Overview',
 						current: page.route.id === '/clients/[id]'
 					}
 				]),
@@ -46,7 +51,16 @@
 			label: 'Contacts',
 			count: data.counts.contacts,
 			current: page.route.id === '/clients/[id]/contacts'
-		}
+		},
+		...(field
+			? []
+			: [
+					{
+						href: resolve('/clients/[id]/details', id),
+						label: 'Details',
+						current: page.route.id === '/clients/[id]/details'
+					}
+				])
 	]);
 	const owes = $derived(
 		c.owed === null
@@ -60,7 +74,7 @@
 {#if tabbed}
 	<Top title={c.name} back={resolve('/clients')} backLabel="Entities" />
 
-	<div class="pad">
+	<div class="pad primer">
 		<RecordHead label="{c.name}’s record" {tabs}>
 			{#snippet state()}
 				<span class="lab {c.active ? 'good' : ''}">{c.active ? 'Active' : 'Inactive'}</span>

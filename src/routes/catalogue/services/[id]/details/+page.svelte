@@ -53,7 +53,7 @@
 		required
 		{endpoint}
 		validate={parseServiceField}
-		onsaved={refreshAll}
+		onsaved={() => refreshAll()}
 	/>
 	<Detail
 		name="unit"
@@ -66,7 +66,7 @@
 		]}
 		{endpoint}
 		validate={parseServiceField}
-		onsaved={refreshAll}
+		onsaved={() => refreshAll()}
 	/>
 	{#if s.unit === 'hour'}
 		<Detail
@@ -77,7 +77,7 @@
 			hint="Pay is never rounded: it is counted as worked."
 			{endpoint}
 			validate={parseServiceField}
-			onsaved={refreshAll}
+			onsaved={() => refreshAll()}
 		/>
 	{/if}
 	<Detail
@@ -89,7 +89,7 @@
 		hint="The least one entry bills, however short."
 		{endpoint}
 		validate={parseServiceField}
-		onsaved={refreshAll}
+		onsaved={() => refreshAll()}
 	/>
 	<Detail
 		name="time_tracked"
@@ -98,7 +98,7 @@
 		options={YES_NO}
 		{endpoint}
 		validate={parseServiceField}
-		onsaved={refreshAll}
+		onsaved={() => refreshAll()}
 	/>
 	<Detail
 		name="taxable"
@@ -107,6 +107,6 @@
 		options={YES_NO}
 		{endpoint}
 		validate={parseServiceField}
-		onsaved={refreshAll}
+		onsaved={() => refreshAll()}
 	/>
 </section>

@@ -460,20 +460,18 @@ await check(
 	200
 );
 {
-	// Empty follows the house default. The page shows the box empty and names
-	// the default under it, rather than showing it as the client's own -- in
-	// the box or greyed into it as a placeholder.
+	// Empty follows the house default. Details reads it as the house default,
+	// named, rather than as a number of the client's own.
 	await call('PATCH', `/api/clients/${clientSlug}`, { fields: { terms_days: '' } });
-	const page = await (await fetch(`${base}/clients/${clientSlug}`, { headers: { cookie } })).text();
-	const box = page.match(/<input[^>]*name="terms_days"[^>]*>/)?.[0] ?? '';
-	const ok =
-		!!box &&
-		!/value="[^"]/.test(box) &&
-		!/placeholder="[^"]/.test(box) &&
-		/house default of \d+ days?/.test(page);
+	const page = await (
+		await fetch(`${base}/clients/${clientSlug}/details`, { headers: { cookie } })
+	).text();
+	const terms =
+		/Terms<\/span>[\s\S]*?<span>(?:\s|<!--[^>]*-->)*([^<]+)/.exec(page)?.[1]?.trim() ?? '';
+	const ok = /^The house default of \d+ days?$/.test(terms);
 	if (ok) passed++;
-	else failures.push(`a client following the house default: ${box || 'no terms box'}`);
-	console.log(`  ${ok ? '✓' : '✗'} a client following the house default shows it empty, naming it`);
+	else failures.push(`a client following the house default: ${terms || 'no terms row'}`);
+	console.log(`  ${ok ? '✓' : '✗'} a client following the house default reads it, naming it`);
 }
 
 // A client's people: added on the client, changed on their own page, and one
@@ -487,10 +485,10 @@ console.log('\n  contacts — added to a client, changed on their own page, sent
 	const other = `Write Check Second ${run}`;
 	const clientPage = async () =>
 		(await fetch(`${base}/clients/${clientSlug}/contacts`, { headers: { cookie } })).text();
-	/** Who the client's Contacts say the invoices go to, and each contact's id by name. */
+	/** Who the client's Invoices box says they go to, and each contact's id by name. */
 	const read = (/** @type {string} */ html) => ({
 		bills:
-			/Invoices go to<\/span>[\s\S]*?class="kv-v[^"]*">(?:\s|<!--[^>]*-->)*<span[^>]*>([^<]+)</
+			/id="bills-h"[\s\S]*?class="kv-v[^"]*">(?:\s|<!--[^>]*-->)*<span[^>]*>([^<]+)</
 				.exec(html)?.[1]
 				?.trim() ?? null,
 		ids: Object.fromEntries(
@@ -749,7 +747,7 @@ console.log('\n  one save must not erase another');
 		const asked = await call('POST', `${at}/ask-cdtfa`);
 		if (asked.status === 200) {
 			const after = await (
-				await fetch(`${base}/clients/${clientSlug}/sites/${existing}`, { headers: { cookie } })
+				await fetch(`${base}/clients/${clientSlug}/sites/${existing}/tax`, { headers: { cookie } })
 			).text();
 			// The newest answer in the history, which a run before this one cannot
 			// have left.

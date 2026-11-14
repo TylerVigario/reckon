@@ -9,6 +9,7 @@
 	let { data }: PageProps = $props();
 
 	const n = (v: string | null) => Number(v ?? 0);
+	const full = $derived(data.user?.access === 'full');
 </script>
 
 <Top
@@ -18,44 +19,75 @@
 	backLabel="More"
 />
 
-<div class="pad">
-	<div class="primer">
-		<UnderlineNav
-			label="Entities"
-			items={entityTabs('clients', {
-				clients: data.clients.length,
-				contacts: data.counts.contacts
-			})}
-		/>
-	</div>
+<div class="pad primer">
+	<UnderlineNav
+		label="Entities"
+		items={entityTabs('clients', {
+			clients: data.clients.length,
+			contacts: data.counts.contacts
+		})}
+	/>
 
-	<div class="sec">
-		<div class="rows">
-			{#each data.clients as c (c.id)}
-				<a class="rec link" href={clientOpens(c.slug, data.user?.access)} class:gone={!c.active}>
-					<div class="rec-m">
-						<div class="rec-t">
-							{c.name}{#if !c.active}<span class="lt"> · inactive</span>{/if}
-						</div>
-						<div class="rec-s">{c.site_labels ?? 'no sites'}</div>
-						{#if c.contact}<div class="rec-c"><span class="chip">{c.contact}</span></div>{/if}
-					</div>
-					<div class="rec-n">
-						{#if n(c.owed) > 0}
-							<span class="rec-v">{money(c.owed)}</span>
-							<span class="rec-x">{c.sites} {n(c.sites) === 1 ? 'site' : 'sites'}</span>
-						{:else}
-							<span class="rec-v mut">{c.sites}</span>
-							<span class="rec-x">{n(c.sites) === 1 ? 'site' : 'sites'}</span>
-						{/if}
-					</div>
-					<span class="arw" aria-hidden="true">›</span>
-				</a>
-			{:else}
-				<div class="rec">
-					<div class="rec-m"><div class="rec-t"><span class="lt">No clients yet</span></div></div>
-				</div>
-			{/each}
-		</div>
-	</div>
+	<section class="box" aria-labelledby="clients-h">
+		<div class="box-h"><h2 class="box-t" id="clients-h">Clients</h2></div>
+		{#each data.clients as c (c.id)}
+			<a class="box-row" href={clientOpens(c.slug, data.user?.access)}>
+				<span class="what">
+					<span class="n">{c.name}</span>
+					<span class="sub">{c.site_labels ?? 'No sites'}</span>
+					{#if full && c.contact}<span class="sub">Invoices go to {c.contact}</span>{/if}
+				</span>
+				{#if !c.active}<span class="lab">Inactive</span>{/if}
+				{#if n(c.owed) > 0}
+					<span class="fig">
+						<span class="v">{money(c.owed)}</span>
+						<span class="sub">owed</span>
+					</span>
+				{/if}
+			</a>
+		{:else}
+			<p class="box-row muted">No clients yet.</p>
+		{/each}
+	</section>
 </div>
+
+<style>
+	.box-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 64px;
+		box-sizing: border-box;
+		margin: 0;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		overflow-wrap: anywhere;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
+	}
+	.lab {
+		flex: 0 0 auto;
+	}
+	.fig {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
+		text-align: right;
+	}
+	.v {
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
+	}
+</style>
