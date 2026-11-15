@@ -177,8 +177,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		 where b.status in ('sent', 'draft')`);
 
 	// Anything that cannot proceed until somebody decides. An invoice out past
-	// the operator's own chase-after figure, and an address CDTFA has not been
-	// asked about lately, which opens its site, where CDTFA is asked again.
+	// the operator's own chase-after figure, which opens the invoice, and an
+	// address CDTFA has not been asked about lately, which opens its site,
+	// where CDTFA is asked again.
 	const { rows: found } = await db.execute<{
 		kind: 'invoice' | 'district';
 		client: string;
@@ -188,6 +189,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		days: number;
 		client_slug: string | null;
 		site_slug: string | null;
+		invoice_id: string | null;
 	}>(sql`
 		select * from (
 		select 'invoice' as kind, ${e.name} as client, ${i.number} as ref,
@@ -195,7 +197,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		       b.owed::text as amount,
 		       ${businessToday()}::date - ${businessDay(i.sentAt)} as days,
 		       'Invoice ' || ${i.number} || ' · ' || ${e.name} as sort,
-		       null as client_slug, null as site_slug
+		       null as client_slug, null as site_slug, ${i.id}::text as invoice_id
 		  from ${i}
 		  join ${e} on ${e.id} = ${i.entityId}
 		  join ${owing} b on b.invoice_id = ${i.id}
@@ -208,7 +210,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		select 'district', ${e.name}, ${s.display}, ${s.areaVerifiedOn}::text, null,
 		       ${businessToday()}::date - ${s.areaVerifiedOn},
 		       ${e.name} || ' · ' || ${s.display} || ' · rate is old',
-		       ${e.slug}, ${s.slug}
+		       ${e.slug}, ${s.slug}, null
 		  from ${s}
 		  join ${e} on ${e.id} = ${s.entityId}
 		 where ${s.active} and ${rateIsStale(s.areaVerifiedOn, businessToday())}
@@ -226,7 +228,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 					detail: `Sent ${dated(d.dated_on)}, still unpaid.`,
 					amount: d.amount,
 					chip: `Unpaid ${count(d.days, 'day')}`,
-					site: null
+					site: null,
+					invoice: d.invoice_id
 				}
 			: {
 					kind: d.kind,
@@ -236,7 +239,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 						'added or ended in between, and every invoice since would be wrong.',
 					amount: d.amount,
 					chip: `${count(d.days, 'day')} since CDTFA was asked`,
-					site: { id: d.client_slug!, site: d.site_slug! }
+					site: { id: d.client_slug!, site: d.site_slug! },
+					invoice: null
 				}
 	);
 

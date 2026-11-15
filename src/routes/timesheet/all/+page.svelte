@@ -62,82 +62,130 @@
 
 <OfflineBanner asOf={data.as_of} {waiting} />
 
-<div class="pad">
+<div class="pad primer">
 	{#if data.who}
-		<div class="primer">
-			<Segmented
-				label="Whose entries"
-				items={[
-					{ href: scoped('everyone'), label: 'Everyone’s', current: data.who === 'everyone' },
-					{ href: scoped('yours'), label: 'Yours', current: data.who === 'yours' }
-				]}
-			/>
-		</div>
+		<Segmented
+			label="Whose entries"
+			items={[
+				{ href: scoped('everyone'), label: 'Everyone’s', current: data.who === 'everyone' },
+				{ href: scoped('yours'), label: 'Yours', current: data.who === 'yours' }
+			]}
+		/>
 	{/if}
 	{#each data.weeks as w (w.week)}
-		<div class="sec">
-			<div class="sec-h"><h2>Week of {day(w.week)}</h2></div>
-			<div class="rows">
-				{#each w.rows as row (row.id)}
-					{@const q = changes.get(row.id)}
-					{@const e = asChanged(row, q)}
-					{@const mark = q ? markOf(q) : null}
-					<a
-						class="rec link"
-						class:gone={!e.billable || q?.change.act === 'remove'}
-						class:warn={e.stale}
-						href={resolve('/timesheet/[id]', { id: e.id })}
-					>
-						<div class="rec-m">
-							<div class="rec-t">
-								{e.site ?? e.entity ?? e.service}
-								{#if e.crew === 'team' || !e.billable}
-									<span class="lt">· {e.crew === 'team' ? 'team' : 'non-billable'}</span>
-								{/if}
-							</div>
-							<div class="rec-s">
-								{[
-									day(e.worked_on),
-									e.started_at && e.ended_at && e.zone
-										? workedTimes(e.started_at, e.ended_at, e.zone, personalZone())
-										: null,
-									e.crew === 'team' ? names(e.crew_names) : (e.worked_by ?? 'unassigned'),
-									e.note ?? e.service
-								]
-									.filter(Boolean)
-									.join(' · ')}
-							</div>
-							{#if mark}
-								<span class="chip {mark.tone}"><span class="dot"></span>{mark.text}</span>
-							{/if}
-						</div>
-						<div class="rec-n">
-							{#if q}
-								<span class="rec-v mut">—</span>
-							{:else if e.covered}
-								<span class="rec-v mut">retainer</span>
-							{:else if e.value}
-								<span class="rec-v">{money(e.value)}</span>
-							{:else}
-								<span class="rec-v mut">—</span>
-							{/if}
-							<span class="rec-x">
-								{secondsAsHours(e.seconds)}{#if e.heads > 1}
-									×{e.heads}{/if}
+		<section class="box" aria-labelledby="w-{w.week}">
+			<div class="box-h"><h2 class="box-t" id="w-{w.week}">Week of {day(w.week)}</h2></div>
+			{#each w.rows as row (row.id)}
+				{@const q = changes.get(row.id)}
+				{@const e = asChanged(row, q)}
+				{@const mark = q ? markOf(q) : null}
+				<a
+					class="box-row line"
+					class:gone={!e.billable || q?.change.act === 'remove'}
+					href={resolve('/timesheet/[id]', { id: e.id })}
+				>
+					<span class="what">
+						<span class="n">{e.site ?? e.entity ?? e.service}</span>
+						<span class="sub">
+							{[
+								day(e.worked_on),
+								e.started_at && e.ended_at && e.zone
+									? workedTimes(e.started_at, e.ended_at, e.zone, personalZone())
+									: null,
+								e.crew === 'team' ? names(e.crew_names) : (e.worked_by ?? 'unassigned'),
+								e.note ?? e.service
+							]
+								.filter(Boolean)
+								.join(' · ')}
+						</span>
+						{#if mark || e.stale || e.crew === 'team' || !e.billable}
+							<span class="labs">
+								{#if e.crew === 'team'}<span class="lab">Team</span>{/if}
+								{#if !e.billable}<span class="lab">Not billable</span>{/if}
+								{#if e.stale}<span class="lab warn">Unbilled too long</span>{/if}
+								{#if mark}<span class="lab {mark.tone}">{mark.text}</span>{/if}
 							</span>
-						</div>
-					</a>
-				{/each}
-			</div>
-		</div>
+						{/if}
+					</span>
+					<span class="fig">
+						{#if q}
+							<span class="v mut">—</span>
+						{:else if e.covered}
+							<span class="sub">On retainer</span>
+						{:else if e.value}
+							<span class="v">{money(e.value)}</span>
+						{:else}
+							<span class="v mut">—</span>
+						{/if}
+						<span class="sub">
+							{secondsAsHours(e.seconds)}{#if e.heads > 1}
+								×{e.heads}{/if}
+						</span>
+					</span>
+				</a>
+			{/each}
+		</section>
 	{:else}
-		<p class="none">
-			{data.offline
-				? 'Nothing of yours to change from this week or last.'
-				: 'Nothing captured this month.'}
-		</p>
+		<div class="box">
+			<p class="blank-d none">
+				{data.offline
+					? 'Nothing of yours to change from this week or last.'
+					: 'Nothing put down this month.'}
+			</p>
+		</div>
 	{/each}
 	{#if data.offline}
-		<p class="none">Older entries, and everyone else’s, need a connection.</p>
+		<p class="note">Older entries, and everyone else’s, need a connection.</p>
 	{/if}
 </div>
+
+<style>
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 56px;
+		box-sizing: border-box;
+		margin: 0;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		overflow-wrap: anywhere;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
+	}
+	.labs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-top: 4px;
+	}
+	.fig {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
+	}
+	.v {
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
+	}
+	.v.mut,
+	.gone .n,
+	.gone .v {
+		color: var(--fgColor-muted);
+	}
+	.none {
+		padding: 16px;
+	}
+</style>

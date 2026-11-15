@@ -87,87 +87,151 @@
 
 <OfflineBanner asOf={data.as_of} {waiting} />
 
-<div class="pad">
+<div class="pad primer">
 	{#if onPhone.length}
-		<div class="sec">
-			<div class="sec-h"><h2>On this phone</h2></div>
-			<div class="rows">
-				{#each onPhone as q (q.trip.key)}
-					<div class="rec" class:warn={q.refused}>
-						<div class="rec-m">
-							<div class="rec-t">{q.trip.shown.label || 'A trip'}</div>
-							<div class="rec-s">{shown(q)}</div>
-							{#if q.refused}
-								<div class="rec-s">
-									Not sent: {Object.values(q.refused.errors ?? {})[0] ?? q.refused.detail}
-								</div>
-								<div class="rec-c btnrow">
-									<a class="btn sm" href={fix(q.trip.key)}>Fix</a>
-									<button type="button" class="btn sm gho" onclick={() => letGo(q.trip.key)}
-										>{confirming === q.trip.key ? 'Tap again to discard' : 'Discard'}</button
-									>
-								</div>
-							{:else}
-								<div class="rec-c">
-									<span class="chip acc"><span class="dot"></span>On this phone</span>
-								</div>
-							{/if}
-						</div>
-					</div>
-				{/each}
+		<section class="box" aria-labelledby="phone-h">
+			<div class="box-h">
+				<h2 class="box-t" id="phone-h">On this phone</h2>
+				<span class="count">{onPhone.length}</span>
 			</div>
-		</div>
+			{#each onPhone as q (q.trip.key)}
+				<div class="box-row line" class:held={q.refused}>
+					<span class="what">
+						<span class="n">{q.trip.shown.label || 'A trip'}</span>
+						<span class="sub">{shown(q)}</span>
+						{#if q.refused}
+							<span class="sub bad">
+								Not sent: {Object.values(q.refused.errors ?? {})[0] ?? q.refused.detail}
+							</span>
+						{/if}
+					</span>
+					{#if q.refused}
+						<span class="acts">
+							<a class="btn sm pri" href={fix(q.trip.key)}>Fix</a>
+							<button type="button" class="btn sm danger" onclick={() => letGo(q.trip.key)}
+								>{confirming === q.trip.key ? 'Tap again to discard' : 'Discard'}</button
+							>
+						</span>
+					{:else}
+						<span class="lab acc">Waiting to send</span>
+					{/if}
+				</div>
+			{/each}
+		</section>
 	{/if}
 	{#each [{ key: 'unbilled', head: 'Unbilled', rows: data.unbilled }, { key: 'billed', head: 'Billed', rows: data.billed }] as group (group.key)}
 		{#if group.rows.length}
-			<div class="sec">
-				<div class="sec-h">
-					<h2>{group.head}</h2>
+			<section class="box" aria-labelledby="{group.key}-h">
+				<div class="box-h">
+					<h2 class="box-t" id="{group.key}-h">{group.head}</h2>
+					<!-- The price opens the service it is the price of, for whoever may open it. -->
 					{#if group.key === 'unbilled' && data.totals?.rate}
-						<span class="sp"></span>
-						<span class="chip">Rate {unitPrice(data.totals.rate)}/mi</span>
+						{#if data.totals.rate_of && data.user?.access === 'full'}
+							<a class="lk" href={resolve('/catalogue/services/[id]', { id: data.totals.rate_of })}
+								>{unitPrice(data.totals.rate)} a mile</a
+							>
+						{:else}
+							<span class="sub">{unitPrice(data.totals.rate)} a mile</span>
+						{/if}
 					{/if}
 				</div>
-				<div class="rows">
-					{#each group.rows as t (t.id)}
-						<a class="rec link" href={resolve('/trips/[id]', { id: t.id })}>
-							<div class="rec-m">
-								<div class="rec-t">{title(t)}</div>
-								<div class="rec-s">
-									{detail(t)}
-									{#if t.legs > 1}<br />One drive, {t.legs} legs{/if}
-								</div>
-								{#if t.legs > 1}
-									<div class="rec-c">
-										{#if t.balanced}
-											<span class="chip good"><span class="dot"></span>Every mile assigned</span>
-										{:else}
-											<span class="chip warn"
-												><span class="dot"></span>Some miles assigned to nobody</span
-											>
-										{/if}
-									</div>
-								{/if}
-							</div>
-							<div class="rec-n">
-								{#if t.value !== null}<span class="rec-v">{money(t.value)}</span>{/if}
-								<span class="rec-x">{miles(t.miles)}</span>
-							</div>
-							<span class="arw" aria-hidden="true">›</span>
-						</a>
-					{/each}
-				</div>
-			</div>
+				{#each group.rows as t (t.id)}
+					<a class="box-row line" href={resolve('/trips/[id]', { id: t.id })}>
+						<span class="what">
+							<span class="n">{title(t)}</span>
+							<span class="sub">{detail(t)}</span>
+							{#if t.legs > 1}
+								<span class="sub">One drive, {t.legs} legs</span>
+								<span class="labs">
+									{#if t.balanced}
+										<span class="lab good">Every mile assigned</span>
+									{:else}
+										<span class="lab warn">Some miles assigned to nobody</span>
+									{/if}
+								</span>
+							{/if}
+						</span>
+						<span class="fig">
+							{#if t.value !== null}<span class="v">{money(t.value)}</span>{/if}
+							<span class="sub">{miles(t.miles)}</span>
+						</span>
+					</a>
+				{/each}
+			</section>
 		{/if}
 	{/each}
 
 	{#if data.offline}
-		<p class="none">
+		<p class="note">
 			{data.user?.access === 'field'
 				? 'Older trips, billed ones, and what any of them bill, need a connection.'
 				: 'Older trips, billed ones, everyone else’s, and what any of them bill, need a connection.'}
 		</p>
 	{:else if data.unbilled.length === 0 && data.billed.length === 0}
-		<p class="none">No trips this month.</p>
+		<section class="box" aria-labelledby="none-h">
+			<div class="blank">
+				<h2 class="blank-h" id="none-h">No trips this month</h2>
+				<p class="blank-d">
+					A trip is each drive for work: where it went, and whom each leg was for.
+				</p>
+				<a class="btn pri" href={resolve('/trips/new')}>New trip</a>
+			</div>
+		</section>
 	{/if}
 </div>
+
+<style>
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 56px;
+		box-sizing: border-box;
+		margin: 0;
+	}
+	.held {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 10px;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		overflow-wrap: anywhere;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
+	}
+	.sub.bad {
+		color: var(--fgColor-danger);
+	}
+	.labs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-top: 4px;
+	}
+	.acts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.fig {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
+	}
+	.v {
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
+	}
+</style>
