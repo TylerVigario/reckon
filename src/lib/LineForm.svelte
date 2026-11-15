@@ -172,6 +172,20 @@
 	const site = $derived(data.sites.find((s) => s.id === siteId));
 	const stock = $derived(kind === 'material');
 	const bought = $derived(kind === 'bought');
+	// What each kind is, said under it: Primer's RadioGroup, each choice with its caption.
+	const KINDS = [
+		{
+			v: 'material',
+			label: 'From stock',
+			caption: 'Anything held in stock, in whatever unit it is counted.'
+		},
+		{ v: 'bought', label: 'Bought', caption: 'Goods bought for this job and passed on.' },
+		{
+			v: 'paid_for',
+			label: 'Paid for them',
+			caption: 'A fee, a hire or a bill paid on their behalf. Not goods.'
+		}
+	] as const;
 
 	type Item = (typeof offered)[number];
 	const item = $derived(offered.find((m) => m.id === materialId));
@@ -422,35 +436,27 @@
 	{/if}
 	<form class="box form" onsubmit={save}>
 		<div class="box-row fields">
-			<div class="fc">
-				<span class="fc-l" id="l-kind-l">Kind</span>
-				<input type="hidden" name="kind" value={kind} />
-				{#if editing}
-					<span>{stock ? 'From stock' : bought ? 'Bought' : 'Paid for them'}</span>
-				{:else}
-					<div class="seg" role="group" aria-labelledby="l-kind-l">
-						<button type="button" aria-pressed={stock} onclick={() => (kind = 'material')}
-							>From stock</button
-						>
-						<button type="button" aria-pressed={bought} onclick={() => (kind = 'bought')}
-							>Bought</button
-						>
-						<button
-							type="button"
-							aria-pressed={kind === 'paid_for'}
-							onclick={() => (kind = 'paid_for')}>Paid for them</button
-						>
-					</div>
-				{/if}
-				<p class="fc-c">
-					{stock
-						? 'Anything held in stock, in whatever unit it is counted.'
-						: bought
-							? 'Goods bought for this job and passed on.'
-							: 'A fee, a hire or a bill paid on their behalf. Not goods.'}
-				</p>
-				{@render wrong('kind')}
-			</div>
+			{#if editing}
+				<div class="fc">
+					<span class="fc-l">Kind</span>
+					<input type="hidden" name="kind" value={kind} />
+					<span>{KINDS.find((k) => k.v === kind)?.label}</span>
+				</div>
+			{:else}
+				<fieldset class="fc">
+					<legend class="fc-l">Kind</legend>
+					{#each KINDS as k (k.v)}
+						<label class="rad">
+							<input type="radio" name="kind" value={k.v} bind:group={kind} />
+							<span>
+								<span class="rad-t">{k.label}</span>
+								<span class="rad-c">{k.caption}</span>
+							</span>
+						</label>
+					{/each}
+					{@render wrong('kind')}
+				</fieldset>
+			{/if}
 
 			<div class="fc">
 				<label class="fc-l" for="l-site">Where</label>
@@ -656,22 +662,21 @@
 					</dl>
 				{/if}
 
-				<div class="fc">
-					<span class="fc-l" id="l-paid-l">Who paid</span>
-					<input type="hidden" name="paid_by" value={paidBy} />
-					<div class="seg" role="group" aria-labelledby="l-paid-l">
-						{#each data.people as p (p.id)}
-							<button type="button" aria-pressed={paidBy === p.id} onclick={() => (paidBy = p.id)}
-								>{p.name.split(' ')[0]}</button
-							>
-						{/each}
-						<button type="button" aria-pressed={paidBy === ''} onclick={() => (paidBy = '')}
-							>Business</button
-						>
-					</div>
+				<fieldset class="fc">
+					<legend class="fc-l">Who paid</legend>
 					<p class="fc-c">Whoever paid out of their own pocket is owed it back.</p>
+					{#each data.people as p (p.id)}
+						<label class="rad">
+							<input type="radio" name="paid_by" value={p.id} bind:group={paidBy} />
+							<span class="rad-t">{p.name}</span>
+						</label>
+					{/each}
+					<label class="rad">
+						<input type="radio" name="paid_by" value="" bind:group={paidBy} />
+						<span class="rad-t">The business</span>
+					</label>
 					{@render wrong('paid_by')}
-				</div>
+				</fieldset>
 
 				<div class="fc">
 					<span class="fc-l">Receipt</span>
