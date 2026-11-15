@@ -1175,6 +1175,14 @@ if (phase === 'offline') {
 	}, PINECREST);
 	await settle(200);
 	await choose('#m-service', SERVICE);
+	// The day before the form's today, so seven to eight has been worked
+	// whatever the clock says: an hour that ends after now is refused.
+	await run(() => {
+		const f = /** @type {HTMLInputElement} */ (document.querySelector('#m-day'));
+		const [y, m, d] = f.max.split('-').map(Number);
+		f.value = new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+		f.dispatchEvent(new Event('input', { bubbles: true }));
+	});
 	await typeIn('#m-start', '07:00');
 	await typeIn('#m-length', '1:00');
 	await typeIn('#m-note', 'Pulled cable, offline');
@@ -1721,8 +1729,18 @@ if (phase === 'back') {
 	check((await text()).includes('A set price'), 'the access point is priced at a set price');
 	await go('/catalogue/services');
 	const services = /** @type {string} */ (await text());
-	await go('/timesheet/all');
-	const pulled = /** @type {string} */ (await text());
+	// Entered the day before its today, so in this month or, on a first, the
+	// last: each month that day could fall in, on any clock, is looked at.
+	const months = [
+		...new Set(
+			[1, 0, -1, -2].map((d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 7))
+		)
+	];
+	let pulled = '';
+	for (const month of months) {
+		await go(`/timesheet/all?month=${month}`);
+		pulled += /** @type {string} */ (await text());
+	}
 	check(
 		services.includes(SERVICE) && pulled.includes('Pulled cable, offline'),
 		'the service arrives, and the hour entered under it with it'
