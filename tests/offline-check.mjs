@@ -234,6 +234,15 @@ const click = (/** @type {string} */ text) =>
 		return true;
 	})()`);
 
+/** Picks the choice in a radio group whose label says `text`. */
+const pick = (/** @type {string} */ text) =>
+	evaluate(`(() => {
+		const r = [...document.querySelectorAll('label.rad')].find((l) => l.querySelector('.rad-t')?.textContent.trim() === ${JSON.stringify(text)});
+		if (!r) return false;
+		r.querySelector('input').click();
+		return true;
+	})()`);
+
 const OFFLINE = ['/', '/timesheet', '/timesheet/start', '/timesheet/manual'];
 /** The demo's draft, INV-0212 for a homeowner, and an invoice that has gone out. */
 const DRAFT = '/invoices/6f444d02-b482-4506-98fe-ee23f45d26c5';
@@ -659,7 +668,7 @@ if (phase === 'offline') {
 	);
 	await settle(2000);
 	check((await heading()).startsWith('Add a line'), 'Add a line opens with no server');
-	await click('Paid for them');
+	await pick('Paid for them');
 	await settle(200);
 	await evaluate(`(() => {
 		const set = (id, v) => {
@@ -766,7 +775,7 @@ if (phase === 'offline') {
 		(await heading()).startsWith('Add a line') && (await subtitle()).includes(STARTED_FOR),
 		'Add a line opens for it with no server'
 	);
-	await click('Paid for them');
+	await pick('Paid for them');
 	await settle(200);
 	await evaluate(`(() => {
 		const set = (id, v) => {

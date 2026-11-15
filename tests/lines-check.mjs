@@ -153,6 +153,15 @@ const press = (/** @type {string} */ label) =>
 		/** @type {HTMLElement | undefined} */ (b)?.click();
 		return !!b;
 	}, label);
+/** Picks the choice in a radio group whose label says `label`. */
+const pick = (/** @type {string} */ label) =>
+	run((/** @type {string} */ text) => {
+		const r = [...document.querySelectorAll('label.rad')].find(
+			(x) => x.querySelector('.rad-t')?.textContent?.trim() === text
+		);
+		/** @type {HTMLElement | null | undefined} */ (r?.querySelector('input'))?.click();
+		return !!r;
+	}, label);
 const formText = () =>
 	evaluate(`document.querySelector('form.form')?.textContent.replace(/\\s+/g, ' ') ?? ''`);
 
@@ -175,7 +184,7 @@ await press('Add a line');
 await settle(2500);
 check(
 	(await evaluate(
-		`document.querySelector('.seg button[aria-pressed="true"]')?.textContent.trim()`
+		`document.querySelector('input[name=kind]:checked')?.closest('label')?.querySelector('.rad-t')?.textContent.trim()`
 	)) === 'From stock',
 	'a line is from stock unless it is said otherwise'
 );
@@ -217,7 +226,7 @@ check((await evaluate('location.pathname')) === draft, 'the line is drawn, and t
 // Goods bought for the job, paid for by the first person on the list.
 await press('Add a line');
 await settle(2500);
-await press('Bought');
+await pick('Bought');
 await settle(200);
 await choose('#l-site', SITE);
 await set('#l-desc', 'Keystone jacks ×12, faceplates ×3');
@@ -235,9 +244,9 @@ check(
 );
 const payer = /** @type {string} */ (
 	await evaluate(`(() => {
-		const b = [...document.querySelectorAll('.seg')][1]?.querySelector('button');
-		b?.click();
-		return b?.textContent?.trim() ?? '';
+		const r = document.querySelector('input[name=paid_by]');
+		r?.click();
+		return r?.closest('label')?.querySelector('.rad-t')?.textContent?.trim() ?? '';
 	})()`)
 );
 await evaluate(`(async () => {
@@ -260,7 +269,7 @@ check((await evaluate('location.pathname')) === draft, 'the line is added, and t
 // A permit paid for them, by the business.
 await press('Add a line');
 await settle(2500);
-await press('Paid for them');
+await pick('Paid for them');
 await settle(200);
 await choose('#l-site', SITE);
 await set('#l-desc', 'Low-voltage permit');
