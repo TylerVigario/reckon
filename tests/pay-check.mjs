@@ -124,7 +124,7 @@ const page = async () =>
 /** A link whose own text holds `text`: its href. */
 const linkTo = (/** @type {string} */ text) =>
 	run((/** @type {string} */ want) => {
-		const a = [...document.querySelectorAll('a.rec.link')].find((x) =>
+		const a = [...document.querySelectorAll('a.rec.link, a.box-row')].find((x) =>
 			x.textContent?.includes(want)
 		);
 		return a ? a.getAttribute('href') : null;
@@ -162,18 +162,30 @@ await go('/reports/pay');
 const sams = await linkTo('Sam Ortega');
 check(!!sams, 'the pay report lists Sam among who is owed');
 check(
-	/partners\s*·\s*guaranteed payments/i.test(await page()) &&
-		/employees\s*·\s*wages/i.test(await page()),
+	/partners\s*·?\s*guaranteed payments/i.test(await page()) &&
+		/employees\s*·?\s*wages/i.test(await page()),
 	'the pay report groups people by what their pay is'
 );
 await go(sams ?? '/reports/pay');
 const owedPage = await page();
 /** The payment's total, and what it says it is made of. */
 const totalRow = () =>
-	run(() => ({
-		v: document.querySelector('.rec.tot .rec-v')?.textContent?.trim() ?? '',
-		s: document.querySelector('.rec.tot .rec-s')?.textContent?.trim() ?? ''
-	}));
+	run(() => {
+		const box = document.querySelector('section[aria-labelledby="pay-h"]');
+		return {
+			v: box?.querySelector('.v')?.textContent?.trim() ?? '',
+			s: box?.querySelector('.sub')?.textContent?.trim() ?? ''
+		};
+	});
+/** The dialog's own action: the button that records, not the one that opens it. */
+const confirm = () =>
+	run(() => {
+		const b = /** @type {HTMLButtonElement | null} */ (
+			document.querySelector('dialog[open] [data-go]')
+		);
+		b?.click();
+		return !!b;
+	});
 const { v: thisPayment, s: madeOf } = await totalRow();
 check(
 	owedPage.includes('Trip in the Corolla') && thisPayment !== '' && thisPayment !== '$0.00',
@@ -185,19 +197,22 @@ check(
 		/wages · .* reimbursed$/.test(madeOf),
 	`Sam's wages and the vehicle's reimbursement are apart, each with its own total (${madeOf})`
 );
-await set('#p-note', 'Paid by pay-check');
-await tap('Record the payment');
+await tap('Record payment');
 await settle(500);
-const asking = await page();
+await set('#p-note', 'Paid by pay-check');
+const asking = /** @type {string} */ (
+	await evaluate(`document.querySelector('dialog[open]')?.innerText ?? ''`)
+);
 check(
 	/^\/reports\/pay\/[0-9a-f-]{36}$/.test(
 		/** @type {string} */ (await evaluate('location.pathname'))
 	) &&
-		asking.includes(`Record ${thisPayment} paid to Sam Ortega`) &&
+		asking.includes('Pay Sam Ortega') &&
+		asking.includes(thisPayment) &&
 		asking.includes('A payment stands once recorded'),
 	'recording asks first, saying what it pays and that it stands, and records nothing yet'
 );
-await tap('Record it');
+await confirm();
 await settle(2500);
 const paidPath = /** @type {string} */ (await evaluate('location.pathname'));
 const paid = await page();
@@ -218,7 +233,7 @@ await go('/reports/pay');
 const samRow = /** @type {string} */ (
 	await run(
 		() =>
-			[...document.querySelectorAll('a.rec.link')]
+			[...document.querySelectorAll('a.box-row')]
 				.find((x) => x.textContent?.includes('Sam Ortega'))
 				?.textContent?.replace(/\s+/g, ' ') ?? ''
 	)
@@ -243,14 +258,22 @@ if (corolla) {
 // A correction to it goes on the next payment.
 await go(sams ?? '/reports/pay');
 check((await page()).includes('Nothing owed'), 'Sam is owed nothing');
-await tap('Add');
+await tap('Record payment');
+await settle(500);
+await run(() => {
+	const box = /** @type {HTMLInputElement | null} */ (
+		[...document.querySelectorAll('dialog[open] label.rad')]
+			.find((l) => l.textContent?.includes('With a correction'))
+			?.querySelector('input') ?? null
+	);
+	box?.click();
+	return !!box;
+});
 await settle(300);
 await set('#c-amount', '1.00');
 await set('#c-why', 'Paid a dollar short');
 await settle(300);
-await tap('Record the payment');
-await settle(500);
-await tap('Record it');
+await confirm();
 await settle(2500);
 const fixed = await page();
 check(

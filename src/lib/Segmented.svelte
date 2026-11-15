@@ -2,10 +2,10 @@
 	import type { ResolvedPathname } from '$app/types';
 
 	/**
-	 * Primer's SegmentedControl: one list in two or three scopes -- everyone's
-	 * entries or your own -- the one shown pressed in. Not tabs: the list is
-	 * the same thing either way, only how much of it is shown changes. Each
-	 * scope is an address, so it is a link, and the one shown is the current
+	 * Primer's SegmentedControl: one thing seen two or three ways -- everyone's
+	 * entries or your own, pay by person or by job -- the one shown pressed in.
+	 * Not tabs: it is the same thing whichever way, only how it is cut changes.
+	 * Each way is an address, so it is a link, and the one shown is the current
 	 * page. Drawn inside .primer (#lib/primer.css).
 	 */
 	let {

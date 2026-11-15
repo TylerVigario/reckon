@@ -1457,7 +1457,7 @@ const payPage = await (await fetch(`${base}/reports/pay`, { headers: { cookie } 
 const payee = (/** @type {string} */ name) =>
 	[
 		...payPage.matchAll(
-			/href="[^"]*\/reports\/pay\/([0-9a-f-]{36})"[\s\S]*?class="rec-t"[^>]*>(?:\s|<!--[^>]*-->)*([^<&]+)/g
+			/href="[^"]*\/reports\/pay\/([0-9a-f-]{36})"[\s\S]*?class="n[^"]*">(?:\s|<!--[^>]*-->)*([^<&]+)/g
 		)
 	].find((m) => m[2].trim() === name)?.[1];
 const sam = payee('Sam Ortega');

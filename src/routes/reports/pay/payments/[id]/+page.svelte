@@ -6,6 +6,11 @@
 	import { sum } from '#lib/decimal.ts';
 	import { PAID_AS_ORDER, PAID_AS_WORDS } from '#lib/pay-words.ts';
 	import type { PageProps } from './$types';
+	/**
+	 * A payment, as recorded, which stands: a box for each part of it -- wages,
+	 * fees, a reimbursement -- its items and what the part came to, then when
+	 * it was paid, how, by whom it was recorded, and its note.
+	 */
 	let { data }: PageProps = $props();
 	const p = $derived(data.payment);
 	const an = (word: string) => (/^[aeiou]/i.test(word) ? `an ${word}` : `a ${word}`);
@@ -37,92 +42,102 @@
 	backLabel={p.person.split(' ')[0]}
 />
 
-<div class="pad">
-	<div class="tiles">
-		{#each parts as x, k (x.as)}
-			<div class="tile">
-				<span class="k"
-					>{x.as === 'reimbursement' ? 'Reimbursed' : PAID_AS_WORDS[x.as].heading}</span
-				>
-				<span class="v" class:good={k === 0}>{money(x.total)}</span>
-				<span class="s">{x.said}</span>
-			</div>
-		{/each}
-	</div>
-
+<div class="pad primer">
 	{#each parts as x (x.as)}
-		<div class="sec">
-			<div class="sec-h">
-				<h2>
-					{#if x.as === 'reimbursement'}For the vehicle
-						<span class="lt">· a reimbursement</span>{:else}{PAID_AS_WORDS[x.as].heading}{/if}
+		<section class="box" aria-labelledby="part-{x.as}">
+			<div class="box-h">
+				<h2 class="box-t" id="part-{x.as}">
+					{x.as === 'reimbursement' ? 'For the vehicle' : PAID_AS_WORDS[x.as].heading}
 				</h2>
+				<span class="sub">{x.said}</span>
 			</div>
-			<div class="rows">
-				{#each x.items as i (i.id)}
-					<div class="rec" class:acc={i.corrects_id}>
-						<div class="rec-m">
-							{#if i.corrects_id}
-								<div class="rec-t">A correction to {dated(i.corrects)}</div>
-							{:else}
-								<div class="rec-t">{i.place ?? 'Work'} · {day(i.day)}</div>
-							{/if}
-							<div class="rec-s">{i.said}</div>
-						</div>
-						<div class="rec-n"><span class="rec-v">{money(i.amount)}</span></div>
-					</div>
-				{/each}
-				<div class="rec sub">
-					<div class="rec-m">
-						<div class="rec-t">
-							{x.as === 'reimbursement' ? 'Reimbursed' : PAID_AS_WORDS[x.as].heading}
-						</div>
-					</div>
-					<div class="rec-n"><span class="rec-v">{money(x.total)}</span></div>
+			{#each x.items as i (i.id)}
+				<div class="box-row line">
+					<span class="what">
+						{#if i.corrects_id}
+							<span class="n">A correction to {dated(i.corrects)}</span>
+						{:else}
+							<span class="n">{i.place ?? 'Work'} · {day(i.day)}</span>
+						{/if}
+						<span class="sub">{i.said}</span>
+					</span>
+					{#if i.corrects_id}<span class="lab acc">Correction</span>{/if}
+					<span class="v">{money(i.amount)}</span>
 				</div>
+			{/each}
+			<div class="box-row line tot">
+				<span class="what"
+					><span class="n"
+						>{x.as === 'reimbursement' ? 'Reimbursed' : PAID_AS_WORDS[x.as].heading}</span
+					></span
+				>
+				<span class="v">{money(x.total)}</span>
 			</div>
-		</div>
+		</section>
 	{/each}
 
-	<div class="rows">
-		<div class="rec tot">
-			<div class="rec-m">
-				<div class="rec-t">Paid</div>
-				<div class="rec-s">Recorded {day(p.recorded_on)} by {p.recorded_by}</div>
-			</div>
-			<div class="rec-n"><span class="rec-v">{money(p.total)}</span></div>
+	<section class="box" aria-labelledby="paid-h">
+		<div class="box-h"><h2 class="box-t" id="paid-h">Payment</h2></div>
+		<div class="box-row kv">
+			<span class="kv-l">Paid</span>
+			<span class="kv-v"><span class="paid">{money(p.total)}</span></span>
 		</div>
-	</div>
+		<div class="box-row kv">
+			<span class="kv-l">Recorded</span>
+			<span class="kv-v"><span>{day(p.recorded_on)} by {p.recorded_by}</span></span>
+		</div>
+		{#if p.note}
+			<div class="box-row kv">
+				<span class="kv-l">Note</span>
+				<span class="kv-v"><span>{p.note}</span></span>
+			</div>
+		{/if}
+	</section>
 
-	{#if p.note}
-		<div class="sec">
-			<div class="sec-h"><h2>Note</h2></div>
-			<div class="rows">
-				<div class="rec"><div class="rec-m"><div class="rec-s">{p.note}</div></div></div>
-			</div>
-		</div>
-	{/if}
-	<p class="aside">
+	<p class="note">
 		A payment is not changed once it is recorded. A correction goes on the next payment, plus or
 		minus, with why, against the part it corrects.
 	</p>
 </div>
 
 <style>
-	.sub .rec-t,
-	.sub .rec-v {
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 56px;
+		box-sizing: border-box;
+		margin: 0;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.n {
 		font-weight: 600;
 	}
-	.lt {
-		font-weight: 400;
+	.sub {
+		font-size: 12px;
 		color: var(--fgColor-muted);
 	}
-	.sec + .rows {
-		margin-top: 18px;
+	.lab {
+		flex: 0 0 auto;
 	}
-	.aside {
-		margin: 12px 0 0;
-		font-size: 12.5px;
-		color: var(--fgColor-muted);
+	.v {
+		flex: 0 0 auto;
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
+		color: var(--fgColor-default);
+	}
+	.tot {
+		background: var(--bgColor-muted);
+	}
+	.paid {
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
+		color: var(--fgColor-default);
 	}
 </style>

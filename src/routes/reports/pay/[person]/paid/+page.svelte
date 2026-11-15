@@ -17,39 +17,50 @@
 		ps.map((x) => `${money(x.total)} ${PAID_AS_WORDS[x.paid_as].money}`).join(', ');
 </script>
 
-<div class="sec">
-	<div class="rows">
-		{#each data.payments as p (p.id)}
-			<a class="rec link" href={resolve('/reports/pay/payments/[id]', { id: p.id })}>
-				<div class="rec-m">
-					<div class="rec-t">{dated(p.paid_on)}</div>
-					<div class="rec-s">
-						{[p.how, partsSaid(p.parts), `${p.items} ${p.items === 1 ? 'item' : 'items'}`, p.note]
-							.filter(Boolean)
-							.join(' · ')}
-					</div>
-				</div>
-				<div class="rec-n"><span class="rec-v">{money(p.total)}</span></div>
-				<span class="arw" aria-hidden="true">›</span>
-			</a>
-		{:else}
-			<div class="rec">
-				<div class="rec-m">
-					<div class="rec-t"><span class="lt">Nothing paid yet</span></div>
-					<div class="rec-s">
-						{data.user?.access === 'field'
-							? 'A payment to you shows here once someone with Full records it'
-							: 'A payment shows here once it is recorded on Owed'}
-					</div>
-				</div>
-			</div>
-		{/each}
-	</div>
-</div>
+<section class="box" aria-label="Payments">
+	{#each data.payments as p (p.id)}
+		<a class="box-row line" href={resolve('/reports/pay/payments/[id]', { id: p.id })}>
+			<span class="what">
+				<span class="n">{dated(p.paid_on)}</span>
+				<span class="sub">
+					{[p.how, partsSaid(p.parts), `${p.items} ${p.items === 1 ? 'item' : 'items'}`, p.note]
+						.filter(Boolean)
+						.join(' · ')}
+				</span>
+			</span>
+			<span class="v">{money(p.total)}</span>
+		</a>
+	{:else}
+		<p class="box-row muted">
+			{data.user?.access === 'field'
+				? 'Nothing paid yet. A payment to you shows here once someone with Full records it.'
+				: 'Nothing paid yet. A payment shows here once it is recorded on Owed.'}
+		</p>
+	{/each}
+</section>
 
 <style>
-	.lt {
-		font-weight: 400;
+	.line {
+		min-height: 56px;
+		box-sizing: border-box;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
 		color: var(--fgColor-muted);
+	}
+	.v {
+		flex: 0 0 auto;
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
 	}
 </style>
