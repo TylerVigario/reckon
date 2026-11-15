@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.8.0](https://github.com/TylerVigario/reckon/compare/v0.7.0...v0.8.0) (2026-11-15)
+
+### Features
+
+* Reckon sends email, and tells a person whenever their password changes ([#125](https://github.com/TylerVigario/reckon/pull/125))
+* A person is invited by an emailed link, and an address is proven by using one ([#126](https://github.com/TylerVigario/reckon/pull/126))
+* A changed email waits until the new address is proven, and the old one is told ([#127](https://github.com/TylerVigario/reckon/pull/127))
+* Reckon's emails are HTML, laid out by hand, with the plain text beside ([#129](https://github.com/TylerVigario/reckon/pull/129))
+* Whoever forgot their password is emailed a link to choose a new one ([#130](https://github.com/TylerVigario/reckon/pull/130))
+* Everyone signs in with a passkey, and there are no passwords ([#140](https://github.com/TylerVigario/reckon/pull/140))
+* Someone stays signed in until two weeks unused, as GitHub keeps them ([#141](https://github.com/TylerVigario/reckon/pull/141))
+* Catalogue, Entities, Reports, a client and someone's pay are tabs ([#147](https://github.com/TylerVigario/reckon/pull/147))
+* [**breaking**] The database's owner migrates it, and the server owns nothing ([#148](https://github.com/TylerVigario/reckon/pull/148))
+* The server's log is one JSON record a line, and an error nobody meant is shown only by its id ([#149](https://github.com/TylerVigario/reckon/pull/149))
+* A security log of every sign-in, refusal and access change, which each person sees ([#151](https://github.com/TylerVigario/reckon/pull/151))
+* History covers people and every row added, and nothing but its triggers writes it ([#152](https://github.com/TylerVigario/reckon/pull/152))
+* Team shows when each person last signed in, their passkeys and their open sessions ([#153](https://github.com/TylerVigario/reckon/pull/153))
+* Someone is emailed when Team changes their name, access or whether they are active ([#154](https://github.com/TylerVigario/reckon/pull/154))
+* Unsent work on a phone is its maker's, and signing out says what is waiting ([#155](https://github.com/TylerVigario/reckon/pull/155))
+* A time entry is changed or removed after the fact, until it is billed or paid ([#156](https://github.com/TylerVigario/reckon/pull/156))
+* A time entry is changed or removed with no signal, and merged with a change made meanwhile ([#157](https://github.com/TylerVigario/reckon/pull/157))
+* What a phone keeps for no signal is cut to what is done there, and goes with the session ([#158](https://github.com/TylerVigario/reckon/pull/158))
+* Catalogue is drawn to Primer, its materials, services and agreements alike ([#159](https://github.com/TylerVigario/reckon/pull/159))
+* Stock is received as its receipt or invoice says it, every item on it, the tax split by cost ([#160](https://github.com/TylerVigario/reckon/pull/160))
+* One item's stock is put right by hand, taken off or put on, with why ([#161](https://github.com/TylerVigario/reckon/pull/161))
+* A material is changed on its Details tab, priced from today, and retired ([#162](https://github.com/TylerVigario/reckon/pull/162))
+* Stock is counted on a day and the count applied, each difference put right ([#163](https://github.com/TylerVigario/reckon/pull/163))
+* Stock is received, adjusted and counted with no signal, and sent when there is one ([#164](https://github.com/TylerVigario/reckon/pull/164))
+* A material is changed and a service added with no signal, and merged when it arrives ([#165](https://github.com/TylerVigario/reckon/pull/165))
+* Who is on a team entry and what a service is keep their history ([#166](https://github.com/TylerVigario/reckon/pull/166))
+* Reckon is drawn in Primer's own primitives, Octicons and Noto ([#167](https://github.com/TylerVigario/reckon/pull/167))
+* Entities are drawn to Primer, a client and a site each a record with tabs ([#169](https://github.com/TylerVigario/reckon/pull/169))
+* Settings are drawn to Primer, each setting saved with its own Save ([#170](https://github.com/TylerVigario/reckon/pull/170))
+* Reports are drawn to Primer, each seen one way at a time ([#172](https://github.com/TylerVigario/reckon/pull/172))
+* Invoices are drawn to Primer, a line added from a list that folds ([#173](https://github.com/TylerVigario/reckon/pull/173))
+
+### Bug Fixes
+
+* The sign-in limit holds against tries sent at once and IPv6 addresses ([#123](https://github.com/TylerVigario/reckon/pull/123))
+* Every try at a password is recorded, and limited per email as well as per address ([#124](https://github.com/TylerVigario/reckon/pull/124))
+* A release carries the email layout that scripts/user.mjs imports ([#131](https://github.com/TylerVigario/reckon/pull/131))
+* Help names the business's contact details, not someone with Full access ([#133](https://github.com/TylerVigario/reckon/pull/133))
+* A password meets NIST's rules when it is chosen, and one seen in a breach stops at sign-in ([#134](https://github.com/TylerVigario/reckon/pull/134))
+* Field cannot open an invoice that has gone out through its add-a-line page ([#135](https://github.com/TylerVigario/reckon/pull/135))
+* The uuid a phone makes is unique to its maker, so another's finds nothing of theirs ([#136](https://github.com/TylerVigario/reckon/pull/136))
+* A line's kind and who paid it are picked from radio groups ([#174](https://github.com/TylerVigario/reckon/pull/174))
+
+### Refactoring
+
+* Better Auth's routes are mounted as its SvelteKit guide documents, none served yet ([#138](https://github.com/TylerVigario/reckon/pull/138))
+
+### Build & Packaging
+
+* Reckon signs in with Better Auth 1.7.18 ([#128](https://github.com/TylerVigario/reckon/pull/128))
+* Every package is bundled, and a release carries no node_modules ([#142](https://github.com/TylerVigario/reckon/pull/142))
+
 ## [0.7.0](https://github.com/TylerVigario/reckon/compare/v0.6.0...v0.7.0) (2026-11-08)
 
 ### Features
