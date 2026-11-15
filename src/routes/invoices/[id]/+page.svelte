@@ -5,6 +5,7 @@
 	import { currencyPlaces } from '#lib/currency.ts';
 	import Top from '#lib/Top.svelte';
 	import OfflineBanner from '#lib/OfflineBanner.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import {
 		changesHeld,
 		discardChange,
@@ -226,352 +227,395 @@
 
 <OfflineBanner asOf={data.as_of} {waiting} />
 
-<div class="pad">
+<div class="pad primer">
 	{#each data.movedIn as m (m.number)}
-		<p class="why">
-			{m.number} went out{m.sent_at
-				? ` at ${clock(m.sent_at, personalZone())} on ${datedAt(m.sent_at, personalZone())}`
-				: ''}
-			while {m.lines === 1 ? 'a line' : `${m.lines} lines`} added to it on a phone {m.lines === 1
-				? 'was'
-				: 'were'} on the way. {m.lines === 1 ? 'It' : 'They'} could not join it, so this draft was started
-			for {i.who}, and took the next number when it reached the server.
-		</p>
+		<div class="banner warn" role="status">
+			<Octicon name="alert" />
+			<div class="banner-m">
+				<p class="banner-t why">
+					{m.number} went out{m.sent_at
+						? ` at ${clock(m.sent_at, personalZone())} on ${datedAt(m.sent_at, personalZone())}`
+						: ''}
+					while {m.lines === 1 ? 'a line' : `${m.lines} lines`} added to it on a phone {m.lines ===
+					1
+						? 'was'
+						: 'were'} on the way. {m.lines === 1 ? 'It' : 'They'} could not join it, so this draft was
+					started for {i.who}, and took the next number when it reached the server.
+				</p>
+			</div>
+		</div>
 	{/each}
 	{#each data.movedOut as m (m.id)}
-		<p class="why">
-			{m.lines === 1 ? 'A line' : `${m.lines} lines`} added to this on a phone after it went out
-			{m.lines === 1 ? 'is' : 'are'} on
-			<a href={resolve('/invoices/[id]', { id: m.id })}>{m.number}</a>.
-		</p>
-	{/each}
-	{#if stored}<p class="why">{stored}</p>{/if}
-	{#if putBack.length}
-		<div class="sec">
-			<div class="sec-h"><h2>Taken off while this phone was offline</h2></div>
-			<div class="rows">
-				{#each putBack as q (q.change.line_id)}
-					{@const gone = q.refused?.conflict}
-					<div class="rec crit">
-						<div class="rec-m">
-							<div class="rec-t">{q.change.shown.description}</div>
-							<div class="rec-s refusal">
-								{gone?.what === 'removed' ? (gone.by ?? 'Someone') : 'Someone'} took it off{gone?.what ===
-								'removed'
-									? ` at ${clock(gone.at, personalZone())}`
-									: ''}. Your change to it waits on this phone.
-							</div>
-							<div class="acts">
-								<button class="btn sm pri" onclick={() => restore(q)}
-									>Put it back, with your change</button
-								>
-								<button class="btn sm gho" onclick={() => letChangeGo(q)}>Let your change go</button
-								>
-							</div>
-						</div>
-					</div>
-				{/each}
+		<div class="banner warn" role="status">
+			<Octicon name="alert" />
+			<div class="banner-m">
+				<p class="banner-t why">
+					{m.lines === 1 ? 'A line' : `${m.lines} lines`} added to this on a phone after it went out
+					{m.lines === 1 ? 'is' : 'are'} on
+					<a href={resolve('/invoices/[id]', { id: m.id })}>{m.number}</a>.
+				</p>
 			</div>
 		</div>
-	{/if}
-	{#if kept.length}
-		<div class="sec">
-			<div class="sec-h"><h2>Not added</h2></div>
-			<div class="rows">
-				{#each kept as q (q.line.client_uuid)}
-					{@const l = q.line.shown}
-					<div class="rec crit">
-						<div class="rec-m">
-							<div class="rec-t">{l.description}</div>
-							<div class="rec-s">{l.detail} · {money(l.amount)}</div>
-							<div class="rec-s refusal">
-								Refused: {q.refused?.detail} It is kept on this phone until it is fixed or let go.
-							</div>
-							<div class="acts">
-								<a
-									class="btn sm pri"
-									href={resolve(
-										`/invoices/[id]/add?fix=${encodeURIComponent(q.line.client_uuid)}`,
-										{ id: i.id }
-									)}>Fix</a
-								>
-								<button class="btn sm gho" onclick={() => letGo(q.line.client_uuid)}>
-									{confirming === q.line.client_uuid ? 'Tap again to discard' : 'Discard'}
-								</button>
-							</div>
-						</div>
-					</div>
-				{/each}
-			</div>
+	{/each}
+	{#if stored}
+		<div class="banner crit" role="alert">
+			<Octicon name="alert" />
+			<div class="banner-m"><p class="banner-t why">{stored}</p></div>
 		</div>
 	{/if}
 
-	<div class="tiles">
+	<div class="state">
 		{#if i.status === 'draft'}
-			<div class="tile">
-				<span class="k">Due</span>
-				<span class="v">{money(t.due)}</span>
-				<span class="s"
-					>{i.terms ? `Net ${i.terms}` : i.due_on ? day(i.due_on) : 'no terms set'}</span
-				>
-			</div>
+			<span class="lab warn">Draft</span>
+			<span class="muted">
+				{money(t.due)} due · {i.terms
+					? `net ${i.terms}`
+					: i.due_on
+						? day(i.due_on)
+						: 'no terms set'} · assembled {clock(i.assembled, personalZone())}
+			</span>
 		{:else}
 			<!-- Paid is what is owed coming to nothing, not a status (0028). -->
-			<div class="tile">
-				<span class="k">Owed</span>
-				<span class="v" class:good={Number(data.totals.owed) === 0}>{money(data.totals.owed)}</span>
-				<span class="s">
-					{Number(data.totals.owed) === 0 ? 'Paid' : `of ${money(data.totals.due)}`}
-				</span>
-			</div>
+			{#if i.status === 'void'}
+				<span class="lab crit">Voided</span>
+			{:else if Number(data.totals.owed) === 0}
+				<span class="lab good">Paid</span>
+			{:else}
+				<span class="lab good">Sent</span>
+			{/if}
+			<span class="muted">
+				{Number(data.totals.owed) === 0
+					? `${money(data.totals.due)} paid`
+					: `${money(data.totals.owed)} owed of ${money(data.totals.due)}`} · {day(i.issued_on)} · due
+				{day(i.due_on)}
+			</span>
 		{/if}
-		<div class="tile">
-			<span class="k">Status</span>
-			<span class="v sm {i.status === 'draft' ? 'warn' : i.status === 'void' ? 'crit' : 'good'}">
-				{i.status === 'draft' ? 'Draft' : i.status === 'void' ? 'Voided' : 'Sent'}
-			</span>
-			<span class="s">
-				{i.status === 'draft'
-					? `Assembled ${clock(i.assembled, personalZone())}`
-					: `${day(i.issued_on)} · due ${day(i.due_on)}`}
-			</span>
-		</div>
 	</div>
 
-	{#if i.link}
-		<div class="sec">
-			<div class="sec-h"><h2>The client's link</h2></div>
-			<div class="rows">
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t link-text">{i.link.replace(/^https?:\/\//, '')}</div>
-						<div class="rec-s">
-							{handed === 'copied'
-								? 'Sent, and the link is copied.'
-								: handed === 'shared'
-									? 'Sent, and the link is shared.'
-									: handed === 'sent'
-										? 'Sent. Share the link from here.'
-										: 'Opens without signing in. Anyone with it can see this invoice.'}
-						</div>
-						<div class="acts">
-							<button type="button" class="btn sm" onclick={copyLink}>Copy</button>
-							{#if canShare}
-								<button type="button" class="btn sm" onclick={shareLink}>Share</button>
-							{/if}
-						</div>
+	{#if putBack.length}
+		<section class="box" aria-labelledby="back-h">
+			<div class="box-h">
+				<h2 class="box-t" id="back-h">Taken off while this phone was offline</h2>
+			</div>
+			{#each putBack as q (q.change.line_id)}
+				{@const gone = q.refused?.conflict}
+				<div class="box-row held">
+					<span class="n">{q.change.shown.description}</span>
+					<p class="refusal">
+						{gone?.what === 'removed' ? (gone.by ?? 'Someone') : 'Someone'} took it off{gone?.what ===
+						'removed'
+							? ` at ${clock(gone.at, personalZone())}`
+							: ''}. Your change to it waits on this phone.
+					</p>
+					<div class="acts">
+						<button class="btn sm pri" onclick={() => restore(q)}
+							>Put it back, with your change</button
+						>
+						<button class="btn sm" onclick={() => letChangeGo(q)}>Let your change go</button>
 					</div>
 				</div>
-			</div>
-		</div>
+			{/each}
+		</section>
+	{/if}
+	{#if kept.length}
+		<section class="box" aria-labelledby="kept-h">
+			<div class="box-h"><h2 class="box-t" id="kept-h">Not added</h2></div>
+			{#each kept as q (q.line.client_uuid)}
+				{@const l = q.line.shown}
+				<div class="box-row held">
+					<span class="n">{l.description}</span>
+					<span class="sub">{l.detail} · {money(l.amount)}</span>
+					<p class="refusal">
+						Refused: {q.refused?.detail} It is kept on this phone until it is fixed or let go.
+					</p>
+					<div class="acts">
+						<a
+							class="btn sm pri"
+							href={resolve(`/invoices/[id]/add?fix=${encodeURIComponent(q.line.client_uuid)}`, {
+								id: i.id
+							})}>Fix</a
+						>
+						<button class="btn sm" onclick={() => letGo(q.line.client_uuid)}>
+							{confirming === q.line.client_uuid ? 'Tap again to discard' : 'Discard'}
+						</button>
+					</div>
+				</div>
+			{/each}
+		</section>
 	{/if}
 
-	<div class="sec">
-		<div class="sec-h"><h2>Lines</h2></div>
-		<div class="rows">
-			{#each data.lines as l (l.id)}
-				{#if l.trip_leg_id}
-					<a class="rec link" href={resolve('/trips')}>
-						<div class="rec-m">
-							<div class="rec-t">{l.description}</div>
-							{#if l.detail}<div class="rec-s">{l.detail}</div>{/if}
-						</div>
-						<div class="rec-n">
-							<span class="rec-v">{money(l.amount)}</span>
-							<span class="rec-x">{quantity(l.qty)} × {quantity(l.unit_price)}</span>
-						</div>
-						<span class="arw" aria-hidden="true">›</span>
-					</a>
-				{:else if BY_HAND.includes(l.kind)}
-					{@const c = changeOf.get(l.id)}
-					<!-- Added by hand: its own screen has its receipt, what it billed,
-					     its history, and -- on a draft -- changing it or taking it off. -->
-					<a
-						class="rec link"
-						href={resolve('/invoices/[id]/lines/[line]', { id: i.id, line: l.id })}
-					>
-						<div class="rec-m">
-							<div class="rec-t">{l.description}</div>
-							{#if l.detail}<div class="rec-s">{l.detail}{l.taxable ? ' · taxable' : ''}</div>{/if}
-							{#if l.receipt || l.moved_from || c || (field && l.mine)}
-								<div class="rec-c">
-									{#if field && l.mine}<span class="chip">Added by you</span>{/if}
-									{#if l.receipt}<span class="chip">Receipt</span>{/if}
-									{#if l.moved_from}<span class="chip">Moved from {l.moved_from}</span>{/if}
-									{#if c?.refused?.conflict?.what === 'collided'}
-										<span class="chip warn"><span class="dot"></span>Changed in two places</span>
-									{:else if c?.refused?.conflict?.what === 'changed'}
-										<span class="chip warn"
-											><span class="dot"></span>Taken off here, changed since</span
-										>
-									{:else if c?.refused}
-										<span class="chip crit"><span class="dot"></span>Change refused</span>
-									{:else if c?.change.act === 'remove'}
-										<span class="chip acc"><span class="dot"></span>Taken off on this phone</span>
-									{:else if c}
-										<span class="chip acc"><span class="dot"></span>Changed on this phone</span>
-									{/if}
-								</div>
-							{/if}
-						</div>
-						<div class="rec-n">
-							<span class="rec-v">{money(l.amount)}</span>
-							<span class="rec-x">
-								{quantity(l.qty)}{l.unit ? ` ${l.unit}` : ''} × {quantity(l.unit_price)}
-							</span>
-						</div>
-						<span class="arw" aria-hidden="true">›</span>
-					</a>
-				{:else}
-					<div class="rec">
-						<div class="rec-m">
-							<div class="rec-t">{l.description}</div>
-							{#if l.detail}<div class="rec-s">{l.detail}{l.taxable ? ' · taxable' : ''}</div>{/if}
-						</div>
-						<div class="rec-n">
-							<span class="rec-v">{money(l.amount)}</span>
-							<span class="rec-x">
-								{quantity(l.qty)}{l.unit ? ` ${l.unit}` : ''} × {quantity(l.unit_price)}
-							</span>
-						</div>
-					</div>
-				{/if}
-			{/each}
-
-			{#each pending as q (q.line.client_uuid)}
-				{@const l = q.line.shown}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t">{l.description}</div>
-						<div class="rec-s">{l.detail}{l.taxable ? ' · taxable' : ''}</div>
-						<div class="rec-c">
-							{#if q.line.receipt}<span class="chip">Receipt</span>{/if}
-							<span class="chip acc"><span class="dot"></span>On this phone</span>
-						</div>
-					</div>
-					<div class="rec-n">
-						<span class="rec-v">{money(l.amount)}</span>
-						<span class="rec-x">{quantity(l.qty)} {l.unit} × {quantity(l.unit_price)}</span>
-					</div>
+	{#if i.link}
+		<section class="box" aria-labelledby="link-h">
+			<div class="box-h"><h2 class="box-t" id="link-h">The client’s link</h2></div>
+			<div class="box-row held">
+				<span class="link-text">{i.link.replace(/^https?:\/\//, '')}</span>
+				<span class="sub">
+					{handed === 'copied'
+						? 'Sent, and the link is copied.'
+						: handed === 'shared'
+							? 'Sent, and the link is shared.'
+							: handed === 'sent'
+								? 'Sent. Share the link from here.'
+								: 'Opens without signing in. Anyone with it can see this invoice.'}
+				</span>
+				<div class="acts">
+					<button type="button" class="btn sm" onclick={copyLink}>Copy</button>
+					{#if canShare}
+						<button type="button" class="btn sm" onclick={shareLink}>Share</button>
+					{/if}
 				</div>
-			{/each}
-
-			{#if Number(t.untaxed) > 0}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t lt">
-							{listed(t.untaxed_kinds) || 'Untaxed'} — not taxable
-						</div>
-					</div>
-					<div class="rec-n"><span class="rec-v mut">{money(t.untaxed)}</span></div>
-				</div>
-			{/if}
-
-			{#if Number(t.tax) > 0}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t lt">
-							Sales tax{t.district ? ` · ${t.district} ${made(t)}` : ''}{listed(t.taxed_kinds)
-								? ` on ${listed(t.taxed_kinds)}`
-								: ''}
-						</div>
-						{#if data.lines.find((l) => l.taxable && l.where_from)}
-							<div class="rec-s">
-								From {data.lines.find((l) => l.taxable && l.where_from)?.where_from}, where the work
-								happened
-							</div>
-						{/if}
-					</div>
-					<div class="rec-n"><span class="rec-v mut">{money(t.tax)}</span></div>
-				</div>
-			{/if}
-
-			<div class="rec tot">
-				<div class="rec-m"><div class="rec-t">Due</div></div>
-				<div class="rec-n"><span class="rec-v">{money(t.due)}</span></div>
 			</div>
+		</section>
+	{/if}
+
+	<section class="box" aria-labelledby="lines-h">
+		<div class="box-h"><h2 class="box-t" id="lines-h">Lines</h2></div>
+		{#each data.lines as l (l.id)}
+			{#if l.trip_leg_id}
+				<a class="box-row line" href={resolve('/trips')}>
+					<span class="what">
+						<span class="n">{l.description}</span>
+						{#if l.detail}<span class="sub">{l.detail}</span>{/if}
+					</span>
+					<span class="fig">
+						<span class="v">{money(l.amount)}</span>
+						<span class="sub">{quantity(l.qty)} × {quantity(l.unit_price)}</span>
+					</span>
+				</a>
+			{:else if BY_HAND.includes(l.kind)}
+				{@const c = changeOf.get(l.id)}
+				<!-- Added by hand: its own screen has its receipt, what it billed,
+				     its history, and -- on a draft -- changing it or taking it off. -->
+				<a
+					class="box-row line"
+					href={resolve('/invoices/[id]/lines/[line]', { id: i.id, line: l.id })}
+				>
+					<span class="what">
+						<span class="n">{l.description}</span>
+						{#if l.detail}<span class="sub">{l.detail}{l.taxable ? ' · taxable' : ''}</span>{/if}
+						{#if l.receipt || l.moved_from || c || (field && l.mine)}
+							<span class="labs">
+								{#if field && l.mine}<span class="lab">Added by you</span>{/if}
+								{#if l.receipt}<span class="lab">Receipt</span>{/if}
+								{#if l.moved_from}<span class="lab">Moved from {l.moved_from}</span>{/if}
+								{#if c?.refused?.conflict?.what === 'collided'}
+									<span class="lab warn">Changed in two places</span>
+								{:else if c?.refused?.conflict?.what === 'changed'}
+									<span class="lab warn">Taken off here, changed since</span>
+								{:else if c?.refused}
+									<span class="lab crit">Change refused</span>
+								{:else if c?.change.act === 'remove'}
+									<span class="lab acc">Taken off on this phone</span>
+								{:else if c}
+									<span class="lab acc">Changed on this phone</span>
+								{/if}
+							</span>
+						{/if}
+					</span>
+					<span class="fig">
+						<span class="v">{money(l.amount)}</span>
+						<span class="sub"
+							>{quantity(l.qty)}{l.unit ? ` ${l.unit}` : ''} × {quantity(l.unit_price)}</span
+						>
+					</span>
+				</a>
+			{:else}
+				<div class="box-row line">
+					<span class="what">
+						<span class="n">{l.description}</span>
+						{#if l.detail}<span class="sub">{l.detail}{l.taxable ? ' · taxable' : ''}</span>{/if}
+					</span>
+					<span class="fig">
+						<span class="v">{money(l.amount)}</span>
+						<span class="sub"
+							>{quantity(l.qty)}{l.unit ? ` ${l.unit}` : ''} × {quantity(l.unit_price)}</span
+						>
+					</span>
+				</div>
+			{/if}
+		{/each}
+
+		{#each pending as q (q.line.client_uuid)}
+			{@const l = q.line.shown}
+			<div class="box-row line">
+				<span class="what">
+					<span class="n">{l.description}</span>
+					<span class="sub">{l.detail}{l.taxable ? ' · taxable' : ''}</span>
+					<span class="labs">
+						{#if q.line.receipt}<span class="lab">Receipt</span>{/if}
+						<span class="lab acc">On this phone</span>
+					</span>
+				</span>
+				<span class="fig">
+					<span class="v">{money(l.amount)}</span>
+					<span class="sub">{quantity(l.qty)} {l.unit} × {quantity(l.unit_price)}</span>
+				</span>
+			</div>
+		{/each}
+
+		{#if Number(t.untaxed) > 0}
+			<div class="box-row line">
+				<span class="what"
+					><span class="sub">{listed(t.untaxed_kinds) || 'Untaxed'}, not taxable</span></span
+				>
+				<span class="v muted">{money(t.untaxed)}</span>
+			</div>
+		{/if}
+
+		{#if Number(t.tax) > 0}
+			<div class="box-row line">
+				<span class="what">
+					<span class="sub">
+						Sales tax{t.district ? ` · ${t.district} ${made(t)}` : ''}{listed(t.taxed_kinds)
+							? ` on ${listed(t.taxed_kinds)}`
+							: ''}
+					</span>
+					{#if data.lines.find((l) => l.taxable && l.where_from)}
+						<span class="sub">
+							From {data.lines.find((l) => l.taxable && l.where_from)?.where_from}, where the work
+							happened
+						</span>
+					{/if}
+				</span>
+				<span class="v muted">{money(t.tax)}</span>
+			</div>
+		{/if}
+
+		<div class="box-row line tot">
+			<span class="what"><span class="n">Due</span></span>
+			<span class="v">{money(t.due)}</span>
 		</div>
-	</div>
+	</section>
 
 	{#if Number(r.taxable_measure) > 0 && r.due_on_return !== null}
-		<div class="sec">
-			<div class="sec-h"><h2>What this does to the return</h2></div>
-			<div class="rows">
-				{#if pending.length}
-					<div class="rec">
-						<div class="rec-m">
-							<div class="rec-s">
-								Without the {pending.length === 1 ? 'line' : `${pending.length} lines`} on this phone:
-								worked out again when {pending.length === 1 ? 'it reaches' : 'they reach'} the server.
-							</div>
-						</div>
-					</div>
-				{/if}
-				<div class="rec">
-					<div class="rec-m"><div class="rec-t">Taxable measure</div></div>
-					<div class="rec-n"><span class="rec-v">{money(r.taxable_measure)}</span></div>
-				</div>
-				{#if Number(r.resold) > 0}
-					<div class="rec">
-						<div class="rec-m">
-							<div class="rec-t">Less tax-paid purchases resold</div>
-							<div class="rec-s">The ex-tax cost, stored on the line</div>
-						</div>
-						<div class="rec-n"><span class="rec-v">−{money(r.resold)}</span></div>
-					</div>
-				{/if}
-				<div class="rec">
-					<div class="rec-m"><div class="rec-t">Net taxable — the markup</div></div>
-					<div class="rec-n"><span class="rec-v">{money(netTaxable)}</span></div>
-				</div>
-				<div class="rec tot">
-					<div class="rec-m"><div class="rec-t">Due on the return</div></div>
-					<div class="rec-n"><span class="rec-v">{money(dueOnReturn)}</span></div>
-				</div>
+		<section class="box" aria-labelledby="return-h">
+			<div class="box-h"><h2 class="box-t" id="return-h">What this does to the return</h2></div>
+			{#if pending.length}
+				<p class="box-row sub">
+					Without the {pending.length === 1 ? 'line' : `${pending.length} lines`} on this phone: worked
+					out again when {pending.length === 1 ? 'it reaches' : 'they reach'} the server.
+				</p>
+			{/if}
+			<div class="box-row line">
+				<span class="what"><span class="n">Taxable measure</span></span>
+				<span class="v">{money(r.taxable_measure)}</span>
 			</div>
-		</div>
+			{#if Number(r.resold) > 0}
+				<div class="box-row line">
+					<span class="what">
+						<span class="n">Less tax-paid purchases resold</span>
+						<span class="sub">The ex-tax cost, stored on the line</span>
+					</span>
+					<span class="v">−{money(r.resold)}</span>
+				</div>
+			{/if}
+			<div class="box-row line">
+				<span class="what"><span class="n">Net taxable: the markup</span></span>
+				<span class="v">{money(netTaxable)}</span>
+			</div>
+			<div class="box-row line tot">
+				<span class="what"><span class="n">Due on the return</span></span>
+				<span class="v">{money(dueOnReturn)}</span>
+			</div>
+		</section>
 	{/if}
 
 	{#if data.takenOff.length}
-		<div class="sec">
-			<div class="sec-h"><h2>Taken off</h2></div>
-			<div class="rows">
-				{#each data.takenOff as g (g.id)}
-					<a
-						class="rec link"
-						href={resolve('/invoices/[id]/lines/[line]/history', { id: i.id, line: g.id })}
-					>
-						<div class="rec-m">
-							<div class="rec-t">{g.description}</div>
-							<div class="rec-s">
-								{g.who ?? 'Someone'} · {datedAt(g.at, personalZone())}, {clock(
-									g.at,
-									personalZone()
-								)}
-							</div>
-						</div>
-						<span class="arw" aria-hidden="true">›</span>
-					</a>
-				{/each}
-			</div>
-		</div>
+		<section class="box" aria-labelledby="off-h">
+			<div class="box-h"><h2 class="box-t" id="off-h">Taken off</h2></div>
+			{#each data.takenOff as g (g.id)}
+				<a
+					class="box-row line"
+					href={resolve('/invoices/[id]/lines/[line]/history', { id: i.id, line: g.id })}
+				>
+					<span class="what">
+						<span class="n">{g.description}</span>
+						<span class="sub">
+							{g.who ?? 'Someone'} · {datedAt(g.at, personalZone())}, {clock(g.at, personalZone())}
+						</span>
+					</span>
+				</a>
+			{/each}
+		</section>
 	{/if}
 </div>
 
 <style>
+	.state {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 12px;
+	}
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 56px;
+		box-sizing: border-box;
+		margin: 0;
+	}
+	.held {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 4px;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		overflow-wrap: anywhere;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
+	}
+	p.sub {
+		margin: 0;
+	}
+	.labs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-top: 4px;
+	}
+	.fig {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
+		text-align: right;
+	}
+	.v {
+		flex: 0 0 auto;
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
+	}
+	.tot {
+		background: var(--bgColor-muted);
+	}
 	/* Why the server would not take a line, in its words. */
 	.refusal {
-		margin-top: 6px;
+		margin: 0;
 		color: var(--fgColor-danger);
 	}
 	.acts {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 8px;
-		margin-top: 10px;
+		margin-top: 6px;
 	}
 	.link-text {
 		font-family: var(--fontStack-monospace);
 		font-size: 13px;
+		font-weight: 600;
 		overflow-wrap: anywhere;
 	}
 </style>

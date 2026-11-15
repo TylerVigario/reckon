@@ -327,6 +327,29 @@
 	text-decoration: none;
 	white-space: nowrap;
 }
+.primer .seg button {
+	display: inline-flex;
+	align-items: center;
+	min-height: max(var(--control-medium-size), var(--control-minTarget-auto, 0px));
+	padding: 0 var(--base-size-12);
+	font: inherit;
+	color: var(--fgColor-muted);
+	white-space: nowrap;
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: var(--borderRadius-small);
+	cursor: pointer;
+}
+.primer .seg button[aria-pressed='true'] {
+	color: var(--fgColor-default);
+	font-weight: var(--base-text-weight-semibold);
+	background: var(--bgColor-default);
+	border-color: var(--borderColor-default);
+}
+.primer .seg button:focus-visible {
+	outline: 2px solid var(--focus-outlineColor);
+	outline-offset: -2px;
+}
 .primer .seg a[aria-current='page'] {
 	color: var(--fgColor-default);
 	font-weight: var(--base-text-weight-semibold);
@@ -548,7 +571,8 @@
 @media (pointer: coarse) {
 	.primer .ti,
 	.primer .btn,
-	.primer .seg a {
+	.primer .seg a,
+	.primer .seg button {
 		min-height: 44px;
 	}
 	/* iOS zooms into a field set smaller than this. */

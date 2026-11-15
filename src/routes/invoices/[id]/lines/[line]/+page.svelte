@@ -3,6 +3,7 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import Top from '#lib/Top.svelte';
 	import OfflineBanner from '#lib/OfflineBanner.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import {
 		discardChange,
 		enqueueChange,
@@ -230,66 +231,67 @@
 
 <OfflineBanner asOf={data.as_of} {waiting} />
 
-<div class="pad">
-	{#if why}<p class="why">{why}</p>{/if}
+{#snippet note(tone: 'warn' | 'crit', text: string)}
+	<div class="banner {tone}" role={tone === 'crit' ? 'alert' : 'status'}>
+		<Octicon name="alert" />
+		<div class="banner-m"><p class="banner-t why">{text}</p></div>
+	</div>
+{/snippet}
+
+<div class="pad primer">
+	{#if why}{@render note('crit', why)}{/if}
 
 	{#if collided && mine}
-		<p class="why">
-			{collided.by ?? 'Someone'} changed this line{collided.at ? ` at ${when(collided.at)}` : ''} while
-			this phone was offline. {Object.keys(collided.from).length
-				? `${Object.keys(collided.from).length === 1 ? 'One field' : `${Object.keys(collided.from).length} fields`} merged on ${Object.keys(collided.from).length === 1 ? 'its' : 'their'} own; `
-				: ''}{Object.keys(collided.fields).length === 1
-				? 'one needs a choice'
-				: `${Object.keys(collided.fields).length} need a choice`}. Until it is made, your change
-			waits on this phone.
-		</p>
+		{@render note(
+			'warn',
+			`${collided.by ?? 'Someone'} changed this line${collided.at ? ` at ${when(collided.at)}` : ''} while this phone was offline. ${
+				Object.keys(collided.from).length
+					? `${Object.keys(collided.from).length === 1 ? 'One field' : `${Object.keys(collided.from).length} fields`} merged on ${Object.keys(collided.from).length === 1 ? 'its' : 'their'} own; `
+					: ''
+			}${Object.keys(collided.fields).length === 1 ? 'one needs a choice' : `${Object.keys(collided.fields).length} need a choice`}. Until it is made, your change waits on this phone.`
+		)}
 		{#each Object.entries(collided.from) as [f, side] (f)}
-			<div class="sec">
-				<div class="sec-h">
-					<h2>{LABEL[f] ?? f}</h2>
-					<span class="sp"></span>
-					<span class="chip good"><span class="dot"></span>Merged</span>
+			<section class="box" aria-label={LABEL[f] ?? f}>
+				<div class="box-h">
+					<h2 class="box-t">{LABEL[f] ?? f}</h2>
+					<span class="lab good">Merged</span>
 				</div>
-				<div class="rows">
-					<div class="rec">
-						<div class="rec-m">
-							<div class="rec-t">
-								{said(
-									f,
-									side === 'phone' ? (mine.change.fields[f] ?? '') : (collided.server[f] ?? '')
-								)}
-							</div>
-							<div class="rec-s">
-								{side === 'phone'
-									? 'Only you changed it, on this phone'
-									: `Only ${collided.by ?? 'they'} changed it`}
-							</div>
-						</div>
-					</div>
+				<div class="box-row line">
+					<span class="what">
+						<span class="n"
+							>{said(
+								f,
+								side === 'phone' ? (mine.change.fields[f] ?? '') : (collided.server[f] ?? '')
+							)}</span
+						>
+						<span class="sub"
+							>{side === 'phone'
+								? 'Only you changed it, on this phone'
+								: `Only ${collided.by ?? 'they'} changed it`}</span
+						>
+					</span>
 				</div>
-			</div>
+			</section>
 		{/each}
 		{#each Object.keys(collided.fields) as f (f)}
-			<div class="sec">
-				<div class="sec-h">
-					<h2>{LABEL[f] ?? f} — pick one</h2>
-					<span class="sp"></span>
-					<span class="chip warn"><span class="dot"></span>Both changed</span>
+			<section class="box" aria-label="{LABEL[f] ?? f}, pick one">
+				<div class="box-h">
+					<h2 class="box-t">{LABEL[f] ?? f} — pick one</h2>
+					<span class="lab warn">Both changed</span>
 				</div>
-				<div class="rows" role="radiogroup" aria-label={LABEL[f] ?? f}>
+				<div role="radiogroup" aria-label={LABEL[f] ?? f}>
 					{#each choices(f) as c (c.value)}
 						<button
 							type="button"
-							class="rec pick"
-							class:on={picks[f] === c.value}
+							class="box-row line opt"
 							role="radio"
 							aria-checked={picks[f] === c.value}
 							onclick={() => (picks = { ...picks, [f]: c.value })}
 						>
 							<span class="radio" aria-hidden="true"></span>
-							<span class="rec-m">
-								<span class="rec-t">{said(f, c.value)}</span>
-								<span class="rec-s"
+							<span class="what">
+								<span class="n">{said(f, c.value)}</span>
+								<span class="sub"
 									>{c.mine
 										? 'You · on this phone'
 										: `${c.who ?? 'Someone'} · ${madeHere(c.made_at, c.at) ? `made ${when(c.made_at!)} on a phone · arrived ${when(c.at)}` : when(c.at)}`}{c.value ===
@@ -301,231 +303,225 @@
 						</button>
 					{/each}
 				</div>
-			</div>
+			</section>
 		{/each}
-		{#if history}
-			<div class="rows">
-				<a
-					class="rec link"
-					href={resolve('/invoices/[id]/lines/[line]/history', { id: l.invoice_id, line: l.id })}
-				>
-					<div class="rec-m">
-						<div class="rec-t">The whole history</div>
-						<div class="rec-s">Every value this line has held, and who set it</div>
-					</div>
-					<span class="arw" aria-hidden="true">›</span>
-				</a>
-			</div>
-		{/if}
-		<div class="btnrow">
-			<button class="btn pri blk" disabled={deciding} onclick={keepPicks}>Keep these</button>
-			<a class="btn blk" href={back}>Later</a>
+		<div class="acts">
+			<button class="btn pri" disabled={deciding} onclick={keepPicks}>Keep these</button>
+			<a class="btn" href={back}>Later</a>
 		</div>
 	{:else if conflict?.what === 'changed' && mine}
-		<p class="why">
-			{conflict.by ?? 'Someone'} changed this line{conflict.at ? ` at ${when(conflict.at)}` : ''},
-			after it was taken off on this phone.
-		</p>
-		<div class="btnrow">
-			<button class="btn pri blk" onclick={offAnyway}>Take it off anyway</button>
-			<button class="btn blk" onclick={letGo}>Keep it</button>
+		{@render note(
+			'warn',
+			`${conflict.by ?? 'Someone'} changed this line${conflict.at ? ` at ${when(conflict.at)}` : ''}, after it was taken off on this phone.`
+		)}
+		<div class="acts">
+			<button class="btn danger" onclick={offAnyway}>Take it off anyway</button>
+			<button class="btn" onclick={letGo}>Keep it</button>
 		</div>
 	{:else if mine?.refused}
-		<p class="why">
-			Refused: {mine.refused.detail} Your change is kept on this phone until it is fixed or let go.
-		</p>
-		<button class="btn blk" onclick={letGo}>Let the change go</button>
+		{@render note(
+			'crit',
+			`Refused: ${mine.refused.detail} Your change is kept on this phone until it is fixed or let go.`
+		)}
+		<div class="acts"><button class="btn" onclick={letGo}>Let the change go</button></div>
 	{:else if mine}
-		<p class="lt waits">
-			{mine.change.act === 'remove'
-				? 'Taken off on this phone: it goes from the draft when it reaches the server.'
-				: 'A change made on this phone waits to send.'}
-		</p>
+		<div class="banner" role="status">
+			<Octicon name="info" />
+			<div class="banner-m">
+				<p class="banner-t waits">
+					{mine.change.act === 'remove'
+						? 'Taken off on this phone: it goes from the draft when it reaches the server.'
+						: 'A change made on this phone waits to send.'}
+				</p>
+			</div>
+		</div>
 	{/if}
+
 	{#if l.receipt_type}
 		{@const href = resolve('/invoices/[id]/lines/[line]/receipt', { id: l.invoice_id, line: l.id })}
-		<div class="receipt">
-			{#if l.receipt_type.startsWith('image/')}
-				<a {href}
-					><img src={href} alt={`The receipt${l.bought_from ? ` from ${l.bought_from}` : ''}`} /></a
-				>
-			{:else}
-				<a class="btn blk" {href}>The receipt, a PDF</a>
-			{/if}
-		</div>
+		<section class="box" aria-labelledby="receipt-h">
+			<div class="box-h"><h2 class="box-t" id="receipt-h">Receipt</h2></div>
+			<div class="box-row receipt">
+				{#if l.receipt_type.startsWith('image/')}
+					<a {href}
+						><img
+							src={href}
+							alt={`The receipt${l.bought_from ? ` from ${l.bought_from}` : ''}`}
+						/></a
+					>
+				{:else}
+					<a class="btn" {href}>The receipt, a PDF</a>
+				{/if}
+			</div>
+		</section>
 	{/if}
 
 	{#if byHand}
-		<div class="sec">
-			<div class="sec-h"><h2>{KIND[l.kind]}</h2></div>
-			<div class="rows inset">
-				<div class="stack">
-					{#if l.kind === 'material'}
-						<div class="kv"><span class="k">Item</span><span class="v">{l.item}</span></div>
-						<div class="kv">
-							<span class="k">How much</span><span class="v">{quantity(l.qty)} {l.unit}</span>
-						</div>
-					{:else}
-						<div class="kv">
-							<span class="k">{l.kind === 'bought' ? 'From' : 'To'}</span>
-							<span class="v">{l.bought_from ?? '—'}</span>
-						</div>
-					{/if}
-					<div class="kv">
-						<span class="k">{l.kind === 'paid_for' ? 'Paid' : 'Cost before tax'}</span>
-						<span class="v">{money(l.ex_tax_cost)}</span>
-					</div>
-					{#if l.kind !== 'paid_for'}
-						<div class="kv">
-							<span class="k">Tax paid</span><span class="v">{money(l.tax_paid)}</span>
-						</div>
-					{/if}
-					{#if l.kind !== 'material'}
-						<div class="kv">
-							<span class="k">Paid by</span>
-							<span class="v"
-								>{l.paid_by ? `${l.paid_by} — owed back ${money(owed)}` : 'The business'}</span
-							>
-						</div>
-					{/if}
-					{#if l.moved_from}
-						<div class="kv">
-							<span class="k">Meant for</span><span class="v">{l.moved_from}</span>
-						</div>
-					{/if}
+		<section class="box" aria-labelledby="kind-h">
+			<div class="box-h"><h2 class="box-t" id="kind-h">{KIND[l.kind]}</h2></div>
+			{#if l.kind === 'material'}
+				<div class="box-row kv">
+					<span class="kv-l">Item</span><span class="kv-v"><span>{l.item}</span></span>
 				</div>
+				<div class="box-row kv">
+					<span class="kv-l">How much</span>
+					<span class="kv-v"><span>{quantity(l.qty)} {l.unit}</span></span>
+				</div>
+			{:else}
+				<div class="box-row kv">
+					<span class="kv-l">{l.kind === 'bought' ? 'From' : 'To'}</span>
+					<span class="kv-v"><span>{l.bought_from ?? '—'}</span></span>
+				</div>
+			{/if}
+			<div class="box-row kv">
+				<span class="kv-l">{l.kind === 'paid_for' ? 'Paid' : 'Cost before tax'}</span>
+				<span class="kv-v"><span>{money(l.ex_tax_cost)}</span></span>
 			</div>
-		</div>
-	{/if}
-
-	<div class="sec">
-		<div class="sec-h"><h2>Billed</h2></div>
-		<div class="rows inset">
-			<div class="stack">
-				<div class="kv">
-					<span class="k">Charged</span>
-					<span class="v"
-						>{money(l.amount)} · {quantity(l.qty)}{l.unit ? ` ${l.unit}` : ''} × {unitPrice(
-							l.unit_price
-						)}</span
+			{#if l.kind !== 'paid_for'}
+				<div class="box-row kv">
+					<span class="kv-l">Tax paid</span><span class="kv-v"
+						><span>{money(l.tax_paid)}</span></span
 					>
 				</div>
-				<div class="kv">
-					<span class="k">{l.taxable ? `Tax at ${pct(l.tax_rate_pct)}` : 'Tax'}</span>
-					<span class="v">{tax !== null ? money(tax) : 'None'}</span>
+			{/if}
+			{#if l.kind !== 'material'}
+				<div class="box-row kv">
+					<span class="kv-l">Paid by</span>
+					<span class="kv-v"
+						><span>{l.paid_by ? `${l.paid_by} — owed back ${money(owed)}` : 'The business'}</span
+						></span
+					>
 				</div>
-				{#if l.taxable && data.claims && l.ex_tax_cost !== null}
-					<div class="kv">
-						<span class="k">Off the return</span>
-						<span class="v">{money(l.ex_tax_cost)}, Reg 1701</span>
-					</div>
-				{/if}
-			</div>
+			{/if}
+			{#if l.moved_from}
+				<div class="box-row kv">
+					<span class="kv-l">Meant for</span><span class="kv-v"><span>{l.moved_from}</span></span>
+				</div>
+			{/if}
+		</section>
+	{/if}
+
+	<section class="box" aria-labelledby="billed-h">
+		<div class="box-h"><h2 class="box-t" id="billed-h">Billed</h2></div>
+		<div class="box-row kv">
+			<span class="kv-l">Charged</span>
+			<span class="kv-v">
+				<span>{money(l.amount)}</span>
+				<span class="kv-s"
+					>{quantity(l.qty)}{l.unit ? ` ${l.unit}` : ''} × {unitPrice(l.unit_price)}</span
+				>
+			</span>
 		</div>
-	</div>
+		<div class="box-row kv">
+			<span class="kv-l">{l.taxable ? `Tax at ${pct(l.tax_rate_pct)}` : 'Tax'}</span>
+			<span class="kv-v"><span>{tax !== null ? money(tax) : 'None'}</span></span>
+		</div>
+		{#if l.taxable && data.claims && l.ex_tax_cost !== null}
+			<div class="box-row kv">
+				<span class="kv-l">Off the return</span>
+				<span class="kv-v"><span>{money(l.ex_tax_cost)}, Reg 1701</span></span>
+			</div>
+		{/if}
+	</section>
 
 	{#snippet whoAdded()}
-		<div class="rec-m">
-			<div class="rec-t">History</div>
-			<div class="rec-s">
+		<span class="what">
+			<span class="n">History</span>
+			<span class="sub">
 				{data.added
 					? `Added by ${data.added.who ?? 'someone'}, ${when(data.added.at)}`
 					: 'Added before lines kept their history'}{data.changes
 					? ` · changed ${data.changes === 1 ? 'once' : `${data.changes} times`} since`
 					: ''}
-			</div>
-		</div>
+			</span>
+		</span>
 	{/snippet}
-	<div class="rows">
+	<section class="box" aria-label="History">
 		{#if history}
 			<a
-				class="rec link"
+				class="box-row line"
 				href={resolve('/invoices/[id]/lines/[line]/history', { id: l.invoice_id, line: l.id })}
 			>
 				{@render whoAdded()}
-				<span class="arw" aria-hidden="true">›</span>
 			</a>
 		{:else}
-			<div class="rec">{@render whoAdded()}</div>
+			<div class="box-row line">{@render whoAdded()}</div>
 		{/if}
-	</div>
+	</section>
 
 	{#if draft && byHand && !conflict && mine?.change.act !== 'remove' && data.changeable}
-		<button class="btn gho blk off" onclick={takeOff}>
-			{confirming ? 'Tap again to take it off' : 'Take it off the draft'}
-		</button>
+		<div class="acts">
+			<button class="btn danger" onclick={takeOff}>
+				{confirming ? 'Tap again to take it off' : 'Take it off the draft'}
+			</button>
+		</div>
 	{/if}
 </div>
 
 <style>
-	.receipt {
-		margin-bottom: 16px;
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 56px;
+		box-sizing: border-box;
+		margin: 0;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		overflow-wrap: anywhere;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
+	}
+	.acts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	/* One of the values a field has held, to pick: Primer's radio, in a row. */
+	.opt {
+		width: 100%;
+		font: inherit;
+		color: inherit;
+		text-align: left;
+		background: var(--bgColor-default);
+		border: 0;
+		cursor: pointer;
+	}
+	.opt + .opt {
+		border-top: 1px solid var(--borderColor-muted);
+	}
+	.opt[aria-checked='true'] {
+		background: var(--bgColor-accent-muted);
+	}
+	.opt:focus-visible {
+		outline: 2px solid var(--focus-outlineColor);
+		outline-offset: -2px;
+	}
+	.radio {
+		flex: 0 0 auto;
+		width: 16px;
+		height: 16px;
+		box-sizing: border-box;
+		border: 1px solid var(--borderColor-emphasis, var(--borderColor-default));
+		border-radius: 50%;
+	}
+	.opt[aria-checked='true'] .radio {
+		border: 5px solid var(--bgColor-accent-emphasis);
 	}
 	.receipt img {
 		display: block;
-		width: 100%;
-		max-height: 420px;
-		object-fit: contain;
+		max-width: 100%;
+		max-height: 360px;
 		border-radius: var(--borderRadius-medium);
-		border: 1px solid var(--borderColor-default);
-		background: var(--bgColor-default);
-	}
-	.stack {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding: 12px 14px;
-	}
-	.off {
-		margin-top: 16px;
-	}
-	.why {
-		color: var(--fgColor-danger);
-	}
-	.waits {
-		margin: 0 0 14px;
-	}
-	.btnrow {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		margin: 16px 0;
-	}
-	.btnrow > * {
-		box-sizing: border-box;
-		width: 100%;
-		text-align: center;
-	}
-	button.rec.pick {
-		width: 100%;
-		text-align: left;
-		font: inherit;
-		color: inherit;
-		background: none;
-		border: 0;
-		cursor: pointer;
-		display: flex;
-		gap: 12px;
-		align-items: center;
-	}
-	.pick .rec-m,
-	.pick .rec-t,
-	.pick .rec-s {
-		display: block;
-	}
-	.pick .radio {
-		width: 18px;
-		height: 18px;
-		border-radius: 50%;
-		border: 2px solid var(--borderColor-default);
-		flex: none;
-	}
-	.pick.on .radio {
-		border-color: var(--borderColor-accent-emphasis);
-		box-shadow: inset 0 0 0 4px var(--bgColor-default);
-		background: var(--bgColor-accent-emphasis);
-	}
-	.pick.on {
-		background: var(--bgColor-accent-muted);
 	}
 </style>

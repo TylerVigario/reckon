@@ -104,6 +104,7 @@ const ROUTES = [
 	'/invoices',
 	'/invoices/ready',
 	'/unbilled',
+	'/unbilled?view=given',
 	'/more',
 	'/profile',
 	'/profile/passkeys',

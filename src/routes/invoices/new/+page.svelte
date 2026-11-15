@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import Top from '#lib/Top.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import OfflineBanner from '#lib/OfflineBanner.svelte';
 	import { onMount } from 'svelte';
 	import { enqueueDraft, flush, waitingCount } from '#lib/queue.ts';
@@ -64,38 +65,45 @@
 
 <OfflineBanner asOf={data.as_of} {waiting} />
 
-<div class="pad">
-	<form class="rows form" onsubmit={start}>
-		<div class="fld">
-			<label for="n-client">For</label>
-			<select id="n-client" name="entity_id" class="inp" bind:value={client}>
-				{#each data.clients as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
-			</select>
-			{#if why}<small class="why">{why}</small>{/if}
-			<small class="lt"
-				>It takes the next invoice number when it reaches the server, and stays a draft until it is
-				sent.</small
-			>
+<div class="pad primer">
+	<form class="box form" onsubmit={start}>
+		<div class="box-row fields">
+			<div class="fc">
+				<label class="fc-l" for="n-client">For</label>
+				<select id="n-client" name="entity_id" class="ti" bind:value={client}>
+					{#each data.clients as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
+				</select>
+				{#if why}
+					<p class="fc-e why"><Octicon name="alert" />{why}</p>
+				{:else}
+					<p class="fc-c">
+						It takes the next invoice number when it reaches the server, and stays a draft until it
+						is sent.
+					</p>
+				{/if}
+			</div>
 		</div>
-		<button class="btn pri blk" disabled={saving || !client}>
-			{saving ? 'Starting…' : 'Start the draft'}
-		</button>
+		<div class="box-row keep">
+			<button class="btn pri" disabled={saving || !client}>
+				{saving ? 'Starting…' : 'Start the draft'}
+			</button>
+			<a class="btn" href={resolve('/invoices')}>Cancel</a>
+		</div>
 	</form>
 </div>
 
 <style>
-	.form {
+	.fields {
 		padding: 16px;
+	}
+	.fc {
+		max-width: 480px;
+	}
+	.keep {
 		display: flex;
-		flex-direction: column;
-		gap: 15px;
-	}
-	.why {
-		color: var(--fgColor-danger);
-		font-size: 12.5px;
-	}
-	button.btn[disabled] {
-		opacity: 0.6;
-		cursor: default;
+		flex-wrap: wrap;
+		gap: 8px 12px;
+		padding: 16px;
+		background: var(--bgColor-muted);
 	}
 </style>
