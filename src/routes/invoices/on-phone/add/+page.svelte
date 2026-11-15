@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import LineForm from '#lib/LineForm.svelte';
 	import Top from '#lib/Top.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import { findDraft, type QueuedDraft } from '#lib/queue.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -32,7 +33,14 @@
 	/>
 {:else if draft === null}
 	<Top title="Add a line" back={resolve('/invoices')} backLabel="Invoices" />
-	<div class="pad">
-		<p class="why">That draft is not on this phone. It may have reached the server already.</p>
+	<div class="pad primer">
+		<div class="banner" role="status">
+			<Octicon name="info" />
+			<div class="banner-m">
+				<p class="banner-t why">
+					That draft is not on this phone. It may have reached the server already.
+				</p>
+			</div>
+		</div>
 	</div>
 {/if}

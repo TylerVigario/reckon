@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Top from '#lib/Top.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import { day } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import { readProblem } from '#lib/json.ts';
@@ -90,99 +91,103 @@
 	backLabel={i.number}
 />
 
-<div class="pad">
-	<div class="tiles">
-		<div class="tile">
-			<span class="k">Due</span>
-			<span class="v">{money(i.due)}</span>
-			<span class="s"
-				>{i.lines}
-				{i.lines === 1 ? 'line' : 'lines'}{Number(i.tax) > 0
-					? `, ${money(i.tax)} tax`
-					: ', no tax'}</span
-			>
+<div class="pad primer">
+	<section class="box" aria-labelledby="goes-h">
+		<div class="box-h"><h2 class="box-t" id="goes-h">What goes out</h2></div>
+		<div class="box-row kv">
+			<span class="kv-l">Due</span>
+			<span class="kv-v">
+				<span class="v">{money(i.due)}</span>
+				<span class="kv-s"
+					>{i.lines}
+					{i.lines === 1 ? 'line' : 'lines'}{Number(i.tax) > 0
+						? `, ${money(i.tax)} tax`
+						: ', no tax'}</span
+				>
+			</span>
 		</div>
-		<div class="tile">
-			<span class="k">Dated</span>
-			<span class="v sm">{day(data.today)}</span>
-			<span class="s">due {day(data.due_on)} · net {i.terms}</span>
+		<div class="box-row kv">
+			<span class="kv-l">Dated</span>
+			<span class="kv-v">
+				<span>{day(data.today)}</span>
+				<span class="kv-s">due {day(data.due_on)} · net {i.terms}</span>
+			</span>
 		</div>
-	</div>
+	</section>
 
-	<div class="sec">
-		<div class="sec-h"><h2>How it reaches them</h2></div>
-		<div class="rows">
-			<div class="rec">
-				<div class="rec-m">
-					<div class="rec-t">A link to the invoice</div>
-					<div class="rec-s">They open it without signing in.</div>
-				</div>
-			</div>
-			<div class="rec">
-				<div class="rec-m">
-					{#if c && (c.email || c.phone)}
-						<div class="rec-t">{[c.email, c.phone].filter(Boolean).join(' · ')}</div>
-						<div class="rec-s">{c.name}, from the client's record</div>
-					{:else}
-						<div class="rec-t"><span class="lt">No email or phone on their record</span></div>
-						<div class="rec-s">The link can be sent however you reach them</div>
-					{/if}
-				</div>
+	<section class="box" aria-labelledby="reach-h">
+		<div class="box-h"><h2 class="box-t" id="reach-h">How it reaches them</h2></div>
+		<div class="box-row kv">
+			<span class="kv-l">A link</span>
+			<span class="kv-v"><span>They open it without signing in.</span></span>
+		</div>
+		<div class="box-row kv">
+			<span class="kv-l">To</span>
+			<span class="kv-v">
+				{#if c && (c.email || c.phone)}
+					<span>{[c.email, c.phone].filter(Boolean).join(' · ')}</span>
+					<span class="kv-s">{c.name}, from the client’s record</span>
+				{:else}
+					<span>No email or phone on their record</span>
+					<span class="kv-s">The link can be sent however you reach them</span>
+				{/if}
+			</span>
+		</div>
+	</section>
+
+	{#if held}
+		<div class="banner warn" role="status">
+			<Octicon name="alert" />
+			<div class="banner-m">
+				<p class="banner-t why bad">
+					{held === 1 ? 'Something' : `${held} things`} added or changed on this phone {held === 1
+						? 'has'
+						: 'have'} not reached the server. Send it once {held === 1 ? 'it has' : 'they have'}, so
+					nothing is left off.
+				</p>
 			</div>
 		</div>
-	</div>
-
-	<div class="rows form">
-		{#if held}
-			<p class="why bad">
-				{held === 1 ? 'Something' : `${held} things`} added or changed on this phone {held === 1
-					? 'has'
-					: 'have'} not reached the server. Send it once {held === 1 ? 'it has' : 'they have'}, so
-				nothing is left off.
-			</p>
-		{:else if !online}
-			<p class="why bad">Sending needs a connection.</p>
-		{/if}
-		{#if why}<p class="why bad">{why}</p>{/if}
+	{:else if !online}
+		<div class="banner warn" role="status">
+			<Octicon name="alert" />
+			<div class="banner-m"><p class="banner-t why bad">Sending needs a connection.</p></div>
+		</div>
+	{/if}
+	{#if why}
+		<div class="banner crit" role="alert">
+			<Octicon name="alert" />
+			<div class="banner-m"><p class="banner-t why bad">{why}</p></div>
+		</div>
+	{/if}
+	<div class="acts">
 		<button
-			class="btn pri blk"
+			class="btn pri"
 			type="button"
 			disabled={sending || held > 0 || !online || i.lines === 0}
 			onclick={() => send('share')}>Send — share the link</button
 		>
 		<button
-			class="btn blk"
+			class="btn"
 			type="button"
 			disabled={sending || held > 0 || !online || i.lines === 0}
 			onclick={() => send('copy')}>Send — copy the link</button
 		>
-		<p class="aside">
-			Sharing opens your phone's share sheet: Messages, Mail. Once it is sent the invoice cannot
-			change; a correction is a credit note.
-		</p>
 	</div>
+	<p class="note">
+		Sharing opens your phone’s share sheet: Messages, Mail. Once it is sent the invoice cannot
+		change; a correction is a credit note.
+	</p>
 </div>
 
 <style>
-	.form {
-		padding: 16px;
+	.v {
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
+		color: var(--fgColor-default);
+	}
+	.acts {
 		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		margin-top: 18px;
-	}
-	.lt {
-		color: var(--fgColor-muted);
-	}
-	.why {
-		margin: 0;
-	}
-	.why.bad {
-		color: var(--fgColor-danger);
-	}
-	.aside {
-		margin: 0;
-		font-size: 12.5px;
-		color: var(--fgColor-muted);
+		flex-wrap: wrap;
+		gap: 8px;
 	}
 </style>

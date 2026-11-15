@@ -73,51 +73,64 @@
 	backLabel={data.line ? 'The line' : data.draft.number}
 />
 
-<div class="pad">
-	<div class="sec">
-		<div class="sec-h"><h2>Oldest first</h2></div>
-		<div class="rows">
-			{#if events.length === 0 || events[0].what !== 'added'}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t lt">Added before lines kept their history</div>
-					</div>
-				</div>
-			{/if}
-			{#each events as e, i (i)}
-				<div class="rec" class:gone={e.what === 'removed'}>
-					<div class="rec-m">
-						{#if e.what === 'added'}
-							<div class="rec-t">{e.again ? 'Put back on the draft' : 'Added'}</div>
-							<div class="rec-s">{summary(e.was)}</div>
-						{:else if e.what === 'removed'}
-							<div class="rec-t">Taken off the draft</div>
-							<div class="rec-s">{summary(e.was)}</div>
-						{:else}
-							{#each e.changes as c (c.field)}
-								<div class="rec-t">
-									{FIELDS[c.field].label}:
-									<span class="lt">{said(c.field, c.from)} → {said(c.field, c.to)}</span>
-								</div>
-							{/each}
-						{/if}
-						<div class="rec-s who">
-							{who(e.who)} · {madeHere(e.made_at, e.at)
-								? `made ${when(e.made_at!)} on a phone · arrived ${when(e.at)}`
-								: when(e.at)}
-						</div>
-					</div>
-				</div>
-			{/each}
+<div class="pad primer">
+	<section class="box" aria-labelledby="hist-h">
+		<div class="box-h">
+			<h2 class="box-t" id="hist-h">History</h2>
+			<span class="sub">oldest first</span>
 		</div>
-	</div>
+		{#if events.length === 0 || events[0].what !== 'added'}
+			<p class="box-row muted">Added before lines kept their history.</p>
+		{/if}
+		{#each events as e, i (i)}
+			<div class="box-row ev">
+				{#if e.what === 'added'}
+					<span class="n">{e.again ? 'Put back on the draft' : 'Added'}</span>
+					<span class="sub">{summary(e.was)}</span>
+				{:else if e.what === 'removed'}
+					<span class="n gone">Taken off the draft</span>
+					<span class="sub">{summary(e.was)}</span>
+				{:else}
+					{#each e.changes as c (c.field)}
+						<span class="n">
+							{FIELDS[c.field].label}:
+							<span class="was">{said(c.field, c.from)} → {said(c.field, c.to)}</span>
+						</span>
+					{/each}
+				{/if}
+				<span class="sub who">
+					{who(e.who)} · {madeHere(e.made_at, e.at)
+						? `made ${when(e.made_at!)} on a phone · arrived ${when(e.at)}`
+						: when(e.at)}
+				</span>
+			</div>
+		{/each}
+	</section>
 </div>
 
 <style>
+	.ev {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		margin: 0;
+	}
+	.n {
+		font-weight: 600;
+		overflow-wrap: anywhere;
+	}
+	.n.gone {
+		color: var(--fgColor-danger);
+	}
+	.was {
+		font-weight: 400;
+		color: var(--fgColor-muted);
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
+	}
 	.who {
 		margin-top: 4px;
-	}
-	.gone .rec-t {
-		color: var(--fgColor-danger);
 	}
 </style>

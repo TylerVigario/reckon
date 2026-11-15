@@ -307,8 +307,8 @@ const typeIn = (/** @type {string} */ selector, /** @type {string} */ value) =>
 /** The draft's line that says `name`: its own screen. */
 const lineHref = (/** @type {string} */ name) =>
 	run((/** @type {string} */ text) => {
-		const a = [...document.querySelectorAll('a.rec.link')].find(
-			(x) => x.querySelector('.rec-t')?.textContent?.trim() === text
+		const a = [...document.querySelectorAll('a.box-row')].find(
+			(x) => x.querySelector('.n')?.textContent?.trim() === text
 		);
 		return a ? a.getAttribute('href') : null;
 	}, name);
@@ -493,7 +493,7 @@ if (phase === 'online') {
 	const invoicesData = await keptAt('/invoices/__data.json');
 	check(
 		invoices.includes('needs a connection') &&
-			invoices.includes('Not sent') &&
+			invoices.includes('id="drafts-h"') &&
 			!/Out, unpaid|Overdue|Paid, recently/.test(invoices) &&
 			!/overdueCount|drafted/.test(invoicesData),
 		'Invoices is kept as the drafts alone, with nothing they come to'
@@ -646,7 +646,7 @@ if (phase === 'offline') {
 	);
 	await go(DRAFT);
 	const before = await evaluate(
-		`[...document.querySelectorAll('.rec.tot')].map((r) => r.textContent.replace(/\\s+/g, ' ').trim())[0] ?? ''`
+		`[...document.querySelectorAll('.tot')].map((r) => r.textContent.replace(/\\s+/g, ' ').trim())[0] ?? ''`
 	);
 	check(
 		(await heading()).startsWith('Draft INV-0212') && /Offline · as of/.test(await banner()),
@@ -797,7 +797,7 @@ if (phase === 'offline') {
 	const d13 = /** @type {string | null} */ (
 		await run(
 			() =>
-				[...document.querySelectorAll('a.rec.link')]
+				[...document.querySelectorAll('a.box-row')]
 					.find((a) => a.textContent?.includes('Harbor Light Dental'))
 					?.getAttribute('href') ?? null
 		)
@@ -1043,7 +1043,9 @@ if (phase === 'offline') {
 	await run(
 		(/** @type {string} */ name) =>
 			/** @type {HTMLButtonElement | undefined} */ (
-				[...document.querySelectorAll('button.rec')].find((b) => b.textContent?.includes(name))
+				[...document.querySelectorAll('.pick [role=radio]')].find((b) =>
+					b.textContent?.includes(name)
+				)
 			)?.click(),
 		TIES
 	);
@@ -1173,6 +1175,14 @@ if (phase === 'offline') {
 	}, PINECREST);
 	await settle(200);
 	await choose('#m-service', SERVICE);
+	// The day before the form's today, so seven to eight has been worked
+	// whatever the clock says: an hour that ends after now is refused.
+	await run(() => {
+		const f = /** @type {HTMLInputElement} */ (document.querySelector('#m-day'));
+		const [y, m, d] = f.max.split('-').map(Number);
+		f.value = new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+		f.dispatchEvent(new Event('input', { bubbles: true }));
+	});
 	await typeIn('#m-start', '07:00');
 	await typeIn('#m-length', '1:00');
 	await typeIn('#m-note', 'Pulled cable, offline');
@@ -1392,7 +1402,7 @@ if (phase === 'back') {
 	const fresh = /** @type {string} */ (await text());
 	// The permit's receipt, from its line's own screen.
 	const receipt = await evaluate(`(async () => {
-		const a = [...document.querySelectorAll('a.rec.link')].find((a) => a.textContent.includes('City of Woodland'));
+		const a = [...document.querySelectorAll('a.box-row')].find((a) => a.textContent.includes('City of Woodland'));
 		if (!a) return null;
 		const r = await fetch(a.getAttribute('href') + '/receipt');
 		return { status: r.status, type: r.headers.get('content-type') };
@@ -1719,8 +1729,18 @@ if (phase === 'back') {
 	check((await text()).includes('A set price'), 'the access point is priced at a set price');
 	await go('/catalogue/services');
 	const services = /** @type {string} */ (await text());
-	await go('/timesheet/all');
-	const pulled = /** @type {string} */ (await text());
+	// Entered the day before its today, so in this month or, on a first, the
+	// last: each month that day could fall in, on any clock, is looked at.
+	const months = [
+		...new Set(
+			[1, 0, -1, -2].map((d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 7))
+		)
+	];
+	let pulled = '';
+	for (const month of months) {
+		await go(`/timesheet/all?month=${month}`);
+		pulled += /** @type {string} */ (await text());
+	}
 	check(
 		services.includes(SERVICE) && pulled.includes('Pulled cable, offline'),
 		'the service arrives, and the hour entered under it with it'

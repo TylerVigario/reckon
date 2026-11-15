@@ -174,15 +174,17 @@ check(
 await press('Add a line');
 await settle(2500);
 check(
-	(await evaluate(`document.querySelector('.seg button.on')?.textContent.trim()`)) === 'From stock',
+	(await evaluate(
+		`document.querySelector('.seg button[aria-pressed="true"]')?.textContent.trim()`
+	)) === 'From stock',
 	'a line is from stock unless it is said otherwise'
 );
 await choose('#l-site', SITE);
 await set('#l-find', 'raceway');
 await settle(200);
 const picked = await run((/** @type {string} */ name) => {
-	const b = [...document.querySelectorAll('.pick button.rec')].find(
-		(x) => x.querySelector('.rec-t')?.textContent?.trim() === name
+	const b = [...document.querySelectorAll('.pick [role=radio]')].find(
+		(x) => x.querySelector('.n')?.textContent?.trim() === name
 	);
 	/** @type {HTMLElement | undefined} */ (b)?.click();
 	return !!b;
@@ -301,8 +303,8 @@ check(
 /** The draft's line that says `name`: its own screen, where its receipt is. */
 const lineOf = (/** @type {string} */ name) =>
 	run((/** @type {string} */ text) => {
-		const a = [...document.querySelectorAll('a.rec.link')].find(
-			(x) => x.querySelector('.rec-t')?.textContent?.trim() === text
+		const a = [...document.querySelectorAll('a.box-row')].find(
+			(x) => x.querySelector('.n')?.textContent?.trim() === text
 		);
 		return a ? /** @type {HTMLAnchorElement} */ (a).getAttribute('href') : null;
 	}, name);

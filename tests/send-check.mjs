@@ -178,9 +178,9 @@ const shown = /** @type {string} */ (
 const token = /\/invoice\/([A-Za-z0-9_-]{20,64})$/.exec(shown)?.[1] ?? '';
 check(
 	sentPath === draft &&
-		/the client's link/i.test(sent) &&
+		/the client.s link/i.test(sent) &&
 		/(^|\n)sent(\n|$)/i.test(sent) &&
-		/(^|\n)owed(\n|$)/i.test(sent) &&
+		/\$[\d,.]+ owed of \$[\d,.]+/.test(sent) &&
 		token !== '',
 	`it is sent: the invoice shows what is owed and the client's link (${line(shown)})`
 );

@@ -38,59 +38,96 @@
 
 <Top title="Ready to send" {sub} back={resolve('/')} backLabel="Today" />
 
-<div class="pad">
-	<div class="sec">
-		<div class="sec-h">
-			<h2>Built, none sent</h2>
-			<span class="sp"></span>
-			<span class="chip">Review and send · never auto-sent</span>
+<div class="pad primer">
+	<section class="box" aria-labelledby="built-h">
+		<div class="box-h">
+			<h2 class="box-t" id="built-h">Built, none sent</h2>
+			<span class="sub">reviewed and sent, never by itself</span>
 		</div>
-		<div class="rows">
-			{#each data.drafts as d (d.id)}
-				<a class="rec link" class:warn={d.aged} href={resolve('/invoices/[id]', { id: d.id })}>
-					<div class="rec-m">
-						<div class="rec-t">{d.number} · {d.who}</div>
-						<div class="rec-s">
-							{#each lines(d) as l, i (i)}{#if i}<br />{/if}{l}{/each}
-						</div>
-						{#if d.aged}
-							<div class="rec-c">
-								<span class="chip warn">
-									<span class="dot"></span>Worked {day(d.oldest_worked_on)}{d.days_waiting === null
-										? ''
-										: `, ${daysAgo(d.days_waiting)}`}
-								</span>
-							</div>
-						{/if}
-					</div>
-					<div class="rec-n">
-						<span class="rec-v">{money(d.gross)}</span>
-						<span class="rec-x">{d.lines} {Number(d.lines) === 1 ? 'line' : 'lines'}</span>
-					</div>
-					<span class="arw" aria-hidden="true">›</span>
-				</a>
-			{:else}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t"><span class="lt">Nothing drafted</span></div>
-						<div class="rec-s">
-							Nothing builds drafts yet. Work unbilled for more than {count(data.alertDays, 'day')} is
-							flagged on Unbilled.
-						</div>
-					</div>
-				</div>
-			{/each}
-			{#if data.drafts.length}
-				<div class="rec tot">
-					<div class="rec-m">
-						<div class="rec-t">
-							{data.drafts.length}
-							{data.drafts.length === 1 ? 'draft' : 'drafts'}
-						</div>
-					</div>
-					<div class="rec-n"><span class="rec-v">{money(data.total)}</span></div>
-				</div>
-			{/if}
-		</div>
-	</div>
+		{#each data.drafts as d (d.id)}
+			<a class="box-row line" href={resolve('/invoices/[id]', { id: d.id })}>
+				<span class="what">
+					<span class="n">{d.number} · {d.who}</span>
+					{#each lines(d) as l, i (i)}<span class="sub">{l}</span>{/each}
+					{#if d.aged}
+						<span class="labs"
+							><span class="lab warn"
+								>Worked {day(d.oldest_worked_on)}{d.days_waiting === null
+									? ''
+									: `, ${daysAgo(d.days_waiting)}`}</span
+							></span
+						>
+					{/if}
+				</span>
+				<span class="fig">
+					<span class="v">{money(d.gross)}</span>
+					<span class="sub">{d.lines} {Number(d.lines) === 1 ? 'line' : 'lines'}</span>
+				</span>
+			</a>
+		{:else}
+			<p class="box-row muted">
+				Nothing drafted. Nothing builds drafts yet. Work unbilled for more than {count(
+					data.alertDays,
+					'day'
+				)} is flagged on Unbilled.
+			</p>
+		{/each}
+		{#if data.drafts.length}
+			<div class="box-row line tot">
+				<span class="what"
+					><span class="n"
+						>{data.drafts.length}
+						{data.drafts.length === 1 ? 'draft' : 'drafts'}</span
+					></span
+				>
+				<span class="v">{money(data.total)}</span>
+			</div>
+		{/if}
+	</section>
 </div>
+
+<style>
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 56px;
+		box-sizing: border-box;
+		margin: 0;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
+	}
+	.labs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-top: 4px;
+	}
+	.fig {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
+	}
+	.v {
+		flex: 0 0 auto;
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
+	}
+	.tot {
+		background: var(--bgColor-muted);
+	}
+</style>

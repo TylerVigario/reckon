@@ -5,6 +5,7 @@
 	import Top from '#lib/Top.svelte';
 	import ReceiptPicker from '#lib/ReceiptPicker.svelte';
 	import OfflineBanner from '#lib/OfflineBanner.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import {
 		enqueueChange,
 		enqueueLine,
@@ -193,9 +194,12 @@
 	const per = (m: Item) => (m.unit === 'each' ? 'each' : `per ${m.short}`);
 
 	/** Picks an item, and names the line after it unless it was named already. */
+	// Picked, the list folds to what was picked; Change opens it again.
+	let choosing = $state(untrack(() => !was.material_id));
 	function pick(m: Item) {
 		if (description === '' || description === item?.name) description = m.name;
 		materialId = m.id;
+		choosing = false;
 	}
 
 	/** What a draw takes, what it bills and its tax, by the rule the server saves it by. */
@@ -375,6 +379,10 @@
 	});
 </script>
 
+{#snippet wrong(key: string)}
+	{#if errors[key]}<p class="fc-e" id="l-{key}-e"><Octicon name="alert" />{errors[key]}</p>{/if}
+{/snippet}
+
 <Top
 	title={editing ? 'Change the line' : 'Add a line'}
 	sub={`${named} · ${data.draft.who}`}
@@ -384,364 +392,421 @@
 
 <OfflineBanner asOf={data.as_of} {waiting} />
 
-<div class="pad">
+<div class="pad primer">
 	{#if fixing?.refused}
-		<p class="why">
-			Refused: {fixing.refused.detail} Fix it and add it again, or discard it from the draft.
-		</p>
+		<div class="banner crit" role="alert">
+			<Octicon name="alert" />
+			<div class="banner-m">
+				<p class="banner-t why">
+					Refused: {fixing.refused.detail} Fix it and add it again, or discard it from the draft.
+				</p>
+			</div>
+		</div>
 	{/if}
 	{#if data.draft.status && data.draft.status !== 'draft'}
-		<p class="why">
-			{data.draft.number} has gone out, so this line will start a new draft for {data.draft.who}
-			when it reaches the server.
-		</p>
-	{/if}
-	{#if why}<p class="why">{why}</p>{/if}
-	<form class="rows form" onsubmit={save}>
-		<div class="fld">
-			<span class="lbl">Kind</span>
-			<input type="hidden" name="kind" value={kind} />
-			{#if editing}
-				<span>{stock ? 'From stock' : bought ? 'Bought' : 'Paid for them'}</span>
-			{:else}
-				<div class="seg">
-					<button type="button" class:on={stock} onclick={() => (kind = 'material')}
-						>From stock</button
-					>
-					<button type="button" class:on={bought} onclick={() => (kind = 'bought')}>Bought</button>
-					<button type="button" class:on={kind === 'paid_for'} onclick={() => (kind = 'paid_for')}
-						>Paid for them</button
-					>
-				</div>
-			{/if}
-			<small class="lt">
-				{stock
-					? 'Anything held in stock, in whatever unit it is counted.'
-					: bought
-						? 'Goods bought for this job and passed on.'
-						: 'A fee, a hire or a bill paid on their behalf. Not goods.'}
-			</small>
-			{#if errors.kind}<small class="why">{errors.kind}</small>{/if}
+		<div class="banner warn" role="status">
+			<Octicon name="alert" />
+			<div class="banner-m">
+				<p class="banner-t why">
+					{data.draft.number} has gone out, so this line will start a new draft for {data.draft.who}
+					when it reaches the server.
+				</p>
+			</div>
 		</div>
+	{/if}
+	{#if why}
+		<div class="banner crit" role="alert">
+			<Octicon name="alert" />
+			<div class="banner-m"><p class="banner-t why">{why}</p></div>
+		</div>
+	{/if}
+	<form class="box form" onsubmit={save}>
+		<div class="box-row fields">
+			<div class="fc">
+				<span class="fc-l" id="l-kind-l">Kind</span>
+				<input type="hidden" name="kind" value={kind} />
+				{#if editing}
+					<span>{stock ? 'From stock' : bought ? 'Bought' : 'Paid for them'}</span>
+				{:else}
+					<div class="seg" role="group" aria-labelledby="l-kind-l">
+						<button type="button" aria-pressed={stock} onclick={() => (kind = 'material')}
+							>From stock</button
+						>
+						<button type="button" aria-pressed={bought} onclick={() => (kind = 'bought')}
+							>Bought</button
+						>
+						<button
+							type="button"
+							aria-pressed={kind === 'paid_for'}
+							onclick={() => (kind = 'paid_for')}>Paid for them</button
+						>
+					</div>
+				{/if}
+				<p class="fc-c">
+					{stock
+						? 'Anything held in stock, in whatever unit it is counted.'
+						: bought
+							? 'Goods bought for this job and passed on.'
+							: 'A fee, a hire or a bill paid on their behalf. Not goods.'}
+				</p>
+				{@render wrong('kind')}
+			</div>
 
-		<div class="fld">
-			<label for="l-site">Where</label>
-			<span class="inp-wrap">
-				<select id="l-site" name="site_id" class="inp" bind:value={siteId}>
+			<div class="fc">
+				<label class="fc-l" for="l-site">Where</label>
+				<select id="l-site" name="site_id" class="ti" bind:value={siteId}>
 					<option value="">Not at one of their sites</option>
 					{#each data.sites as s (s.id)}<option value={s.id}>{s.label}</option>{/each}
 				</select>
-				{#if site?.rate_pct}<span class="hint">{pct(site.rate_pct)}</span>{/if}
-			</span>
-			{#if errors.site_id}<small class="why">{errors.site_id}</small>{/if}
-		</div>
-
-		{#if stock && editing}
-			<div class="fld">
-				<span class="lbl">Item</span>
-				<input type="hidden" name="material_id" value={materialId} />
-				<span>{item?.name ?? 'An item no longer in the catalogue'}</span>
-				{#if item}
-					<small class="lt"
-						>{quantity(onHand(item).toString())} {item.short} more on the shelf</small
-					>
+				{#if errors.site_id}
+					{@render wrong('site_id')}
+				{:else if site?.rate_pct}
+					<p class="fc-c">Taxed there at {pct(site.rate_pct)}.</p>
 				{/if}
 			</div>
-		{:else if stock}
-			<div class="fld">
-				<label for="l-find">Item</label>
-				<input
-					id="l-find"
-					class="inp"
-					type="search"
-					placeholder="Find in stock"
-					autocomplete="off"
-					bind:value={find}
-				/>
-				<input type="hidden" name="material_id" value={materialId} />
-				{#if errors.material_id}<small class="why">{errors.material_id}</small>{/if}
-			</div>
-			<div class="rows inset pick" role="radiogroup" aria-label="Item">
-				{#each shown as m (m.id)}
-					<button
-						type="button"
-						class="rec"
-						class:on={m.id === materialId}
-						role="radio"
-						aria-checked={m.id === materialId}
-						onclick={() => pick(m)}
-					>
-						<span class="rec-m">
-							<span class="rec-t">{m.name}</span>
-							<span class="rec-s">{quantity(onHand(m).toString())} {m.short} on the shelf</span>
-						</span>
-						<span class="rec-n">
-							<span class="rec-v">{unitPrice(priceOf(m))}</span>
-							<span class="rec-x">{per(m)}</span>
-						</span>
-					</button>
-				{:else}
-					<div class="rec">
-						<span class="rec-m"
-							><span class="rec-t"
-								><span class="lt"
-									>{offered.length ? 'Nothing in stock by that name' : 'Nothing in stock'}</span
-								></span
-							></span
-						>
-					</div>
-				{/each}
-			</div>
-		{/if}
 
-		{#if stock}
-			<div class="fld">
-				<label for="l-qty">How much</label>
-				<span class="inp-wrap">
+			{#if stock && editing}
+				<div class="fc">
+					<span class="fc-l">Item</span>
+					<input type="hidden" name="material_id" value={materialId} />
+					<span>{item?.name ?? 'An item no longer in the catalogue'}</span>
+					{#if item}
+						<p class="fc-c">{quantity(onHand(item).toString())} {item.short} more on the shelf</p>
+					{/if}
+				</div>
+			{:else if stock}
+				<div class="fc">
+					<span class="fc-l" id="l-item-l">Item</span>
+					<input type="hidden" name="material_id" value={materialId} />
+					{#if item && !choosing}
+						<div class="picked">
+							<span class="what">
+								<span class="n">{item.name}</span>
+								<span class="sub"
+									>{quantity(onHand(item).toString())} {item.short} on the shelf</span
+								>
+							</span>
+							<button type="button" class="btn sm" onclick={() => (choosing = true)}>Change</button>
+						</div>
+					{:else}
+						<input
+							id="l-find"
+							class="ti"
+							type="search"
+							placeholder="Find in stock"
+							autocomplete="off"
+							aria-labelledby="l-item-l"
+							bind:value={find}
+						/>
+						<div class="pick" role="radiogroup" aria-labelledby="l-item-l">
+							{#each shown as m (m.id)}
+								<button
+									type="button"
+									class="opt"
+									role="radio"
+									aria-checked={m.id === materialId}
+									onclick={() => pick(m)}
+								>
+									<span class="what">
+										<span class="n">{m.name}</span>
+										<span class="sub">{quantity(onHand(m).toString())} {m.short} on the shelf</span>
+									</span>
+									<span class="fig">
+										<span class="v">{unitPrice(priceOf(m))}</span>
+										<span class="sub">{per(m)}</span>
+									</span>
+								</button>
+							{:else}
+								<p class="opt muted">
+									{offered.length ? 'Nothing in stock by that name.' : 'Nothing in stock.'}
+								</p>
+							{/each}
+						</div>
+					{/if}
+					{@render wrong('material_id')}
+				</div>
+			{/if}
+
+			{#if stock}
+				<div class="fc">
+					<label class="fc-l" for="l-qty">How much{item ? `, in ${item.short}` : ''}</label>
 					<input
 						id="l-qty"
 						name="qty"
-						class="inp"
+						class="ti"
 						inputmode="decimal"
+						autocomplete="off"
 						placeholder="147"
 						bind:value={qty}
 					/>
-					{#if item}<span class="hint">{item.short}</span>{/if}
-				</span>
-				{#if errors.qty}<small class="why">{errors.qty}</small>{/if}
+					{@render wrong('qty')}
+				</div>
+			{/if}
+
+			<div class="fc">
+				<label class="fc-l" for="l-desc">Description</label>
+				<input
+					id="l-desc"
+					name="description"
+					class="ti"
+					autocomplete="off"
+					placeholder={stock
+						? 'Cat6 plenum cable'
+						: bought
+							? 'Keystone jacks ×12, faceplates ×3'
+							: 'Low-voltage permit'}
+					bind:value={description}
+				/>
+				{#if errors.description}
+					{@render wrong('description')}
+				{:else}
+					<p class="fc-c">As it appears on the invoice.</p>
+				{/if}
 			</div>
-		{/if}
 
-		<div class="fld">
-			<label for="l-desc">Description — appears on the invoice</label>
-			<input
-				id="l-desc"
-				name="description"
-				class="inp"
-				placeholder={stock
-					? 'Cat6 plenum cable'
-					: bought
-						? 'Keystone jacks ×12, faceplates ×3'
-						: 'Low-voltage permit'}
-				bind:value={description}
-			/>
-			{#if errors.description}<small class="why">{errors.description}</small>{/if}
-		</div>
-
-		{#if stock}
-			{#if drawn && drawn.short === null}
-				<div class="bill">
-					<div class="kv">
-						<span class="k">Bills</span>
-						<span class="v"
-							>{money(drawn.amount)}, {unitPrice(drawn.unitPrice)} {item ? per(item) : ''}</span
-						>
-					</div>
-					<div class="kv">
-						<span class="k">Tax</span>
-						<span class="v"
-							>{drawn.tax !== null
+			{#if stock}
+				{#if drawn && drawn.short === null}
+					<dl class="bill">
+						<dt>Bills</dt>
+						<dd>{money(drawn.amount)}, {unitPrice(drawn.unitPrice)} {item ? per(item) : ''}</dd>
+						<dt>Tax</dt>
+						<dd>
+							{drawn.tax !== null
 								? `${money(drawn.tax)} at ${pct(drawn.taxRatePct)}`
 								: drawn.needsASite
 									? 'needs the site it went to'
-									: 'none'}</span
-						>
-					</div>
-					<div class="kv">
-						<span class="k">Cost</span>
-						<span class="v"
-							>{money(drawn.exTaxCost)} and {money(drawn.taxPaid)} tax, {data.costing === 'average'
+									: 'none'}
+						</dd>
+						<dt>Cost</dt>
+						<dd>
+							{money(drawn.exTaxCost)} and {money(drawn.taxPaid)} tax, {data.costing === 'average'
 								? 'at the average'
-								: 'oldest first'}</span
-						>
-					</div>
-					<div class="kv">
-						<span class="k">Left after</span>
-						<span class="v">{quantity(drawn.left)} {item?.short}</span>
-					</div>
-				</div>
-			{:else if drawn?.short}
-				<small class="why">{shortBy(drawn.short)}</small>
-			{/if}
-		{:else}
-			<div class="fld">
-				<label for="l-from">{bought ? 'Bought from' : 'Paid to'}</label>
-				<input
-					id="l-from"
-					name="bought_from"
-					class="inp"
-					placeholder={bought ? 'Valley Hardware' : 'City of Woodland'}
-					bind:value={boughtFrom}
-				/>
-				{#if errors.bought_from}<small class="why">{errors.bought_from}</small>{/if}
-			</div>
-
-			<div class="fld">
-				<label for="l-cost">{bought ? 'Cost before tax, all of it' : 'What was paid'}</label>
-				<input
-					id="l-cost"
-					name="ex_tax_cost"
-					class="inp"
-					inputmode="decimal"
-					placeholder="33.33"
-					bind:value={cost}
-				/>
-				{#if errors.ex_tax_cost}<small class="why">{errors.ex_tax_cost}</small>{/if}
-			</div>
-
-			{#if bought}
-				<div class="fld">
-					<label for="l-tax">Tax paid, all of it</label>
+								: 'oldest first'}
+						</dd>
+						<dt>Left after</dt>
+						<dd>{quantity(drawn.left)} {item?.short}</dd>
+					</dl>
+				{:else if drawn?.short}
+					<p class="fc-e why"><Octicon name="alert" />{shortBy(drawn.short)}</p>
+				{/if}
+			{:else}
+				<div class="fc">
+					<label class="fc-l" for="l-from">{bought ? 'Bought from' : 'Paid to'}</label>
 					<input
-						id="l-tax"
-						name="tax_paid"
-						class="inp"
-						inputmode="decimal"
-						placeholder="0.00"
-						bind:value={taxPaid}
+						id="l-from"
+						name="bought_from"
+						class="ti"
+						autocomplete="off"
+						placeholder={bought ? 'Valley Hardware' : 'City of Woodland'}
+						bind:value={boughtFrom}
 					/>
-					{#if errors.tax_paid}<small class="why">{errors.tax_paid}</small>{/if}
+					{@render wrong('bought_from')}
 				</div>
-			{/if}
 
-			{#if bills}
-				<div class="bill">
-					<div class="kv">
-						<span class="k">Bills</span>
-						<span class="v"
-							>{money(bills.amount)}{bought && Number(data.markup) > 0
+				<div class="fc">
+					<label class="fc-l" for="l-cost"
+						>{bought ? 'Cost before tax, all of it' : 'What was paid'}</label
+					>
+					<input
+						id="l-cost"
+						name="ex_tax_cost"
+						class="ti"
+						inputmode="decimal"
+						autocomplete="off"
+						placeholder="33.33"
+						bind:value={cost}
+					/>
+					{@render wrong('ex_tax_cost')}
+				</div>
+
+				{#if bought}
+					<div class="fc">
+						<label class="fc-l" for="l-tax">Tax paid, all of it</label>
+						<input
+							id="l-tax"
+							name="tax_paid"
+							class="ti"
+							inputmode="decimal"
+							autocomplete="off"
+							placeholder="0.00"
+							bind:value={taxPaid}
+						/>
+						{@render wrong('tax_paid')}
+					</div>
+				{/if}
+
+				{#if bills}
+					<dl class="bill">
+						<dt>Bills</dt>
+						<dd>
+							{money(bills.amount)}{bought && Number(data.markup) > 0
 								? `, ${percent(data.markup)} over cost`
 								: bought
 									? ', as it cost'
-									: ', at cost'}</span
-						>
-					</div>
-					<div class="kv">
-						<span class="k">Tax</span>
-						<span class="v"
-							>{bills.tax !== null
+									: ', at cost'}
+						</dd>
+						<dt>Tax</dt>
+						<dd>
+							{bills.tax !== null
 								? `${money(bills.tax)} at ${pct(bills.taxRatePct)}`
 								: bills.needsASite
 									? 'needs the site it went to'
-									: 'none'}</span
+									: 'none'}
+						</dd>
+					</dl>
+				{/if}
+
+				<div class="fc">
+					<span class="fc-l" id="l-paid-l">Who paid</span>
+					<input type="hidden" name="paid_by" value={paidBy} />
+					<div class="seg" role="group" aria-labelledby="l-paid-l">
+						{#each data.people as p (p.id)}
+							<button type="button" aria-pressed={paidBy === p.id} onclick={() => (paidBy = p.id)}
+								>{p.name.split(' ')[0]}</button
+							>
+						{/each}
+						<button type="button" aria-pressed={paidBy === ''} onclick={() => (paidBy = '')}
+							>Business</button
 						>
 					</div>
+					<p class="fc-c">Whoever paid out of their own pocket is owed it back.</p>
+					{@render wrong('paid_by')}
+				</div>
+
+				<div class="fc">
+					<span class="fc-l">Receipt</span>
+					<ReceiptPicker id="l-receipt" />
+					<p class="fc-c">
+						{fixing?.line.receipt || editing?.receipt
+							? 'The receipt taken before is kept unless another is chosen.'
+							: 'A photo, shrunk on this phone before it is sent, or a PDF.'}
+					</p>
+					{@render wrong('receipt')}
 				</div>
 			{/if}
-
-			<div class="fld">
-				<span class="lbl">Who paid</span>
-				<input type="hidden" name="paid_by" value={paidBy} />
-				<div class="seg">
-					{#each data.people as p (p.id)}
-						<button type="button" class:on={paidBy === p.id} onclick={() => (paidBy = p.id)}
-							>{p.name.split(' ')[0]}</button
-						>
-					{/each}
-					<button type="button" class:on={paidBy === ''} onclick={() => (paidBy = '')}
-						>Business</button
-					>
-				</div>
-				<small class="lt">Whoever paid out of their own pocket is owed it back.</small>
-				{#if errors.paid_by}<small class="why">{errors.paid_by}</small>{/if}
-			</div>
-
-			<div class="fld">
-				<span class="lbl">Receipt</span>
-				<ReceiptPicker id="l-receipt" />
-				<small class="lt"
-					>{fixing?.line.receipt || editing?.receipt
-						? 'The receipt taken before is kept unless another is chosen.'
-						: 'A photo, shrunk on this phone before it is sent, or a PDF.'}</small
-				>
-				{#if errors.receipt}<small class="why">{errors.receipt}</small>{/if}
-			</div>
-		{/if}
-
-		<button class="btn pri blk" disabled={saving}
-			>{editing
-				? saving
-					? 'Saving…'
-					: 'Save the change'
-				: saving
-					? 'Adding…'
-					: 'Add the line'}</button
-		>
+		</div>
+		<div class="box-row keep">
+			<button class="btn pri" disabled={saving}
+				>{editing
+					? saving
+						? 'Saving…'
+						: 'Save the change'
+					: saving
+						? 'Adding…'
+						: 'Add the line'}</button
+			>
+			<a class="btn" href={back}>Cancel</a>
+		</div>
 	</form>
 </div>
 
 <style>
-	.form {
-		padding: 16px;
+	.fields {
 		display: flex;
 		flex-direction: column;
-		gap: 15px;
+		gap: 20px;
+		padding: 16px;
 	}
-	.lbl {
-		font-family: var(--fontStack-monospace);
-		font-size: 10px;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--fgColor-muted);
+	.fc {
+		max-width: 480px;
 	}
-	.inp-wrap {
-		position: relative;
-		display: block;
+	.keep {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 12px;
+		padding: 16px;
+		background: var(--bgColor-muted);
 	}
-	.inp-wrap .hint {
-		position: absolute;
-		right: 38px;
-		top: 50%;
-		transform: translateY(-50%);
-		font-size: 13px;
-		color: var(--fgColor-muted);
-		font-family: var(--fontStack-monospace);
-		pointer-events: none;
-	}
-	#l-qty + .hint {
-		right: 14px;
-	}
+	/* Primer's ActionList for one choice: each item a row, the chosen one
+	   marked, in a bordered list under the field that finds it. */
 	.pick {
-		margin-top: -6px;
+		display: flex;
+		flex-direction: column;
+		border: 1px solid var(--borderColor-default);
+		border-radius: var(--borderRadius-medium);
+		overflow: hidden;
 	}
-	.pick button.rec {
+	.opt {
+		display: flex;
+		align-items: center;
+		gap: 12px;
 		width: 100%;
-		text-align: left;
+		min-height: 56px;
+		box-sizing: border-box;
+		margin: 0;
+		padding: 8px 12px;
 		font: inherit;
 		color: inherit;
-		background: none;
+		text-align: left;
+		background: var(--bgColor-default);
 		border: 0;
 		cursor: pointer;
 	}
-	.pick .rec-m,
-	.pick .rec-n,
-	.pick .rec-t,
-	.pick .rec-s {
-		display: block;
+	.opt + .opt {
+		border-top: 1px solid var(--borderColor-muted);
 	}
-	.pick .rec.on {
+	.opt:hover {
+		background: var(--control-transparent-bgColor-hover);
+	}
+	.opt[aria-checked='true'] {
 		background: var(--bgColor-accent-muted);
 		box-shadow: inset 3px 0 0 var(--borderColor-accent-emphasis);
 	}
-	.pick button.rec:focus-visible {
-		outline: 2px solid var(--borderColor-accent-emphasis);
+	.opt:focus-visible {
+		outline: 2px solid var(--focus-outlineColor);
 		outline-offset: -2px;
 	}
-	.bill {
+	.picked {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 8px 12px;
+		border: 1px solid var(--borderColor-default);
+		border-radius: var(--borderRadius-medium);
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
-		padding: 12px 14px;
+		gap: 2px;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
+	}
+	.fig {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
+	}
+	.v {
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
+	}
+	/* What the line comes to, as it is filled in. */
+	.bill {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		gap: 6px 16px;
+		margin: 0;
+		padding: 12px 16px;
+		background: var(--bgColor-muted);
+		border: 1px solid var(--borderColor-default);
 		border-radius: var(--borderRadius-medium);
-		background: var(--bgColor-accent-muted);
-		border: 1px solid var(--borderColor-accent-muted);
 	}
-	.why {
-		color: var(--fgColor-danger);
-		font-size: 12.5px;
+	.bill dt {
+		font-weight: 600;
 	}
-	button.btn[disabled] {
-		opacity: 0.6;
-		cursor: default;
+	.bill dd {
+		margin: 0;
+		color: var(--fgColor-muted);
+		overflow-wrap: anywhere;
 	}
 </style>

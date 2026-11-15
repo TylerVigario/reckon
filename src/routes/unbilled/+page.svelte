@@ -1,11 +1,15 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
+	import Segmented from '#lib/Segmented.svelte';
+	import { page } from '$app/state';
 	import { count, day, hours, miles, names } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	let { data }: PageProps = $props();
+	// What is to be billed, or what was counted and not billed (#lib/Segmented).
+	const given = $derived(page.url.searchParams.get('view') === 'given');
 
 	// Who was there: the person a one-person entry names, or a team entry's crew.
 	const worked = (crew: string, by: string | null, crewNames: string[] = []) =>
@@ -62,78 +66,120 @@
 
 <Top title="Unbilled work" {sub} back={resolve('/')} backLabel="Today" />
 
-<div class="pad">
-	<div class="sec">
-		<div class="sec-h">
-			<h2>Oldest first</h2>
-			<span class="sp"></span>
-			{#if data.overdue}
-				<span class="chip warn">
-					<span class="dot"></span>{data.overdue} past {count(data.alertDays, 'day')}
-				</span>
-			{:else}
-				<span class="chip">Nothing past {count(data.alertDays, 'day')}</span>
-			{/if}
-		</div>
-		<div class="rows">
+<div class="pad primer">
+	{#if data.given.length}
+		<Segmented
+			label="Unbilled work, seen"
+			items={[
+				{ href: resolve('/unbilled'), label: 'To bill', current: !given },
+				{ href: resolve('/unbilled?view=given'), label: 'Not billable', current: given }
+			]}
+		/>
+	{/if}
+
+	{#if !given || !data.given.length}
+		<section class="box" aria-labelledby="bill-h">
+			<div class="box-h">
+				<h2 class="box-t" id="bill-h">To bill, oldest first</h2>
+				{#if data.overdue}
+					<span class="lab warn">{data.overdue} past {count(data.alertDays, 'day')}</span>
+				{:else}
+					<span class="lab">Nothing past {count(data.alertDays, 'day')}</span>
+				{/if}
+			</div>
 			{#each rows as r (r.key)}
-				<svelte:element
-					this={r.href ? 'a' : 'div'}
-					class="rec"
-					class:link={r.href}
-					class:warn={r.days > data.alertDays}
-					href={r.href}
-				>
-					<div class="rec-m">
-						<div class="rec-t">
-							{r.title}{#if r.aside}&nbsp;<span class="lt">· {r.aside}</span>{/if}
-						</div>
-						<div class="rec-s">{r.detail}</div>
-					</div>
-					<div class="rec-n">
-						<span class="rec-v">{money(r.worth)}</span>
-						<span class="rec-x">{r.measure} · {count(r.days, 'day', 'narrow')}</span>
-					</div>
-					{#if r.href}<span class="arw" aria-hidden="true">›</span>{/if}
+				<svelte:element this={r.href ? 'a' : 'div'} class="box-row line" href={r.href}>
+					<span class="what">
+						<span class="n">{r.title}{r.aside ? ` · ${r.aside}` : ''}</span>
+						<span class="sub">{r.detail}</span>
+						{#if r.days > data.alertDays}
+							<span class="labs"
+								><span class="lab warn">Past {count(data.alertDays, 'day')}</span></span
+							>
+						{/if}
+					</span>
+					<span class="fig">
+						<span class="v">{money(r.worth)}</span>
+						<span class="sub">{r.measure} · {count(r.days, 'day', 'narrow')}</span>
+					</span>
 				</svelte:element>
 			{:else}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t"><span class="lt">Nothing waiting</span></div>
-						<div class="rec-s">Everything worked has been put on an invoice</div>
-					</div>
-				</div>
+				<p class="box-row muted">Nothing waiting: everything worked has been put on an invoice.</p>
 			{/each}
 			{#if rows.length}
-				<div class="rec tot">
-					<div class="rec-m"><div class="rec-t">Worked, not yet billed</div></div>
-					<div class="rec-n"><span class="rec-v">{money(data.total)}</span></div>
+				<div class="box-row line tot">
+					<span class="what"><span class="n">Worked, not yet billed</span></span>
+					<span class="v">{money(data.total)}</span>
 				</div>
 			{/if}
-		</div>
-	</div>
-
-	{#if data.given.length}
-		<div class="sec">
-			<div class="sec-h"><h2>Not billable, and counted anyway</h2></div>
-			<div class="rows">
-				{#each data.given as g (g.id)}
-					<div class="rec gone">
-						<div class="rec-m">
-							<div class="rec-t">
-								{g.service}{#if g.who}&nbsp;<span class="lt">· {g.who}</span>{/if}
-							</div>
-							<div class="rec-s">
-								{[worked('one', g.worked_by), day(g.worked_on), g.site].filter(Boolean).join(' · ')}
-							</div>
-						</div>
-						<div class="rec-n">
-							<span class="rec-v mut">—</span>
-							<span class="rec-x">{hours(g.hours)}</span>
-						</div>
-					</div>
-				{/each}
-			</div>
-		</div>
+		</section>
+	{:else}
+		<section class="box" aria-labelledby="given-h">
+			<div class="box-h"><h2 class="box-t" id="given-h">Not billable, and counted anyway</h2></div>
+			{#each data.given as g (g.id)}
+				<div class="box-row line">
+					<span class="what">
+						<span class="n">{g.service}{g.who ? ` · ${g.who}` : ''}</span>
+						<span class="sub">
+							{[worked('one', g.worked_by), day(g.worked_on), g.site].filter(Boolean).join(' · ')}
+						</span>
+					</span>
+					<span class="fig">
+						<span class="v muted">—</span>
+						<span class="sub">{hours(g.hours)}</span>
+					</span>
+				</div>
+			{/each}
+		</section>
 	{/if}
 </div>
+
+<style>
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 56px;
+		box-sizing: border-box;
+		margin: 0;
+		color: inherit;
+		text-decoration: none;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		overflow-wrap: anywhere;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
+	}
+	.labs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-top: 4px;
+	}
+	.fig {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
+		text-align: right;
+	}
+	.v {
+		flex: 0 0 auto;
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
+	}
+	.tot {
+		background: var(--bgColor-muted);
+	}
+</style>

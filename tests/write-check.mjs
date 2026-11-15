@@ -1834,9 +1834,9 @@ const detailHeld = (/** @type {string} */ html, /** @type {string} */ name) =>
 		let draft = null;
 		for (const id of ids) {
 			await setOwn('Pacific/Kiritimati');
-			const k = /Assembled (\d{2}):(\d{2})/.exec(await page(`/invoices/${id}`));
+			const k = /assembled (\d{2}):(\d{2})/i.exec(await page(`/invoices/${id}`));
 			await setOwn('Pacific/Pago_Pago');
-			const p = /Assembled (\d{2}):(\d{2})/.exec(await page(`/invoices/${id}`));
+			const p = /assembled (\d{2}):(\d{2})/i.exec(await page(`/invoices/${id}`));
 			if (!k || !p) continue;
 			clocks.push(`${k[1]}:${k[2]}`, `${p[1]}:${p[2]}`);
 			draft = id;
