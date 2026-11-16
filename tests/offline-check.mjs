@@ -571,10 +571,9 @@ if (phase === 'offline') {
 		const s = document.querySelector('#s-service');
 		s.value = [...s.options].find((o) => o.value)?.value ?? '';
 		s.dispatchEvent(new Event('change', { bubbles: true }));
-		const team = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Team');
-		team?.click();
-		const bill = document.querySelector('button.tog.on');
-		bill?.click();
+		document.querySelector('input[name=s-who][value=team]')?.click();
+		const bill = document.querySelector('#s-billable');
+		if (bill?.checked) bill.click();
 	})()`);
 	await settle(300);
 	check(await click('Start the clock'), 'the timer starts');
@@ -1268,7 +1267,8 @@ if (phase === 'back' && other) {
 		const s = document.querySelector('#s-service');
 		s.value = [...s.options].find((o) => o.value)?.value ?? '';
 		s.dispatchEvent(new Event('change', { bubbles: true }));
-		document.querySelector('button.tog.on')?.click();
+		const bill = document.querySelector('#s-billable');
+		if (bill?.checked) bill.click();
 	})()`);
 	await settle(300);
 	await click('Start the clock');
@@ -1339,7 +1339,7 @@ if (phase === 'back') {
 	// Reload so the screen reads the queue as it now is.
 	await go('/timesheet');
 	const shown = await evaluate(`(() => {
-		const sec = [...document.querySelectorAll('.sec')].find((s) => s.querySelector('h2')?.textContent?.trim() === 'Not saved');
+		const sec = [...document.querySelectorAll('.box')].find((s) => s.querySelector('.box-t')?.textContent?.trim() === 'Not saved');
 		return sec ? sec.textContent.replace(/\\s+/g, ' ') : '';
 	})()`);
 	check(
@@ -1363,7 +1363,7 @@ if (phase === 'back') {
 		/^\d\d:\d\d$/.test(form.start) &&
 		form.took === '1:20' &&
 		/^\d\d:\d\d$/.test(form.end) &&
-		form.service === 'Choose what was done';
+		form.service === 'Pick what was done';
 	check(
 		filledIn,
 		`Fix opens it filled in, with the deleted service left to choose again${filledIn ? '' : ` (${JSON.stringify(form)})`}`
@@ -1573,7 +1573,7 @@ if (phase === 'back') {
 	await go('/timesheet');
 	const notSaved = /** @type {string} */ (
 		await evaluate(`(() => {
-			const sec = [...document.querySelectorAll('.sec')].find((s) => s.querySelector('h2')?.textContent?.trim() === 'Not saved');
+			const sec = [...document.querySelectorAll('.box')].find((s) => s.querySelector('.box-t')?.textContent?.trim() === 'Not saved');
 			return sec ? sec.textContent.replace(/\\s+/g, ' ') : '';
 		})()`)
 	);
@@ -1597,7 +1597,7 @@ if (phase === 'back') {
 	// The rows alone: the sign-out dialog, closed, says "on this phone" too.
 	const entriesAfter = /** @type {string} */ (
 		await evaluate(
-			`[...document.querySelectorAll('.rows')].map((r) => r.textContent).join(' ').replace(/\\s+/g, ' ')`
+			`[...document.querySelectorAll('.pad .box-row')].map((r) => r.textContent).join(' ').replace(/\\s+/g, ' ')`
 		)
 	);
 	const gone = !entriesAfter.includes('Checked the wiring closet');
@@ -1663,7 +1663,9 @@ if (phase === 'back') {
 			arrivedTrip.includes('Recorded offline by offline-check') &&
 				arrivedTrip.includes('Woodland office') &&
 				arrivedTrip.includes(`${trips.driven.toFixed(1)} mi driven`) &&
-				/Leg assignment.*Harbor Light Dental.*Valley Oak Veterinary/i.test(arrivedTrip),
+				/Legs, to whoever caused them.*Harbor Light Dental.*Valley Oak Veterinary/is.test(
+					arrivedTrip
+				),
 			`the trip is as it was recorded, its legs worked out on arrival (${trips.driven.toFixed(1)} mi)`
 		);
 	}

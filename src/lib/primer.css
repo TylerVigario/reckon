@@ -398,26 +398,109 @@
 	background-repeat: no-repeat;
 }
 
-/* A choice, with what it means under it: Primer's RadioGroup with captions. */
-.primer .rad {
+/* Places in the order they came, on a line: Primer's Timeline, condensed --
+   a ring on the line for each, filled at either end. An ordered list, named
+   by the heading over it. */
+.primer .tl {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.primer .tl-i {
+	position: relative;
+	display: flex;
+	gap: var(--base-size-12);
+	padding: var(--base-size-8) 0;
+}
+.primer .tl-i::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 7px;
+	width: 2px;
+	background: var(--borderColor-muted);
+}
+.primer .tl-i:first-child::before {
+	top: 18px;
+}
+.primer .tl-i:last-child::before {
+	bottom: auto;
+	height: 18px;
+}
+.primer .tl-b {
+	position: relative;
+	flex: 0 0 auto;
+	width: 16px;
+	height: 16px;
+	margin-top: var(--base-size-2);
+	box-sizing: border-box;
+	border: 2px solid var(--borderColor-emphasis);
+	border-radius: 50%;
+	background: var(--bgColor-default);
+}
+.primer .tl-i:first-child .tl-b,
+.primer .tl-i:last-child .tl-b {
+	background: var(--borderColor-emphasis);
+}
+.primer .tl-m {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: var(--base-size-2);
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+/* Why a place is empty, and the one thing to do about it: Primer's Blankslate,
+   in a box where it is not all there is on the screen. */
+.primer .blank {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--base-size-8);
+	padding: var(--base-size-32) var(--base-size-16);
+	text-align: center;
+}
+.primer .blank-h {
+	margin: 0;
+	font-size: var(--text-title-size-medium);
+	font-weight: var(--base-text-weight-semibold);
+}
+.primer .blank-d {
+	margin: 0;
+	max-width: 30rem;
+	color: var(--fgColor-muted);
+}
+.primer .blank .btn {
+	margin-top: var(--base-size-8);
+}
+
+/* A choice, with what it means under it: Primer's RadioGroup with captions,
+   and a Checkbox (.chk) drawn the same way, alone or in a CheckboxGroup. */
+.primer .rad,
+.primer .chk {
 	display: flex;
 	gap: var(--base-size-8);
 	align-items: flex-start;
 	padding: var(--base-size-8) 0;
 	cursor: pointer;
 }
-.primer .rad input {
+.primer .rad input,
+.primer .chk input {
 	flex: 0 0 auto;
 	width: 16px;
 	height: 16px;
 	margin: var(--base-size-2) 0 0;
 	accent-color: var(--fgColor-accent);
 }
-.primer .rad-t {
+.primer .rad-t,
+.primer .chk-t {
 	display: block;
 	font-weight: var(--base-text-weight-semibold);
 }
-.primer .rad-c {
+.primer .rad-c,
+.primer .chk-c {
 	display: block;
 	margin-top: var(--base-size-2);
 	font-size: var(--text-body-size-small);

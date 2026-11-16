@@ -80,6 +80,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		entities,
 		services,
 		prices,
-		offline
+		offline,
+		as_of: new Date().toISOString()
 	};
 };

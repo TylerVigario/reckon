@@ -120,7 +120,7 @@ const fields = () =>
 		start: document.querySelector('#m-start').value,
 		took: document.querySelector('#m-length').value,
 		end: document.querySelector('#m-end').value,
-		nextDay: [...document.querySelectorAll('.hint')].some((h) => h.textContent.trim() === 'the next day')
+		nextDay: document.querySelector('#m-end-c')?.textContent.trim() === 'The next day'
 	})`);
 const shows = async (
 	/** @type {string} */ what,
@@ -191,7 +191,7 @@ await go(`/timesheet/all?month=${DAY.slice(0, 7)}`);
 // the page runs.
 const rows = /** @type {string[]} */ (
 	(await evaluate(
-		`[...document.querySelectorAll('.rec')].map((r) => r.textContent.replace(/\\s+/g, ' '))`
+		`[...document.querySelectorAll('.box-row')].map((r) => r.textContent.replace(/\\s+/g, ' '))`
 	)) ?? []
 );
 const row = rows.find((r) => r.includes(NOTE)) ?? '';

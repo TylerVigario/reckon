@@ -6,6 +6,7 @@
 	import Dialog from '#lib/Dialog.svelte';
 	import EntryForm from '#lib/EntryForm.svelte';
 	import OfflineBanner from '#lib/OfflineBanner.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import type { EntryFields, EntrySeed } from '#lib/entry-form.ts';
 	import { withPart, type EntryPart } from '#lib/entry-merge.ts';
 	import { addAgain } from '#lib/entry-changes.ts';
@@ -292,6 +293,16 @@
 	);
 
 	const changeable = $derived(data.mayChange && !data.used && !data.paidTo);
+	const PARTS = Object.keys(PART) as EntryPart[];
+	/** One part of an entry as it stands, in a box beside its name. */
+	const stands = (part: EntryPart, f: EntryFields) =>
+		part === 'billable'
+			? f.billable === false
+				? 'No'
+				: 'Yes'
+			: part === 'note'
+				? f.note || 'None'
+				: said(part, f);
 </script>
 
 <Top
@@ -303,117 +314,140 @@
 
 <OfflineBanner asOf={data.as_of} {waiting} />
 
-<div class="pad">
-	{#if why}<p class="why bad" role="alert">{why}</p>{/if}
+{#snippet note(tone: 'info' | 'warn' | 'crit', text: string)}
+	<div class="banner {tone === 'info' ? '' : tone}" role={tone === 'crit' ? 'alert' : 'status'}>
+		<Octicon name={tone === 'info' ? 'info' : 'alert'} />
+		<div class="banner-m"><p class="banner-t">{text}</p></div>
+	</div>
+{/snippet}
 
-	{#if data.used}
-		<p class="why">
-			This hour is on {data.used.draft ? 'draft' : 'invoice'}
-			<a href={resolve('/invoices/[id]', { id: data.used.invoice })}
-				>{data.used.number ?? 'a draft'}</a
-			>, so it stays as it was billed.
-			{data.used.draft
-				? 'Take it off the draft to change it.'
-				: 'Credit the invoice to correct it.'}
-		</p>
-	{:else if data.paidTo}
-		<p class="why">
-			This hour is in a payment to {data.paidTo}, so it stays as it was paid. A correction goes on
-			their next payment.
-		</p>
-	{:else if !data.mayChange}
-		<p class="why">
-			Entered by {e.entered_by}. Whoever entered it, or someone with Full, changes it.
-		</p>
-	{:else if !ready}
-		<p class="lt">Reading this phone…</p>
-	{:else if collided && mine}
-		<p class="why">
-			{collided.by ?? 'Someone'} changed this entry{collided.at ? ` at ${at(collided.at)}` : ''} while
-			your change waited on this phone. {Object.keys(collided.from).length
-				? `${Object.keys(collided.from).length === 1 ? 'One part' : `${Object.keys(collided.from).length} parts`} merged on ${Object.keys(collided.from).length === 1 ? 'its' : 'their'} own; `
-				: ''}{collided.collided.length === 1
-				? 'one needs a choice'
-				: `${collided.collided.length} need a choice`}. Until it is made, your change waits on this
-			phone.
-		</p>
-		{#each Object.entries(collided.from) as [p, side] (p)}
-			{@const part = p as EntryPart}
-			<div class="sec">
-				<div class="sec-h">
-					<h2>{PART[part]}</h2>
-					<span class="sp"></span>
-					<span class="chip good"><span class="dot"></span>Merged</span>
-				</div>
-				<div class="rows">
-					<div class="rec">
-						<div class="rec-m">
-							<div class="rec-t">
-								{said(part, side === 'phone' ? mine.change.fields : collided.server)}
-							</div>
-							<div class="rec-s">
-								{side === 'phone'
-									? 'Only you changed it, on this phone'
-									: `Only ${collided.by ?? 'they'} changed it`}
-							</div>
-						</div>
-					</div>
-				</div>
+<!-- The entry as it stands, where it is not opened to change. -->
+{#snippet entry()}
+	<section class="box" aria-labelledby="entry-h">
+		<div class="box-h"><h2 class="box-t" id="entry-h">The entry</h2></div>
+		{#each PARTS as p (p)}
+			<div class="box-row kv">
+				<span class="kv-l">{PART[p]}</span>
+				<span class="kv-v"><span>{stands(p, mine?.change.fields ?? data.base)}</span></span>
 			</div>
 		{/each}
-		{#each collided.collided as part (part)}
-			<div class="sec">
-				<div class="sec-h">
-					<h2>{PART[part]} — pick one</h2>
-					<span class="sp"></span>
-					<span class="chip warn"><span class="dot"></span>Both changed</span>
+	</section>
+{/snippet}
+
+<div class="pad primer">
+	{#if why}{@render note('crit', why)}{/if}
+
+	{#if data.used}
+		<div class="banner" role="status">
+			<Octicon name="info" />
+			<div class="banner-m">
+				<p class="banner-t">
+					This hour is on {data.used.draft ? 'draft' : 'invoice'}
+					<a href={resolve('/invoices/[id]', { id: data.used.invoice })}
+						>{data.used.number ?? 'a draft'}</a
+					>, so it stays as it was billed. {data.used.draft
+						? 'Take it off the draft to change it.'
+						: 'Credit the invoice to correct it.'}
+				</p>
+			</div>
+		</div>
+		{@render entry()}
+	{:else if data.paidTo}
+		{@render note(
+			'info',
+			`This hour is in a payment to ${data.paidTo}, so it stays as it was paid. A correction goes on their next payment.`
+		)}
+		{@render entry()}
+	{:else if !data.mayChange}
+		{@render note(
+			'info',
+			`Entered by ${e.entered_by}. Whoever entered it, or someone with Full, changes it.`
+		)}
+		{@render entry()}
+	{:else if !ready}
+		<p class="note">Reading this phone…</p>
+	{:else if collided && mine}
+		{@render note(
+			'warn',
+			`${collided.by ?? 'Someone'} changed this entry${collided.at ? ` at ${at(collided.at)}` : ''} while your change waited on this phone. ${
+				Object.keys(collided.from).length
+					? `${Object.keys(collided.from).length === 1 ? 'One part' : `${Object.keys(collided.from).length} parts`} merged on ${Object.keys(collided.from).length === 1 ? 'its' : 'their'} own; `
+					: ''
+			}${collided.collided.length === 1 ? 'one needs a choice' : `${collided.collided.length} need a choice`}. Until it is made, your change waits on this phone.`
+		)}
+		{#each Object.entries(collided.from) as [p, side] (p)}
+			{@const part = p as EntryPart}
+			<section class="box" aria-label={PART[part]}>
+				<div class="box-h">
+					<h2 class="box-t">{PART[part]}</h2>
+					<span class="lab good">Merged</span>
 				</div>
-				<div class="rows" role="radiogroup" aria-label={PART[part]}>
+				<div class="box-row line">
+					<span class="what">
+						<span class="n"
+							>{said(part, side === 'phone' ? mine.change.fields : collided.server)}</span
+						>
+						<span class="sub"
+							>{side === 'phone'
+								? 'Only you changed it, on this phone'
+								: `Only ${collided.by ?? 'they'} changed it`}</span
+						>
+					</span>
+				</div>
+			</section>
+		{/each}
+		{#each collided.collided as part (part)}
+			<section class="box" aria-label="{PART[part]}, pick one">
+				<div class="box-h">
+					<h2 class="box-t">{PART[part]} — pick one</h2>
+					<span class="lab warn">Both changed</span>
+				</div>
+				<div role="radiogroup" aria-label={PART[part]}>
 					{#each choices as [side, who] (side)}
 						<button
 							type="button"
-							class="rec pick"
-							class:on={picks[part] === side}
+							class="box-row line opt"
 							role="radio"
 							aria-checked={picks[part] === side}
 							onclick={() => (picks = { ...picks, [part]: side })}
 						>
 							<span class="radio" aria-hidden="true"></span>
-							<span class="rec-m">
-								<span class="rec-t">{said(part, sideOf(side)!)}</span>
-								<span class="rec-s">{who}</span>
+							<span class="what">
+								<span class="n">{said(part, sideOf(side)!)}</span>
+								<span class="sub">{who}</span>
 							</span>
 						</button>
 					{/each}
 				</div>
-			</div>
+			</section>
 		{/each}
-		<div class="btnrow">
-			<button class="btn pri blk" disabled={deciding} onclick={keepPicks}>Keep these</button>
-			<a class="btn blk" href={time}>Later</a>
+		<div class="acts">
+			<button class="btn pri" disabled={deciding} onclick={keepPicks}>Keep these</button>
+			<a class="btn" href={time}>Later</a>
 		</div>
 	{:else if conflict?.what === 'removed' && mine}
-		<p class="why">
-			{conflict.by ?? 'Someone'} removed this entry at {at(conflict.at)}, while your change waited
-			on this phone.
-		</p>
-		<div class="btnrow">
-			<button class="btn pri blk" onclick={again}>Add it again, with your change</button>
-			<button class="btn blk" onclick={() => letGo(true)}>Let the change go</button>
+		{@render note(
+			'warn',
+			`${conflict.by ?? 'Someone'} removed this entry at ${at(conflict.at)}, while your change waited on this phone.`
+		)}
+		<div class="acts">
+			<button class="btn pri" onclick={again}>Add it again, with your change</button>
+			<button class="btn" onclick={() => letGo(true)}>Let the change go</button>
 		</div>
 	{:else if conflict?.what === 'changed' && mine}
-		<p class="why">
-			{conflict.by ?? 'Someone'} changed this entry{conflict.at ? ` at ${at(conflict.at)}` : ''},
-			after it was removed on this phone.
-		</p>
-		<div class="btnrow">
-			<button class="btn pri blk" onclick={removeAnyway}>Remove it anyway</button>
-			<button class="btn blk" onclick={() => letGo()}>Keep it</button>
+		{@render note(
+			'warn',
+			`${conflict.by ?? 'Someone'} changed this entry${conflict.at ? ` at ${at(conflict.at)}` : ''}, after it was removed on this phone.`
+		)}
+		<div class="acts">
+			<button class="btn danger" onclick={removeAnyway}>Remove it anyway</button>
+			<button class="btn" onclick={() => letGo()}>Keep it</button>
 		</div>
 	{:else if mine?.change.act === 'remove' && !mine.refused}
-		<p class="why">Removed on this phone: it goes when it reaches the server.</p>
-		<div class="btnrow">
-			<button class="btn blk" onclick={() => letGo()}>Keep it after all</button>
+		{@render note('info', 'Removed on this phone: it goes when it reaches the server.')}
+		{@render entry()}
+		<div class="acts">
+			<button class="btn" onclick={() => letGo()}>Keep it after all</button>
 		</div>
 	{:else}
 		{#key mine?.queued_at ?? 0}
@@ -422,27 +456,28 @@
 				{field}
 				seed={seedOf(mine?.change.fields ?? data.base)}
 				saveLabel="Save changes"
+				cancel={time}
 				onsave={save}
 			>
 				{#snippet above()}
 					{#if mine?.refused}
-						<p class="why bad">
-							Refused: {mine.refused.detail} Your change is kept on this phone until it is fixed or let
-							go.
-						</p>
+						{@render note(
+							'crit',
+							`Refused: ${mine.refused.detail} Your change is kept on this phone until it is fixed or let go.`
+						)}
 					{:else if mine}
-						<p class="lt waits">A change made on this phone waits to send.</p>
+						{@render note('info', 'A change made on this phone waits to send.')}
 					{/if}
 				{/snippet}
 				{#snippet below()}
-					{#if mine}
-						<button class="btn gho blk" type="button" onclick={() => letGo()}
-							>Let the change go</button
+					<div class="acts">
+						{#if mine}
+							<button class="btn" type="button" onclick={() => letGo()}>Let the change go</button>
+						{/if}
+						<button class="btn danger" type="button" onclick={() => (removing = true)}
+							>Remove this entry</button
 						>
-					{/if}
-					<button class="btn gho blk" type="button" onclick={() => (removing = true)}
-						>Remove this entry</button
-					>
+					</div>
 				{/snippet}
 			</EntryForm>
 		{/key}
@@ -466,57 +501,63 @@
 </Dialog>
 
 <style>
-	.why {
-		margin: 0 0 14px;
-	}
-	.why.bad {
-		border-left-color: var(--borderColor-danger-emphasis);
-		color: var(--fgColor-danger);
-	}
-	.waits {
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 56px;
+		box-sizing: border-box;
 		margin: 0;
 	}
-	.btnrow {
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
-		margin: 16px 0;
+		gap: 2px;
+		overflow-wrap: anywhere;
 	}
-	.btnrow > * {
-		box-sizing: border-box;
-		width: 100%;
-		text-align: center;
+	.n {
+		font-weight: 600;
 	}
-	button.rec.pick {
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
+	}
+	.acts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	/* One of the values a part has held, to pick: Primer's radio, in a row. */
+	.opt {
 		width: 100%;
-		text-align: left;
 		font: inherit;
 		color: inherit;
-		background: none;
+		text-align: left;
+		background: var(--bgColor-default);
 		border: 0;
 		cursor: pointer;
-		display: flex;
-		gap: 12px;
-		align-items: center;
 	}
-	.pick .rec-m,
-	.pick .rec-t,
-	.pick .rec-s {
-		display: block;
+	.opt + .opt {
+		border-top: 1px solid var(--borderColor-muted);
 	}
-	.pick .radio {
-		width: 18px;
-		height: 18px;
-		border-radius: 50%;
-		border: 2px solid var(--borderColor-default);
-		flex: none;
-	}
-	.pick.on .radio {
-		border-color: var(--borderColor-accent-emphasis);
-		box-shadow: inset 0 0 0 4px var(--bgColor-default);
-		background: var(--bgColor-accent-emphasis);
-	}
-	.pick.on {
+	.opt[aria-checked='true'] {
 		background: var(--bgColor-accent-muted);
+	}
+	.opt:focus-visible {
+		outline: 2px solid var(--focus-outlineColor);
+		outline-offset: -2px;
+	}
+	.radio {
+		flex: 0 0 auto;
+		width: 16px;
+		height: 16px;
+		box-sizing: border-box;
+		border: 1px solid var(--borderColor-emphasis, var(--borderColor-default));
+		border-radius: 50%;
+	}
+	.opt[aria-checked='true'] .radio {
+		border: 5px solid var(--bgColor-accent-emphasis);
 	}
 </style>

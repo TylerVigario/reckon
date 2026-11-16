@@ -143,6 +143,15 @@ const tap = (/** @type {string} */ label) =>
 		b?.click();
 		return !!b;
 	}, label);
+/** Ticks or picks the choice whose label says `label`, in a checkbox or radio group. */
+const pick = (/** @type {string} */ label) =>
+	run((/** @type {string} */ text) => {
+		const l = [...document.querySelectorAll('label.chk, label.rad')].find(
+			(x) => x.querySelector('.chk-t, .rad-t')?.textContent?.trim() === text
+		);
+		/** @type {HTMLInputElement | null | undefined} */ (l?.querySelector('input'))?.click();
+		return !!l;
+	}, label);
 const page = async () =>
 	/** @type {string} */ (await evaluate(`document.querySelector('main')?.innerText ?? ''`));
 const milesTyped = async () =>
@@ -161,7 +170,7 @@ const addStop = async (
 	await settle(200);
 	await choose('#s-site', site);
 	await settle(200);
-	if (alsoHere) check(await tap('Add them'), `${alsoHere} is offered as here too`);
+	if (alsoHere) check(await pick(alsoHere), `${alsoHere} is offered as here too`);
 	await tap('Add the stop');
 	await settle(400);
 };
@@ -220,7 +229,9 @@ check(
 // ------------------------------------------- changed after it was saved
 await run(() =>
 	/** @type {HTMLAnchorElement | undefined} */ (
-		[...document.querySelectorAll('a')].find((a) => a.textContent?.trim() === 'Change this trip')
+		[...document.querySelectorAll('a')].find(
+			(a) => a.textContent?.trim() === 'Change' && a.pathname.endsWith('/change')
+		)
 	)?.click()
 );
 await settle(2500);
@@ -272,7 +283,7 @@ check(
 		shared.includes("half the site's round trip"),
 	"two clients at one address are one stop, the drive is half the site's round trip each way, and it is split between them"
 );
-await tap('Pinecrest asked once there');
+await pick('Pinecrest asked once there');
 await settle(1200);
 const once = await page();
 check(

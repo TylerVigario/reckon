@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Top from '#lib/Top.svelte';
-	import Ask from '#lib/Ask.svelte';
+	import Dialog from '#lib/Dialog.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import { dated, miles, quantity } from '#lib/format.ts';
 	import { readProblem } from '#lib/json.ts';
 	import { goto } from '$app/navigation';
@@ -75,7 +76,8 @@
 	});
 	// Removing asks first: it cannot be undone, and it takes with it what the
 	// trip would bill the client and what it owes the vehicle's owner.
-	let removing = $state<'idle' | 'asking' | 'working'>('idle');
+	let removing = $state(false);
+	let working = $state(false);
 	const goesWith = $derived(
 		[
 			data.trip.billed === null || Decimal.from(data.trip.billed).isZero()
@@ -89,10 +91,11 @@
 
 	async function remove() {
 		problem = '';
-		removing = 'working';
+		working = true;
 		const r = await fetch(`/api/trips/${data.trip.id}`, { method: 'DELETE' }).catch(() => null);
 		if (!r?.ok) {
-			removing = 'idle';
+			working = false;
+			removing = false;
 			problem = r
 				? ((await readProblem(r)).detail ?? 'Not removed.')
 				: 'Not removed — no connection.';
@@ -119,228 +122,264 @@
 	);
 </script>
 
-<Top {title} {sub} back={resolve('/trips')} backLabel="Trips" />
+<Top {title} {sub} back={resolve('/trips')} backLabel="Trips">
+	{#snippet actions()}
+		{#if data.trip.changeable && !data.trip.invoiced && !data.trip.paid_for}
+			<a class="btn sm" href={resolve('/trips/[id]/change', { id: data.trip.id })}>Change</a>
+		{/if}
+	{/snippet}
+</Top>
 
 <OfflineBanner asOf={data.as_of} {waiting} />
 
-<div class="pad">
-	{#if changed}
-		<div class="rows">
-			<div class="rec" class:acc={!changed.refused} class:warn={changed.refused}>
-				<div class="rec-m">
-					{#if changed.refused}
-						<div class="rec-t">A change made on this phone was not sent</div>
-						<div class="rec-s">
-							{Object.values(changed.refused.errors ?? {})[0] ?? changed.refused.detail}
-						</div>
-					{:else}
-						<div class="rec-t">Changed on this phone</div>
-						<div class="rec-s">
-							It is sent when there is a signal. This is the trip as it was before.
-						</div>
-					{/if}
-				</div>
-				{#if changed.refused}
-					<div class="rec-n">
-						<a class="btn sm" href={resolve(`/trips/new?fix=${encodeURIComponent(data.trip.id)}`)}
-							>Fix</a
-						>
-					</div>
-				{/if}
+<div class="pad primer">
+	{#if problem}
+		<div class="banner crit" role="alert">
+			<Octicon name="alert" />
+			<div class="banner-m"><p class="banner-t">{problem}</p></div>
+		</div>
+	{/if}
+	{#if changed?.refused}
+		<div class="banner crit" role="alert">
+			<Octicon name="alert" />
+			<div class="banner-m">
+				<p class="banner-t">
+					A change made on this phone was not sent: {Object.values(
+						changed.refused.errors ?? {}
+					)[0] ?? changed.refused.detail}
+				</p>
+			</div>
+		</div>
+		<div class="acts">
+			<a class="btn pri" href={resolve(`/trips/new?fix=${encodeURIComponent(data.trip.id)}`)}
+				>Fix it</a
+			>
+		</div>
+	{:else if changed}
+		<div class="banner" role="status">
+			<Octicon name="info" />
+			<div class="banner-m">
+				<p class="banner-t">
+					Changed on this phone, and sent when there is a signal. This is the trip as it was before.
+				</p>
 			</div>
 		</div>
 	{/if}
+
 	{#if data.trip.billed !== null}
-		<div class="tiles">
-			<div class="tile">
-				<span class="k">Billed</span>
-				<span class="v good">{money(data.trip.billed)}</span>
-				<span class="s">for {miles(data.trip.miles)} driven</span>
-			</div>
-			{#if saved !== null && saved.gt(0)}
-				<div class="tile">
-					<span class="k">Not over-billed</span>
-					<span class="v sm">{money(saved.toString())}</span>
-					<span class="s">vs a round trip each</span>
-				</div>
-			{/if}
+		<div class="state">
+			<span class="lab {data.trip.invoiced ? 'good' : ''}"
+				>{data.trip.invoiced ? 'Invoiced' : 'Not yet billed'}</span
+			>
+			<span class="muted">
+				{money(data.trip.billed)} for {miles(data.trip.miles)}{saved !== null && saved.gt(0)
+					? ` · ${money(saved.toString())} less than a round trip to each`
+					: ''}
+			</span>
 		</div>
 	{/if}
 
-	<div class="sec">
-		<div class="sec-h"><h2>Driven in</h2></div>
-		<div class="rows">
-			{#if data.trip.vehicle}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t">
-							{data.trip.vehicle}{#if data.trip.vehicle_retired_on}&nbsp;<span class="lt"
-									>· retired</span
-								>{/if}
-						</div>
-						<div class="rec-s">{[whose, odometer].filter(Boolean).join(' · ')}</div>
-					</div>
-				</div>
-			{:else}
-				<div class="rec warn">
-					<div class="rec-m">
-						<div class="rec-t">Not recorded</div>
-						<div class="rec-s">
-							Recorded before trips named their vehicle, so its miles pay nobody
-						</div>
-					</div>
-				</div>
-			{/if}
+	<section class="box" aria-labelledby="in-h">
+		<div class="box-h"><h2 class="box-t" id="in-h">Driven in</h2></div>
+		<div class="box-row line">
+			<span class="what">
+				{#if data.trip.vehicle}
+					<span class="n">{data.trip.vehicle}</span>
+					<span class="sub">{[whose, odometer].filter(Boolean).join(' · ')}</span>
+				{:else}
+					<span class="n">Not recorded</span>
+					<span class="sub">Recorded before trips named their vehicle, so its miles pay nobody</span
+					>
+				{/if}
+			</span>
+			{#if data.trip.vehicle_retired_on}<span class="lab">Retired</span>{/if}
+			{#if !data.trip.vehicle}<span class="lab warn">No vehicle</span>{/if}
 		</div>
-	</div>
+	</section>
 
-	<div class="sec">
-		<div class="sec-h"><h2>Stops, in order</h2></div>
-		<div class="rows stops">
-			<div class="legs">
-				<div class="leg"><div class="stop">{data.trip.start_address ?? 'Base'}</div></div>
+	<section class="box" aria-labelledby="stops-h">
+		<div class="box-h"><h2 class="box-t" id="stops-h">Stops, in order</h2></div>
+		<div class="box-row">
+			<ol class="tl" aria-labelledby="stops-h">
+				<li class="tl-i">
+					<span class="tl-b" aria-hidden="true"></span>
+					<span class="tl-m"><span class="n">{data.trip.start_address ?? 'Base'}</span></span>
+				</li>
 				{#each data.stops as s (s.seq)}
 					{@const who = forWhom(s)}
-					<div class="leg">
-						<div class="stop">{placeOf(s)}</div>
-						{#if who}<div class="det">{who}</div>{/if}
-					</div>
+					<li class="tl-i">
+						<span class="tl-b" aria-hidden="true"></span>
+						<span class="tl-m">
+							<span class="n">{placeOf(s)}</span>
+							{#if who}<span class="sub det">{who}</span>{/if}
+						</span>
+					</li>
 				{/each}
-				<div class="leg"><div class="stop">{data.trip.end_address ?? 'Base'}</div></div>
-			</div>
+				<li class="tl-i">
+					<span class="tl-b" aria-hidden="true"></span>
+					<span class="tl-m"><span class="n">{data.trip.end_address ?? 'Base'}</span></span>
+				</li>
+			</ol>
 		</div>
-	</div>
+	</section>
 
-	<div class="sec">
-		<div class="sec-h"><h2>Leg assignment</h2></div>
-		<div class="rows">
-			{#each data.legs as l (l.id)}
-				<div class="rec" class:warn={!l.who}>
-					<div class="rec-m">
-						<div class="rec-t">{l.who ?? 'Nobody'}</div>
-						<div class="rec-s">{l.rule ? RULE[l.rule] : 'no rule recorded'}</div>
-					</div>
-					<div class="rec-n">
-						{#if data.offline}
-							<span class="rec-v">{miles(l.miles)}</span>
-						{:else}
-							{#if l.who}
-								<span class="rec-v">{money(l.value)}</span>
-							{:else}
-								<span class="rec-v mut">—</span>
-							{/if}
-							<span class="rec-x">{miles(l.miles)}</span>
-						{/if}
-					</div>
-				</div>
-			{/each}
-			<div class="rec tot">
+	<section class="box" aria-labelledby="legs-h">
+		<div class="box-h"><h2 class="box-t" id="legs-h">Legs, to whoever caused them</h2></div>
+		{#each data.legs as l (l.id)}
+			<div class="box-row line">
+				<span class="what">
+					<span class="n">{l.who ?? 'Nobody'}</span>
+					<span class="sub">{l.rule ? RULE[l.rule] : 'no rule recorded'}</span>
+				</span>
+				{#if !l.who}<span class="lab warn">Unassigned</span>{/if}
+				<span class="fig">
+					{#if data.offline}
+						<span class="v">{miles(l.miles)}</span>
+					{:else}
+						<span class="v" class:mut={!l.who}>{l.who ? money(l.value) : '—'}</span>
+						<span class="sub">{miles(l.miles)}</span>
+					{/if}
+				</span>
+			</div>
+		{/each}
+		<div class="box-row line tot">
+			<span class="what"
+				><span class="n">{data.offline ? 'Driven' : 'Driven, and billed'}</span></span
+			>
+			<span class="fig">
 				{#if data.offline}
-					<div class="rec-m"><div class="rec-t">Driven</div></div>
-					<div class="rec-n"><span class="rec-v">{miles(data.trip.miles)}</span></div>
+					<span class="v">{miles(data.trip.miles)}</span>
 				{:else}
-					<div class="rec-m"><div class="rec-t">Driven, and billed</div></div>
-					<div class="rec-n">
-						<span class="rec-v">{money(data.trip.billed)}</span>
-						<span class="rec-x">{miles(data.trip.miles)}</span>
-					</div>
+					<span class="v">{money(data.trip.billed)}</span>
+					<span class="sub">{miles(data.trip.miles)}</span>
 				{/if}
-			</div>
+			</span>
 		</div>
-	</div>
+	</section>
+
 	{#if data.trip.vehicle && !data.offline}
-		<div class="sec">
-			<div class="sec-h"><h2>Paid for the vehicle</h2></div>
-			<div class="rows">
-				<div class="rec" class:warn={data.trip.paid === null && !data.trip.withheld}>
-					<div class="rec-m">
-						<div class="rec-t">{data.trip.owner ?? 'Nobody'}</div>
-						<div class="rec-s">{how}</div>
-					</div>
-					<div class="rec-n">
-						{#if data.trip.owner && !data.trip.withheld}
-							<span class="rec-v">{money(data.trip.paid)}</span>
-						{:else}
-							<span class="rec-v mut">—</span>
-						{/if}
-					</div>
-				</div>
-				<!-- What the business kept is Full's to see (#lib/access). -->
-				{#if data.user?.access === 'full'}
-					<div class="rec tot">
-						<div class="rec-m"><div class="rec-t">Kept</div></div>
-						<div class="rec-n"><span class="rec-v">{money(data.trip.kept)}</span></div>
-					</div>
-				{/if}
+		<section class="box" aria-labelledby="paid-h">
+			<div class="box-h"><h2 class="box-t" id="paid-h">Paid for the vehicle</h2></div>
+			<div class="box-row line">
+				<span class="what">
+					<span class="n">{data.trip.owner ?? 'Nobody'}</span>
+					<span class="sub">{how}</span>
+				</span>
+				{#if data.trip.paid === null && !data.trip.withheld && data.trip.owner}<span
+						class="lab warn">No rule</span
+					>{/if}
+				<span class="fig">
+					<span class="v" class:mut={!data.trip.owner || data.trip.withheld}
+						>{data.trip.owner && !data.trip.withheld ? money(data.trip.paid) : '—'}</span
+					>
+				</span>
 			</div>
-		</div>
+			<!-- What the business kept is Full's to see (#lib/access). -->
+			{#if data.user?.access === 'full'}
+				<div class="box-row line tot">
+					<span class="what"><span class="n">Kept</span></span>
+					<span class="fig"><span class="v">{money(data.trip.kept)}</span></span>
+				</div>
+			{/if}
+		</section>
 	{/if}
+
 	{#if data.trip.note}
-		<div class="sec">
-			<div class="sec-h"><h2>What it was for</h2></div>
-			<div class="rows">
-				<div class="rec">
-					<div class="rec-m"><div class="rec-s">{data.trip.note}</div></div>
-				</div>
-			</div>
-		</div>
+		<section class="box" aria-labelledby="note-h">
+			<div class="box-h"><h2 class="box-t" id="note-h">What it was for</h2></div>
+			<div class="box-row">{data.trip.note}</div>
+		</section>
 	{/if}
+
 	{#if data.offline}
-		<p class="none">What it bills, and what it pays for the vehicle, needs a connection.</p>
+		<p class="note">What it bills, and what it pays for the vehicle, needs a connection.</p>
 	{/if}
 	{#if data.trip.invoiced}
-		<p class="aside">Its miles are on an invoice, so it stays as it was billed.</p>
+		<p class="note">Its miles are on an invoice, so it stays as it was billed.</p>
 	{:else if data.trip.paid_for}
-		<p class="aside">Its miles are in a payment for the vehicle, so it stays as it was paid.</p>
-	{:else if data.trip.changeable}
-		{#if removing === 'idle'}
-			<div class="btnrow">
-				<a class="btn" href={resolve('/trips/[id]/change', { id: data.trip.id })}
-					>Change this trip</a
-				>
-				<button type="button" class="btn gho" onclick={() => (removing = 'asking')}
-					>Remove this trip</button
-				>
-			</div>
-		{:else}
-			<Ask
-				tone="danger"
-				keep="Keep it"
-				go="Remove it for good"
-				going="Removing…"
-				working={removing === 'working'}
-				onkeep={() => (removing = 'idle')}
-				ongo={remove}
+		<p class="note">Its miles are in a payment for the vehicle, so it stays as it was paid.</p>
+	{:else if !data.trip.changeable}
+		<p class="note">Someone else recorded it, so it is theirs to change.</p>
+	{:else if !data.offline}
+		<!-- Removing needs the server; a trip opened with no signal does not offer it. -->
+		<div class="acts">
+			<button type="button" class="btn danger" onclick={() => (removing = true)}
+				>Remove this trip</button
 			>
-				<p>
-					Remove this trip, {miles(data.trip.miles)} driven on {dated(data.trip.travelled_on)}, with
-					its stops and legs?{goesWith.length ? ` It takes with it ${goesWith.join(' and ')}.` : ''}
-					This cannot be undone.
-				</p>
-			</Ask>
-		{/if}
-		{#if problem}<p class="why bad">{problem}</p>{/if}
-	{:else}
-		<p class="aside">Someone else recorded it, so it is theirs to change.</p>
+		</div>
 	{/if}
 </div>
 
+<Dialog
+	open={removing}
+	title="Remove this trip?"
+	go="Remove it for good"
+	going="Removing…"
+	tone="danger"
+	{working}
+	ongo={remove}
+	onclose={() => (removing = false)}
+>
+	<p>
+		{miles(data.trip.miles)} driven on {dated(data.trip.travelled_on)}, with its stops and legs.{goesWith.length
+			? ` It takes with it ${goesWith.join(' and ')}.`
+			: ''} This cannot be undone.
+	</p>
+</Dialog>
+
 <style>
-	.stops {
-		padding: 14px;
+	.state {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 12px;
+	}
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 56px;
+		box-sizing: border-box;
+		margin: 0;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		overflow-wrap: anywhere;
+	}
+	.n {
+		font-weight: 600;
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
 	}
 	.det {
 		white-space: pre-line;
 	}
-	.why {
-		margin: 0;
+	.fig {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
 	}
-	.aside {
-		margin: 0;
-		font-size: 12.5px;
+	.v {
+		font-family: var(--fontStack-monospace);
+		font-weight: 600;
+	}
+	.v.mut {
 		color: var(--fgColor-muted);
 	}
-	.why.bad {
-		color: var(--fgColor-danger);
+	.tot {
+		background: var(--bgColor-muted);
+	}
+	.acts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
 	}
 </style>

@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import Top from '#lib/Top.svelte';
 	import EntryForm from '#lib/EntryForm.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import type { EntryFields, EntrySeed } from '#lib/entry-form.ts';
 	import {
 		enqueue,
@@ -98,7 +99,7 @@
 	backLabel="Time"
 />
 
-<div class="pad">
+<div class="pad primer">
 	<!-- Drawn at once from the server's choices; drawn again with any service
 	     waiting on this phone among them, which the form takes only as it opens. -->
 	{#key `${fixing?.entry.client_uuid}|${held?.length ?? 0}`}
@@ -107,29 +108,27 @@
 			{field}
 			{seed}
 			saveLabel={fixing ? 'Save and send again' : 'Save entry'}
+			cancel={resolve('/timesheet')}
 			onsave={save}
 		>
 			{#snippet above()}
-				{#if fixing?.refused}<p class="why bad">Refused: {fixing.refused.detail}</p>{/if}
+				{#if fixing?.refused}
+					<div class="banner crit" role="alert">
+						<Octicon name="alert" />
+						<div class="banner-m">
+							<p class="banner-t">
+								Refused: {fixing.refused.detail} It is kept on this phone until it is fixed or let go.
+							</p>
+						</div>
+					</div>
+				{/if}
 			{/snippet}
 			{#snippet below()}
-				<p class="aside">
-					Still working? <a href={resolve('/timesheet/start')}>Start a timer</a> instead and it will fill
-					this in for you.
+				<p class="note">
+					Still working? <a href={resolve('/timesheet/start')}>Start a timer</a> instead, and it fills
+					this in when it stops.
 				</p>
 			{/snippet}
 		</EntryForm>
 	{/key}
 </div>
-
-<style>
-	.why.bad {
-		border-left-color: var(--borderColor-danger-emphasis);
-		color: var(--fgColor-danger);
-	}
-	.aside {
-		margin: 0;
-		font-size: 12.5px;
-		color: var(--fgColor-muted);
-	}
-</style>

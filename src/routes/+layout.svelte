@@ -713,7 +713,7 @@
 		color: var(--fgColor-muted);
 	}
 	/* What cannot be taken back: Primer's danger button where it is offered,
-	   filled where it is confirmed (#lib/Ask). */
+	   filled where it is confirmed (#lib/Dialog). */
 	:global(.btn.danger) {
 		color: var(--button-danger-fgColor-rest);
 		background: var(--button-danger-bgColor-rest);

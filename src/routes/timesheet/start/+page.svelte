@@ -1,13 +1,12 @@
 <script lang="ts">
-	import { pct } from '#lib/format.ts';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { servicesHeld, type ServiceEntry } from '#lib/queue.ts';
 	import { pricesAdded, servicesAdded } from '#lib/services-held.ts';
 	import { goto } from '$app/navigation';
 	import Top from '#lib/Top.svelte';
+	import WorkFields from '#lib/WorkFields.svelte';
+	import { focusFirstInvalid, workErrors } from '#lib/work-fields.ts';
 	import { start } from '#lib/timers.ts';
-	import { unitPrice } from '#lib/money.svelte.ts';
-	import { rateFor } from '#lib/rates.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
@@ -32,10 +31,9 @@
 	);
 	const prices = $derived(pricesAdded(data.prices, held, data.people.length));
 
-	// Someone with Field enters only work they were on (#lib/access): their own,
-	// or a team's with them on it.
+	// Someone with Field puts down only work they are on (#lib/access): their
+	// own, or a team's with them on it.
 	const field = untrack(() => data.user?.access === 'field');
-	const others = $derived(field ? data.people.filter((p) => p.id !== data.me) : data.people);
 
 	/**
 	 * Starts a timer. It does not ask how long anything took.
@@ -48,15 +46,14 @@
 	 * lives in this browser precisely so it survives a jobsite with no
 	 * reception and a reload; the entry is made when it stops.
 	 */
-	// untrack: these seed the form once. A later load must not reach in and
-	// change what somebody has already picked.
 	let entityId = $state<string | null>(null);
 	let siteId = $state<string | null>(null);
 	// The same rule the manual form uses, for the same reason: a clock measures
 	// hours, so it opens on a priced service billed by the hour. Alphabetical
 	// order could open on a service with no price, which nothing can be billed
-	// under, or on a per-mile one, which starts a clock on driving.
-	let serviceId = $state<string>(
+	// under, or on a per-mile one, which starts a clock on driving. untrack:
+	// these seed the form once, and a later load must not change a pick.
+	let serviceId = $state<string | null>(
 		untrack(() => {
 			const priced = (s: { id: string }) => data.prices.some((p) => p.service_id === s.id);
 			return (
@@ -64,7 +61,7 @@
 					data.services.find((s) => s.unit === 'hour' && priced(s)) ??
 					data.services.find(priced) ??
 					data.services[0]
-				)?.id ?? ''
+				)?.id ?? null
 			);
 		})
 	);
@@ -72,36 +69,20 @@
 	let workedBy = $state<string | null>(untrack(() => data.me ?? data.people[0]?.id ?? null));
 	// Who is on a team: everyone holding a role, unless some are unticked.
 	let crewIds = $state<string[]>(untrack(() => data.people.map((p) => p.id)));
-	const heads = $derived(crew === 'team' ? crewIds.length : 1);
-	const toggle = (id: string) =>
-		(crewIds = crewIds.includes(id) ? crewIds.filter((x) => x !== id) : [...crewIds, id]);
-	const me = $derived(data.people.find((p) => p.id === data.me));
 	let billable = $state(true);
 	let note = $state('');
-	let why = $state('');
+	let errors = $state<Record<string, string>>({});
+	let form = $state<HTMLFormElement | null>(null);
 
-	const sites = $derived(data.entities.find((e) => e.id === entityId)?.sites ?? []);
-	const site = $derived(sites.find((s) => s.id === siteId));
-	const service = $derived(services.find((s) => s.id === serviceId));
-
-	const rate = $derived(rateFor(prices, serviceId, entityId, heads));
-
-	function go() {
-		why = '';
-		if (billable && !entityId) {
-			why = 'Billable work needs somebody to bill. Turn it off, or pick who pays.';
-			return;
-		}
-		if (!serviceId) {
-			why = 'Pick what is being done.';
-			return;
-		}
-		if (crew === 'one' && !workedBy) {
-			why = 'Who is working?';
-			return;
-		}
-		if (crew === 'team' && crewIds.length < 2) {
-			why = 'A team is two or more. Tick who else is on it, or pick one person.';
+	async function go(e: SubmitEvent) {
+		e.preventDefault();
+		errors = workErrors(
+			{ entityId, siteId, serviceId, crew, workedBy, crewIds, billable, note },
+			true
+		);
+		if (Object.keys(errors).length) {
+			await tick();
+			focusFirstInvalid(form);
 			return;
 		}
 		start({
@@ -110,7 +91,7 @@
 			...(crew === 'team' ? { crew_ids: [...crewIds] } : {}),
 			entity_id: entityId,
 			site_id: siteId,
-			service_id: serviceId,
+			service_id: serviceId!,
 			billable,
 			note: note.trim() || null
 		});
@@ -125,150 +106,52 @@
 	backLabel="Time"
 />
 
-<div class="pad">
-	<div class="rows form">
-		<div class="fld">
-			<label for="s-entity">Who pays</label>
-			<select id="s-entity" class="inp" bind:value={entityId} onchange={() => (siteId = null)}>
-				<option value={null}>Nobody — not billable</option>
-				{#each data.entities as e (e.id)}<option value={e.id}>{e.name}</option>{/each}
-			</select>
+<div class="pad primer">
+	<form class="box form" novalidate onsubmit={go} bind:this={form}>
+		<div class="box-row fields">
+			<WorkFields
+				choices={{ ...data, services, prices }}
+				{field}
+				now
+				id="s"
+				{errors}
+				bind:entityId
+				bind:siteId
+				bind:serviceId
+				bind:crew
+				bind:workedBy
+				bind:crewIds
+				bind:billable
+				bind:note
+			/>
 		</div>
-
-		<div class="fld">
-			<label for="s-site">Where</label>
-			<span class="inp-wrap">
-				<select id="s-site" class="inp" bind:value={siteId} disabled={!entityId}>
-					<option value={null}>{entityId ? 'Which site' : 'Choose who pays first'}</option>
-					{#each sites as st (st.id)}<option value={st.id}>{st.label}</option>{/each}
-				</select>
-				{#if site?.rate_pct}<span class="hint">{pct(site.rate_pct)}</span>{/if}
-			</span>
+		<div class="box-row keep">
+			<button class="btn pri">Start the clock</button>
+			<a class="btn" href={resolve('/timesheet')}>Cancel</a>
 		</div>
-
-		<div class="fld">
-			<label for="s-service">What</label>
-			<span class="inp-wrap">
-				<select id="s-service" class="inp" bind:value={serviceId}>
-					{#each services as sv (sv.id)}<option value={sv.id}>{sv.name}</option>{/each}
-				</select>
-				<span class="hint">
-					{rate ? `${unitPrice(rate)}/${service?.unit === 'mile' ? 'mi' : 'h'}` : 'not priced'}
-				</span>
-			</span>
-		</div>
-
-		<div class="fld">
-			<span class="lbl">Who is working</span>
-			<div class="seg">
-				{#if field}
-					<button
-						type="button"
-						class:on={crew === 'one'}
-						onclick={() => {
-							crew = 'one';
-							workedBy = data.me;
-						}}>Just me</button
-					>
-				{:else}
-					{#each data.people as p (p.id)}
-						<button
-							type="button"
-							class:on={crew === 'one' && workedBy === p.id}
-							onclick={() => {
-								crew = 'one';
-								workedBy = p.id;
-							}}>{p.name.split(' ')[0]}</button
-						>
-					{/each}
-				{/if}
-				<button type="button" class:on={crew === 'team'} onclick={() => (crew = 'team')}>
-					{field ? 'A team' : 'Team'}
-				</button>
-			</div>
-		</div>
-
-		{#if crew === 'team'}
-			<div class="fld">
-				<span class="lbl">{field ? 'Who is on it with you' : 'Who is on it'}</span>
-				<div class="seg">
-					{#if field && me}
-						<button type="button" class="on" aria-pressed="true" disabled
-							>{me.name.split(' ')[0]} · you</button
-						>
-					{/if}
-					{#each others as p (p.id)}
-						<button
-							type="button"
-							class:on={crewIds.includes(p.id)}
-							aria-pressed={crewIds.includes(p.id)}
-							onclick={() => toggle(p.id)}>{p.name.split(' ')[0]}</button
-						>
-					{/each}
-				</div>
-				<small class="lt"
-					>Billed for {heads}, and each of them paid.{field
-						? " Work you weren't on is entered by someone with Full."
-						: ''}</small
-				>
-			</div>
-		{/if}
-
-		<button type="button" class="tog" class:on={billable} onclick={() => (billable = !billable)}>
-			<span class="sw"></span>
-			<span>{billable ? 'Billable' : 'Not billable'}</span>
-		</button>
-
-		<div class="fld">
-			<label for="s-note">Note — appears on the invoice</label>
-			<input id="s-note" class="inp" placeholder="What is being done" bind:value={note} />
-		</div>
-
-		{#if why}<p class="why bad">{why}</p>{/if}
-
-		<button class="btn pri blk" onclick={go}>Start the clock</button>
-
-		<p class="aside">
-			Nothing is written down until it stops, so this works with no reception and survives a reload.
-			Already finished? <a href={resolve('/timesheet/manual')}>Enter it by hand</a>.
-		</p>
-	</div>
+	</form>
+	<p class="note">
+		Nothing is written down until it stops, so it works with no signal and survives a reload.
+		Already finished? <a href={resolve('/timesheet/manual')}>Add past work</a>.
+	</p>
 </div>
 
 <style>
-	.form {
-		padding: 16px;
+	.fields {
 		display: flex;
 		flex-direction: column;
-		gap: 15px;
+		gap: 20px;
+		padding: 16px;
 	}
-	.lbl {
-		font-family: var(--fontStack-monospace);
-		font-size: 10px;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--fgColor-muted);
+	.fields > :global(*) {
+		max-width: 480px;
 	}
-	.inp-wrap {
-		position: relative;
-		display: block;
-	}
-	.inp-wrap .hint {
-		position: absolute;
-		right: 38px;
-		top: 50%;
-		transform: translateY(-50%);
-		font-size: 13px;
-		color: var(--fgColor-muted);
-		font-family: var(--fontStack-monospace);
-		pointer-events: none;
-	}
-	.why.bad {
-		color: var(--fgColor-danger);
-	}
-	.aside {
-		margin: 0;
-		font-size: 12.5px;
-		color: var(--fgColor-muted);
+	.keep {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 12px;
+		padding: 16px;
+		background: var(--bgColor-muted);
 	}
 </style>

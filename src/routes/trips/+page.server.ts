@@ -136,7 +136,9 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			month: offline ? null : monthOf(from),
 			miles: sum(legs.map((l) => l.miles)).toFixed(2),
 			trips: String(found.length),
-			rate: offline ? null : (rate?.toString() ?? null)
+			rate: offline ? null : (rate?.toString() ?? null),
+			// The service the rate is the price of, which the rate opens.
+			rate_of: rate !== null ? perMile[0] : null
 		}
 	};
 };
