@@ -11,6 +11,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import type { PageProps } from './$types';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
 	 * A new service: what it is called, what it is charged per, and, if it is
@@ -183,8 +184,8 @@
 				</div>
 			</div>
 			<div class="box-row keep">
-				<button type="submit" class="btn pri" disabled={saving}
-					>{saving ? 'Adding…' : 'Add the service'}</button
+				<button type="submit" class="btn pri" {@attach busy(saving && 'Adding the service')}
+					>Add the service</button
 				>
 				<a class="btn" href={resolve('/catalogue/services')}>Cancel</a>
 				{#if saying}<p class="fc-e"><Octicon name="alert" />{saying}</p>{/if}

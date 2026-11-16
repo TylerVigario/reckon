@@ -12,6 +12,7 @@
 	import Authentication from '#lib/Authentication.svelte';
 	import Octicon from '#lib/Octicon.svelte';
 	import type { PageProps } from './$types';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
 	 * Where a link reckon emailed opens (+page.server.ts). The code is after the
@@ -183,12 +184,12 @@
 			{#if other}
 				<p class="muted">{other.name} is signed in in this browser, and is signed out first.</p>
 			{/if}
-			<button class="btn pri" type="button" onclick={make} aria-disabled={making || undefined}
-				>{making
-					? 'Making it…'
-					: view.purpose === 'invite'
-						? 'Make your passkey'
-						: 'Make a new passkey'}</button
+			<button
+				class="btn pri"
+				type="button"
+				onclick={make}
+				{@attach busy(making && 'Making your passkey')}
+				>{view.purpose === 'invite' ? 'Make your passkey' : 'Make a new passkey'}</button
 			>
 		{/if}
 	</Authentication>
@@ -219,8 +220,8 @@
 	<Authentication title="Confirm your new email">
 		<form onsubmit={change}>
 			<p>For {view.name}. You’ll sign in to {business} as {view.email} from now on.</p>
-			<button class="btn pri" type="submit" aria-disabled={saving || undefined}
-				>{saving ? 'Confirming…' : 'Confirm email'}</button
+			<button class="btn pri" type="submit" {@attach busy(saving && 'Confirming your email')}
+				>Confirm email</button
 			>
 		</form>
 		{#snippet footer()}

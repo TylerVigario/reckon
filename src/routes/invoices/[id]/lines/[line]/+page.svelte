@@ -22,6 +22,7 @@
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 	import { opens } from '#lib/access.ts';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	let { data }: PageProps = $props();
 	// Its history is Full's to read (#lib/access).
@@ -306,7 +307,9 @@
 			</section>
 		{/each}
 		<div class="acts">
-			<button class="btn pri" disabled={deciding} onclick={keepPicks}>Keep these</button>
+			<button class="btn pri" onclick={keepPicks} {@attach busy(deciding && 'Keeping these')}
+				>Keep these</button
+			>
 			<a class="btn" href={back}>Later</a>
 		</div>
 	{:else if conflict?.what === 'changed' && mine}

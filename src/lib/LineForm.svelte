@@ -30,6 +30,7 @@
 	import type { RuleSet } from '#lib/passed-on.ts';
 	import type { Costing, Shelf } from '#lib/stock-draw.ts';
 	import type { ResolvedPathname } from '$app/types';
+	import { busy } from './busy.svelte.ts';
 
 	/**
 	 * ADD A LINE: goods drawn from stock, goods bought for the job, or a cost
@@ -691,14 +692,10 @@
 			{/if}
 		</div>
 		<div class="box-row keep">
-			<button class="btn pri" disabled={saving}
-				>{editing
-					? saving
-						? 'Saving…'
-						: 'Save the change'
-					: saving
-						? 'Adding…'
-						: 'Add the line'}</button
+			<button
+				class="btn pri"
+				{@attach busy(saving && (editing ? 'Saving the change' : 'Adding the line'))}
+				>{editing ? 'Save the change' : 'Add the line'}</button
 			>
 			<a class="btn" href={back}>Cancel</a>
 		</div>

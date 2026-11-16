@@ -25,6 +25,7 @@
 	} from '#lib/queue.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import type { PageProps } from './$types';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
 	 * One time entry, changed after the fact (+page.server.ts): the Add past work
@@ -422,7 +423,9 @@
 			</section>
 		{/each}
 		<div class="acts">
-			<button class="btn pri" disabled={deciding} onclick={keepPicks}>Keep these</button>
+			<button class="btn pri" onclick={keepPicks} {@attach busy(deciding && 'Keeping these')}
+				>Keep these</button
+			>
 			<a class="btn" href={time}>Later</a>
 		</div>
 	{:else if conflict?.what === 'removed' && mine}

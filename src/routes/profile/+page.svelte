@@ -18,6 +18,7 @@
 		weekStartOf
 	} from '#lib/locales.ts';
 	import type { PageProps } from './$types';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	let { data, form }: PageProps = $props();
 
@@ -97,8 +98,11 @@
 		<div class="banner-m">
 			<p class="banner-t">Your browser is set to {localeName(offer)}</p>
 			<p class="banner-d">
-				<button type="button" class="btn sm" disabled={taking} onclick={takeBrowser}
-					>Use {localeName(offer)}</button
+				<button
+					type="button"
+					class="btn sm"
+					onclick={takeBrowser}
+					{@attach busy(taking && `Using ${localeName(offer)}`)}>Use {localeName(offer)}</button
 				>
 			</p>
 		</div>

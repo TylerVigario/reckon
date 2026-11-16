@@ -192,7 +192,7 @@ check(
 		/Invoice INV-\d+/.test(client) &&
 		client.includes('Balance due') &&
 		client.includes('Keystone jacks') &&
-		!client.includes('class="rail"'),
+		!client.includes('aria-label="Sections"'),
 	`the link opens the invoice signed out, without the app around it (${opened.status})`
 );
 check((opened.headers.get('cache-control') ?? '').includes('no-store'), 'and no cache keeps it');

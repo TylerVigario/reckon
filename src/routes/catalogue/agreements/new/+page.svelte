@@ -7,6 +7,7 @@
 	import { goto } from '$app/navigation';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	let { data }: PageProps = $props();
 
@@ -169,9 +170,9 @@
 			</div>
 		</div>
 		<div class="box-row keep">
-			<button type="submit" class="btn pri" disabled={saving}>
-				{saving ? 'Creating…' : 'Create, then say what it covers'}
-			</button>
+			<button type="submit" class="btn pri" {@attach busy(saving && 'Creating the agreement')}
+				>Create, then say what it covers</button
+			>
 			<a class="btn" href={resolve('/catalogue/agreements')}>Cancel</a>
 			{#if saying}<p class="fc-e"><Octicon name="alert" />{saying}</p>{/if}
 		</div>

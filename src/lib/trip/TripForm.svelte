@@ -24,6 +24,7 @@
 	} from '#lib/trip-legs.ts';
 	import type { TripChoices } from '#lib/server/trip-choices.ts';
 	import type { StopDraft, TripDraft } from './draft.ts';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
 	 * A trip being recorded, or -- given `start` and `tripId` -- a saved one being
@@ -983,7 +984,7 @@
 				</div>
 			</div>
 			<div class="box-row keep">
-				<button class="btn pri" disabled={saving}>Save the trip</button>
+				<button class="btn pri" {@attach busy(saving && 'Saving the trip')}>Save the trip</button>
 				<a class="btn" href={tripId ? resolve('/trips/[id]', { id: tripId }) : resolve('/trips')}
 					>Cancel</a
 				>

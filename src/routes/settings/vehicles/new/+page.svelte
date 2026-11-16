@@ -10,6 +10,7 @@
 	import { untrack } from 'svelte';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
+	import { busy } from '#lib/busy.svelte.ts';
 	/**
 	 * A vehicle, added: what it is called, and whose it is, which decides who
 	 * its miles pay, not who drives it, and never changes.
@@ -96,8 +97,8 @@
 			</fieldset>
 		</div>
 		<div class="box-row keep">
-			<button type="submit" class="btn pri" disabled={saving}
-				>{saving ? 'Adding…' : 'Add vehicle'}</button
+			<button type="submit" class="btn pri" {@attach busy(saving && 'Adding the vehicle')}
+				>Add vehicle</button
 			>
 			<a class="btn" href={back}>Cancel</a>
 			{#if problem}<p class="fc-e"><Octicon name="alert" />{problem}</p>{/if}

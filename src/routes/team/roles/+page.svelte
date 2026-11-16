@@ -13,6 +13,7 @@
 	import { resolve } from '$app/paths';
 	import { tick } from 'svelte';
 	import type { PageProps } from './$types';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
 	 * The roles people are paid as, as Primer's DataTable: a header row in the
@@ -152,8 +153,12 @@
 		<td data-label="Held by" class="muted">{r ? people(r.holders) : ''}</td>
 		<td class="act">
 			<div class="keep">
-				<button type="button" class="btn sm pri" onclick={save} disabled={saving}
-					>{saving ? 'Saving…' : r ? 'Save' : 'Add role'}</button
+				<button
+					type="button"
+					class="btn sm pri"
+					onclick={save}
+					{@attach busy(saving && (r ? 'Saving the role' : 'Adding the role'))}
+					>{r ? 'Save' : 'Add role'}</button
 				>
 				<button type="button" class="btn sm" onclick={() => (editing = null)} disabled={saving}
 					>Cancel</button

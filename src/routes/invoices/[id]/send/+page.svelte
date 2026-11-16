@@ -9,6 +9,7 @@
 	import { readProblem } from '#lib/json.ts';
 	import { changesHeld, flush, linesHeld } from '#lib/queue.ts';
 	import type { PageProps } from './$types';
+	import { busy } from '#lib/busy.svelte.ts';
 	let { data }: PageProps = $props();
 
 	const i = $derived(data.invoice);
@@ -45,6 +46,8 @@
 	});
 
 	let sending = $state(false);
+	/** Which of the two was pressed: it spins, and the other waits. */
+	let sendingBy = $state<'share' | 'copy' | null>(null);
 	let why = $state('');
 
 	/**
@@ -55,6 +58,7 @@
 	async function send(hand: 'share' | 'copy') {
 		why = '';
 		sending = true;
+		sendingBy = hand;
 		const r = await fetch(`/api/invoices/${i.id}/send`, { method: 'POST' }).catch(() => null);
 		if (!r) {
 			sending = false;
@@ -163,14 +167,18 @@
 		<button
 			class="btn pri"
 			type="button"
-			disabled={sending || held > 0 || !online || i.lines === 0}
-			onclick={() => send('share')}>Send — share the link</button
+			disabled={held > 0 || !online || i.lines === 0 || (sending && sendingBy !== 'share')}
+			onclick={() => send('share')}
+			{@attach busy(sending && sendingBy === 'share' && 'Sending the invoice')}
+			>Send — share the link</button
 		>
 		<button
 			class="btn"
 			type="button"
-			disabled={sending || held > 0 || !online || i.lines === 0}
-			onclick={() => send('copy')}>Send — copy the link</button
+			disabled={held > 0 || !online || i.lines === 0 || (sending && sendingBy !== 'copy')}
+			onclick={() => send('copy')}
+			{@attach busy(sending && sendingBy === 'copy' && 'Sending the invoice')}
+			>Send — copy the link</button
 		>
 	</div>
 	<p class="note">

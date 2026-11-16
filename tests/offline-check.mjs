@@ -649,7 +649,7 @@ if (phase === 'offline') {
 	const listSays = await banner();
 	check(
 		(await heading()).startsWith('Invoices') &&
-			/^● Offline · as of .+ · 2 changes waiting to send$/.test(listSays),
+			/^Offline · as of .+ · 2 changes waiting to send$/.test(listSays),
 		`/invoices opens with no server, saying how old it is (${listSays})`
 	);
 	await go(DRAFT);

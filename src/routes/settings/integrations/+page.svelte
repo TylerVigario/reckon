@@ -6,6 +6,7 @@
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	let { data, form }: PageProps = $props();
 	let testing = $state(false);
@@ -57,9 +58,9 @@
 							};
 						}}
 					>
-						<button class="btn sm" type="submit" disabled={testing}>
-							{testing ? 'Sending…' : 'Send a test email'}
-						</button>
+						<button class="btn sm" type="submit" {@attach busy(testing && 'Sending a test email')}
+							>Send a test email</button
+						>
 						{#if form?.tested}
 							<p class="said" role="status">
 								{form.tested.sent

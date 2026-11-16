@@ -3,6 +3,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { clock, datedAt, todayIn } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
+	import Octicon from './Octicon.svelte';
 
 	/**
 	 * Says, at the top of a screen that works with no signal, that it has none,
@@ -14,6 +15,10 @@
 	 * navigator.onLine, is believed only when it says offline: it says online on
 	 * any network, reachable server or not. When the server is back the screen
 	 * fetches itself again, so it stops showing the copy.
+	 *
+	 * Drawn as Primer's Banner, its attention colours, as a strip across the
+	 * screen under its header: the cloud struck through when the server is out
+	 * of reach, the upload when it is there and changes are still to go.
 	 */
 	let {
 		asOf,
@@ -62,7 +67,28 @@
 
 {#if !reachable || waiting > 0}
 	<div class="offline" role="status">
-		<span aria-hidden="true">●</span>
-		{#if !reachable}Offline · as of {when}{waiting > 0 ? ` · ${changes}` : ''}{:else}{changes}{/if}
+		<Octicon name={reachable ? 'upload' : 'cloudOffline'} />
+		<span
+			>{#if !reachable}Offline · as of {when}{waiting > 0
+					? ` · ${changes}`
+					: ''}{:else}{changes}{/if}</span
+		>
 	</div>
 {/if}
+
+<style>
+	.offline {
+		display: flex;
+		align-items: center;
+		gap: var(--base-size-8);
+		padding: var(--base-size-8) max(var(--pad), calc((100% - var(--col)) / 2));
+		font-size: var(--text-body-size-small);
+		line-height: var(--text-body-lineHeight-small);
+		color: var(--fgColor-default);
+		background: var(--bgColor-attention-muted);
+		border-bottom: var(--borderWidth-thin) solid var(--borderColor-attention-muted);
+	}
+	.offline > :global(svg) {
+		color: var(--fgColor-attention);
+	}
+</style>

@@ -9,6 +9,7 @@
 	import { warm } from '#lib/warm.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	let { data }: PageProps = $props();
 	let client = $state(untrack(() => data.client ?? data.clients[0]?.id ?? ''));
@@ -84,9 +85,9 @@
 			</div>
 		</div>
 		<div class="box-row keep">
-			<button class="btn pri" disabled={saving || !client}>
-				{saving ? 'Starting…' : 'Start the draft'}
-			</button>
+			<button class="btn pri" disabled={!client} {@attach busy(saving && 'Starting the draft')}
+				>Start the draft</button
+			>
 			<a class="btn" href={resolve('/invoices')}>Cancel</a>
 		</div>
 	</form>

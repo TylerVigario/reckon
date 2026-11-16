@@ -32,6 +32,7 @@
 	import { rateFor } from '#lib/rates.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	let { data }: PageProps = $props();
 
@@ -83,9 +84,12 @@
 	// whichever timer moved up into its place; the post itself goes on in the
 	// background and never holds them.
 	let stopping = $state(false);
+	/** The timer being stopped: its Stop spins, and the others wait. */
+	let stoppingId = $state<string | null>(null);
 	async function stop(t: Running) {
 		if (stopping) return;
 		stopping = true;
+		stoppingId = t.id;
 		why = '';
 		try {
 			await enqueue(toEntry(t, data.me, personalZone()));
@@ -385,7 +389,12 @@
 				</span>
 			</div>
 			<div class="box-row keep">
-				<button class="btn pri" disabled={stopping} onclick={() => stop(live)}>Stop</button>
+				<button
+					class="btn pri"
+					disabled={stopping && stoppingId !== live.id}
+					onclick={() => stop(live)}
+					{@attach busy(stopping && stoppingId === live.id && 'Stopping the timer')}>Stop</button
+				>
 				<a class="btn" href={resolve('/timesheet/start')}>Start another</a>
 			</div>
 		</section>
@@ -424,7 +433,12 @@
 					<span class="v">{c.hm}</span>
 					<span class="sub">running</span>
 				</span>
-				<button class="btn sm" disabled={stopping} onclick={() => stop(t)}>Stop</button>
+				<button
+					class="btn sm"
+					disabled={stopping && stoppingId !== t.id}
+					onclick={() => stop(t)}
+					{@attach busy(stopping && stoppingId === t.id && 'Stopping the timer')}>Stop</button
+				>
 			</div>
 		{/each}
 

@@ -12,7 +12,9 @@
 	import type { LayoutProps } from './$types';
 	import { resolve } from '$app/paths';
 	import type { RouteId } from '$app/types';
-	import TabIcon, { type Tab } from '#lib/TabIcon.svelte';
+	import Octicon from '#lib/Octicon.svelte';
+	import type { Octicon24Name, OcticonName } from '#lib/octicons.ts';
+	import { working } from '#lib/busy.svelte.ts';
 	import { hoursBadge, zoneName } from '#lib/format.ts';
 	import { CLIENT_PAGE, LINK_PAGE } from '#lib/client-link.ts';
 	import { opens } from '#lib/access.ts';
@@ -153,32 +155,50 @@
 				.catch(() => {});
 	});
 
-	// Five tabs, one per kind of work.
+	// ON A PHONE, five tabs along the bottom, one per kind of work, as GitHub's
+	// own phone app has its sections (docs.github.com, GitHub Mobile: "At the
+	// bottom of the app"): in thumb's reach, since that is where a timer gets
+	// started. More is the rest of the sections as a page of its own, Primer's
+	// sidebar on a narrow screen: "an index page" to go back to.
 	const nav = [
-		{ href: '/', label: 'Today', ic: 'today' },
-		{ href: '/timesheet', label: 'Time', ic: 'time' },
-		{ href: '/trips', label: 'Trips', ic: 'trips' },
-		{ href: '/invoices', label: 'Invoices', ic: 'invoices' },
-		{ href: '/more', label: 'More', ic: 'more' }
-	] satisfies { href: RouteId; label: string; ic: Tab }[];
+		{ href: '/', label: 'Today', ic: 'home' },
+		{ href: '/timesheet', label: 'Time', ic: 'clock' },
+		{ href: '/trips', label: 'Trips', ic: 'location' },
+		{ href: '/invoices', label: 'Invoices', ic: 'file' },
+		{ href: '/more', label: 'More', ic: 'apps' }
+	] satisfies { href: RouteId; label: string; ic: Octicon24Name }[];
 
-	// The rail flattens what the tab bar nests: on a screen with room, More is
-	// not a place, it is four more rows. A section with tabs is opened on its
-	// first (#lib/section-tabs), and lit on any of them.
+	// WITH ROOM FOR TWO COLUMNS -- Primer's regular range, from 768px -- every
+	// section down the side, as Primer's NavList in a split page's pane: "On
+	// wide viewports, the sidebar is always visible." More is not a place
+	// there, it is four more rows. A section with tabs is opened on its first
+	// (#lib/section-tabs), and lit on any of them.
 	const rail = [
-		{ href: '/', label: 'Today', count: () => counts.drafts },
-		{ href: '/timesheet', label: 'Time', count: () => hours(counts.monthSeconds) },
-		{ href: '/trips', label: 'Trips', count: () => null },
-		{ href: '/invoices', label: 'Invoices', count: () => counts.drafts },
-		{ href: '/catalogue/materials', at: '/catalogue', label: 'Catalogue', count: () => null },
-		{ href: '/clients', label: 'Entities', count: () => counts.entities },
-		{ href: '/team', label: 'Team', count: () => null },
-		{ href: '/reports/pay', at: '/reports', label: 'Reports', count: () => null },
-		{ href: '/settings', label: 'Settings', count: () => null }
+		{ href: '/', label: 'Today', ic: 'home', count: () => counts.drafts },
+		{
+			href: '/timesheet',
+			label: 'Time',
+			ic: 'clock',
+			count: () => hours(counts.monthSeconds)
+		},
+		{ href: '/trips', label: 'Trips', ic: 'location', count: () => null },
+		{ href: '/invoices', label: 'Invoices', ic: 'file', count: () => counts.drafts },
+		{
+			href: '/catalogue/materials',
+			at: '/catalogue',
+			label: 'Catalogue',
+			ic: 'package',
+			count: () => null
+		},
+		{ href: '/clients', label: 'Entities', ic: 'organization', count: () => counts.entities },
+		{ href: '/team', label: 'Team', ic: 'people', count: () => null },
+		{ href: '/reports/pay', at: '/reports', label: 'Reports', ic: 'graph', count: () => null },
+		{ href: '/settings', label: 'Settings', ic: 'gear', count: () => null }
 	] satisfies {
 		href: RouteId;
 		at?: string;
 		label: string;
+		ic: OcticonName;
 		count: () => string | number | null | undefined;
 	}[];
 
@@ -235,6 +255,10 @@
 	<meta name="theme-color" content={accent || '#1d6f9c'} />
 </svelte:head>
 
+<!-- What a working button is doing (#lib/busy), said for whoever can't see
+     its spinner: there from the first paint, so it is heard when it changes. -->
+<div class="sr-only" aria-live="polite">{working.said}</div>
+
 {#if !data.user || CLIENT_PAGE.test(page.url.pathname) || LINK_PAGE.test(page.url.pathname)}
 	<!-- Signed out, there is nothing to navigate to. The shell would be a header
 	     and a row of links that all bounce back to here. A client's page is the
@@ -242,57 +266,75 @@
 	     the page an emailed link opens, which is for whoever it was sent to. -->
 	{@render children()}
 {:else}
-	<div class="app">
-		<div class="rail">
-			<div class="rail-mark">
-				{#if data.operator?.has_logo}
-					<img class="logo" src="/operator/logo" alt={name} />
-				{/if}
+	<div class="app primer">
+		<!-- Primer: "a skip link near the global navigation that allows users
+		     skip over all the global navigation items and go straight to the
+		     main content". -->
+		<a class="skip btn" href="#main">Skip to content</a>
+		<div class="pane">
+			<a class="mark" href={resolve('/')}>
+				<img src={tabIcon} alt="" />
 				<span>{name}</span>
-			</div>
-			<nav class="rail-nav" aria-label="Sections">
-				{#each railShown as r (r.href)}
-					{@const n = r.count()}
-					<a
-						href={resolve(r.href)}
-						aria-current={here(('at' in r && r.at) || r.href) ? 'page' : undefined}
-					>
-						{r.label}{#if n !== null && n !== undefined}<span class="cnt">{n}</span>{/if}
-					</a>
-				{/each}
-				{#if access === 'field' && data.user}
-					<a
-						href={resolve('/reports/pay/[person]', { person: data.user.id })}
-						aria-current={page.url.pathname.startsWith('/reports/pay') ? 'page' : undefined}
-						>Your pay</a
-					>
-				{/if}
+			</a>
+			<nav aria-label="Sections">
+				<ul class="navlist">
+					{#each railShown as r (r.href)}
+						{@const n = r.count()}
+						<li>
+							<a
+								href={resolve(r.href)}
+								aria-current={here(('at' in r && r.at) || r.href) ? 'page' : undefined}
+							>
+								<Octicon name={r.ic} />{r.label}{#if n !== null && n !== undefined}<span
+										class="count">{n}</span
+									>{/if}
+							</a>
+						</li>
+					{/each}
+					{#if access === 'field' && data.user}
+						<li>
+							<a
+								href={resolve('/reports/pay/[person]', { person: data.user.id })}
+								aria-current={page.url.pathname.startsWith('/reports/pay') ? 'page' : undefined}
+								><Octicon name="creditCard" />Your pay</a
+							>
+						</li>
+					{/if}
+				</ul>
 			</nav>
-			<form class="rail-foot" method="POST" action="/logout" onsubmit={beforeSigningOut}>
-				<a
-					class="me"
-					href={resolve('/profile')}
-					title="Your profile"
-					aria-current={page.url.pathname === '/profile' ? 'page' : undefined}
-				>
-					<span class="avatar" aria-hidden="true">{initials}</span>
-					<span class="who">{data.user?.name}</span>
-				</a>
-				<button type="submit">Sign out</button>
+			<form class="foot" method="POST" action="/logout" onsubmit={beforeSigningOut}>
+				<ul class="navlist">
+					<li>
+						<a
+							href={resolve('/profile')}
+							aria-current={page.url.pathname.startsWith('/profile') ? 'page' : undefined}
+						>
+							<span class="ava" aria-hidden="true">{initials}</span>
+							<span class="navlist-m"
+								><span>{data.user?.name}</span><span class="navlist-b">Your profile</span></span
+							>
+						</a>
+					</li>
+				</ul>
+				<button class="btn sm gho" type="submit"><Octicon name="signOut" />Sign out</button>
 			</form>
 		</div>
 
-		<main>
+		<main id="main">
 			{#if elsewhere && data.user?.timezone}
-				<div class="zone-ask" role="status">
-					<p>
-						This device is on {zoneName(elsewhere)}. Your clock is {zoneName(data.user.timezone)}.
-					</p>
-					<div class="acts">
-						<button type="button" class="btn sm pri" onclick={useHere}
-							>Use {zoneName(elsewhere)}</button
-						>
-						<button type="button" class="btn sm" onclick={keepZone}>Keep mine</button>
+				<div class="notice">
+					<div class="banner info zone-ask" role="status">
+						<Octicon name="clock" />
+						<div class="banner-m">
+							<p class="banner-t">This device is on {zoneName(elsewhere)}</p>
+							<p class="banner-d">Your clock is {zoneName(data.user.timezone)}.</p>
+							<div class="acts">
+								<button type="button" class="btn sm pri" onclick={useHere}
+									>Use {zoneName(elsewhere)}</button
+								>
+								<button type="button" class="btn sm" onclick={keepZone}>Keep mine</button>
+							</div>
+						</div>
 					</div>
 				</div>
 			{/if}
@@ -300,9 +342,18 @@
 			     Said, not done: a reload in the middle of entering something would
 			     lose it. -->
 			{#if updated.current}
-				<div class="updated" role="status">
-					<span>reckon has been updated.</span>
-					<button type="button" class="btn sm pri" onclick={() => location.reload()}>Reload</button>
+				<div class="notice">
+					<div class="banner info updated" role="status">
+						<Octicon name="info" />
+						<div class="banner-m">
+							<p class="banner-t">reckon has been updated</p>
+							<div class="acts">
+								<button type="button" class="btn sm pri" onclick={() => location.reload()}
+									>Reload</button
+								>
+							</div>
+						</div>
+					</div>
 				</div>
 			{/if}
 			{@render children()}
@@ -311,7 +362,7 @@
 		<nav class="tabbar" aria-label="Sections">
 			{#each nav as n (n.href)}
 				<a href={resolve(n.href)} aria-current={here(n.href) ? 'page' : undefined}>
-					<TabIcon name={n.ic} />{n.label}
+					<Octicon name={n.ic} size={24} />{n.label}
 				</a>
 			{/each}
 		</nav>
@@ -348,8 +399,9 @@
 	   above: its colours, in its light and dark themes, which <html> names
 	   (data-color-mode, data-light-theme, data-dark-theme -- the device's own
 	   choice, unless this device is set to one, #lib/device-fields), and its
-	   sizes, type and radii. reckon draws with Primer's tokens alone; what is
-	   its own is the layout below.
+	   sizes, type and radii. reckon draws with Primer's tokens alone, and its
+	   shapes are Primer's (#lib/primer.css); what is its own is the layout
+	   below.
 
 	   The type is Noto -- Noto Sans and Noto Sans Mono, bundled (OFL-1.1) --
 	   which Primer's own font stack names, and which press sets its documents
@@ -363,13 +415,15 @@
 		--fontStack-monospace:
 			'Noto Sans Mono Variable', 'Noto Sans Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo,
 			Consolas, 'Liberation Mono', monospace;
-		--pad: 16px;
+		/* A page's padding, Primer's: 16px, and 24px from its large breakpoint
+		   (1012px), on the content and the pane alike. */
+		--pad: var(--base-size-16);
+		/* The content's width at most: Primer's xlarge, 1280px, its padding
+		   included -- so 1232px of content inside 24px either side. */
+		--col: 1232px;
+		/* The tab bar's height, its line included, which a screen pinning
+		   something above the bar reads (catalogue/receipts/new). */
 		--tabh: 60px;
-		/* The reading column. Width is capped by content type -- records, prose,
-		   documents, controls -- and this is the widest of them. Inside no frame,
-		   a narrow figure leaves a desert down both sides of a wide
-		   monitor. */
-		--col: 1200px;
 		/* Form controls and scrollbars follow the theme <html> names. */
 		color-scheme: light dark;
 	}
@@ -378,6 +432,11 @@
 	}
 	:global(:root[data-color-mode='dark']) {
 		color-scheme: dark;
+	}
+	@media (min-width: 1012px) {
+		:global(:root) {
+			--pad: var(--base-size-24);
+		}
 	}
 
 	/* app.html's wrapper. A rule rather than its own style attribute, which the
@@ -400,608 +459,31 @@
 		color: var(--fgColor-accent);
 	}
 
-	/* ================================================================ system ==
-	   The shared components, global so a page uses them by naming them
-	   rather than by restating them. Svelte scopes styles per component, and a
-	   design system copied into nine files is nine files to get out of step. */
+	/* Read by a screen reader, not drawn: Primer's sr-only. */
+	:global(.sr-only) {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
 
-	/* The content area under a screen's .top. */
+	/* A screen's content, under its header (#lib/Top): Primer's content
+	   region, its blocks a padding apart, and no wider than --col. Centred by
+	   padding rather than by each child centring itself, so a narrow note sits
+	   at the left edge of the rows it explains rather than inboard of them. */
 	:global(.pad) {
-		padding: var(--pad);
 		display: flex;
 		flex-direction: column;
-		gap: 18px;
+		gap: var(--pad);
+		padding: var(--pad) max(var(--pad), calc((100% - var(--col)) / 2));
 	}
 	:global(.pad > *) {
 		max-width: var(--col);
-	}
-
-	/* A header and a list of records. Full bleed on a phone: a card inside a
-	   card is what makes a small screen feel cramped. */
-	:global(.sec) {
-		display: flex;
-		flex-direction: column;
-	}
-	:global(.sec-h) {
-		display: flex;
-		align-items: baseline;
-		gap: 8px;
-		flex-wrap: wrap;
-		padding: 0 2px 8px;
-	}
-	:global(.sec-h h2) {
-		font-family: var(--fontStack-monospace);
-		font-size: 10.5px;
-		letter-spacing: 0.13em;
-		text-transform: uppercase;
-		color: var(--fgColor-muted);
-		font-weight: 400;
-		margin: 0;
-	}
-	:global(.sec-h .sp) {
-		margin-left: auto;
-	}
-	:global(.rows) {
-		background: var(--bgColor-default);
-		border: 1px solid var(--borderColor-default);
-		border-radius: var(--borderRadius-medium);
-		overflow: hidden;
-	}
-
-	/* The one row component. Every list in this app is made of these: unbilled
-	   work, invoice lines, catalogue items, trip legs, report figures. */
-	:global(.rec) {
-		display: flex;
-		align-items: flex-start;
-		gap: 12px;
-		padding: 12px 14px;
-		border-bottom: 1px solid var(--borderColor-muted);
-		min-height: 56px;
-		box-sizing: border-box;
-		color: inherit;
-		text-decoration: none;
-	}
-	:global(.rec:last-child) {
-		border-bottom: 0;
-	}
-	:global(.rec.warn) {
-		background: var(--bgColor-attention-muted);
-	}
-	:global(.rec.crit) {
-		background: var(--bgColor-danger-muted);
-	}
-	:global(.rec.acc) {
-		background: var(--bgColor-accent-muted);
-	}
-	:global(.rec.tot) {
-		background: var(--bgColor-inset);
-	}
-	:global(.rec.tot .rec-t),
-	:global(.rec.tot .rec-v) {
-		font-weight: 700;
-	}
-	:global(.rec.gone) {
-		opacity: 0.5;
-	}
-	:global(.rec.link) {
-		align-items: center;
-	}
-	:global(.rec .arw) {
-		color: var(--fgColor-muted);
-		font-family: var(--fontStack-monospace);
-		font-size: 16px;
-		align-self: center;
-	}
-	:global(.rec-m) {
-		flex: 1 1 auto;
-		min-width: 0;
-	}
-	:global(.rec-t) {
-		font-size: 15px;
-		font-weight: 600;
-		line-height: 1.3;
-	}
-	:global(.rec-t .lt) {
-		font-weight: 400;
-		color: var(--fgColor-muted);
-	}
-	:global(.rec-s) {
-		font-size: 13.5px;
-		color: var(--fgColor-muted);
-		margin-top: 3px;
-		line-height: 1.4;
-	}
-	/* a record can carry a second line of chips */
-	:global(.rec-c) {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 5px;
-		margin-top: 7px;
-	}
-	:global(.rec-n) {
-		flex: 0 0 auto;
-		text-align: right;
-	}
-	:global(.rec-v) {
-		font-family: var(--fontStack-monospace);
-		font-variant-numeric: tabular-nums;
-		font-size: 15px;
-		font-weight: 700;
-		white-space: nowrap;
-		display: block;
-	}
-	:global(.rec-x) {
-		font-family: var(--fontStack-monospace);
-		font-variant-numeric: tabular-nums;
-		font-size: 12px;
-		color: var(--fgColor-muted);
-		white-space: nowrap;
-		display: block;
-		margin-top: 3px;
-	}
-	:global(.rec-v.mut),
-	:global(.rec-x.mut) {
-		color: var(--fgColor-muted);
-		font-weight: 400;
-	}
-
-	:global(.chip) {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-family: var(--fontStack-monospace);
-		font-size: 10px;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		padding: 3px 7px;
-		border-radius: 11px;
-		border: 1px solid var(--borderColor-default);
-		color: var(--fgColor-muted);
-		background: var(--bgColor-muted);
-		white-space: nowrap;
-	}
-	:global(.chip.good) {
-		color: var(--fgColor-success);
-		border-color: var(--borderColor-success-emphasis);
-		background: var(--bgColor-success-muted);
-	}
-	:global(.chip.warn) {
-		color: var(--fgColor-attention);
-		border-color: var(--borderColor-attention-emphasis);
-		background: var(--bgColor-attention-muted);
-	}
-	:global(.chip.crit) {
-		color: var(--fgColor-danger);
-		border-color: var(--borderColor-danger-emphasis);
-		background: var(--bgColor-danger-muted);
-	}
-	:global(.chip.acc) {
-		color: var(--fgColor-accent);
-		border-color: var(--borderColor-accent-muted);
-		background: var(--bgColor-accent-muted);
-	}
-	:global(.chip .dot) {
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		background: currentColor;
-	}
-
-	:global(.none) {
-		margin: 0;
-		color: var(--fgColor-muted);
-		font-size: 14.5px;
-		max-width: 46ch;
-	}
-
-	/* A figure, big enough to read across a workshop. */
-	:global(.tiles) {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 10px;
-	}
-	:global(.tile) {
-		background: var(--bgColor-default);
-		border: 1px solid var(--borderColor-default);
-		border-radius: var(--borderRadius-medium);
-		padding: 13px 14px;
-	}
-	:global(.tile.wide) {
-		grid-column: 1 / -1;
-	}
-	:global(.tile .k) {
-		font-family: var(--fontStack-monospace);
-		font-size: 10px;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--fgColor-muted);
-		display: block;
-		margin-bottom: 7px;
-	}
-	:global(.tile .v) {
-		font-family: var(--fontStack-monospace);
-		font-variant-numeric: tabular-nums;
-		font-weight: 700;
-		font-size: 24px;
-		letter-spacing: -0.02em;
-		line-height: 1.05;
-		display: block;
-	}
-	:global(.tile .v.sm) {
-		font-size: 19px;
-	}
-	:global(.tile .v.good) {
-		color: var(--fgColor-success);
-	}
-	:global(.tile .v.crit) {
-		color: var(--fgColor-danger);
-	}
-	:global(.tile .v.warn) {
-		color: var(--fgColor-attention);
-	}
-	:global(.tile .s) {
-		font-size: 12.5px;
-		color: var(--fgColor-muted);
-		margin-top: 5px;
-		display: block;
-	}
-
-	/* Two lists side by side where there is room, stacked where there is not. */
-	:global(.duo) {
-		display: grid;
-		gap: 18px;
-	}
-	:global(.duo > *) {
-		min-width: 0;
-	}
-
-	:global(.seeall) {
-		margin-left: auto;
-		font-size: 13px;
-		color: var(--fgColor-accent);
-		text-decoration: none;
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		min-height: 32px;
-	}
-	:global(.seeall)::after {
-		content: '\2039';
-		transform: rotate(180deg);
-		font-size: 17px;
-		line-height: 1;
-	}
-
-	/* Primer's Button: its default, primary and danger variants in its own
-	   button tokens, rest and hover; its medium size on a mouse, and Primer's
-	   own touch target (control-minTarget-auto, 44px) on a touch screen. */
-	:global(.btn) {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: var(--base-size-8);
-		font-family: var(--fontStack-sansSerif);
-		font-size: var(--text-body-size-medium);
-		font-weight: var(--base-text-weight-medium);
-		min-height: max(var(--control-medium-size), var(--control-minTarget-auto, 0px));
-		padding: 0 var(--control-medium-paddingInline-normal);
-		border-radius: var(--borderRadius-medium);
-		border: 1px solid var(--button-default-borderColor-rest);
-		background: var(--button-default-bgColor-rest);
-		color: var(--button-default-fgColor-rest);
-		box-shadow: var(--button-default-shadow-resting);
-		text-decoration: none;
-		cursor: pointer;
-	}
-	:global(.btn:hover:not(:disabled)) {
-		background: var(--button-default-bgColor-hover);
-		border-color: var(--button-default-borderColor-hover);
-	}
-	:global(.btn.pri) {
-		background: var(--button-primary-bgColor-rest);
-		border-color: var(--button-primary-borderColor-rest);
-		color: var(--button-primary-fgColor-rest);
-	}
-	:global(.btn.pri:hover:not(:disabled)) {
-		background: var(--button-primary-bgColor-hover);
-		border-color: var(--button-primary-borderColor-hover);
-	}
-	:global(.btn.gho) {
-		background: transparent;
-		border-color: transparent;
-		box-shadow: none;
-		color: var(--fgColor-muted);
-	}
-	/* What cannot be taken back: Primer's danger button where it is offered,
-	   filled where it is confirmed (#lib/Dialog). */
-	:global(.btn.danger) {
-		color: var(--button-danger-fgColor-rest);
-		background: var(--button-danger-bgColor-rest);
-		border-color: var(--button-danger-borderColor-rest);
-	}
-	:global(.btn.danger:hover:not(:disabled)),
-	:global(.btn.danger.solid) {
-		color: var(--button-danger-fgColor-hover);
-		background: var(--button-danger-bgColor-hover);
-		border-color: var(--button-danger-borderColor-hover);
-	}
-	:global(.btn.sm) {
-		min-height: max(var(--control-small-size), var(--control-minTarget-auto, 0px));
-		padding: 0 var(--control-small-paddingInline-normal);
-		font-size: var(--text-body-size-small);
-	}
-	:global(.btn.blk) {
-		width: 100%;
-		min-height: 50px;
-		font-size: 16px;
-	}
-	:global(.btnrow) {
-		display: flex;
-		gap: 10px;
-	}
-
-	/* ============================================================= controls ==
-	   Everything is at least 48px tall. These are tapped with a thumb, often a
-	   cold one, standing on a roof. */
-	/* A card of fields rather than a list of rows. One definition, so settings
-	   pages cannot disagree about a padding and a new page cannot get it wrong
-	   by not knowing to copy it. */
-	:global(.rows.inset) {
-		padding: 14px;
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
-	}
-	:global(.pair) {
-		display: grid;
-		gap: 14px;
-	}
-	@media (min-width: 560px) {
-		:global(.pair) {
-			grid-template-columns: 1fr 1fr;
-		}
-	}
-	:global(.fld) {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-	:global(.fld > label) {
-		font-family: var(--fontStack-monospace);
-		font-size: 10px;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		color: var(--fgColor-muted);
-	}
-	:global(.inp) {
-		border: 1px solid var(--borderColor-default);
-		border-radius: 8px;
-		background: var(--bgColor-default);
-		color: var(--fgColor-default);
-		font: inherit;
-		font-size: 16px;
-		min-height: 50px;
-		padding: 12px 14px;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 10px;
-		width: 100%;
-		box-sizing: border-box;
-	}
-	:global(.inp:focus-visible),
-	:global(.seg button:focus-visible) {
-		outline: 2px solid var(--borderColor-accent-emphasis);
-		outline-offset: 1px;
-	}
-	:global(.inp .hint) {
-		font-size: 13px;
-		color: var(--fgColor-muted);
-		font-family: var(--fontStack-monospace);
-		white-space: nowrap;
-	}
-	:global(.inp.mut) {
-		color: var(--fgColor-muted);
-	}
-	/* The platform's arrow ignores the padding above it; drawn here it lines up
-	   with the text. */
-	:global(select.inp) {
-		appearance: none;
-		padding-right: 2.4rem;
-		background-image:
-			linear-gradient(45deg, transparent 50%, currentColor 50%),
-			linear-gradient(135deg, currentColor 50%, transparent 50%);
-		background-size:
-			0.36rem 0.36rem,
-			0.36rem 0.36rem;
-		background-position:
-			right 1.2rem center,
-			right 0.85rem center;
-		background-repeat: no-repeat;
-	}
-	/* One row of choices where a dropdown would hide the options. Three of them
-	   is faster to read than a select, and says what the alternatives are. */
-	:global(.seg) {
-		display: flex;
-		border: 1px solid var(--borderColor-default);
-		border-radius: 8px;
-		overflow: hidden;
-	}
-	:global(.seg button) {
-		flex: 1 1 0;
-		text-align: center;
-		padding: 12px 6px;
-		font: inherit;
-		font-size: 14px;
-		min-height: 48px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		color: var(--fgColor-muted);
-		background: var(--bgColor-default);
-		border: 0;
-		border-right: 1px solid var(--borderColor-default);
-		cursor: pointer;
-	}
-	:global(.seg button:last-child) {
-		border-right: 0;
-	}
-	:global(.seg button.on) {
-		background: var(--bgColor-accent-emphasis);
-		color: var(--fgColor-onEmphasis);
-		font-weight: 600;
-	}
-	:global(.tog) {
-		display: flex;
-		align-items: center;
-		gap: 11px;
-		font-size: 15px;
-		min-height: 48px;
-		background: none;
-		border: 0;
-		padding: 0;
-		color: var(--fgColor-default);
-		font-family: inherit;
-		cursor: pointer;
-	}
-	:global(.tog .sw) {
-		width: 44px;
-		height: 26px;
-		border-radius: 13px;
-		background: var(--borderColor-default);
-		position: relative;
-		flex: 0 0 auto;
-	}
-	:global(.tog .sw)::after {
-		content: '';
-		position: absolute;
-		top: 3px;
-		left: 3px;
-		width: 20px;
-		height: 20px;
-		border-radius: 50%;
-		background: var(--bgColor-default);
-		box-shadow: var(--shadow-resting-small);
-	}
-	:global(.tog.on .sw) {
-		background: var(--bgColor-accent-emphasis);
-	}
-	:global(.tog.on .sw)::after {
-		left: auto;
-		right: 3px;
-	}
-
-	/* A drive, in order. The line and the dots are the route: where it went
-	   and in what sequence, which is what makes a leg assignment checkable. */
-	:global(.legs) {
-		position: relative;
-		padding-left: 22px;
-	}
-	:global(.legs)::before {
-		content: '';
-		position: absolute;
-		left: 5px;
-		top: 10px;
-		bottom: 10px;
-		width: 1px;
-		background: var(--borderColor-default);
-	}
-	:global(.leg) {
-		position: relative;
-		padding: 9px 0;
-	}
-	:global(.leg)::before {
-		content: '';
-		position: absolute;
-		left: -21px;
-		top: 15px;
-		width: 9px;
-		height: 9px;
-		border-radius: 50%;
-		background: var(--bgColor-default);
-		border: 2px solid var(--borderColor-accent-emphasis);
-	}
-	:global(.leg .stop) {
-		font-size: 15px;
-		font-weight: 600;
-	}
-	:global(.leg .det) {
-		font-size: 13px;
-		color: var(--fgColor-muted);
-		margin-top: 2px;
-	}
-	:global(.btnrow .btn) {
-		flex: 1 1 0;
-	}
-
-	/* A running timer, which is the one thing on screen that is happening now
-	   rather than having happened. Bordered in the brand colour so it reads as
-	   live at arm's length, which is how it is read -- on a phone, on a roof. */
-	:global(.timer-card) {
-		background: var(--bgColor-default);
-		border: 1px solid var(--borderColor-emphasis);
-		border-radius: var(--borderRadius-medium);
-		padding: 18px;
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
-	}
-	:global(.timer) {
-		font-family: var(--fontStack-monospace);
-		font-variant-numeric: tabular-nums;
-		font-weight: 700;
-		font-size: 46px;
-		line-height: 1;
-		letter-spacing: -0.035em;
-		color: var(--fgColor-default);
-	}
-	:global(.timer small) {
-		font-size: 24px;
-		color: var(--fgColor-muted);
-	}
-	:global(.chips) {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-	:global(.stack) {
-		display: flex;
-		flex-direction: column;
-		gap: 11px;
-	}
-	:global(.hr) {
-		height: 1px;
-		background: var(--borderColor-muted);
-	}
-	:global(.kv) {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 12px;
-		font-size: 14px;
-	}
-	:global(.kv .k) {
-		color: var(--fgColor-muted);
-	}
-	:global(.kv .v) {
-		font-family: var(--fontStack-monospace);
-		font-variant-numeric: tabular-nums;
-		text-align: right;
-	}
-
-	/* Said at the top of the screen, not in a toast: work is captured on
-	   jobsites where reception fails, and "did that save" is the question the
-	   screen must answer without being asked. */
-	:global(.offline) {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		background: var(--bgColor-attention-muted);
-		color: var(--fgColor-attention);
-		padding: 10px var(--pad);
-		font-size: 13px;
-		font-family: var(--fontStack-monospace);
-		border-bottom: 1px solid var(--borderColor-default);
 	}
 
 	.app {
@@ -1010,54 +492,44 @@
 		flex-direction: column;
 	}
 
-	/* The screen. Its header is the page's own .top, sticky to the top of it,
-	   because what a screen is called belongs to the screen. */
 	main {
 		flex: 1 0 auto;
 		min-width: 0;
 	}
 
-	/* Asks before a person's clock moves: the sentence on its own, the two
-	   answers under it, so neither is squeezed on a phone. */
-	.zone-ask {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		padding: 12px var(--pad);
-		background: var(--bgColor-accent-muted);
-		border-bottom: 1px solid var(--borderColor-accent-muted);
-		font-size: 14px;
+	/* Out of sight until it has the focus, then at the top of the page. */
+	.skip {
+		position: absolute;
+		top: var(--base-size-8);
+		left: var(--base-size-8);
+		z-index: 60;
+		transform: translateY(-200%);
 	}
-	.zone-ask p {
-		margin: 0;
+	.skip:focus-visible {
+		transform: none;
 	}
-	.zone-ask .acts {
+
+	/* What the shell itself says -- this device's clock, a new version -- as
+	   Primer's Banner, over the screen. */
+	.notice {
+		padding: var(--base-size-8) var(--pad) 0;
+	}
+	.notice .acts {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 8px;
+		gap: var(--base-size-8);
 	}
 
-	/* A new version is out. A bar across the top of the screen, in the brand
-	   colour, rather than a toast that goes before it is read. */
-	.updated {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 10px var(--pad);
-		background: var(--bgColor-accent-muted);
-		border-bottom: 1px solid var(--borderColor-accent-muted);
-		font-size: 14px;
-	}
+	/* THE TAB BAR. Sticky in the page's flow rather than fixed over it. A fixed
+	   bar takes no room, so the page has to reserve its height -- and a
+	   reserved height is a guess: the bar grows with its padding, the safe area
+	   and the reader's text size, and whatever it outgrows the guess by sits
+	   under it. In the flow the bar's room is the bar's own height, whatever
+	   that turns out to be, and the last thing on a page always ends above it.
 
-	/* Thumb-reach on a phone, because that is where a timer gets used.
-
-	   Sticky in the page's flow rather than fixed over it. A fixed bar takes no
-	   room, so the page has to reserve its height -- and a reserved height is a
-	   guess: the bar grows with its padding, the safe area and the reader's text
-	   size, and whatever it outgrows the guess by sits under it. In the flow the
-	   bar's room is the bar's own height, whatever that turns out to be, and the
-	   last thing on a page always ends above it. */
+	   Drawn as Primer draws its tabs (UnderlineNav): the current one's label in
+	   the text colour, semibold, under Primer's line for the current tab, here
+	   at the bar's top edge, since the bar is at the screen's bottom. */
 	.tabbar {
 		position: sticky;
 		bottom: 0;
@@ -1065,200 +537,116 @@
 		display: grid;
 		grid-template-columns: repeat(5, 1fr);
 		background: var(--bgColor-default);
-		border-top: 1px solid var(--borderColor-default);
+		border-top: var(--borderWidth-thin) solid var(--borderColor-default);
 		padding-bottom: env(safe-area-inset-bottom);
 	}
 	.tabbar a {
-		/* The bar is --tabh tall, padding included -- the height the token names,
-		   rather than the token plus whatever the padding adds. */
 		box-sizing: border-box;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 4px;
-		min-height: var(--tabh);
-		padding: 7px 2px;
-		font-size: 10.5px;
+		gap: var(--base-size-4);
+		height: var(--tabh);
+		margin-top: -1px;
+		padding: 0 var(--base-size-2);
+		font-size: var(--text-caption-size);
+		line-height: var(--text-caption-lineHeight);
 		color: var(--fgColor-muted);
 		text-decoration: none;
 		border-top: 2px solid transparent;
-		margin-top: -1px;
+	}
+	.tabbar a:focus-visible {
+		outline: 2px solid var(--focus-outlineColor);
+		outline-offset: -2px;
 	}
 	.tabbar a[aria-current='page'] {
-		color: var(--fgColor-accent);
-		border-top-color: var(--borderColor-emphasis);
-		background: var(--bgColor-accent-muted);
+		color: var(--fgColor-default);
+		font-weight: var(--base-text-weight-semibold);
+		border-top-color: var(--underlineNav-borderColor-active);
 	}
 
-	/* Below the rail's width there is no rail; the tab bar is the navigation. */
-	.rail {
+	/* Below Primer's regular range there is no pane; the tab bar is the
+	   navigation. */
+	.pane {
 		display: none;
 	}
 
-	@media (min-width: 620px) {
-		:global(.tiles) {
-			grid-template-columns: repeat(3, 1fr);
-		}
-		:global(.tile.wide) {
-			grid-column: auto;
-		}
-	}
-
-	/* THE RAIL APPEARS WHEN THE WINDOW CAN AFFORD IT, which is not the same as
-	   when it fits.
-
-	   At 980 the rail would take 236 and hand the screen back 744, while a
-	   window one pixel narrower gives the screen 979 -- so widening the window
-	   would make the content NARROWER, and the sidebar would read as taking the
-	   page over rather than sitting beside it.
-
-	   1180 is 236 for the rail plus the ~940 the screen already had at the top
-	   of the tab-bar range. Crossing it still costs the content something --
-	   that is unavoidable with a fixed rail -- but it lands at a width the
-	   layout was already comfortable at, rather than below it. */
-	@media (min-width: 1180px) {
+	/* PRIMER'S SPLIT PAGE, from its regular range (768px): the pane flush to
+	   the left and as tall as the window, scrolling on its own, split from the
+	   content by Primer's divider, at Primer's medium pane width -- 256px, and
+	   296px from 1012px. The application fills the window; what is capped is
+	   the content, by --col. */
+	@media (min-width: 768px) {
 		.tabbar {
 			display: none;
 		}
-		/* The application fills the window. Capping it at 1280 and centring it
-		   would leave 320px of page background down each side of a 1920 monitor
-		   -- a frame around the thing rather than the thing.
-		   What is capped is the reading column, below. */
 		.app {
 			display: grid;
-			grid-template-columns: 236px 1fr;
-			min-height: 100dvh;
-			background: var(--bgColor-muted);
+			grid-template-columns: var(--pane-w, 256px) minmax(0, 1fr);
+			align-items: start;
 		}
-		.rail {
-			display: flex;
-			flex-direction: column;
-			gap: 20px;
-			padding: 20px 0;
-			border-right: 1px solid var(--borderColor-default);
+		.pane {
 			position: sticky;
 			top: 0;
-			align-self: start;
+			display: flex;
+			flex-direction: column;
+			gap: var(--base-size-16);
 			height: 100dvh;
 			box-sizing: border-box;
+			padding: var(--pad) var(--base-size-16);
+			overflow-y: auto;
+			border-right: var(--borderWidth-thin) solid var(--borderColor-default);
 		}
-		.rail-mark {
-			padding: 0 18px;
+		main {
+			min-height: 100dvh;
+		}
+		/* The business, as GitHub's header names where you are: its mark, and
+		   its name beside it. */
+		.mark {
 			display: flex;
-			flex-direction: column;
-			gap: 5px;
-		}
-		.rail-mark img {
-			width: 104px;
-			height: auto;
-			display: block;
-		}
-		.rail-mark span {
-			font-family: var(--fontStack-sansSerif);
-			font-weight: 700;
-			font-size: 15px;
-			letter-spacing: 0.01em;
+			align-items: center;
+			gap: var(--base-size-8);
+			min-height: var(--control-medium-size);
+			padding: 0 var(--base-size-8);
 			color: var(--fgColor-default);
-		}
-		.rail-nav {
-			display: flex;
-			flex-direction: column;
-		}
-		.rail-nav a {
-			display: flex;
-			align-items: center;
-			gap: 9px;
-			padding: 10px 18px;
-			font-size: 14.5px;
-			color: var(--fgColor-muted);
+			font-weight: var(--base-text-weight-semibold);
 			text-decoration: none;
-			border-left: 2px solid transparent;
-			min-height: 44px;
-			box-sizing: border-box;
+			border-radius: var(--borderRadius-medium);
 		}
-		.rail-nav a[aria-current='page'] {
-			color: var(--fgColor-accent);
-			border-left-color: var(--borderColor-emphasis);
-			background: var(--bgColor-accent-muted);
+		.mark:hover {
+			background: var(--control-transparent-bgColor-hover);
 		}
-		.rail-nav .cnt {
-			margin-left: auto;
-			font-family: var(--fontStack-monospace);
-			font-size: 11px;
-			color: var(--fgColor-muted);
-			font-variant-numeric: tabular-nums;
-		}
-		.rail-foot {
-			margin-top: auto;
-			padding: 0 18px;
-			display: flex;
-			align-items: center;
-			gap: 10px;
-		}
-		.avatar {
-			width: 26px;
-			height: 26px;
-			border-radius: 50%;
-			background: var(--bgColor-accent-emphasis);
-			color: var(--fgColor-onEmphasis);
-			font-family: var(--fontStack-monospace);
-			font-size: 10.5px;
-			font-weight: 700;
-			display: grid;
-			place-items: center;
+		.mark img {
 			flex: 0 0 auto;
+			width: var(--base-size-32);
+			height: var(--base-size-32);
+			object-fit: contain;
 		}
-		.rail-foot .me {
-			display: flex;
-			align-items: center;
-			gap: 10px;
+		.mark span {
 			min-width: 0;
-			color: inherit;
-			text-decoration: none;
-			border-radius: 999px;
+			overflow-wrap: anywhere;
 		}
-		.rail-foot .who {
-			font-size: 13.5px;
-			color: var(--fgColor-muted);
+		.foot {
+			display: flex;
+			flex-direction: column;
+			gap: var(--base-size-8);
+			margin-top: auto;
+			padding-top: var(--base-size-16);
+			border-top: var(--borderWidth-thin) solid var(--borderColor-muted);
 		}
-		.rail-foot .me:hover .who,
-		.rail-foot .me[aria-current='page'] .who {
-			color: var(--fgColor-default);
-			text-decoration: underline;
+		.foot .btn {
+			align-self: flex-start;
 		}
-		.rail-foot button {
-			margin-left: auto;
-			font: inherit;
-			font-size: 12px;
-			padding: 4px 9px;
-			border: 1px solid var(--borderColor-default);
-			border-radius: 999px;
-			background: var(--bgColor-default);
-			color: var(--fgColor-muted);
-			cursor: pointer;
+		.foot .ava {
+			width: var(--base-size-24);
+			height: var(--base-size-24);
+			font-size: var(--text-caption-size, 12px);
 		}
-
-		/* ONE COLUMN, centred by padding rather than by each child centring
-		   itself. Capped is right -- a record row a thousand pixels wide puts
-		   the label at one end and the figure at the other with a desert
-		   between them -- but margin-inline:auto on every child centres a
-		   narrow panel inboard of a wide list, so a note under a screen would
-		   not line up with the rows it explains. This makes a content box of
-		   --col; narrow things sit at its left edge. */
-		:global(.pad) {
-			padding: 22px max(24px, calc((100% - var(--col)) / 2)) 40px;
-			gap: 22px;
-			background: var(--bgColor-default);
-			min-height: calc(100dvh - 70px);
-		}
-		:global(.tiles) {
-			grid-template-columns: repeat(4, 1fr);
-		}
-		:global(.duo) {
-			grid-template-columns: 1.6fr 1fr;
-			gap: 22px;
-			align-items: start;
+	}
+	@media (min-width: 1012px) {
+		.app {
+			--pane-w: 296px;
 		}
 	}
 </style>
