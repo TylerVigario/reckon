@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.0](https://github.com/TylerVigario/reckon/compare/v0.8.0...v0.9.0) (2026-11-16)
+
+### Features
+
+* Time, Trips and Today are drawn to Primer, their forms' choices picked from groups ([#175](https://github.com/TylerVigario/reckon/pull/175))
+* Sign-in, emailed links and a client's invoice are drawn to Primer, and an error has a page ([#176](https://github.com/TylerVigario/reckon/pull/176))
+* The shell is drawn to Primer, its sections down the side from 768px and a working button Primer's loading button ([#177](https://github.com/TylerVigario/reckon/pull/177))
+
+### Refactoring
+
+* Primer's classes are unscoped, no screen gated by a primer class ([#178](https://github.com/TylerVigario/reckon/pull/178))
+* Navigation calls SvelteKit's replacements for replaceState and invalidateAll ([#179](https://github.com/TylerVigario/reckon/pull/179))
+
 ## [0.8.0](https://github.com/TylerVigario/reckon/compare/v0.7.0...v0.8.0) (2026-11-15)
 
 ### Features
