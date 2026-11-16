@@ -9,6 +9,8 @@
 		type PublicKeyCredentialCreationOptionsJSON
 	} from '@simplewebauthn/browser';
 	import { authClient, passkeysWork } from '#lib/auth-client.ts';
+	import Authentication from '#lib/Authentication.svelte';
+	import Octicon from '#lib/Octicon.svelte';
 	import type { PageProps } from './$types';
 
 	/**
@@ -131,181 +133,122 @@
 
 <svelte:head><title>{business}</title></svelte:head>
 
-<main>
-	<noscript>
-		<div class="card">
-			<h1>This page needs JavaScript</h1>
-			<p class="lede">
-				The code in your link stays in the browser, and the page reads it there. Turn JavaScript on
-				for this page, then open the link again.
-			</p>
-		</div>
-	</noscript>
+{#snippet signIn()}
+	<p><a href={resolve('/login')}>Sign in</a></p>
+{/snippet}
 
-	{#if view.at === 'reading'}
-		<p class="lede" role="status">Reading your link…</p>
-	{:else if view.at === 'make'}
-		{@const other = otherHere(view.email)}
-		<div class="card">
-			<h1>{view.purpose === 'invite' ? `Welcome to ${business}` : 'Make a new passkey'}</h1>
-			<p class="lede">
-				{view.purpose === 'invite'
-					? `Make a passkey to sign in as ${view.email}. This phone or computer keeps it, and your fingerprint, face or screen lock unlocks it: there’s no password to choose or remember.`
-					: `For ${view.email}. This phone or computer keeps it, and making it signs you out everywhere else.`}
-			</p>
-			{#if unmade}<p class="msg" role="alert">{unmade}</p>{/if}
-			{#if !passkeysWork()}
-				<p class="lede">
-					Passkeys can’t be made in this browser. If you opened this link from an email or another
-					app, open it in Chrome or Safari instead.
-				</p>
-			{:else}
-				{#if other}
-					<p class="lede">{other.name} is signed in in this browser, and is signed out first.</p>
-				{/if}
-				<button type="button" onclick={make} disabled={making}
-					>{making
-						? 'Making it…'
-						: view.purpose === 'invite'
-							? 'Make your passkey'
-							: 'Make a new passkey'}</button
-				>
+{#if view.at === 'reading'}
+	<Authentication title="Reading your link…" role="status">
+		<noscript>
+			<div class="banner warn">
+				<Octicon name="alert" />
+				<div class="banner-m">
+					<p class="banner-t">This page needs JavaScript</p>
+					<p class="banner-d">
+						The code in your link stays in the browser, and the page reads it there. Turn JavaScript
+						on for this page, then open the link again.
+					</p>
+				</div>
+			</div>
+		</noscript>
+	</Authentication>
+{:else if view.at === 'make'}
+	{@const other = otherHere(view.email)}
+	<Authentication
+		title={view.purpose === 'invite' ? `Welcome to ${business}` : 'Make a new passkey'}
+	>
+		<p>
+			{view.purpose === 'invite'
+				? `Make a passkey to sign in as ${view.email}. This phone or computer keeps it, and your fingerprint, face or screen lock unlocks it: there’s no password to choose or remember.`
+				: `For ${view.email}. This phone or computer keeps it, and making it signs you out everywhere else.`}
+		</p>
+		{#if unmade}
+			<div class="banner crit" role="alert">
+				<Octicon name="alert" />
+				<div class="banner-m"><p class="banner-t">{unmade}</p></div>
+			</div>
+		{/if}
+		{#if !passkeysWork()}
+			<div class="banner warn">
+				<Octicon name="alert" />
+				<div class="banner-m">
+					<p class="banner-t">Passkeys can’t be made in this browser</p>
+					<p class="banner-d">
+						If you opened this link from an email or another app, open it in Chrome or Safari
+						instead.
+					</p>
+				</div>
+			</div>
+		{:else}
+			{#if other}
+				<p class="muted">{other.name} is signed in in this browser, and is signed out first.</p>
 			{/if}
-		</div>
-	{:else if view.at === 'made'}
-		<div class="card" role="status">
-			<h1>Passkey made</h1>
-			<p class="lede">
-				You’re signed in as {view.email}. From now on, sign in with this passkey: this phone or
-				computer offers it when you sign in.
-			</p>
-			<p class="lede">
-				Keep more than one, on another phone or computer or a security key, so losing one doesn’t
-				lock you out.
-			</p>
-			<a class="go" href={resolve('/')}>Open reckon</a>
-			<a class="go quiet" href={resolve('/profile/passkeys')}>Your passkeys</a>
-		</div>
-	{:else if view.at === 'confirmed'}
-		<div class="card" role="status">
-			<h1>Email confirmed</h1>
-			<p class="lede">{view.email} is confirmed as yours.</p>
-			<a class="go" href={data.signedInAs ? resolve('/profile') : resolve('/login')}
-				>{data.signedInAs ? 'Back to your profile' : 'Sign in'}</a
+			<button class="btn pri" type="button" onclick={make} aria-disabled={making || undefined}
+				>{making
+					? 'Making it…'
+					: view.purpose === 'invite'
+						? 'Make your passkey'
+						: 'Make a new passkey'}</button
 			>
-		</div>
-	{:else if view.at === 'change'}
+		{/if}
+	</Authentication>
+{:else if view.at === 'made'}
+	<Authentication title="Passkey made" role="status">
+		<p>
+			You’re signed in as {view.email}. From now on, sign in with this passkey: this phone or
+			computer offers it when you sign in.
+		</p>
+		<p class="muted">
+			Keep more than one, on another phone or computer or a security key, so losing one doesn’t lock
+			you out.
+		</p>
+		<a class="btn pri" href={resolve('/')}>Open reckon</a>
+		{#snippet footer()}
+			<p><a href={resolve('/profile/passkeys')}>Your passkeys</a></p>
+		{/snippet}
+	</Authentication>
+{:else if view.at === 'confirmed'}
+	<Authentication title="Email confirmed" role="status">
+		<p>{view.email} is confirmed as yours.</p>
+		<a class="btn pri" href={data.signedInAs ? resolve('/profile') : resolve('/login')}
+			>{data.signedInAs ? 'Back to your profile' : 'Sign in'}</a
+		>
+	</Authentication>
+{:else if view.at === 'change'}
+	{@const who = view.name}
+	<Authentication title="Confirm your new email">
 		<form onsubmit={change}>
-			<h1>Confirm your new email</h1>
-			<p class="lede">
-				For {view.name}. You’ll sign in to {business} as {view.email} from now on.
-			</p>
-			<button type="submit" disabled={saving}>{saving ? 'Confirming…' : 'Confirm email'}</button>
-			<p class="hint">
-				If you aren’t {view.name}, close this page. Nothing changes unless you confirm.
-			</p>
-		</form>
-	{:else if view.at === 'changed'}
-		<div class="card" role="status">
-			<h1>Email changed</h1>
-			<p class="lede">Sign in with {view.email} from now on. It’s confirmed as yours.</p>
-			<a class="go" href={data.signedInAs ? resolve('/profile') : resolve('/login')}
-				>{data.signedInAs ? 'Back to your profile' : 'Sign in'}</a
+			<p>For {view.name}. You’ll sign in to {business} as {view.email} from now on.</p>
+			<button class="btn pri" type="submit" aria-disabled={saving || undefined}
+				>{saving ? 'Confirming…' : 'Confirm email'}</button
 			>
-		</div>
-	{:else if view.at === 'taken'}
-		<div class="card" role="alert">
-			<h1>That email is taken</h1>
-			<p class="lede">
-				Someone else signs in to {business} with {view.email} now, so it can’t be yours as well. You still
-				sign in with your old one. Contact {data.contact} about it.
-			</p>
-			<a class="go quiet" href={resolve('/login')}>Sign in</a>
-		</div>
-	{:else if view.at === 'wait'}
-		<div class="card" role="alert">
-			<h1>Too many tries from here</h1>
-			<p class="lede">Wait a few minutes, then open the link again.</p>
-		</div>
-	{:else}
-		<div class="card" role="alert">
-			<h1>This link no longer works</h1>
-			<p class="lede">
-				It has been used already, or it has expired. To have another sent, contact {data.contact}.
-			</p>
-			<a class="go quiet" href={resolve('/login')}>Sign in</a>
-		</div>
-	{/if}
-</main>
-
-<style>
-	:global(body) {
-		margin: 0;
-		font: 16px/1.5 var(--fontStack-sansSerif);
-		background: var(--bgColor-inset);
-		color: var(--fgColor-default);
-	}
-	main {
-		min-height: 100dvh;
-		display: grid;
-		place-items: center;
-		padding: 1.5rem;
-		box-sizing: border-box;
-	}
-	form,
-	.card {
-		width: min(22rem, 100%);
-		display: grid;
-		gap: 0.9rem;
-		padding: 1.5rem;
-		border-radius: 12px;
-		background: var(--bgColor-default);
-		border: 1px solid var(--borderColor-default);
-		box-sizing: border-box;
-	}
-	h1 {
-		margin: 0 0 0.2rem;
-		font-size: 1.2rem;
-		letter-spacing: -0.01em;
-	}
-	.lede,
-	.hint {
-		margin: 0;
-		font-size: 0.88rem;
-		color: var(--fgColor-muted);
-	}
-	button,
-	.go {
-		display: grid;
-		place-items: center;
-		/* The family is the page's: inherit is the whole of a font shorthand or no part of it. */
-		font: inherit;
-		font-size: 1rem;
-		font-weight: 600;
-		line-height: 1;
-		min-height: 3.2rem;
-		border: 0;
-		border-radius: 8px;
-		background: var(--button-primary-bgColor-rest);
-		color: var(--button-primary-fgColor-rest);
-		text-decoration: none;
-		cursor: pointer;
-	}
-	button:disabled {
-		opacity: 0.7;
-		cursor: progress;
-	}
-	.go.quiet {
-		background: transparent;
-		color: inherit;
-		border: 1px solid var(--borderColor-default);
-	}
-	.msg {
-		margin: 0;
-		padding: 0.55rem 0.7rem;
-		border-radius: 8px;
-		font-size: 0.88rem;
-		color: var(--fgColor-danger);
-		background: var(--bgColor-danger-muted);
-	}
-</style>
+		</form>
+		{#snippet footer()}
+			<p>If you aren’t {who}, close this page. Nothing changes unless you confirm.</p>
+		{/snippet}
+	</Authentication>
+{:else if view.at === 'changed'}
+	<Authentication title="Email changed" role="status">
+		<p>Sign in with {view.email} from now on. It’s confirmed as yours.</p>
+		<a class="btn pri" href={data.signedInAs ? resolve('/profile') : resolve('/login')}
+			>{data.signedInAs ? 'Back to your profile' : 'Sign in'}</a
+		>
+	</Authentication>
+{:else if view.at === 'taken'}
+	<Authentication title="That email is taken" role="alert" footer={signIn}>
+		<p>
+			Someone else signs in to {business} with {view.email} now, so it can’t be yours as well. You still
+			sign in with your old one. Contact {data.contact} about it.
+		</p>
+	</Authentication>
+{:else if view.at === 'wait'}
+	<Authentication title="Too many tries from here" role="alert">
+		<p>Wait a few minutes, then open the link again.</p>
+	</Authentication>
+{:else}
+	<Authentication title="This link no longer works" role="alert" footer={signIn}>
+		<p>
+			It has been used already, or it has expired. To have another sent, contact {data.contact}.
+		</p>
+	</Authentication>
+{/if}

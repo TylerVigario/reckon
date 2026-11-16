@@ -13,26 +13,23 @@
 
 <Top title="Needs Full access" />
 
-<div class="pad">
-	<div class="rows">
-		<div class="rec">
-			<div class="rec-m">
-				{#if field}
-					<div class="rec-t">You have Field access</div>
-					<div class="rec-s">
-						That reaches your own time and trips, team work you were on, drafts to add lines to, and
-						your own pay. To have your access changed, contact {data.contact}.
-					</div>
-				{:else}
-					<div class="rec-t">You have Full access</div>
-					<div class="rec-s">Every screen is open to you.</div>
-				{/if}
-			</div>
+<!-- Primer's Blankslate: why the screen isn't here, and the one place to go. -->
+<div class="pad primer">
+	<section class="box" aria-labelledby="refused-h">
+		<div class="blank">
+			{#if field}
+				<h2 class="blank-h" id="refused-h">You have Field access</h2>
+				<p class="blank-d">
+					That reaches your own time and trips, team work you were on, drafts to add lines to, and
+					your own pay. To have your access changed, contact {data.contact}.
+				</p>
+				<a class="btn pri" href={resolve('/')}>Today</a>
+				<a class="lk" href={resolve('/timesheet')}>Your time</a>
+			{:else}
+				<h2 class="blank-h" id="refused-h">You have Full access</h2>
+				<p class="blank-d">Every screen is open to you.</p>
+				<a class="btn pri" href={resolve('/')}>Today</a>
+			{/if}
 		</div>
-	</div>
-
-	<div class="btnrow">
-		<a class="btn pri" href={resolve('/')}>Today</a>
-		<a class="btn" href={resolve('/timesheet')}>Your time</a>
-	</div>
+	</section>
 </div>

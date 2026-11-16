@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { dated, day, percent, quantity } from '#lib/format.ts';
 	import { money, unitPrice } from '#lib/money.svelte.ts';
+	import Octicon from '#lib/Octicon.svelte';
 	import type { PageProps } from './$types';
 	let { data }: PageProps = $props();
 
@@ -20,11 +21,13 @@
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
-<main>
+<!-- The client's, whoever opens it: no shell, and nothing of how the work was
+     done. Drawn in Primer's boxes, its lines as the business's own copy has them. -->
+<main class="primer">
 	{#if f}
-		<header>
+		<header class="from">
 			{#if f.has_logo}<img class="logo" src="/operator/logo" alt="" />{/if}
-			<div class="from">
+			<div class="from-m">
 				<strong>{f.name}</strong>
 				{#if f.address}<span>{f.address}</span>{/if}
 				{#if f.phone || f.email}<span>{[f.phone, f.email].filter(Boolean).join(' · ')}</span>{/if}
@@ -32,123 +35,163 @@
 		</header>
 	{/if}
 
-	<section class="head">
+	<div class="head">
 		<h1>Invoice {inv.number}</h1>
 		<p>To {inv.to}</p>
-		<p class="dates">Dated {dated(inv.issued_on)} · Due {dated(inv.due_on)}</p>
-	</section>
+		<p class="muted">Dated {dated(inv.issued_on)} · Due {dated(inv.due_on)}</p>
+	</div>
 
 	{#if data.voided}
-		<div class="rows">
-			<div class="rec warn">
-				<div class="rec-m">
-					<div class="rec-t">This invoice was voided</div>
-					<div class="rec-s">Nothing is owed on it.</div>
-				</div>
+		<div class="banner warn">
+			<Octicon name="alert" />
+			<div class="banner-m">
+				<p class="banner-t">This invoice was voided</p>
+				<p class="banner-d">Nothing is owed on it.</p>
 			</div>
 		</div>
 	{:else}
 		{@const b = data.totals}
-		<div class="rows">
+		<section class="box" aria-label="What it is for">
 			{#each data.lines as l, k (k)}
-				<div class="rec">
-					<div class="rec-m">
-						<div class="rec-t">{l.description}</div>
-						{#if l.on}<div class="rec-s">{day(l.on)}</div>{/if}
-					</div>
-					<div class="rec-n">
-						<span class="rec-v">{money(l.amount)}</span>
-						<span class="rec-x">
+				<div class="box-row line">
+					<span class="what">
+						<span class="n">{l.description}</span>
+						{#if l.on}<span class="sub">{day(l.on)}</span>{/if}
+					</span>
+					<span class="fig">
+						<span class="v">{money(l.amount)}</span>
+						<span class="sub">
 							{quantity(l.qty)}{l.unit ? ` ${l.unit}` : ''} × {unitPrice(l.unit_price)}
 						</span>
-					</div>
+					</span>
 				</div>
 			{/each}
 			{#if Number(b.tax) > 0}
-				<div class="rec">
-					<div class="rec-m"><div class="rec-t lt">{taxSaid}</div></div>
-					<div class="rec-n"><span class="rec-v mut">{money(b.tax)}</span></div>
+				<div class="box-row line">
+					<span class="what"><span class="sub">{taxSaid}</span></span>
+					<span class="v muted">{money(b.tax)}</span>
 				</div>
 			{/if}
-			<div class="rec">
-				<div class="rec-m"><div class="rec-t">Total</div></div>
-				<div class="rec-n"><span class="rec-v">{money(b.gross)}</span></div>
+			<div class="box-row line">
+				<span class="what"><span class="n">Total</span></span>
+				<span class="v">{money(b.gross)}</span>
 			</div>
 			{#if Number(b.paid) > 0}
-				<div class="rec">
-					<div class="rec-m"><div class="rec-t lt">Paid</div></div>
-					<div class="rec-n"><span class="rec-v mut">−{money(b.paid)}</span></div>
+				<div class="box-row line">
+					<span class="what"><span class="sub">Paid</span></span>
+					<span class="v muted">−{money(b.paid)}</span>
 				</div>
 			{/if}
 			{#if Number(b.credited) > 0}
-				<div class="rec">
-					<div class="rec-m"><div class="rec-t lt">Credited</div></div>
-					<div class="rec-n"><span class="rec-v mut">−{money(b.credited)}</span></div>
+				<div class="box-row line">
+					<span class="what"><span class="sub">Credited</span></span>
+					<span class="v muted">−{money(b.credited)}</span>
 				</div>
 			{/if}
-			<div class="rec tot">
-				<div class="rec-m"><div class="rec-t">{owes ? 'Balance due' : 'Paid in full'}</div></div>
-				<div class="rec-n"><span class="rec-v" class:good={!owes}>{money(b.owed)}</span></div>
+			<div class="box-row line tot">
+				<span class="what"><span class="n">{owes ? 'Balance due' : 'Paid in full'}</span></span>
+				<span class="v" class:good={!owes}>{money(b.owed)}</span>
 			</div>
-		</div>
+		</section>
 
 		{#if owes && f?.address}
-			<p class="other">
-				Pay by check to {f.name}, {f.address}, with {inv.number} on it.
-			</p>
+			<p class="note">Pay by check to {f.name}, {f.address}, with {inv.number} on it.</p>
 		{/if}
 	{/if}
 </main>
 
 <style>
 	main {
-		max-width: 560px;
+		box-sizing: border-box;
+		max-width: 40rem;
 		margin: 0 auto;
-		padding: 24px 16px 40px;
+		padding: var(--base-size-24) var(--base-size-16) var(--base-size-40);
 		display: flex;
 		flex-direction: column;
-		gap: 18px;
+		gap: var(--base-size-16);
 	}
-	header {
+	/* Whom it is from, over a rule, as the printed invoice has it. */
+	.from {
 		display: flex;
 		align-items: center;
-		gap: 14px;
-		padding-bottom: 14px;
-		border-bottom: 2px solid var(--borderColor-accent-emphasis);
+		gap: var(--base-size-12);
+		padding-bottom: var(--base-size-16);
+		border-bottom: var(--borderWidth-thin) solid var(--borderColor-default);
 	}
 	.logo {
 		max-height: 48px;
 		max-width: 120px;
 	}
-	.from {
+	.from-m {
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
-		font-size: 13px;
+		gap: var(--base-size-2);
+		min-width: 0;
+		font-size: var(--text-body-size-small);
 		color: var(--fgColor-muted);
+		overflow-wrap: anywhere;
 	}
-	.from strong {
-		font-size: 18px;
+	.from-m strong {
+		font-size: var(--text-title-size-small);
 		color: var(--fgColor-default);
+	}
+	.head {
+		display: flex;
+		flex-direction: column;
+		gap: var(--base-size-4);
 	}
 	.head h1 {
 		margin: 0;
-		font-size: 24px;
+		font-size: var(--text-title-size-large);
+		font-weight: var(--text-title-weight-large);
+		line-height: var(--text-title-lineHeight-large);
 	}
 	.head p {
-		margin: 4px 0 0;
-	}
-	.head .dates {
-		font-size: 13px;
-		color: var(--fgColor-muted);
-	}
-	.lt {
-		color: var(--fgColor-muted);
-	}
-	.other {
 		margin: 0;
-		font-size: 13px;
+	}
+	.line {
+		display: flex;
+		align-items: center;
+		gap: var(--base-size-12);
+		min-height: 56px;
+		box-sizing: border-box;
+	}
+	.what {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: var(--base-size-2);
+		overflow-wrap: anywhere;
+	}
+	.n {
+		font-weight: var(--base-text-weight-semibold);
+	}
+	.sub {
+		font-size: var(--text-body-size-small);
 		color: var(--fgColor-muted);
+	}
+	.fig {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: var(--base-size-2);
+		text-align: right;
+	}
+	.v {
+		flex: 0 0 auto;
+		font-family: var(--fontStack-monospace);
+		font-weight: var(--base-text-weight-semibold);
+	}
+	.tot {
+		background: var(--bgColor-muted);
+	}
+	.good {
+		color: var(--fgColor-success);
+	}
+	.note {
+		margin: 0;
 		text-align: center;
 	}
 </style>
