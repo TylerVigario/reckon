@@ -74,7 +74,7 @@
 {#if tabbed}
 	<Top title={c.name} back={resolve('/clients')} backLabel="Entities" />
 
-	<div class="pad primer">
+	<div class="pad">
 		<RecordHead label="{c.name}’s record" {tabs}>
 			{#snippet state()}
 				<span class="lab {c.active ? 'good' : ''}">{c.active ? 'Active' : 'Inactive'}</span>

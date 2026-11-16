@@ -227,7 +227,7 @@
 
 <OfflineBanner asOf={data.as_of} waiting={queued} />
 
-<div class="pad primer">
+<div class="pad">
 	{#if why}
 		<div class="banner crit" role="alert">
 			<Octicon name="alert" />

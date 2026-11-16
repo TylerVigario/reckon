@@ -14,7 +14,7 @@
 <Top title="Needs Full access" />
 
 <!-- Primer's Blankslate: why the screen isn't here, and the one place to go. -->
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="refused-h">
 		<div class="blank">
 			{#if field}

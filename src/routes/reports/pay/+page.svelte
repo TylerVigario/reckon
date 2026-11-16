@@ -101,7 +101,7 @@
 
 <Top title="Reports" back={resolve('/more')} backLabel="More" />
 
-<div class="pad primer">
+<div class="pad">
 	<UnderlineNav label="Reports" items={reportTabs('pay')} />
 	<Segmented
 		label="Pay, seen"

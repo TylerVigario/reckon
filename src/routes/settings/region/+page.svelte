@@ -28,7 +28,7 @@
 	backLabel="Settings"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-label="Region">
 		<Detail
 			name="locale"

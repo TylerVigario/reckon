@@ -73,7 +73,7 @@
 	backLabel={data.line ? 'The line' : data.draft.number}
 />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="hist-h">
 		<div class="box-h">
 			<h2 class="box-t" id="hist-h">History</h2>

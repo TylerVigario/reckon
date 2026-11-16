@@ -55,7 +55,7 @@
 	{/snippet}
 </Top>
 
-<div class="pad primer">
+<div class="pad">
 	<UnderlineNav
 		label="Team"
 		items={teamTabs('people', { people: data.people.length, roles: data.roles })}

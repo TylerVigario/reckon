@@ -33,7 +33,7 @@
 	/>
 {:else if draft === null}
 	<Top title="Add a line" back={resolve('/invoices')} backLabel="Invoices" />
-	<div class="pad primer">
+	<div class="pad">
 		<div class="banner" role="status">
 			<Octicon name="info" />
 			<div class="banner-m">

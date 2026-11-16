@@ -1,8 +1,8 @@
 /* Primer's shapes (primer.style, MIT), drawn in Primer's own primitives
    (@primer/primitives): its colours, type, sizes and radii, by their tokens.
-   Primer is the design reckon is built to, and screens move to it one at a
-   time: a screen drawn to it puts .primer on its content, and every rule here
-   sits under that class.
+   Primer is the design reckon is built to, every screen is drawn to it, and
+   these are its classes for any screen to use, unscoped, as Primer CSS's own
+   are.
 
    A box is a bordered card whose header row has the muted background and
    whose rows are split by the muted border, as Primer's BorderBox is. A label
@@ -12,17 +12,13 @@
    on a touch screen (control-minTarget-auto, 44px): reckon is used standing
    on a job. */
 
-.primer {
-	font-size: var(--text-body-size-medium);
-}
-
-.primer .box {
+.box {
 	background: var(--bgColor-default);
 	border: 1px solid var(--borderColor-default);
 	border-radius: var(--borderRadius-medium);
 	overflow: hidden;
 }
-.primer .box-h {
+.box-h {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -33,28 +29,28 @@
 	background: var(--bgColor-muted);
 	border-bottom: 1px solid var(--borderColor-default);
 }
-.primer .box-t {
+.box-t {
 	margin: 0;
 	font-size: var(--text-body-size-medium);
 	font-weight: var(--base-text-weight-semibold);
 }
-.primer .box-row {
+.box-row {
 	padding: var(--base-size-12) var(--base-size-16);
 }
-.primer .box-row + .box-row {
+.box-row + .box-row {
 	border-top: 1px solid var(--borderColor-muted);
 }
-.primer a.box-row {
+a.box-row {
 	display: flex;
 	align-items: center;
 	gap: var(--base-size-12);
 	color: inherit;
 	text-decoration: none;
 }
-.primer a.box-row:hover {
+a.box-row:hover {
 	background: var(--bgColor-muted);
 }
-.primer a.box-row:focus-visible {
+a.box-row:focus-visible {
 	outline: 2px solid var(--focus-outlineColor);
 	outline-offset: -2px;
 }
@@ -63,7 +59,7 @@
    can be done with it -- a pencil, a menu. Opened, the field takes the value's
    place with Save and Cancel beside it, and its caption or error under it
    (#lib/Detail). On a phone the label sits above the value. */
-.primer .kv {
+.kv {
 	display: grid;
 	grid-template-columns: minmax(0, 30%) minmax(0, 1fr) auto;
 	align-items: center;
@@ -72,10 +68,10 @@
 	box-sizing: border-box;
 	margin: 0;
 }
-.primer .kv-l {
+.kv-l {
 	font-weight: var(--base-text-weight-semibold);
 }
-.primer .kv-v {
+.kv-v {
 	display: flex;
 	flex-direction: column;
 	gap: var(--base-size-2);
@@ -83,35 +79,35 @@
 	overflow-wrap: anywhere;
 	color: var(--fgColor-muted);
 }
-.primer .kv-s {
+.kv-s {
 	font-size: var(--text-body-size-small);
 	color: var(--fgColor-muted);
 }
-.primer .kv-end {
+.kv-end {
 	display: flex;
 	justify-content: flex-end;
 	min-width: var(--base-size-32);
 }
-.primer .kv-edit {
+.kv-edit {
 	grid-column: 2 / -1;
 	display: flex;
 	flex-direction: column;
 	gap: var(--base-size-6);
 	min-width: 0;
 }
-.primer .kv-ie {
+.kv-ie {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--base-size-8);
 }
-.primer .kv-ie > .ti,
-.primer .kv-ie > .grow {
+.kv-ie > .ti,
+.kv-ie > .grow {
 	flex: 1 1 14rem;
 	width: auto;
 	min-width: 0;
 }
-.primer .kv-saved {
+.kv-saved {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--base-size-4);
@@ -121,33 +117,33 @@
 	color: var(--fgColor-success);
 }
 @media (max-width: 543px) {
-	.primer .kv {
+	.kv {
 		grid-template-columns: minmax(0, 1fr) auto;
 	}
-	.primer .kv-l {
+	.kv-l {
 		grid-column: 1;
 		grid-row: 1;
 	}
-	.primer .kv-v {
+	.kv-v {
 		grid-column: 1;
 		grid-row: 2;
 	}
-	.primer .kv-end {
+	.kv-end {
 		grid-column: 2;
 		grid-row: 1 / span 2;
 	}
-	.primer .kv-edit {
+	.kv-edit {
 		grid-column: 1 / -1;
 		grid-row: 2;
 	}
 	/* The field across the row, Save and Cancel together under it. */
-	.primer .kv-ie > .ti,
-	.primer .kv-ie > .grow {
+	.kv-ie > .ti,
+	.kv-ie > .grow {
 		flex-basis: 100%;
 	}
 }
 
-.primer .lab {
+.lab {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--base-size-4);
@@ -161,24 +157,24 @@
 	border: 1px solid var(--borderColor-default);
 	border-radius: var(--borderRadius-full);
 }
-.primer .lab.good {
+.lab.good {
 	color: var(--fgColor-success);
 	border-color: var(--borderColor-success-emphasis);
 }
-.primer .lab.warn {
+.lab.warn {
 	color: var(--fgColor-attention);
 	border-color: var(--borderColor-attention-emphasis);
 }
-.primer .lab.crit {
+.lab.crit {
 	color: var(--fgColor-danger);
 	border-color: var(--borderColor-danger-emphasis);
 }
-.primer .lab.acc {
+.lab.acc {
 	color: var(--fgColor-accent);
 	border-color: var(--borderColor-accent-emphasis);
 }
 
-.primer .count {
+.count {
 	display: inline-block;
 	min-width: 20px;
 	box-sizing: border-box;
@@ -192,7 +188,7 @@
 	border-radius: var(--borderRadius-full);
 }
 
-.primer .ava {
+.ava {
 	flex: 0 0 auto;
 	display: grid;
 	place-items: center;
@@ -210,13 +206,13 @@
    underline covers it from inside the row. Drawn as a border, the tabs had to
    hang 1px below the row to cover it, and a row that scrolls sideways then
    scrolls up and down by that pixel too, with a scrollbar to say so. */
-.primer .unav {
+.unav {
 	display: flex;
 	gap: var(--base-size-8);
 	box-shadow: inset 0 -1px 0 var(--borderColor-default);
 	overflow-x: auto;
 }
-.primer .unav a {
+.unav a {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--base-size-8);
@@ -227,17 +223,17 @@
 	text-decoration: none;
 	border-bottom: 2px solid transparent;
 }
-.primer .unav a:hover {
+.unav a:hover {
 	color: var(--fgColor-default);
 }
-.primer .unav a[aria-current='page'] {
+.unav a[aria-current='page'] {
 	color: var(--fgColor-default);
 	font-weight: var(--base-text-weight-semibold);
 	border-bottom-color: var(--underlineNav-borderColor-active);
 }
 
 /* Primer's NavList: a settings menu down the side, the current one marked. */
-.primer .navlist {
+.navlist {
 	margin: 0;
 	padding: 0;
 	list-style: none;
@@ -245,7 +241,7 @@
 	flex-direction: column;
 	gap: var(--base-size-2);
 }
-.primer .navlist a {
+.navlist a {
 	position: relative;
 	display: flex;
 	align-items: center;
@@ -257,18 +253,18 @@
 	color: var(--control-fgColor-rest);
 	text-decoration: none;
 }
-.primer .navlist a:hover {
+.navlist a:hover {
 	background: var(--control-transparent-bgColor-hover);
 }
-.primer .navlist a:focus-visible {
+.navlist a:focus-visible {
 	outline: 2px solid var(--focus-outlineColor);
 	outline-offset: -2px;
 }
-.primer .navlist a[aria-current='page'] {
+.navlist a[aria-current='page'] {
 	font-weight: var(--base-text-weight-semibold);
 	background: var(--control-transparent-bgColor-selected);
 }
-.primer .navlist a[aria-current='page']::after {
+.navlist a[aria-current='page']::after {
 	content: '';
 	position: absolute;
 	left: calc(-1 * var(--base-size-8));
@@ -281,20 +277,20 @@
 /* An item's leading Octicon, muted; its count at the end; and a description
    under its label, where the list is a page of its own (ActionList's block
    description). */
-.primer .navlist a > svg {
+.navlist a > svg {
 	color: var(--fgColor-muted);
 }
-.primer .navlist a .count {
+.navlist a .count {
 	margin-left: auto;
 }
-.primer .navlist a .navlist-m {
+.navlist a .navlist-m {
 	display: flex;
 	flex: 1 1 auto;
 	flex-direction: column;
 	gap: var(--base-size-2);
 	min-width: 0;
 }
-.primer .navlist a .navlist-b {
+.navlist a .navlist-b {
 	font-size: var(--text-body-size-small);
 	font-weight: var(--base-text-weight-normal);
 	color: var(--fgColor-muted);
@@ -303,27 +299,27 @@
 /* A NavList's groups, each under its heading, as Primer groups a long
    settings menu; and an item's description beside its label, muted, cut short
    where the row runs out (ActionList's inline description). */
-.primer .navlist-g {
+.navlist-g {
 	display: flex;
 	flex-direction: column;
 	gap: var(--base-size-2);
 }
-.primer .navlist-g + .navlist-g {
+.navlist-g + .navlist-g {
 	margin-top: var(--base-size-8);
 	padding-top: var(--base-size-8);
 	border-top: 1px solid var(--borderColor-muted);
 }
-.primer .navlist-h {
+.navlist-h {
 	margin: 0;
 	padding: var(--base-size-6) var(--base-size-8);
 	font-size: var(--text-body-size-small);
 	font-weight: var(--base-text-weight-semibold);
 	color: var(--fgColor-muted);
 }
-.primer .navlist a .navlist-t {
+.navlist a .navlist-t {
 	flex: 0 0 auto;
 }
-.primer .navlist a .navlist-d {
+.navlist a .navlist-d {
 	flex: 1 1 auto;
 	min-width: 0;
 	margin-left: var(--base-size-8);
@@ -336,14 +332,14 @@
 }
 
 /* Primer's SegmentedControl: one list's scopes, the one shown pressed in. */
-.primer .seg {
+.seg {
 	display: inline-flex;
 	align-self: flex-start;
 	padding: var(--base-size-2);
 	border-radius: var(--borderRadius-medium);
 	background: var(--bgColor-inset);
 }
-.primer .seg a {
+.seg a {
 	display: inline-flex;
 	align-items: center;
 	min-height: max(var(--control-medium-size), var(--control-minTarget-auto, 0px));
@@ -354,14 +350,14 @@
 	text-decoration: none;
 	white-space: nowrap;
 }
-.primer .seg a[aria-current='page'] {
+.seg a[aria-current='page'] {
 	color: var(--fgColor-default);
 	font-weight: var(--base-text-weight-semibold);
 	background: var(--bgColor-default);
 	border-color: var(--borderColor-default);
 }
 
-.primer .fc {
+.fc {
 	display: flex;
 	flex-direction: column;
 	gap: var(--base-size-6);
@@ -370,18 +366,18 @@
 	padding: 0;
 	border: 0;
 }
-.primer .fc-l {
+.fc-l {
 	padding: 0;
 	font-size: var(--text-body-size-medium);
 	font-weight: var(--base-text-weight-semibold);
 	color: var(--fgColor-default);
 }
-.primer .fc-c {
+.fc-c {
 	margin: 0;
 	font-size: var(--text-body-size-small);
 	color: var(--fgColor-muted);
 }
-.primer .fc-e {
+.fc-e {
 	margin: 0;
 	display: flex;
 	align-items: center;
@@ -390,7 +386,7 @@
 	font-weight: var(--base-text-weight-semibold);
 	color: var(--fgColor-danger);
 }
-.primer .ti {
+.ti {
 	width: 100%;
 	min-height: max(var(--control-medium-size), var(--control-minTarget-auto, 0px));
 	box-sizing: border-box;
@@ -402,15 +398,15 @@
 	border: 1px solid var(--borderColor-default);
 	border-radius: var(--borderRadius-medium);
 }
-.primer .ti:focus-visible {
+.ti:focus-visible {
 	outline: 2px solid var(--focus-outlineColor);
 	outline-offset: -1px;
 	border-color: var(--borderColor-accent-emphasis);
 }
-.primer .ti[aria-invalid='true'] {
+.ti[aria-invalid='true'] {
 	border-color: var(--borderColor-danger-emphasis);
 }
-.primer select.ti {
+select.ti {
 	appearance: none;
 	padding-right: var(--base-size-32);
 	background-image:
@@ -428,18 +424,18 @@
 /* Places in the order they came, on a line: Primer's Timeline, condensed --
    a ring on the line for each, filled at either end. An ordered list, named
    by the heading over it. */
-.primer .tl {
+.tl {
 	margin: 0;
 	padding: 0;
 	list-style: none;
 }
-.primer .tl-i {
+.tl-i {
 	position: relative;
 	display: flex;
 	gap: var(--base-size-12);
 	padding: var(--base-size-8) 0;
 }
-.primer .tl-i::before {
+.tl-i::before {
 	content: '';
 	position: absolute;
 	top: 0;
@@ -448,14 +444,14 @@
 	width: 2px;
 	background: var(--borderColor-muted);
 }
-.primer .tl-i:first-child::before {
+.tl-i:first-child::before {
 	top: 18px;
 }
-.primer .tl-i:last-child::before {
+.tl-i:last-child::before {
 	bottom: auto;
 	height: 18px;
 }
-.primer .tl-b {
+.tl-b {
 	position: relative;
 	flex: 0 0 auto;
 	width: 16px;
@@ -466,11 +462,11 @@
 	border-radius: 50%;
 	background: var(--bgColor-default);
 }
-.primer .tl-i:first-child .tl-b,
-.primer .tl-i:last-child .tl-b {
+.tl-i:first-child .tl-b,
+.tl-i:last-child .tl-b {
 	background: var(--borderColor-emphasis);
 }
-.primer .tl-m {
+.tl-m {
 	display: flex;
 	flex: 1 1 auto;
 	flex-direction: column;
@@ -481,7 +477,7 @@
 
 /* Why a place is empty, and the one thing to do about it: Primer's Blankslate,
    in a box where it is not all there is on the screen. */
-.primer .blank {
+.blank {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -489,45 +485,45 @@
 	padding: var(--base-size-32) var(--base-size-16);
 	text-align: center;
 }
-.primer .blank-h {
+.blank-h {
 	margin: 0;
 	font-size: var(--text-title-size-medium);
 	font-weight: var(--base-text-weight-semibold);
 }
-.primer .blank-d {
+.blank-d {
 	margin: 0;
 	max-width: 30rem;
 	color: var(--fgColor-muted);
 }
-.primer .blank .btn {
+.blank .btn {
 	margin-top: var(--base-size-8);
 }
 
 /* A choice, with what it means under it: Primer's RadioGroup with captions,
    and a Checkbox (.chk) drawn the same way, alone or in a CheckboxGroup. */
-.primer .rad,
-.primer .chk {
+.rad,
+.chk {
 	display: flex;
 	gap: var(--base-size-8);
 	align-items: flex-start;
 	padding: var(--base-size-8) 0;
 	cursor: pointer;
 }
-.primer .rad input,
-.primer .chk input {
+.rad input,
+.chk input {
 	flex: 0 0 auto;
 	width: 16px;
 	height: 16px;
 	margin: var(--base-size-2) 0 0;
 	accent-color: var(--fgColor-accent);
 }
-.primer .rad-t,
-.primer .chk-t {
+.rad-t,
+.chk-t {
 	display: block;
 	font-weight: var(--base-text-weight-semibold);
 }
-.primer .rad-c,
-.primer .chk-c {
+.rad-c,
+.chk-c {
 	display: block;
 	margin-top: var(--base-size-2);
 	font-size: var(--text-body-size-small);
@@ -539,7 +535,7 @@
    small sizes on a mouse, and Primer's own touch target
    (control-minTarget-auto, 44px) on a touch screen. A link drawn as a button
    is the height of a button beside it. */
-.primer .btn {
+.btn {
 	--btn-fg: var(--button-default-fgColor-rest);
 	position: relative;
 	display: inline-flex;
@@ -565,86 +561,86 @@
 	transition: 80ms cubic-bezier(0.65, 0, 0.35, 1);
 	transition-property: color, fill, background-color, border-color;
 }
-.primer .btn:hover:not(:disabled, [aria-disabled='true']) {
+.btn:hover:not(:disabled, [aria-disabled='true']) {
 	background: var(--button-default-bgColor-hover);
 	border-color: var(--button-default-borderColor-hover);
 }
-.primer .btn:active:not(:disabled, [aria-disabled='true']) {
+.btn:active:not(:disabled, [aria-disabled='true']) {
 	background: var(--button-default-bgColor-active);
 	border-color: var(--button-default-borderColor-active);
 	transition: none;
 }
-.primer .btn:focus-visible {
+.btn:focus-visible {
 	outline: 2px solid var(--focus-outlineColor);
 	outline-offset: -2px;
 }
-.primer .btn.pri {
+.btn.pri {
 	--btn-fg: var(--button-primary-fgColor-rest);
 	background: var(--button-primary-bgColor-rest);
 	border-color: var(--button-primary-borderColor-rest);
 	box-shadow: var(--shadow-resting-small);
 }
-.primer .btn.pri:hover:not(:disabled, [aria-disabled='true']) {
+.btn.pri:hover:not(:disabled, [aria-disabled='true']) {
 	background: var(--button-primary-bgColor-hover);
 	border-color: var(--button-primary-borderColor-hover);
 }
-.primer .btn.pri:active:not(:disabled, [aria-disabled='true']) {
+.btn.pri:active:not(:disabled, [aria-disabled='true']) {
 	background: var(--button-primary-bgColor-active);
 	border-color: var(--button-primary-borderColor-active);
 	box-shadow: var(--button-primary-shadow-selected);
 }
 /* What cannot be taken back: Primer's danger button where it is offered,
    filled where it is confirmed (#lib/Dialog). */
-.primer .btn.danger {
+.btn.danger {
 	--btn-fg: var(--button-danger-fgColor-rest);
 	background: var(--button-danger-bgColor-rest);
 	border-color: var(--button-danger-borderColor-rest);
 }
-.primer .btn.danger:hover:not(:disabled, [aria-disabled='true']),
-.primer .btn.danger.solid {
+.btn.danger:hover:not(:disabled, [aria-disabled='true']),
+.btn.danger.solid {
 	--btn-fg: var(--button-danger-fgColor-hover);
 	background: var(--button-danger-bgColor-hover);
 	border-color: var(--button-danger-borderColor-hover);
 }
-.primer .btn.danger:active:not(:disabled, [aria-disabled='true']) {
+.btn.danger:active:not(:disabled, [aria-disabled='true']) {
 	--btn-fg: var(--button-danger-fgColor-active);
 	background: var(--button-danger-bgColor-active);
 	border-color: var(--button-danger-borderColor-active);
 	box-shadow: var(--button-danger-shadow-selected);
 }
 /* Invisible: an action beside the content, not the page's own. */
-.primer .btn.gho {
+.btn.gho {
 	--btn-fg: var(--button-default-fgColor-rest);
 	background: transparent;
 	border-color: var(--button-invisible-borderColor-rest);
 	box-shadow: none;
 }
-.primer .btn.gho:hover:not(:disabled, [aria-disabled='true']) {
+.btn.gho:hover:not(:disabled, [aria-disabled='true']) {
 	background: var(--button-invisible-bgColor-hover);
 	border-color: var(--button-invisible-borderColor-hover);
 }
-.primer .btn.sm {
+.btn.sm {
 	min-height: max(var(--control-small-size), var(--control-minTarget-auto, 0px));
 	padding: 0 var(--control-small-paddingInline-condensed);
 	font-size: var(--text-body-size-small);
 }
 /* A button that can't be used now, in Primer's disabled colours. */
-.primer .btn:disabled,
-.primer .btn[aria-disabled='true']:not([data-loading='true']) {
+.btn:disabled,
+.btn[aria-disabled='true']:not([data-loading='true']) {
 	--btn-fg: var(--control-fgColor-disabled);
 	background: var(--button-default-bgColor-disabled);
 	border-color: var(--button-default-borderColor-disabled);
 	box-shadow: none;
 	cursor: not-allowed;
 }
-.primer .btn.pri:disabled,
-.primer .btn.pri[aria-disabled='true']:not([data-loading='true']) {
+.btn.pri:disabled,
+.btn.pri[aria-disabled='true']:not([data-loading='true']) {
 	--btn-fg: var(--button-primary-fgColor-disabled);
 	background: var(--button-primary-bgColor-disabled);
 	border-color: var(--button-primary-borderColor-disabled);
 }
-.primer .btn.danger:disabled,
-.primer .btn.danger[aria-disabled='true']:not([data-loading='true']) {
+.btn.danger:disabled,
+.btn.danger[aria-disabled='true']:not([data-loading='true']) {
 	--btn-fg: var(--button-danger-fgColor-disabled);
 	background: var(--button-danger-bgColor-disabled);
 	border-color: var(--button-danger-borderColor-disabled);
@@ -652,11 +648,11 @@
 /* A button that is working (#lib/busy) keeps its colours, as Primer's loading
    Button does, with its spinner where the label was: the label stays, unseen,
    so the button keeps its width. */
-.primer .btn[data-loading='true'] {
+.btn[data-loading='true'] {
 	color: transparent;
 	cursor: default;
 }
-.primer .btn[data-loading='true']::after {
+.btn[data-loading='true']::after {
 	content: '';
 	position: absolute;
 	inset: 0;
@@ -675,7 +671,7 @@
 	}
 }
 
-.primer .ib {
+.ib {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -688,17 +684,17 @@
 	border-radius: var(--borderRadius-medium);
 	cursor: pointer;
 }
-.primer .ib:hover {
+.ib:hover {
 	color: var(--fgColor-default);
 	background: var(--bgColor-muted);
 }
-.primer .ib:focus-visible {
+.ib:focus-visible {
 	outline: 2px solid var(--focus-outlineColor);
 	outline-offset: -2px;
 }
 
 /* Primer's Banner: what happened, for a page that didn't reload to say so. */
-.primer .banner {
+.banner {
 	display: flex;
 	gap: var(--base-size-12);
 	padding: var(--base-size-16);
@@ -707,55 +703,55 @@
 	border: 1px solid var(--borderColor-default);
 	border-radius: var(--borderRadius-medium);
 }
-.primer .banner.good {
+.banner.good {
 	background: var(--bgColor-success-muted);
 	border-color: var(--borderColor-success-emphasis);
 }
-.primer .banner > svg {
+.banner > svg {
 	margin-top: 1px;
 }
-.primer .banner.good > svg {
+.banner.good > svg {
 	color: var(--fgColor-success);
 }
-.primer .banner.info {
+.banner.info {
 	background: var(--bgColor-accent-muted);
 	border-color: var(--borderColor-accent-muted);
 }
-.primer .banner.info > svg {
+.banner.info > svg {
 	color: var(--fgColor-accent);
 }
-.primer .banner.warn {
+.banner.warn {
 	background: var(--bgColor-attention-muted);
 	border-color: var(--borderColor-attention-emphasis);
 }
-.primer .banner.warn > svg {
+.banner.warn > svg {
 	color: var(--fgColor-attention);
 }
-.primer .banner.crit {
+.banner.crit {
 	background: var(--bgColor-danger-muted);
 	border-color: var(--borderColor-danger-emphasis);
 }
-.primer .banner.crit > svg {
+.banner.crit > svg {
 	color: var(--fgColor-danger);
 }
-.primer .banner-m {
+.banner-m {
 	flex: 1 1 auto;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
 	gap: var(--base-size-8);
 }
-.primer .banner-t {
+.banner-t {
 	margin: 0;
 	font-weight: var(--base-text-weight-semibold);
 }
-.primer .banner-d {
+.banner-d {
 	margin: 0;
 	color: var(--fgColor-muted);
 }
 
 /* A secret shown once, beside the button that copies it. */
-.primer .secret {
+.secret {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
@@ -765,7 +761,7 @@
 	border: 1px solid var(--borderColor-default);
 	border-radius: var(--borderRadius-medium);
 }
-.primer .secret code {
+.secret code {
 	/* Whole, never broken at a hyphen into what reads as two: Copy goes below
 	   it instead, on a screen too narrow for both. */
 	flex: 1 1 auto;
@@ -774,37 +770,37 @@
 	font-size: var(--text-body-size-medium);
 }
 
-.primer .muted {
+.muted {
 	color: var(--fgColor-muted);
 }
-.primer .note {
+.note {
 	margin: 0;
 	font-size: var(--text-body-size-small);
 	color: var(--fgColor-muted);
 }
-.primer .note a,
-.primer .fc-c a,
-.primer a.lk {
+.note a,
+.fc-c a,
+a.lk {
 	color: var(--fgColor-accent);
 	text-decoration: none;
 }
-.primer .note a:hover,
-.primer .fc-c a:hover,
-.primer a.lk:hover {
+.note a:hover,
+.fc-c a:hover,
+a.lk:hover {
 	text-decoration: underline;
 }
 
 @media (pointer: coarse) {
-	.primer .ti,
-	.primer .btn,
-	.primer .seg a {
+	.ti,
+	.btn,
+	.seg a {
 		min-height: 44px;
 	}
 	/* iOS zooms into a field set smaller than this. */
-	.primer .ti {
+	.ti {
 		font-size: 16px;
 	}
-	.primer .ib {
+	.ib {
 		width: 44px;
 		height: 44px;
 	}

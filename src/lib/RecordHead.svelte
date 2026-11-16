@@ -25,7 +25,7 @@
 	} = $props();
 </script>
 
-<div class="rh primer">
+<div class="rh">
 	{#if state}<div class="state">{@render state()}</div>{/if}
 	<UnderlineNav {label} items={tabs} />
 </div>

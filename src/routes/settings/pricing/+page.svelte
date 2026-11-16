@@ -31,7 +31,7 @@
 	backLabel="Settings"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="markup-h">
 		<div class="box-h"><h2 class="box-t" id="markup-h">Markup</h2></div>
 		<Detail

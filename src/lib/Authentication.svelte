@@ -26,7 +26,7 @@
 	const name = $derived(operator?.trading_name?.trim() || 'reckon');
 </script>
 
-<main class="primer auth">
+<main class="auth">
 	<div class="auth-c" {role}>
 		<header class="auth-h">
 			<!-- The business's logo where it has one, reckon's tally where it has not. -->

@@ -9,7 +9,7 @@
 
 <svelte:head><title>Security log</title></svelte:head>
 
-<div class="primer log">
+<div class="log">
 	<p class="lede">
 		Every sign-in to your account, refused or not, every passkey and link, and every change to what
 		you can reach, for a year. Anything here you don’t recognise, tell whoever runs reckon.

@@ -335,7 +335,7 @@
 	</section>
 {/snippet}
 
-<div class="pad primer">
+<div class="pad">
 	{#if why}{@render note('crit', why)}{/if}
 
 	{#if data.used}

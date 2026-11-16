@@ -26,7 +26,7 @@
 	backLabel="Settings"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="vehicles-h">
 		<div class="box-h">
 			<h2 class="box-t" id="vehicles-h">Vehicles</h2>

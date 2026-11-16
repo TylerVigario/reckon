@@ -74,7 +74,7 @@
 	backLabel="More"
 />
 
-<nav class="pad primer" aria-label="Settings">
+<nav class="pad" aria-label="Settings">
 	{#each SETTINGS_GROUPS as g (g.title)}
 		<div class="navlist-g">
 			<h2 class="navlist-h">{g.title}</h2>

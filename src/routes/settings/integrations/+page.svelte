@@ -20,7 +20,7 @@
 	backLabel="Settings"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="int-h">
 		<div class="box-h"><h2 class="box-t" id="int-h">Integrations</h2></div>
 		{#each data.integrations as i (i.name)}

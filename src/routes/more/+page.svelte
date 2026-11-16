@@ -74,7 +74,7 @@
 
 <!-- The pane's sections on a phone, as a page of their own: Primer's NavList,
      each with what it holds under it. -->
-<div class="pad primer">
+<div class="pad">
 	<div class="mark">
 		<img src={op?.has_logo ? '/operator/logo' : '/icons/reckon.svg'} alt="" />
 		<span>{name}</span>

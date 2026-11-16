@@ -87,7 +87,7 @@
 	{/snippet}
 </Top>
 
-<div class="pad primer">
+<div class="pad">
 	<UnderlineNav label="Catalogue" items={catalogueTabs('services')} />
 	<StockOnPhone today={data.today} />
 

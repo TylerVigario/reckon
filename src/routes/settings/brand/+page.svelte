@@ -27,7 +27,7 @@
 
 <Top title="Brand" sub="How what it sends looks" back={resolve('/settings')} backLabel="Settings" />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="mark-h">
 		<div class="box-h">
 			<h2 class="box-t" id="mark-h">Mark</h2>

@@ -54,7 +54,7 @@
 
 <Top title="Add vehicle" {back} backLabel="Vehicles" />
 
-<div class="pad primer">
+<div class="pad">
 	<form
 		class="box"
 		novalidate

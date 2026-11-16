@@ -6,7 +6,7 @@
 	 * entries or your own, pay by person or by job -- the one shown pressed in.
 	 * Not tabs: it is the same thing whichever way, only how it is cut changes.
 	 * Each way is an address, so it is a link, and the one shown is the current
-	 * page. Drawn inside .primer (#lib/primer.css).
+	 * page. Drawn by #lib/primer.css.
 	 */
 	let {
 		label,

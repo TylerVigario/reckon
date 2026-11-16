@@ -104,7 +104,7 @@
 	backLabel="Services"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<OfflineBanner asOf={data.as_of} />
 	{#if waiting}
 		<div class="banner" role="status">

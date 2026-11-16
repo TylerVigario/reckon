@@ -11,14 +11,14 @@
 	 * happened to how you sign in -- each its own address (Primer's
 	 * UnderlineNav: "Use the UnderlineNav component when activating a tab
 	 * changes the URL"), under the head every record with tabs shares
-	 * (#lib/RecordHead). Only the tabs are drawn to Primer here (#lib/primer.css).
+	 * (#lib/RecordHead).
 	 */
 	let { data, children }: LayoutProps = $props();
 </script>
 
 <Top title="Your profile" sub={data.user?.name ?? ''} back={resolve('/more')} backLabel="More" />
 
-<div class="pad primer">
+<div class="pad">
 	<RecordHead
 		label="Your profile"
 		tabs={[

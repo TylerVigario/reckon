@@ -62,7 +62,7 @@
 
 <Top title="Add contact" {back} backLabel={data.client.name} />
 
-<div class="pad primer">
+<div class="pad">
 	<form class="box" onsubmit={add} novalidate>
 		<div class="box-row form">
 			<div class="fc">

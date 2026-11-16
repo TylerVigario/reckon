@@ -38,7 +38,7 @@
 
 <Top title="Ready to send" {sub} back={resolve('/')} backLabel="Today" />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="built-h">
 		<div class="box-h">
 			<h2 class="box-t" id="built-h">Built, none sent</h2>

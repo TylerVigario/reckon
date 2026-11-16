@@ -26,7 +26,7 @@
 	<Top title="Pay {data.person.name}" back={resolve('/reports/pay')} backLabel="Pay" />
 {/if}
 
-<div class="pad primer">
+<div class="pad">
 	<RecordHead
 		label={field ? 'Your pay' : `${data.person.name}’s pay`}
 		tabs={[

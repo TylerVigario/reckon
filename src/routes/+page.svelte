@@ -93,7 +93,7 @@
 	</a>
 {/snippet}
 
-<div class="pad primer">
+<div class="pad">
 	{#if data.mine}
 		{@const m = data.mine}
 		<!-- Someone with Field, or anyone with no signal: their own day, and

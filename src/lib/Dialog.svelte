@@ -59,14 +59,14 @@
 	});
 </script>
 
-<dialog class="primer" bind:this={el} aria-labelledby={id} {onclose}>
+<dialog bind:this={el} aria-labelledby={id} {onclose}>
 	<header>
 		<h2 {id}>{title}</h2>
 		<button type="button" class="x" aria-label="Close" onclick={onclose}>
 			<Octicon name="x" />
 		</button>
 	</header>
-	<div class="body primer">{@render children()}</div>
+	<div class="body">{@render children()}</div>
 	<footer>
 		<button type="button" class="btn" data-cancel onclick={onclose} disabled={working}
 			>Cancel</button

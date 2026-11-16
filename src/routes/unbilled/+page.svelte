@@ -66,7 +66,7 @@
 
 <Top title="Unbilled work" {sub} back={resolve('/')} backLabel="Today" />
 
-<div class="pad primer">
+<div class="pad">
 	{#if data.given.length}
 		<Segmented
 			label="Unbilled work, seen"

@@ -23,7 +23,7 @@
 
 <!-- The client's, whoever opens it: no shell, and nothing of how the work was
      done. Drawn in Primer's boxes, its lines as the business's own copy has them. -->
-<main class="primer">
+<main>
 	{#if f}
 		<header class="from">
 			{#if f.has_logo}<img class="logo" src="/operator/logo" alt="" />{/if}

@@ -42,7 +42,7 @@
 	backLabel={p.person.split(' ')[0]}
 />
 
-<div class="pad primer">
+<div class="pad">
 	{#each parts as x (x.as)}
 		<section class="box" aria-labelledby="part-{x.as}">
 			<div class="box-h">

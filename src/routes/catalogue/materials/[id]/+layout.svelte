@@ -231,7 +231,7 @@
 	{/snippet}
 </Top>
 
-<div class="pad primer">
+<div class="pad">
 	<OfflineBanner asOf={data.as_of} {waiting} />
 	<RecordHead label="{m.name}’s record" {tabs}>
 		{#snippet state()}

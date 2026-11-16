@@ -48,7 +48,7 @@
 	]}
 />
 
-<div class="pad primer">
+<div class="pad">
 	<RecordHead label="{s.label}’s record" {tabs}>
 		{#snippet state()}
 			{#if !s.active}<span class="lab">Closed</span>{/if}

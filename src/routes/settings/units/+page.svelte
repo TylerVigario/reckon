@@ -115,7 +115,7 @@
 	backLabel="Settings"
 />
 
-<div class="pad primer">
+<div class="pad">
 	{#if failed}
 		<div class="banner crit" role="alert">
 			<Octicon name="alert" />

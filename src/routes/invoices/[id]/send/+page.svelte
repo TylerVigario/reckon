@@ -95,7 +95,7 @@
 	backLabel={i.number}
 />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="goes-h">
 		<div class="box-h"><h2 class="box-t" id="goes-h">What goes out</h2></div>
 		<div class="box-row kv">

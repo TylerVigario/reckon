@@ -116,7 +116,7 @@
 	{/snippet}
 </Top>
 
-<div class="pad primer">
+<div class="pad">
 	<RecordHead label="{s.name}’s record" {tabs}>
 		{#snippet state()}
 			{#if !s.active}<span class="lab warn">Retired</span>{/if}

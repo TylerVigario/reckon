@@ -38,7 +38,7 @@
 	backLabel="Settings"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="rules-h">
 		<div class="box-h"><h2 class="box-t" id="rules-h">Rules</h2></div>
 		<Detail

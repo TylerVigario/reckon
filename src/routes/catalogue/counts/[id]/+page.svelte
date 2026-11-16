@@ -126,7 +126,7 @@
 	{/snippet}
 </Top>
 
-<div class="pad primer">
+<div class="pad">
 	<OfflineBanner asOf={data.as_of} {waiting} />
 	{#if problem && applying === 'idle'}
 		<div class="banner crit" role="alert">

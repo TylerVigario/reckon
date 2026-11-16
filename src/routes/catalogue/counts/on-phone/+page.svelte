@@ -33,7 +33,7 @@
 	backLabel="Materials"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<OfflineBanner asOf={data.as_of} {waiting} />
 	{#if count}
 		<p class="note">
