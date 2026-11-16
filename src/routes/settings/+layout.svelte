@@ -8,7 +8,9 @@
 	 * Settings' screens, each with the list of them down its side on a wide
 	 * screen, grouped under headings, as GitHub's settings are (Primer's
 	 * NavList, its pattern for a settings menu: ten are more than a row of tabs
-	 * holds). On a phone the list is the Settings screen itself, and each
+	 * holds). Beside the app's own pane it is a third column, which Primer
+	 * gives its wide range (1400px): "Optional range when a 3rd layout column
+	 * is needed". Narrower, the list is the Settings screen itself, and each
 	 * screen opens over it.
 	 */
 	let { children }: LayoutProps = $props();
@@ -46,7 +48,7 @@
 	.side {
 		display: none;
 	}
-	@media (min-width: 1180px) {
+	@media (min-width: 1400px) {
 		.split {
 			display: grid;
 			grid-template-columns: 200px minmax(0, 1fr);

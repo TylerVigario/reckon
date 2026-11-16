@@ -8,6 +8,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import type { PageProps } from './$types';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
 	 * Adding a person, as a Primer form: each label above its field, what it
@@ -156,8 +157,8 @@
 				</fieldset>
 			</div>
 			<div class="box-row keep">
-				<button type="submit" class="btn pri" disabled={saving}
-					>{saving ? 'Adding…' : 'Add and invite'}</button
+				<button type="submit" class="btn pri" {@attach busy(saving && 'Adding and inviting')}
+					>Add and invite</button
 				>
 				<a class="btn" href={resolve('/team')}>Cancel</a>
 				{#if problem}

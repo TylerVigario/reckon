@@ -9,6 +9,7 @@
 	import AddressField from '#lib/AddressField.svelte';
 	import Octicon from '#lib/Octicon.svelte';
 	import type { Resolved } from '#lib/google.ts';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	let { data }: PageProps = $props();
 
@@ -262,8 +263,8 @@
 			</p>
 		</div>
 		<div class="box-row keep">
-			<button type="submit" class="btn pri" disabled={saving}
-				>{saving ? 'Asking CDTFA…' : 'Create and price it'}</button
+			<button type="submit" class="btn pri" {@attach busy(saving && 'Asking CDTFA')}
+				>Create and price it</button
 			>
 			<a class="btn" href={resolve('/clients/[id]/sites', { id: data.client.slug })}>Cancel</a>
 			<p class="fc-c">CDTFA prices it as it is made.</p>

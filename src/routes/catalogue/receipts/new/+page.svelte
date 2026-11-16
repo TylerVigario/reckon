@@ -24,6 +24,7 @@
 	import Octicon from '#lib/Octicon.svelte';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
 	 * STOCK RECEIVED, AS A RECEIPT OR INVOICE SAYS IT (#lib/stock-fields), as
@@ -484,9 +485,13 @@
 				<span class="all">Total <span class="v">{money(totals.all)}</span></span>
 			</p>
 			<div class="keep">
-				<button type="submit" class="btn pri" disabled={saving || items.length === 0}>
-					{saving ? 'Receiving…' : items.length > 1 ? `Receive ${items.length} items` : 'Receive'}
-				</button>
+				<button
+					type="submit"
+					class="btn pri"
+					disabled={items.length === 0}
+					{@attach busy(saving && 'Receiving the stock')}
+					>{items.length > 1 ? `Receive ${items.length} items` : 'Receive'}</button
+				>
 				<a class="btn" href={resolve('/catalogue/receipts')}>Cancel</a>
 			</div>
 		</div>
@@ -702,7 +707,7 @@
 	}
 	/* What it all comes to, and Receive, pinned above the bar of sections on a
 	   phone (it is --tabh tall, its border and the safe area under it) and at
-	   the window's foot where the rail takes its place. */
+	   the window's foot where the pane takes its place, from 768px (+layout.svelte). */
 	.foot {
 		margin-top: auto;
 		position: sticky;
@@ -716,7 +721,7 @@
 		background: var(--bgColor-default);
 		border-top: 1px solid var(--borderColor-default);
 	}
-	@media (min-width: 1180px) {
+	@media (min-width: 768px) {
 		.foot {
 			bottom: 16px;
 			margin-inline: 0;

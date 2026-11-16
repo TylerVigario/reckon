@@ -5,6 +5,8 @@
 	import type { RouteId } from '$app/types';
 	import { beforeSigningOut } from '#lib/sign-out.svelte.ts';
 	import { opens } from '#lib/access.ts';
+	import Octicon from '#lib/Octicon.svelte';
+	import type { OcticonName } from '#lib/octicons.ts';
 
 	const op = $derived(page.data.operator);
 	const name = $derived(op?.trading_name ?? 'reckon');
@@ -17,30 +19,40 @@
 		{
 			href: '/catalogue/materials',
 			title: 'Catalogue',
+			ic: 'package',
 			sub: 'Materials, services and recurring agreements'
 		},
-		{ href: '/clients', title: 'Entities', sub: 'Who you invoice, and where the work happens' },
+		{
+			href: '/clients',
+			title: 'Entities',
+			ic: 'organization',
+			sub: 'Who you invoice, and where the work happens'
+		},
 		{
 			href: '/team',
 			title: 'Team',
+			ic: 'people',
 			sub: 'Who signs in, what they reach, and the roles they are paid as'
 		},
 		{
 			href: '/reports/pay',
 			title: 'Reports',
+			ic: 'graph',
 			sub: 'Pay, the retainer meter, time given away and Schedule A'
 		},
 		{
 			href: '/settings',
 			title: 'Settings',
+			ic: 'gear',
 			sub: 'The mark, the rates, the tax rules — everything you supply'
 		},
 		{
 			href: '/profile',
 			title: 'Your profile',
+			ic: 'person',
 			sub: 'Your time zone, and how dates and figures read for you'
 		}
-	] satisfies { href: RouteId; title: string; sub: string }[];
+	] satisfies { href: RouteId; title: string; ic: OcticonName; sub: string }[];
 
 	// Each row only where it opens for this person (#lib/access). Someone with
 	// Field has their own pay here, in place of the reports; the entities read
@@ -60,141 +72,73 @@
 
 <Top title="More" sub={field ? 'Entities, your pay' : 'Catalogue, entities, team, reports'} />
 
-<div class="pad">
-	<div class="brandhd">
-		{#if op?.has_logo}
-			<img src="/operator/logo" alt={name} />
-		{:else}
-			<b>{name}</b>
-		{/if}
-		<span>invoicing and time tracking</span>
+<!-- The pane's sections on a phone, as a page of their own: Primer's NavList,
+     each with what it holds under it. -->
+<div class="pad primer">
+	<div class="mark">
+		<img src={op?.has_logo ? '/operator/logo' : '/icons/reckon.svg'} alt="" />
+		<span>{name}</span>
 	</div>
-
-	<div class="sec">
-		<div class="rows">
+	<nav aria-label="More">
+		<ul class="navlist">
 			{#each shown as m (m.href)}
-				<a class="rec link" href={resolve(m.href)}>
-					<div class="rec-m">
-						<div class="rec-t">{m.title}</div>
-						<div class="rec-s">{m.sub}</div>
-					</div>
-					<span class="arw" aria-hidden="true">›</span>
-				</a>
-				{#if field && m.href === '/clients' && page.data.user}
-					<a
-						class="rec link"
-						href={resolve('/reports/pay/[person]', { person: page.data.user.id })}
-					>
-						<div class="rec-m">
-							<div class="rec-t">Your pay</div>
-							<div class="rec-s">What you are owed, and what you have been paid</div>
-						</div>
-						<span class="arw" aria-hidden="true">›</span>
+				<li>
+					<a href={resolve(m.href)}>
+						<Octicon name={m.ic} />
+						<span class="navlist-m"
+							><span>{m.title}</span><span class="navlist-b">{m.sub}</span></span
+						>
 					</a>
+				</li>
+				{#if field && m.href === '/clients' && page.data.user}
+					<li>
+						<a href={resolve('/reports/pay/[person]', { person: page.data.user.id })}>
+							<Octicon name="creditCard" />
+							<span class="navlist-m"
+								><span>Your pay</span><span class="navlist-b"
+									>What you are owed, and what you have been paid</span
+								></span
+							>
+						</a>
+					</li>
 				{/if}
 			{/each}
-		</div>
-	</div>
-
+		</ul>
+	</nav>
 	<form class="out" method="POST" action="/logout" onsubmit={beforeSigningOut}>
-		<span>Signed in as {page.data.user?.name}{field ? ' · Field' : ''}</span>
-		<button type="submit">Sign out</button>
+		<p class="note">Signed in as {page.data.user?.name}{field ? ' · Field' : ''}</p>
+		<button class="btn" type="submit"><Octicon name="signOut" />Sign out</button>
 	</form>
 </div>
 
 <style>
-	.pad {
-		padding: var(--pad);
-		display: flex;
-		flex-direction: column;
-		gap: 18px;
-	}
-	.pad > * {
-		max-width: 960px;
-	}
-
-	.brandhd {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-	.brandhd img {
-		height: 44px;
-		width: auto;
-		max-width: 260px;
-	}
-	.brandhd b {
-		font-family: var(--fontStack-sansSerif);
-		font-size: 22px;
-		color: var(--fgColor-default);
-	}
-	.brandhd span {
-		font-size: 13px;
-		color: var(--fgColor-muted);
-	}
-
-	.sec {
-		display: flex;
-		flex-direction: column;
-	}
-	.rows {
-		background: var(--bgColor-default);
-		border: 1px solid var(--borderColor-default);
-		border-radius: var(--borderRadius-medium);
-		overflow: hidden;
-	}
-	.rec {
+	.mark {
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		padding: 12px 14px;
-		border-bottom: 1px solid var(--borderColor-muted);
-		min-height: 56px;
-		box-sizing: border-box;
-		color: inherit;
-		text-decoration: none;
+		gap: var(--base-size-8);
+		font-weight: var(--base-text-weight-semibold);
 	}
-	.rec:last-child {
-		border-bottom: 0;
+	.mark img {
+		width: var(--base-size-32);
+		height: var(--base-size-32);
+		object-fit: contain;
 	}
-	.rec-m {
-		flex: 1 1 auto;
-		min-width: 0;
+	/* The list's rows are taller on a page of their own: a label and what it
+	   holds under it. */
+	.navlist a {
+		align-items: flex-start;
+		padding-block: var(--base-size-8);
 	}
-	.rec-t {
-		font-size: 15px;
-		font-weight: 600;
-		line-height: 1.3;
+	.navlist a > :global(svg) {
+		margin-top: var(--base-size-2);
 	}
-	.rec-s {
-		font-size: 13.5px;
-		color: var(--fgColor-muted);
-		margin-top: 3px;
-		line-height: 1.4;
-	}
-	.arw {
-		color: var(--fgColor-muted);
-		font-family: var(--fontStack-monospace);
-		font-size: 16px;
-	}
-
 	.out {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 12px;
-	}
-	.out span {
-		font-size: 13px;
-		color: var(--fgColor-muted);
-	}
-	.out button {
-		font: inherit;
-		font-size: 13px;
-		padding: 7px 14px;
-		border: 1px solid var(--borderColor-default);
-		border-radius: 999px;
-		background: var(--bgColor-default);
-		color: var(--fgColor-muted);
-		cursor: pointer;
+		justify-content: space-between;
+		gap: var(--base-size-8);
+		padding-top: var(--base-size-16);
+		border-top: var(--borderWidth-thin) solid var(--borderColor-muted);
 	}
 </style>

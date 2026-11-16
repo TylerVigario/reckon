@@ -17,6 +17,7 @@
 	 */
 	import type { Snippet } from 'svelte';
 	import Octicon from './Octicon.svelte';
+	import { busy } from './busy.svelte.ts';
 
 	let {
 		open,
@@ -33,7 +34,7 @@
 		title: string;
 		/** What the action does: "Change role", "Deactivate". */
 		go: string;
-		/** While it happens: "Changing…". */
+		/** While it happens, said for a screen reader: "Changing the role". */
 		going?: string;
 		working?: boolean;
 		tone?: 'plain' | 'danger';
@@ -58,7 +59,7 @@
 	});
 </script>
 
-<dialog bind:this={el} aria-labelledby={id} {onclose}>
+<dialog class="primer" bind:this={el} aria-labelledby={id} {onclose}>
 	<header>
 		<h2 {id}>{title}</h2>
 		<button type="button" class="x" aria-label="Close" onclick={onclose}>
@@ -78,7 +79,7 @@
 			class:solid={tone === 'danger'}
 			data-go
 			onclick={ongo}
-			disabled={working}>{working ? going : go}</button
+			{@attach busy(working && going)}>{go}</button
 		>
 	</footer>
 </dialog>
@@ -143,19 +144,10 @@
 		padding: 16px;
 		border-top: 1px solid var(--borderColor-muted);
 	}
-	footer .btn {
-		border-radius: 6px;
-	}
-	footer .btn:not(.pri, .danger) {
-		background: var(--bgColor-muted);
-	}
 	@media (pointer: coarse) {
 		.x {
 			width: 44px;
 			height: 44px;
-		}
-		footer .btn {
-			min-height: 44px;
 		}
 	}
 	@media (max-width: 543px) {

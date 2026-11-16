@@ -3,6 +3,7 @@
 	import Octicon from './Octicon.svelte';
 	import type { Parsed } from './field-rules.ts';
 	import { readJson, readProblem } from './json.ts';
+	import { busy } from './busy.svelte.ts';
 
 	/**
 	 * One detail of a record, as Primer draws it in a box: its label, what it
@@ -226,8 +227,11 @@
 						{@render field()}
 					{/if}
 				{/if}
-				<button type="button" class="btn sm pri" onclick={save} disabled={saving}
-					>{saving ? 'Saving…' : 'Save'}</button
+				<button
+					type="button"
+					class="btn sm pri"
+					onclick={save}
+					{@attach busy(saving && `Saving ${label.toLowerCase()}`)}>Save</button
 				>
 				<button type="button" class="btn sm" onclick={leave} disabled={saving}>Cancel</button>
 			</div>

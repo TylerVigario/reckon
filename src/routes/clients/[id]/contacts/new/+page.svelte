@@ -8,6 +8,7 @@
 	import { resolve } from '$app/paths';
 	import { untrack } from 'svelte';
 	import type { PageProps } from './$types';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
 	 * Adding a contact to a client, as Team adds a person: a Primer form, each
@@ -130,8 +131,8 @@
 			</label>
 		</div>
 		<div class="box-row keep">
-			<button type="submit" class="btn pri" disabled={saving}
-				>{saving ? 'Adding…' : 'Add contact'}</button
+			<button type="submit" class="btn pri" {@attach busy(saving && 'Adding the contact')}
+				>Add contact</button
 			>
 			<a class="btn" href={back}>Cancel</a>
 			{#if problem}

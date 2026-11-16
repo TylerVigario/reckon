@@ -5,6 +5,7 @@
 	import { Decimal } from '#lib/decimal.ts';
 	import { readJson, readProblem } from '#lib/json.ts';
 	import type { PageProps } from './$types';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
 	 * What CDTFA has said of a site: what is charged there and what it is made
@@ -69,8 +70,11 @@
 	<div class="box-h">
 		<h2 class="box-t" id="cdtfa-h">What CDTFA has said</h2>
 		{#if !field}
-			<button type="button" class="btn sm" disabled={asking} onclick={askAgain}
-				>{asking ? 'Asking CDTFA…' : 'Ask CDTFA again'}</button
+			<button
+				type="button"
+				class="btn sm"
+				onclick={askAgain}
+				{@attach busy(asking && 'Asking CDTFA')}>Ask CDTFA again</button
 			>
 		{/if}
 	</div>

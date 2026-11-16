@@ -13,6 +13,7 @@
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
 	import type { LayoutProps } from './$types';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
 	 * One person, as Primer draws a record: their name heading it with the
@@ -279,8 +280,12 @@
 				>
 			{:else if where === 'uninvited'}
 				<span class="muted">Has no passkey, and has never been sent an invitation</span>
-				<button type="button" class="btn sm" onclick={resend} disabled={working || !!unsent}
-					>Send invitation</button
+				<button
+					type="button"
+					class="btn sm"
+					onclick={resend}
+					disabled={!!unsent}
+					{@attach busy(working && 'Sending the invitation')}>Send invitation</button
 				>
 			{:else if where === 'expired'}
 				<span class="muted">
@@ -288,8 +293,12 @@
 						? `Sent at ${at(p.waiting.sent_at)}, and not used within the hour`
 						: 'No invitation waiting'}
 				</span>
-				<button type="button" class="btn sm" onclick={resend} disabled={working || !!unsent}
-					>Resend invitation</button
+				<button
+					type="button"
+					class="btn sm"
+					onclick={resend}
+					disabled={!!unsent}
+					{@attach busy(working && 'Sending the invitation')}>Resend invitation</button
 				>
 			{:else}
 				<span class="muted">

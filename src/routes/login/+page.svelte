@@ -6,6 +6,7 @@
 	import Authentication from '#lib/Authentication.svelte';
 	import Octicon from '#lib/Octicon.svelte';
 	import type { PageProps } from './$types';
+	import { busy } from '#lib/busy.svelte.ts';
 	let { data }: PageProps = $props();
 	const business = $derived(page.data.operator?.trading_name?.trim() || 'reckon');
 
@@ -15,16 +16,16 @@
 	// button opens its passkey dialog, with a phone or a security key besides.
 	// Nothing about the address typed is looked up.
 	let usable = $state(true);
-	let busy = $state(false);
+	let signing = $state(false);
 	let said = $state('');
 
 	async function withPasskey(autoFill: boolean) {
 		if (!autoFill) {
-			busy = true;
+			signing = true;
 			said = '';
 		}
 		const r = await authClient.signIn.passkey({ autoFill, returnWebAuthnResponse: true });
-		busy = false;
+		signing = false;
 		if (r.error) {
 			// Cancelling, or the dialog taking over from autofill, is nothing to say.
 			const quiet = [
@@ -78,14 +79,14 @@
 		<form
 			onsubmit={(e) => {
 				e.preventDefault();
-				if (!busy) void withPasskey(false);
+				if (!signing) void withPasskey(false);
 			}}
 		>
 			<div class="fc">
 				<label class="fc-l" for="email">Email</label>
 				<input id="email" class="ti" name="email" type="email" autocomplete="username webauthn" />
 			</div>
-			<button class="btn pri" type="submit" aria-disabled={busy || undefined}>
+			<button class="btn pri" type="submit" {@attach busy(signing && 'Signing in')}>
 				Sign in with a passkey
 			</button>
 		</form>

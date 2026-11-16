@@ -8,6 +8,7 @@
 	import { focusFirstInvalid, workErrors } from '#lib/work-fields.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import { at, clockOf, endAfter, endingAt, lengthText, parseLength } from '#lib/work-times.ts';
+	import { busy } from './busy.svelte.ts';
 
 	/**
 	 * A time entry's form: what the work was (#lib/WorkFields), and when -- the
@@ -324,7 +325,7 @@
 		</WorkFields>
 	</div>
 	<div class="box-row keep">
-		<button class="btn pri" disabled={saving}>{saving ? savingLabel : saveLabel}</button>
+		<button class="btn pri" {@attach busy(saving && savingLabel)}>{saveLabel}</button>
 		<a class="btn" href={cancel}>Cancel</a>
 	</div>
 </form>

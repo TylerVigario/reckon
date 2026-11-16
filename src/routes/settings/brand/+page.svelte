@@ -8,6 +8,7 @@
 	import Octicon from '#lib/Octicon.svelte';
 	import { parseField } from '#lib/settings-fields.ts';
 	import type { PageProps } from './$types';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
 	 * How the business looks on what it sends: its mark, uploaded as a file,
@@ -70,8 +71,8 @@
 					<p class="fc-c" id="logo-c">PNG, JPEG, SVG or WebP, under 512 KB.</p>
 				{/if}
 			</div>
-			<button class="btn" type="submit" disabled={uploading}
-				>{uploading ? 'Uploading…' : 'Upload'}</button
+			<button class="btn" type="submit" {@attach busy(uploading && 'Uploading the logo')}
+				>Upload</button
 			>
 		</form>
 	</section>

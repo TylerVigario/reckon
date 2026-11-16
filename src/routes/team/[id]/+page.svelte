@@ -11,6 +11,7 @@
 	import { resolve } from '$app/paths';
 	import { tick } from 'svelte';
 	import type { PageProps } from './$types';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
 	 * One person's details, the first of their tabs (+layout.svelte): a box
@@ -51,6 +52,8 @@
 	let pickAccess = $state<Access>('field');
 	let pickRole = $state('');
 	let working = $state(false);
+	/** Which of Send again and Cancel change was pressed: it spins, the other waits. */
+	let again = $state<'POST' | 'DELETE' | null>(null);
 	let askError = $state('');
 
 	type Said = { title: string; detail: string; tone: 'good' | 'crit' };
@@ -136,6 +139,7 @@
 	/** The change of address waiting: its link sent again, or the change cancelled. */
 	async function changeAgain(how: 'POST' | 'DELETE') {
 		const to = p.changing?.to ?? '';
+		again = how;
 		working = true;
 		const r = await fetch(`/api/people/${p.id}/email-change`, { method: how }).catch(() => null);
 		working = false;
@@ -243,9 +247,15 @@
 				type="button"
 				class="btn sm"
 				onclick={() => changeAgain('POST')}
-				disabled={working || !!unsent || !p.active}>Send again</button
+				disabled={!!unsent || !p.active || (working && again !== 'POST')}
+				{@attach busy(working && again === 'POST' && 'Sending the link again')}>Send again</button
 			>
-			<button type="button" class="btn sm" onclick={() => changeAgain('DELETE')} disabled={working}
+			<button
+				type="button"
+				class="btn sm"
+				onclick={() => changeAgain('DELETE')}
+				disabled={working && again !== 'DELETE'}
+				{@attach busy(working && again === 'DELETE' && 'Cancelling the change')}
 				>Cancel change</button
 			>
 		</span>
@@ -269,8 +279,11 @@
 						onkeydown={keys}
 						use:focus
 					/>
-					<button type="button" class="btn sm pri" onclick={save} disabled={saving}
-						>{saving ? 'Saving…' : 'Save'}</button
+					<button
+						type="button"
+						class="btn sm pri"
+						onclick={save}
+						{@attach busy(saving && `Saving ${label.toLowerCase()}`)}>Save</button
 					>
 					<button type="button" class="btn sm" onclick={leave} disabled={saving}>Cancel</button>
 				</div>

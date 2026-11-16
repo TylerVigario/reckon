@@ -14,6 +14,7 @@
 	import { unitPrice } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
+	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
 	 * Materials: what is on the shelf, as a Primer box with a row each -- what
@@ -115,7 +116,12 @@
 
 <Top title="Catalogue" sub="What can go on a line" back={resolve('/more')} backLabel="More">
 	{#snippet actions()}
-		<button type="button" class="btn sm" onclick={count} disabled={starting}>Count</button>
+		<button
+			type="button"
+			class="btn sm"
+			onclick={count}
+			{@attach busy(starting && 'Starting a count')}>Count</button
+		>
 		<a class="btn sm pri" href={resolve('/catalogue/receipts/new')}>Receive stock</a>
 	{/snippet}
 </Top>
