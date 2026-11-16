@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import Octicon from './Octicon.svelte';
 	import UnderlinePanels from './UnderlinePanels.svelte';
 	import { Decimal } from './decimal.ts';
@@ -63,7 +63,7 @@
 		const sent = await flush().catch(() => null);
 		// The server's figures first, so one that arrived is not shown uncounted between.
 		if (sent && sent.sent + sent.refused > 0) {
-			await invalidateAll();
+			await refreshAll();
 			warm();
 		}
 		await read();

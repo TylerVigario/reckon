@@ -54,7 +54,7 @@
 			const id = await arrived();
 			if (id) {
 				warm();
-				await goto(resolve('/invoices/[id]', { id }), { replaceState: true });
+				await goto(resolve('/invoices/[id]', { id }), { replace: true });
 			}
 		}
 	}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { enhance } from '$app/forms';
 	import Detail from '#lib/Detail.svelte';
 	import Octicon from '#lib/Octicon.svelte';
@@ -32,7 +32,7 @@
 	const localeWeek = $derived(weekStartOf(locale));
 
 	// Every figure on every page reads in these, so a change redraws them all.
-	const redraw = () => invalidateAll();
+	const redraw = () => refreshAll();
 
 	// Each clock is offered with the time as it would then read, in the locale in
 	// force, so leaving it to the locale shows which clock that is.

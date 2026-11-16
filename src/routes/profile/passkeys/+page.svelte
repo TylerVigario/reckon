@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { enhance } from '$app/forms';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { authClient, passkeysWork } from '#lib/auth-client.ts';
 	import { clock, datedAt } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
@@ -38,7 +38,7 @@
 		}
 		// Where they were headed, which safeNext has already held to this site.
 		if (data.offer) return void location.assign(data.next);
-		await invalidateAll();
+		await refreshAll();
 	}
 </script>
 

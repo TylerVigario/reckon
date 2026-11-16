@@ -44,7 +44,7 @@
 		ifMatch={c.version}
 		onconflict={again}
 		validate={parseClientField}
-		onsaved={(slug) => goto(resolve('/clients/[id]/details', { id: slug }), { replaceState: true })}
+		onsaved={(slug) => goto(resolve('/clients/[id]/details', { id: slug }), { replace: true })}
 	>
 		{#snippet caption()}
 			Their screens’ address. A link somebody kept stops working once it changes.

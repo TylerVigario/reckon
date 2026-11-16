@@ -114,7 +114,7 @@
 			validate={parseSiteField}
 			onsaved={(slug) =>
 				goto(resolve('/clients/[id]/sites/[site]', { id: s.client_slug, site: slug }), {
-					replaceState: true
+					replace: true
 				})}
 		>
 			{#snippet caption()}

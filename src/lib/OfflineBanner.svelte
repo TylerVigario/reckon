@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { clock, datedAt, todayIn } from '#lib/format.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import Octicon from './Octicon.svelte';
@@ -42,7 +42,7 @@
 			}
 		const back = answered && !reachable;
 		reachable = answered;
-		if (back) await invalidateAll();
+		if (back) await refreshAll();
 	}
 	onMount(() => {
 		void ask();

@@ -301,7 +301,7 @@
 			saving = false;
 			return showWrong();
 		}
-		await goto(resolve('/catalogue/materials'), { invalidateAll: true });
+		await goto(resolve('/catalogue/materials'), { refreshAll: true });
 	}
 </script>
 

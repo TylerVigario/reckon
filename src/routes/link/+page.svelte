@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { deserialize } from '$app/forms';
-	import { replaceState } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import {
@@ -58,7 +58,7 @@
 
 	onMount(async () => {
 		code = location.hash.slice(1);
-		void replaceState(resolve('/link'), {});
+		void goto(resolve('/link'), { shallow: true, replace: true });
 		if (!code) return void (view = { at: 'dead' });
 		const r = await act('look', { code });
 		if (r?.type !== 'success' || !r.data) return void (view = after(r));

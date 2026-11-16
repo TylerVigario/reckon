@@ -118,7 +118,7 @@
 			return void (why = Object.values(p.errors ?? {})[0] ?? p.detail ?? 'That was not recorded.');
 		}
 		const { id } = (await r.json()) as { id: string };
-		await goto(resolve('/reports/pay/payments/[id]', { id }), { invalidateAll: true });
+		await goto(resolve('/reports/pay/payments/[id]', { id }), { refreshAll: true });
 	}
 	// What each box is headed: the kind of pay, as its role says it.
 	const heading = (as: PaidAs | 'reimbursement' | null) =>
