@@ -8,14 +8,17 @@
 # a group a bump that is fine is held back by one that is not -- so a major
 # arrives on its own and can be refused on its own.
 #
-# Two majors are refused here rather than one pull request at a time, because
-# each waits on something outside this repository:
+# Three majors are refused here rather than one pull request at a time,
+# because each waits on something outside this repository:
 #
 # - @types/node describes the Node the host runs, which .nvmrc pins. It moves
 #   with .nvmrc when the host moves to Node 26 (#13), never ahead of it.
 # - typescript 7 ships its compiler without the API that svelte-check,
 #   typescript-eslint and SvelteKit are built on, and none of the three
 #   accepts it yet (#88). This comes off when they do.
+# - @simplewebauthn/browser is the one Better Auth's passkey client is built
+#   on, and @better-auth/passkey asks for 13. The link page's own copy moving
+#   on alone would put both majors in the browser. It moves when that does.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -30,6 +33,8 @@ updates:
       - dependency-name: '@types/node'
         update-types: [version-update:semver-major]
       - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      - dependency-name: '@simplewebauthn/browser'
         update-types: [version-update:semver-major]
     commit-message:
       prefix: build
