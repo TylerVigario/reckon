@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.9.1](https://github.com/TylerVigario/reckon/compare/v0.9.0...v0.9.1) (2026-11-16)
+
+### Build & Packaging
+
+* Every dependency that can move is current, and Better Auth loads without Kysely ([#180](https://github.com/TylerVigario/reckon/pull/180))
+
 ## [0.9.0](https://github.com/TylerVigario/reckon/compare/v0.8.0...v0.9.0) (2026-11-16)
 
 ### Features
