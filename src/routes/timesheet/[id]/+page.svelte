@@ -126,7 +126,7 @@
 	async function send() {
 		await Promise.race([flush().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
 		await read();
-		if (!mine?.refused) await goto(time, { invalidateAll: true });
+		if (!mine?.refused) await goto(time, { refreshAll: true });
 	}
 
 	async function save(fields: EntryFields) {
@@ -177,7 +177,7 @@
 	/** Lets go of what this phone has for the entry: only ever a person's decision. */
 	async function letGo(leave = false) {
 		await discardTimeChange(e.id).catch(() => {});
-		if (leave) await goto(time, { invalidateAll: true });
+		if (leave) await goto(time, { refreshAll: true });
 		else await read();
 	}
 
@@ -197,7 +197,7 @@
 			why = 'This phone would not save that, so nothing was added.';
 			return;
 		}
-		await goto(time, { invalidateAll: true });
+		await goto(time, { refreshAll: true });
 	}
 
 	// A collision is settled part by part: each picks where both started,

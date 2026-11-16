@@ -455,7 +455,7 @@
 			return (why =
 				Object.values(still.refused.errors ?? {})[0] ?? still.refused.detail ?? 'Not saved.');
 		// Still on the phone: the trips list shows it waiting.
-		if (still) return goto(resolve('/trips'), { invalidateAll: true });
+		if (still) return goto(resolve('/trips'), { refreshAll: true });
 		const id =
 			tripId ??
 			(
@@ -465,7 +465,7 @@
 			)?.id;
 		// Arrived: the worker keeps it, and its Change, for no signal from now on.
 		warm();
-		await goto(id ? resolve('/trips/[id]', { id }) : resolve('/trips'), { invalidateAll: true });
+		await goto(id ? resolve('/trips/[id]', { id }) : resolve('/trips'), { refreshAll: true });
 	}
 </script>
 

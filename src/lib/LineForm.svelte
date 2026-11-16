@@ -329,7 +329,7 @@
 		// A few seconds for the server to take it; no longer, so a phone with a
 		// weak signal is not left waiting on a page that has done its part.
 		await Promise.race([flush().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
-		await goto(back, { invalidateAll: true });
+		await goto(back, { refreshAll: true });
 	}
 
 	/**
@@ -369,7 +369,7 @@
 			return;
 		}
 		await Promise.race([flush().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
-		await goto(back, { invalidateAll: true });
+		await goto(back, { refreshAll: true });
 	}
 
 	/** What the line will bill and the tax on it, by the rule the server saves it by. */

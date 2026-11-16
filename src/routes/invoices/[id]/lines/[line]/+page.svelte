@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import Top from '#lib/Top.svelte';
 	import OfflineBanner from '#lib/OfflineBanner.svelte';
 	import Octicon from '#lib/Octicon.svelte';
@@ -164,7 +164,7 @@
 		if (!mine) return;
 		if (!(await decide({ ...mine.change, force: true }))) return;
 		await send();
-		await goto(back, { invalidateAll: true });
+		await goto(back, { refreshAll: true });
 	}
 	async function letGo() {
 		await discardChange(l.id).catch(() => {});
@@ -172,7 +172,7 @@
 	}
 	async function send() {
 		await Promise.race([flush().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
-		await invalidateAll();
+		await refreshAll();
 		await read();
 	}
 
@@ -214,7 +214,7 @@
 			return;
 		}
 		await Promise.race([flush().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
-		await goto(back, { invalidateAll: true });
+		await goto(back, { refreshAll: true });
 	}
 </script>
 

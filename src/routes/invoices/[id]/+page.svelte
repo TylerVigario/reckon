@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { Decimal } from '#lib/decimal.ts';
 	import { currencyPlaces } from '#lib/currency.ts';
 	import Top from '#lib/Top.svelte';
@@ -59,7 +59,7 @@
 			return;
 		}
 		await send();
-		await invalidateAll();
+		await refreshAll();
 	}
 	async function letChangeGo(q: QueuedChange) {
 		await discardChange(q.change.line_id).catch(() => {});
@@ -85,7 +85,7 @@
 		const sent = await flush().catch(() => null);
 		await read();
 		if (sent && sent.sent + sent.refused > 0) {
-			await invalidateAll();
+			await refreshAll();
 			warm();
 		}
 	}

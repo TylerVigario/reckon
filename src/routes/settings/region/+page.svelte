@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Top from '#lib/Top.svelte';
 	import Detail from '#lib/Detail.svelte';
@@ -18,7 +18,7 @@
 	const o = $derived(data.operator);
 	const locale = $derived(o?.locale ?? 'en-US');
 	const zone = $derived(o?.timezone ?? 'UTC');
-	const redraw = () => invalidateAll();
+	const redraw = () => refreshAll();
 </script>
 
 <Top

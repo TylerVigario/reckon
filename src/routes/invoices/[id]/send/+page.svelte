@@ -83,7 +83,7 @@
 			// Cancelled, or not allowed: it is sent either way.
 		}
 		await goto(resolve(`/invoices/[id]?link=${handed || 'sent'}`, { id: i.id }), {
-			invalidateAll: true
+			refreshAll: true
 		});
 	}
 </script>

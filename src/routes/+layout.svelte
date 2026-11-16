@@ -4,7 +4,7 @@
 	import { setOwner } from '#lib/owner.ts';
 	import { claimUnownedTimers } from '#lib/timers.ts';
 	import { page, updated } from '$app/state';
-	import { afterNavigate, invalidateAll } from '$app/navigation';
+	import { afterNavigate, refreshAll } from '$app/navigation';
 	import { claimUnowned, flush } from '#lib/queue.ts';
 	import Dialog from '#lib/Dialog.svelte';
 	import { beforeSigningOut, signingOut, signOutAnyway, stay } from '#lib/sign-out.svelte.ts';
@@ -110,7 +110,7 @@
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ fields: { timezone: zone } })
 		}).catch(() => null);
-		if (r?.ok) await invalidateAll();
+		if (r?.ok) await refreshAll();
 	}
 	onMount(() => {
 		if (!data.user || !navigator.onLine) return;

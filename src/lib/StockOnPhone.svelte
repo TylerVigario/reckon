@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Octicon from './Octicon.svelte';
 	import { money } from './money.svelte.ts';
@@ -80,7 +80,7 @@
 		const sent = await flush().catch(() => null);
 		await read();
 		if (sent && sent.sent + sent.refused > 0) {
-			await invalidateAll();
+			await refreshAll();
 			warm();
 		}
 	}
