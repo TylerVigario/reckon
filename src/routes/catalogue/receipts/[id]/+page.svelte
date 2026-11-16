@@ -30,7 +30,7 @@
 	backLabel="Receipts"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="items-h">
 		<div class="box-h">
 			<h2 class="box-t" id="items-h">What was on it</h2>

@@ -14,7 +14,7 @@
 
 <Top title="Team" back={resolve('/more')} backLabel="More" />
 
-<div class="pad primer log">
+<div class="pad log">
 	<UnderlineNav
 		label="Team"
 		items={teamTabs('security-log', { people: data.people, roles: data.roles })}

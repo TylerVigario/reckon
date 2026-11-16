@@ -172,7 +172,7 @@
 	]}
 />
 
-<div class="pad primer">
+<div class="pad">
 	<form
 		class="box"
 		novalidate

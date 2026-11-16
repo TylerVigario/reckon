@@ -26,7 +26,7 @@
 	backLabel="Settings"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="num-h">
 		<div class="box-h"><h2 class="box-t" id="num-h">Numbering</h2></div>
 		<Detail

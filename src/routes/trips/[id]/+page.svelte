@@ -132,7 +132,7 @@
 
 <OfflineBanner asOf={data.as_of} {waiting} />
 
-<div class="pad primer">
+<div class="pad">
 	{#if problem}
 		<div class="banner crit" role="alert">
 			<Octicon name="alert" />

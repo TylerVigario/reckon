@@ -475,7 +475,7 @@
 
 {#if adding}
 	<Top title="Add a stop" sub="The next place on this trip" />
-	<div class="pad primer">
+	<div class="pad">
 		<form class="box form" novalidate onsubmit={addStop} bind:this={stopForm}>
 			<div class="box-row fields">
 				<fieldset class="fc">
@@ -590,7 +590,7 @@
 		/>
 	{/if}
 	<OfflineBanner asOf={data.as_of} {waiting} />
-	<form class="pad primer" novalidate onsubmit={save} bind:this={tripForm}>
+	<form class="pad" novalidate onsubmit={save} bind:this={tripForm}>
 		{#if why}
 			<div class="banner crit" role="alert">
 				<Octicon name="alert" />

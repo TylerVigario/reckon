@@ -26,7 +26,7 @@
 	backLabel="Settings"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="base-h">
 		<div class="box-h"><h2 class="box-t" id="base-h">Base</h2></div>
 		<div class="box-row kv">

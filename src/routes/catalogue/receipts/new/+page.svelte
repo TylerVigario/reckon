@@ -318,7 +318,7 @@
 	backLabel="Receipts"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<OfflineBanner asOf={data.as_of} />
 	{#if why}
 		<div class="banner crit" role="alert">

@@ -19,7 +19,7 @@
 	backLabel="More"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<UnderlineNav
 		label="Entities"
 		items={entityTabs('clients', {

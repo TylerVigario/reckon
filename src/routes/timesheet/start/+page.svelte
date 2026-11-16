@@ -106,7 +106,7 @@
 	backLabel="Time"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<form class="box form" novalidate onsubmit={go} bind:this={form}>
 		<div class="box-row fields">
 			<WorkFields

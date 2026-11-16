@@ -3,7 +3,7 @@
 	/**
 	 * Primer's UnderlineNav: the views of one section -- Team's people and its
 	 * roles -- as links in a row, the current one underlined, each with how
-	 * many there are. Drawn inside .primer (#lib/primer.css).
+	 * many there are. Drawn by #lib/primer.css.
 	 *
 	 * Links, not tabs: each view is a screen of its own, with its own address,
 	 * so it can be bookmarked and gone back to.

@@ -87,7 +87,7 @@
 
 <OfflineBanner asOf={data.as_of} {waiting} />
 
-<div class="pad primer">
+<div class="pad">
 	{#if onPhone.length}
 		<section class="box" aria-labelledby="phone-h">
 			<div class="box-h">

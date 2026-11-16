@@ -121,7 +121,7 @@
 	{/snippet}
 </Top>
 
-<div class="pad primer">
+<div class="pad">
 	<RecordHead label="This agreement" {tabs}>
 		{#snippet state()}
 			{#if a.ended}<span class="lab">Ended</span>{:else if data.now?.given}<span class="lab good"

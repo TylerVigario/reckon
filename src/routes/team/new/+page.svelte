@@ -65,7 +65,7 @@
 
 <Top title="Add person" back={resolve('/team')} backLabel="Team" />
 
-<div class="pad primer">
+<div class="pad">
 	{#if data.cannotSend}
 		<div class="banner warn" role="status">
 			<Octicon name="alert" />

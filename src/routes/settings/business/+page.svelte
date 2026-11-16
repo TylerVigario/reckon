@@ -70,7 +70,7 @@
 	backLabel="Settings"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="who-h">
 		<div class="box-h"><h2 class="box-t" id="who-h">Who it is</h2></div>
 		<Detail

@@ -20,7 +20,7 @@
 	backLabel="Materials"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="counts-h">
 		<div class="box-h">
 			<h2 class="box-t" id="counts-h">Counts</h2>

@@ -22,7 +22,7 @@
 	{/snippet}
 </Top>
 
-<div class="pad primer">
+<div class="pad">
 	<UnderlineNav label="Catalogue" items={catalogueTabs('receipts')} />
 
 	<section class="box" aria-labelledby="receipts-h">

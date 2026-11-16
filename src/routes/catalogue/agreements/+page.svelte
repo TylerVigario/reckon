@@ -32,7 +32,7 @@
 	{/snippet}
 </Top>
 
-<div class="pad primer">
+<div class="pad">
 	<UnderlineNav label="Catalogue" items={catalogueTabs('agreements')} />
 
 	{#each [{ key: 'running', head: 'Running', list: data.live }, { key: 'ended', head: 'Ended', list: data.ended }] as group (group.key)}

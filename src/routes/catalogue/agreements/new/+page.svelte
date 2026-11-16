@@ -85,7 +85,7 @@
 	backLabel="Agreements"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<form class="box" onsubmit={create} novalidate>
 		<div class="box-row form">
 			<div class="fc">

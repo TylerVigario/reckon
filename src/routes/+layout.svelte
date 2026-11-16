@@ -18,7 +18,6 @@
 	import { hoursBadge, zoneName } from '#lib/format.ts';
 	import { CLIENT_PAGE, LINK_PAGE } from '#lib/client-link.ts';
 	import { opens } from '#lib/access.ts';
-	// Primer's shapes, for the screens drawn to it so far (#lib/primer.css).
 	// Primer's primitives: its colours, light and dark, and its sizes and type.
 	import '@primer/primitives/dist/css/functional/themes/light.css';
 	import '@primer/primitives/dist/css/functional/themes/dark.css';
@@ -33,6 +32,7 @@
 	// Noto, as press sets its documents in, bundled.
 	import '@fontsource-variable/noto-sans';
 	import '@fontsource-variable/noto-sans-mono';
+	// Primer's shapes, drawn in its primitives (#lib/primer.css).
 	import '#lib/primer.css';
 
 	let { data, children }: LayoutProps = $props();
@@ -266,7 +266,7 @@
 	     the page an emailed link opens, which is for whoever it was sent to. -->
 	{@render children()}
 {:else}
-	<div class="app primer">
+	<div class="app">
 		<!-- Primer: "a skip link near the global navigation that allows users
 		     skip over all the global navigation items and go straight to the
 		     main content". -->
@@ -450,7 +450,7 @@
 		background: var(--bgColor-default);
 		color: var(--fgColor-default);
 		font-family: var(--fontStack-sansSerif);
-		font-size: 16px;
+		font-size: var(--text-body-size-medium);
 		line-height: 1.5;
 		-webkit-font-smoothing: antialiased;
 		-webkit-text-size-adjust: 100%;

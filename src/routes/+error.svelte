@@ -27,7 +27,7 @@
 
 {#if shell}
 	<Top title={page.status === 404 ? 'Not found' : 'Something went wrong'} />
-	<div class="pad primer">
+	<div class="pad">
 		<section class="box" aria-labelledby="error-h">
 			<div class="blank">
 				<h2 class="blank-h" id="error-h">{heading}</h2>

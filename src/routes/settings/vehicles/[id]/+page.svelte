@@ -86,7 +86,7 @@
 	{/snippet}
 </Top>
 
-<div class="pad primer">
+<div class="pad">
 	{#if v.retired_on}
 		<div class="state"><span class="lab">Retired {dated(v.retired_on)}</span></div>
 	{/if}

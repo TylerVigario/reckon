@@ -99,7 +99,7 @@
 	backLabel="Time"
 />
 
-<div class="pad primer">
+<div class="pad">
 	<!-- Drawn at once from the server's choices; drawn again with any service
 	     waiting on this phone among them, which the form takes only as it opens. -->
 	{#key `${fixing?.entry.client_uuid}|${held?.length ?? 0}`}

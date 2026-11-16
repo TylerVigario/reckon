@@ -270,7 +270,7 @@
 	{/snippet}
 </Top>
 
-<div class="pad primer">
+<div class="pad">
 	<RecordHead label="{p.name}’s record" {tabs}>
 		{#snippet state()}
 			<span class="lab {STANDING[where].tone}">{STANDING[where].label}</span>

@@ -18,7 +18,7 @@
 
 <Top title="Reports" back={resolve('/more')} backLabel="More" />
 
-<div class="pad primer">
+<div class="pad">
 	<UnderlineNav label="Reports" items={reportTabs('non-billable')} />
 
 	<section class="box" aria-labelledby="given-h">

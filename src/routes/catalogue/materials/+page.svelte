@@ -126,7 +126,7 @@
 	{/snippet}
 </Top>
 
-<div class="pad primer">
+<div class="pad">
 	<OfflineBanner asOf={data.as_of} {waiting} />
 	<UnderlineNav label="Catalogue" items={catalogueTabs('materials')} />
 	<StockOnPhone today={data.today} />

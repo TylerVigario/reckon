@@ -28,7 +28,7 @@
 
 <Top title={p.name} back={resolve('/clients/contacts')} backLabel="Contacts" />
 
-<div class="pad primer">
+<div class="pad">
 	<section class="box" aria-labelledby="details-h">
 		<div class="box-h"><h2 class="box-t" id="details-h">Details</h2></div>
 		<Detail
