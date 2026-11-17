@@ -1,8 +1,8 @@
 {
  "counted": {
-  "tables": "47",
-  "clusters": "eight",
-  "files": "nine"
+  "tables": "56",
+  "clusters": "ten",
+  "files": "11"
  },
  "sections": [
   {
@@ -433,6 +433,11 @@
        "",
        "active",
        "bool"
+      ],
+      [
+       "UK",
+       "client_uuid",
+       "uuid · added on a phone"
       ]
      ]
     },
@@ -542,7 +547,7 @@
       [
        "",
        "pays_as",
-       "kind of pay · null = not said"
+       "pays_as · null = not said"
       ],
       [
        "",
@@ -592,12 +597,22 @@
       [
        "",
        "reorder_level",
-       "numeric"
+       "numeric · nothing reads it yet"
       ],
       [
        "",
        "active",
        "bool"
+      ],
+      [
+       "",
+       "version",
+       "int · its saves"
+      ],
+      [
+       "UK",
+       "client_uuid",
+       "uuid · received on a phone"
       ]
      ]
     },
@@ -615,14 +630,19 @@
        "uuid"
       ],
       [
-       "",
-       "received_on",
-       "date"
+       "FK",
+       "receipt_id",
+       "uuid · the receipt it came on, or"
+      ],
+      [
+       "FK",
+       "adjustment_id",
+       "uuid · the find it was"
       ],
       [
        "",
-       "supplier",
-       "text"
+       "received_on",
+       "date · oldest drawn first"
       ],
       [
        "",
@@ -642,22 +662,7 @@
       [
        "",
        "tax_paid",
-       "numeric · all of it"
-      ],
-      [
-       "FK",
-       "paid_by",
-       "uuid · null = the business"
-      ],
-      [
-       "",
-       "receipt",
-       "bytea · photo or PDF"
-      ],
-      [
-       "",
-       "receipt_type",
-       "text"
+       "numeric · its share of the receipt's"
       ]
      ]
     },
@@ -718,7 +723,275 @@
     }
    ],
    "notes": [
-    "A service is configured, not categorised: what it is charged per, how finely, at least what, and whom it pays.  rate is the first person's and additional_rate each extra person's: at $120 and +$70 a crew of three costs $260 an hour.  Pay is for work done. Each pay_rule is for a role or for one person, pays for time or a vehicle — hourly to the second, as a share of the line, as a fixed sum, or not at all. Among rules in force, a client's own comes first, then a person's own, then the role's.  A role's name is the operator's; pays_as is a fixed list -- a partner's guaranteed payments, an employee's wages, a contractor's fees -- since that, not the name, decides where pay is reported. Null is a role named before it was asked, whose work cannot be paid until it says.  A vehicle rule pays whoever owns the vehicle a trip was driven in, on each leg — a share or a sum, never by the hour — so a vehicle the business owns pays nobody.  A covered_time rule pays a percentage of the period's retainer charge, divided by each person's part of the covered time.  unit each charges per entry, whatever its length: a flat rate.  unit is how a service is charged; time_tracked is whether time is captured against it. Mileage may be timed and still billed per mile.  Allotments live on agreements, service by service, never on the service itself.  bill_to_nearest_seconds and minimum_charge are the usual next questions about an hourly price. Pay is never rounded to them; it is counted as worked.  material_lot is where stock enters, and where the Reg 1701 ex-tax purchase price is sourced. It keeps what all of it cost before tax and in tax, as the receipt says them, and a unit's share is worked out from those. A line drawn from stock takes the oldest lots first, and qty_remaining follows what it took (stock_draw). paid_by is whoever paid out of their own pocket and is owed it back, or the business when empty.  A material is counted in one of the operator's units -- each, the foot, a box of 25 -- each with how it is written and how many places a quantity may have. Nothing converts one unit into another, and a line keeps its unit's name as it was billed."
+    "A service is configured, not categorised: what it is charged per, how finely, at least what, and whom it pays.  rate is the first person's and additional_rate each extra person's: at $120 and +$70 a crew of three costs $260 an hour.  Pay is for work done. Each pay_rule is for a role or for one person, pays for time or a vehicle — hourly to the second, as a share of the line, as a fixed sum, or not at all. Among rules in force, a client's own comes first, then a person's own, then the role's.  A role's name is the operator's; pays_as is a fixed list -- a partner's guaranteed payments, an employee's wages, a contractor's fees -- since that, not the name, decides where pay is reported. Null is a role named before it was asked, whose work cannot be paid until it says.  A vehicle rule pays whoever owns the vehicle a trip was driven in, on each leg — a share or a sum, never by the hour — so a vehicle the business owns pays nobody.  A covered_time rule pays a percentage of the period's retainer charge, divided by each person's part of the covered time.  unit each charges per entry, whatever its length: a flat rate.  unit is how a service is charged; time_tracked is whether time is captured against it. Mileage may be timed and still billed per mile.  Allotments live on agreements, service by service, never on the service itself.  bill_to_nearest_seconds and minimum_charge are the usual next questions about an hourly price. Pay is never rounded to them; it is counted as worked.  material_lot is where stock enters, on a receipt or found, and where the Reg 1701 ex-tax purchase price is sourced. How stock comes and goes is Stock's.  A material received, or a service added, on a phone with no signal keeps the client_uuid the phone made it with: what a line names it by until it arrives. A material's version is its saves, so a change made from an old copy is told of one made since.  A material is counted in one of the operator's units -- each, the foot, a box of 25 -- each with how it is written and how many places a quantity may have. Nothing converts one unit into another, and a line keeps its unit's name as it was billed."
+   ]
+  },
+  {
+   "title": "Stock",
+   "tables": [
+    {
+     "name": "stock_count_line",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "FK",
+       "count_id",
+       "uuid"
+      ],
+      [
+       "FK",
+       "material_id",
+       "uuid · once per count"
+      ],
+      [
+       "",
+       "counted",
+       "numeric · what was there"
+      ],
+      [
+       "",
+       "on_hand",
+       "numeric · what the shelf said"
+      ],
+      [
+       "",
+       "cost_each",
+       "numeric · only where none is"
+      ],
+      [
+       "FK",
+       "counted_by",
+       "uuid"
+      ],
+      [
+       "",
+       "counted_at",
+       "timestamptz"
+      ]
+     ]
+    },
+    {
+     "name": "stock_draw",
+     "rows": [
+      [
+       "PK",
+       "invoice_line_id",
+       "uuid · with material_id"
+      ],
+      [
+       "PK",
+       "material_lot_id",
+       "uuid · with material_id"
+      ],
+      [
+       "FK",
+       "material_id",
+       "uuid · the line's, and the lot's"
+      ],
+      [
+       "",
+       "qty",
+       "numeric · off this lot"
+      ]
+     ]
+    },
+    {
+     "name": "stock_count",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "",
+       "counted_on",
+       "date"
+      ],
+      [
+       "UK",
+       "client_uuid",
+       "uuid · with created_by"
+      ],
+      [
+       "FK",
+       "created_by",
+       "uuid"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "applied_at",
+       "timestamptz · null = still open"
+      ],
+      [
+       "FK",
+       "applied_by",
+       "uuid"
+      ]
+     ]
+    },
+    {
+     "name": "stock_receipt",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "",
+       "received_on",
+       "date"
+      ],
+      [
+       "",
+       "supplier",
+       "text"
+      ],
+      [
+       "",
+       "reference",
+       "text · the receipt's own number"
+      ],
+      [
+       "FK",
+       "paid_by",
+       "uuid · null = the business"
+      ],
+      [
+       "",
+       "tax_paid",
+       "numeric · all the receipt charged"
+      ],
+      [
+       "",
+       "receipt",
+       "bytea · photo or PDF"
+      ],
+      [
+       "",
+       "receipt_type",
+       "receipt_type"
+      ],
+      [
+       "UK",
+       "client_uuid",
+       "uuid · sent twice, one receipt"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ]
+     ]
+    },
+    {
+     "name": "stock_adjustment",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "FK",
+       "material_id",
+       "uuid"
+      ],
+      [
+       "",
+       "made_on",
+       "date"
+      ],
+      [
+       "",
+       "way",
+       "off|on"
+      ],
+      [
+       "",
+       "qty",
+       "numeric · more than nothing"
+      ],
+      [
+       "",
+       "reason",
+       "stock_adjustment_reason"
+      ],
+      [
+       "",
+       "note",
+       "text"
+      ],
+      [
+       "",
+       "ex_tax_cost",
+       "numeric · what it moved, at cost"
+      ],
+      [
+       "",
+       "tax_paid",
+       "numeric"
+      ],
+      [
+       "FK",
+       "count_id",
+       "uuid · the count it puts right"
+      ],
+      [
+       "UK",
+       "client_uuid",
+       "uuid · with created_by"
+      ],
+      [
+       "FK",
+       "created_by",
+       "uuid"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ]
+     ]
+    },
+    {
+     "name": "stock_take",
+     "rows": [
+      [
+       "PK",
+       "adjustment_id",
+       "uuid · with the lot"
+      ],
+      [
+       "PK",
+       "material_lot_id",
+       "uuid · with material_id"
+      ],
+      [
+       "FK",
+       "material_id",
+       "uuid · the adjustment's, and the lot's"
+      ],
+      [
+       "",
+       "qty",
+       "numeric · off this lot"
+      ]
+     ]
+    }
+   ],
+   "notes": [
+    "A stock_receipt is what was bought on one receipt or supplier's invoice: from whom, on which day, its own number, who paid -- a person, who is owed it back, or the business when empty -- the tax it charged, all of it, and the paper itself, kept once. Each item on it is a lot, in its own unit, carrying its share of that tax, split by what each cost before tax.  A material_lot is stock on the shelf: what all of it cost before tax and its share of the tax, as the receipt says them, so a unit's share is worked out from those and nothing is lost to rounding a cost per foot. It came on a receipt or was found, one and never both, and the oldest is drawn first.  A line drawn from stock takes off the oldest lots first (stock_draw), and an adjustment taken off does the same (stock_take). A trigger keeps qty_remaining following both, so taking more than is left is refused by the lot's own check.  A stock_adjustment puts one material's stock right by hand: so much off the shelf or on it, on a day, and why. Used, damaged, lost and returned only take off; found only puts on, as a lot of its own; a correction or a count goes either way. What it moved is held at what it cost.  A stock_count is what was on the shelf on a day: open while it is counted, one open at a time, and applied once, when each difference becomes an adjustment that names it. Each line keeps what the shelf said when it was counted beside what was there, so stock that moved meanwhile is told rather than written over, and a cost each only where the shelf has nothing to cost what turned up by.  A receipt, an adjustment and a count keep the client_uuid the page or the phone made them with: sent twice, each is one."
    ]
   },
   {
@@ -804,6 +1077,11 @@
       ],
       [
        "",
+       "version",
+       "int · its saves, 1 when made"
+      ],
+      [
+       "",
        "created_at",
        "timestamptz"
       ]
@@ -830,7 +1108,7 @@
       [
        "",
        "email_verified",
-       "bool"
+       "bool · a link there was used"
       ],
       [
        "",
@@ -855,22 +1133,7 @@
       [
        "",
        "last_signed_in_at",
-       "timestamptz · null = none recorded"
-      ],
-      [
-       "",
-       "temporary_password",
-       "bool · handed over, not yet theirs"
-      ],
-      [
-       "",
-       "password_set_at",
-       "timestamptz · null = unknown"
-      ],
-      [
-       "",
-       "password_stopped_at",
-       "timestamptz · null = works"
+       "timestamptz · null = never"
       ],
       [
        "",
@@ -1120,7 +1383,7 @@
       [
        "",
        "rule",
-       "text"
+       "trip_leg_rule"
       ],
       [
        "FK",
@@ -1131,7 +1394,7 @@
     }
    ],
    "notes": [
-    "started_at and ended_at are when the work was done and zone is where, so it is shown as it was worked; seconds is worked out from them by the server, and worked_on is the day it started there. An entry recorded before it kept its times has its length alone.  worked_by is who worked the hour, and crew says whether it bills at one person's rate or the team's; created_by is who entered it, which is how the row is explained later.  client_uuid is made on the phone: the offline queue retries, and without it a retry that timed out enters the hour twice.  Work done by the whole crew is one row with crew = team, so its billable quantity is recorded, not worked out. Anyone who carries on alone afterwards gets a row of their own at crew = one.  A team row has no worked_by. It names its crew in time_entry_crew, ticked when the timer starts, and is priced at that head count and pays each of them; created_by is whoever ran the timer, and user.role_id is what decides pay. A team row recorded before crews were named was given everyone who held a role when they began to be.  trip_leg.service_id is what a billed leg bills as, so nothing has to assume that only one service is charged per mile.  trip.vehicle_id is what it was driven in. The vehicle's owner is who its miles pay, by the service's vehicle rule, whoever drove; the business's own pays nobody. Whose a vehicle is never changes: one that changes hands is retired and added again.  A trip starts and ends at the base -- start_address and end_address say otherwise -- and its stops are places in order, a site or an address. trip_stop_client says who each was for: two clients' sites at one address are one stop, and one who asked once the driver was there pays for none of the drive. The app gives each leg to whoever caused it, by the rule in Settings → Travel; rule = chosen where somebody gave it by hand. to_stop_id is where a leg went, so the same drive later starts from its miles. note and the odometer are the trip's own, as a mileage log asks."
+    "started_at and ended_at are when the work was done and zone is where, so it is shown as it was worked; seconds is worked out from them by the server, and worked_on is the day it started there. An entry recorded before it kept its times has its length alone. version is its saves, 1 when made: a change says which it began from, so one made meanwhile is told.  worked_by is who worked the hour, and crew says whether it bills at one person's rate or the team's; created_by is who entered it, which is how the row is explained later.  client_uuid is made on the phone: the offline queue retries, and without it a retry that timed out enters the hour twice.  Work done by the whole crew is one row with crew = team, so its billable quantity is recorded, not worked out. Anyone who carries on alone afterwards gets a row of their own at crew = one.  A team row has no worked_by. It names its crew in time_entry_crew, ticked when the timer starts, and is priced at that head count and pays each of them; created_by is whoever ran the timer, and user.role_id is what decides pay. A team row recorded before crews were named was given everyone who held a role when they began to be.  trip_leg.service_id is what a billed leg bills as, so nothing has to assume that only one service is charged per mile.  trip.vehicle_id is what it was driven in. The vehicle's owner is who its miles pay, by the service's vehicle rule, whoever drove; the business's own pays nobody. Whose a vehicle is never changes: one that changes hands is retired and added again.  A trip starts and ends at the base -- start_address and end_address say otherwise -- and its stops are places in order, a site or an address. trip_stop_client says who each was for: two clients' sites at one address are one stop, and one who asked once the driver was there pays for none of the drive. The app gives each leg to whoever caused it, by the rule in Settings → Travel; rule = chosen where somebody gave it by hand. to_stop_id is where a leg went, so the same drive later starts from its miles. note and the odometer are the trip's own, as a mileage log asks."
    ]
   },
   {
@@ -1501,7 +1764,7 @@
       [
        "",
        "receipt_type",
-       "text"
+       "receipt_type"
       ],
       [
        "FK",
@@ -1587,31 +1850,6 @@
        "",
        "applied_on",
        "date"
-      ]
-     ]
-    },
-    {
-     "name": "stock_draw",
-     "rows": [
-      [
-       "PK",
-       "invoice_line_id",
-       "uuid · with material_id"
-      ],
-      [
-       "PK",
-       "material_lot_id",
-       "uuid · with material_id"
-      ],
-      [
-       "FK",
-       "material_id",
-       "uuid · the line's, and the lot's"
-      ],
-      [
-       "",
-       "qty",
-       "numeric · off this lot"
       ]
      ]
     }
@@ -1769,6 +2007,562 @@
    ]
   },
   {
+   "title": "Pay, as it was paid",
+   "tables": [
+    {
+     "name": "person_payment",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "FK",
+       "user_id",
+       "uuid · who was paid"
+      ],
+      [
+       "",
+       "paid_on",
+       "date"
+      ],
+      [
+       "",
+       "how",
+       "text · bank transfer, cash…"
+      ],
+      [
+       "",
+       "note",
+       "text"
+      ],
+      [
+       "UK",
+       "client_uuid",
+       "uuid · made where it was recorded"
+      ],
+      [
+       "FK",
+       "created_by",
+       "uuid · who recorded it"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ]
+     ]
+    },
+    {
+     "name": "person_payment_item",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "FK",
+       "payment_id",
+       "uuid"
+      ],
+      [
+       "FK",
+       "user_id",
+       "uuid · the payment's person"
+      ],
+      [
+       "FK",
+       "time_entry_id",
+       "uuid · an entry's time, or"
+      ],
+      [
+       "FK",
+       "trip_id",
+       "uuid · a trip's miles, or"
+      ],
+      [
+       "FK",
+       "corrects_payment_id",
+       "uuid · an earlier payment"
+      ],
+      [
+       "",
+       "amount",
+       "numeric · as it came to"
+      ],
+      [
+       "",
+       "said",
+       "text · how, in words"
+      ],
+      [
+       "",
+       "paid_as",
+       "paid_as · its pay, or a refund"
+      ]
+     ]
+    }
+   ],
+   "notes": [
+    "A payment to a person is recorded with what it covered: each item a time entry, a trip -- its miles, paid to the owner of the vehicle it was driven in -- or a correction to an earlier payment of theirs, plus or minus.  amount and said are what it came to that day and how: the hours and the rule, in words, whatever the rules say later. A piece of work is paid to a person once.  paid_as is what it paid: what the person's role said their pay was -- guaranteed payments, wages or fees -- or, for a trip, a reimbursement, whatever their role. A correction says which part of the earlier payment it corrects.  Neither table changes once written; a correction is an item on the next payment. reckon records a payment, and the money moves at the bank."
+   ]
+  },
+  {
+   "title": "People, and signing in",
+   "tables": [
+    {
+     "name": "session",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "FK",
+       "user_id",
+       "uuid"
+      ],
+      [
+       "UK",
+       "token",
+       "text · signed in the cookie"
+      ],
+      [
+       "",
+       "expires_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "ip_address",
+       "text"
+      ],
+      [
+       "",
+       "user_agent",
+       "text"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "updated_at",
+       "timestamptz"
+      ]
+     ]
+    },
+    {
+     "name": "account",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "FK",
+       "user_id",
+       "uuid"
+      ],
+      [
+       "",
+       "provider_id",
+       "text"
+      ],
+      [
+       "",
+       "account_id",
+       "text"
+      ],
+      [
+       "",
+       "password",
+       "text · always null"
+      ],
+      [
+       "",
+       "access_token",
+       "text"
+      ],
+      [
+       "",
+       "refresh_token",
+       "text"
+      ],
+      [
+       "",
+       "id_token",
+       "text"
+      ],
+      [
+       "",
+       "access_token_expires_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "refresh_token_expires_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "scope",
+       "text"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "updated_at",
+       "timestamptz"
+      ]
+     ]
+    },
+    {
+     "name": "security_event",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "",
+       "at",
+       "timestamptz · the database's clock"
+      ],
+      [
+       "",
+       "name",
+       "security_event_name"
+      ],
+      [
+       "FK",
+       "user_id",
+       "uuid · whom it is about"
+      ],
+      [
+       "FK",
+       "by_id",
+       "uuid · who did it, if not them"
+      ],
+      [
+       "",
+       "client_address",
+       "inet"
+      ],
+      [
+       "",
+       "user_agent",
+       "text · 512 at most"
+      ],
+      [
+       "",
+       "detail",
+       "jsonb · never a secret"
+      ]
+     ]
+    },
+    {
+     "name": "email_message",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid · its Message-ID"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "kind",
+       "email_message_kind"
+      ],
+      [
+       "FK",
+       "user_id",
+       "uuid · null = nobody's"
+      ],
+      [
+       "",
+       "to_address",
+       "text"
+      ],
+      [
+       "",
+       "subject",
+       "text"
+      ],
+      [
+       "",
+       "body",
+       "text · null once sent or given up"
+      ],
+      [
+       "",
+       "html",
+       "text · beside body"
+      ],
+      [
+       "",
+       "send_by",
+       "timestamptz · then given up"
+      ],
+      [
+       "",
+       "next_try_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "tries",
+       "smallint"
+      ],
+      [
+       "",
+       "claimed_until",
+       "timestamptz · a sender's"
+      ],
+      [
+       "",
+       "sent_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "gave_up_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "last_error",
+       "text · what the relay said"
+      ]
+     ]
+    },
+    {
+     "name": "passkey",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "FK",
+       "user_id",
+       "uuid"
+      ],
+      [
+       "",
+       "name",
+       "text · theirs to change"
+      ],
+      [
+       "",
+       "public_key",
+       "text · the only half here"
+      ],
+      [
+       "UK",
+       "credential_id",
+       "text · WebAuthn's"
+      ],
+      [
+       "",
+       "counter",
+       "int"
+      ],
+      [
+       "",
+       "device_type",
+       "singleDevice|multiDevice"
+      ],
+      [
+       "",
+       "backed_up",
+       "bool · synced now"
+      ],
+      [
+       "",
+       "transports",
+       "text"
+      ],
+      [
+       "",
+       "aaguid",
+       "text · what made it"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "last_used_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "last_used_from",
+       "text · browser and system"
+      ]
+     ]
+    },
+    {
+     "name": "email_link",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "FK",
+       "user_id",
+       "uuid"
+      ],
+      [
+       "",
+       "purpose",
+       "invite|reset|confirm|change"
+      ],
+      [
+       "UK",
+       "code_hash",
+       "bytea · SHA-256, never the code"
+      ],
+      [
+       "",
+       "sent_to",
+       "text · what using it proves"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "expires_at",
+       "timestamptz · an hour at most"
+      ],
+      [
+       "",
+       "used_at",
+       "timestamptz · null = not yet"
+      ],
+      [
+       "FK",
+       "sent_by",
+       "uuid · Full, or themselves"
+      ]
+     ]
+    },
+    {
+     "name": "verification",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "",
+       "identifier",
+       "text · in a cookie"
+      ],
+      [
+       "",
+       "value",
+       "text · a passkey's challenge"
+      ],
+      [
+       "",
+       "expires_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "updated_at",
+       "timestamptz"
+      ]
+     ]
+    },
+    {
+     "name": "link_try",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ],
+      [
+       "",
+       "address",
+       "inet"
+      ],
+      [
+       "",
+       "network",
+       "cidr · what is counted"
+      ]
+     ]
+    },
+    {
+     "name": "rate_limit",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "UK",
+       "key",
+       "text · an address and route"
+      ],
+      [
+       "",
+       "count",
+       "int · in the window"
+      ],
+      [
+       "",
+       "last_request",
+       "bigint · milliseconds"
+      ]
+     ]
+    }
+   ],
+   "notes": [
+    "What someone can reach is user.access, apart from role_id, the capacity they are paid in, which pay rules are written against. Full is everything, and the only level that bills or pays; Field is their own work and what they are paid for it. Someone new starts with Field, and a trigger keeps someone active on Full. Which routes each level reaches is the app's, in src/lib/access.ts.  Each person keeps a time zone, a locale, a clock and a first day of the week. Empty follows the business's -- its own timezone and locale -- or what the locale says.  Signing in is with a passkey and nothing else: a key pair made on someone's phone, computer or security key, of which only the public half is here. There are no passwords. user, session, account and verification are Better Auth's, in its shape; account can hold no password, and verification keeps the challenge of each passkey being made or signing in until it is answered or lapses.  There is no sign-up: someone with Full adds people on Team, and the first from the command line, and each is emailed a link to make their first passkey. Someone who can't sign in is sent a link to make a new one, which ends none of theirs. A link also confirms the address someone signs in with, or makes a new one theirs, and using one proves they read mail there: email_verified. An email_link is good once, for an hour at most, and only while it still goes to the address its person signs in with; its code is 256 random bits, of which only the SHA-256 is kept. One of each kind waits at a time, and one used is kept 90 days.  link_try is every code tried that was not one to use, by the network it came from, so a network that keeps trying is turned away, and is kept a day. rate_limit is Better Auth's count of requests to its own routes, kept here so a restart forgives nothing.  A session is a row, not a stateless token: one server, one database, and every page reads it anyway, so a stateless token would save no round trip and cost revocation. The cookie is the token signed with the server's secret, so a copy of this table lets nobody in without the secret as well. It lasts until it has gone two weeks unused.  security_event is the security log: every sign-in, refused or not, every passkey and link, everyone added or changed, every change of access and every refusal for lack of it. The database stamps each with its own clock, none is ever changed, and one is removed only once it is a year old. Each person sees their own, and someone with Full everyone's.  email_message is every email, written in the transaction that makes the change it tells of, so it is sent if and only if that change is kept, and sent afterwards to the relay the environment names. One the relay puts off is tried later each time until send_by; one it refuses for good is given up on. body, and html beside it, are kept only while it is still to send, and a row is deleted after 90 days. Someone is told whenever a passkey of theirs is added or removed, or all of them are ended, and whenever their name, their address or their access changes, or they are made inactive or active again."
+   ]
+  },
+  {
    "title": "The operator, and the record",
    "tables": [
     {
@@ -1832,7 +2626,7 @@
       [
        "",
        "tax_number_label",
-       "EIN | VAT | ABN"
+       "text · EIN, VAT, ABN…"
       ],
       [
        "",
@@ -1952,171 +2746,6 @@
      ]
     },
     {
-     "name": "session",
-     "rows": [
-      [
-       "PK",
-       "id",
-       "uuid"
-      ],
-      [
-       "FK",
-       "user_id",
-       "uuid"
-      ],
-      [
-       "UK",
-       "token",
-       "text · signed in the cookie"
-      ],
-      [
-       "",
-       "expires_at",
-       "timestamptz"
-      ],
-      [
-       "",
-       "ip_address",
-       "text"
-      ],
-      [
-       "",
-       "user_agent",
-       "text"
-      ],
-      [
-       "",
-       "created_at",
-       "timestamptz"
-      ],
-      [
-       "",
-       "updated_at",
-       "timestamptz"
-      ]
-     ]
-    },
-    {
-     "name": "account",
-     "rows": [
-      [
-       "PK",
-       "id",
-       "uuid"
-      ],
-      [
-       "FK",
-       "user_id",
-       "uuid"
-      ],
-      [
-       "",
-       "provider_id",
-       "text · credential = a password"
-      ],
-      [
-       "",
-       "account_id",
-       "text"
-      ],
-      [
-       "",
-       "password",
-       "text · argon2id"
-      ],
-      [
-       "",
-       "access_token",
-       "text"
-      ],
-      [
-       "",
-       "refresh_token",
-       "text"
-      ],
-      [
-       "",
-       "id_token",
-       "text"
-      ],
-      [
-       "",
-       "access_token_expires_at",
-       "timestamptz"
-      ],
-      [
-       "",
-       "refresh_token_expires_at",
-       "timestamptz"
-      ],
-      [
-       "",
-       "scope",
-       "text"
-      ],
-      [
-       "",
-       "created_at",
-       "timestamptz"
-      ],
-      [
-       "",
-       "updated_at",
-       "timestamptz"
-      ]
-     ]
-    },
-    {
-     "name": "record_history",
-     "rows": [
-      [
-       "PK",
-       "id",
-       "bigint"
-      ],
-      [
-       "",
-       "table_name",
-       "text"
-      ],
-      [
-       "",
-       "row_id",
-       "uuid"
-      ],
-      [
-       "",
-       "field",
-       "text"
-      ],
-      [
-       "",
-       "old_value",
-       "text"
-      ],
-      [
-       "",
-       "new_value",
-       "text"
-      ],
-      [
-       "FK",
-       "changed_by",
-       "uuid"
-      ],
-      [
-       "",
-       "changed_at",
-       "timestamptz · when it arrived"
-      ],
-      [
-       "",
-       "made_at",
-       "timestamptz · when, on a phone"
-      ]
-     ]
-    },
-    {
      "name": "account_map",
      "rows": [
       [
@@ -2197,271 +2826,63 @@
      ]
     },
     {
-     "name": "verification",
+     "name": "record_history",
      "rows": [
       [
        "PK",
        "id",
+       "bigint"
+      ],
+      [
+       "",
+       "table_name",
+       "text"
+      ],
+      [
+       "",
+       "row_id",
        "uuid"
       ],
       [
        "",
-       "identifier",
+       "field",
        "text"
       ],
       [
        "",
-       "value",
+       "old_value",
        "text"
       ],
       [
        "",
-       "expires_at",
-       "timestamptz"
+       "new_value",
+       "text"
       ],
       [
-       "",
-       "created_at",
-       "timestamptz"
-      ],
-      [
-       "",
-       "updated_at",
-       "timestamptz"
-      ]
-     ]
-    },
-    {
-     "name": "sign_in_try",
-     "rows": [
-      [
-       "PK",
-       "id",
+       "FK",
+       "changed_by",
        "uuid"
       ],
       [
        "",
-       "created_at",
-       "timestamptz"
+       "changed_at",
+       "timestamptz · when it arrived"
       ],
       [
        "",
-       "page",
-       "sign_in|password_change"
+       "made_at",
+       "timestamptz · when, on a phone"
       ],
       [
        "",
-       "address",
-       "inet"
-      ],
-      [
-       "",
-       "network",
-       "cidr · what is counted"
-      ],
-      [
-       "",
-       "email_key",
-       "text · HMAC of the email"
-      ],
-      [
-       "FK",
-       "user_id",
-       "uuid · null = nobody's"
-      ],
-      [
-       "",
-       "browser",
-       "text · its own count"
-      ],
-      [
-       "",
-       "outcome",
-       "right|wrong|inactive|stopped"
-      ]
-     ]
-    },
-    {
-     "name": "email_message",
-     "rows": [
-      [
-       "PK",
-       "id",
-       "uuid · its Message-ID"
-      ],
-      [
-       "",
-       "created_at",
-       "timestamptz"
-      ],
-      [
-       "",
-       "kind",
-       "password_changed|password_reset"
-      ],
-      [
-       "FK",
-       "user_id",
-       "uuid · null = nobody's"
-      ],
-      [
-       "",
-       "to_address",
-       "text"
-      ],
-      [
-       "",
-       "subject",
-       "text"
-      ],
-      [
-       "",
-       "body",
-       "text · null once sent or given up"
-      ],
-      [
-       "",
-       "send_by",
-       "timestamptz · then given up"
-      ],
-      [
-       "",
-       "next_try_at",
-       "timestamptz"
-      ],
-      [
-       "",
-       "tries",
-       "smallint"
-      ],
-      [
-       "",
-       "claimed_until",
-       "timestamptz · a sender's"
-      ],
-      [
-       "",
-       "sent_at",
-       "timestamptz"
-      ],
-      [
-       "",
-       "gave_up_at",
-       "timestamptz"
-      ],
-      [
-       "",
-       "last_error",
-       "text · what the relay said"
+       "xact",
+       "bigint · the save it was in"
       ]
      ]
     }
    ],
    "notes": [
-    "What someone can reach is user.access, apart from role_id, the capacity they are paid in, which pay rules are written against. Full is everything, and the only level that bills or pays; Field is their own work and what they are paid for it. Someone new starts with Field, and a trigger keeps someone active on Full. Which routes each level reaches is the app's, in src/lib/access.ts.  Each person keeps a time zone, a locale, a clock and a first day of the week. Empty follows the business's -- its own timezone and locale -- or what the locale says.  user, session, account and verification are Better Auth's, in its shape. A password is an account whose provider_id is credential, and what it holds is an argon2id hash. There is no sign-up: someone with Full adds people on Team, and the first from the command line. A password handed over is temporary_password until they choose their own, and signing in with it reaches nothing else.  sign_in_try is every try at a password, and the limits are worked out from it: five per network in fifteen minutes, ten wrong in a row per email before each waits longer, a browser that has signed in as them counting on its own. It is written for every email tried, whether or not anyone signs in with it, keeps an HMAC of the email rather than the email, and is kept 90 days. A hundred wrong in a row stop the password: password_stopped_at, until a new one is set.  email_message is every email, written in the transaction that makes the change it tells of, so it is sent if and only if that change is kept, and sent afterwards to the relay the environment names. One the relay puts off is tried later each time until send_by; one it refuses for good is given up on. body is kept only while it is still to send, and a row is deleted after 90 days.  A session is a row, not a stateless token: one server, one database, and every page reads it anyway, so a stateless token would save no round trip and cost revocation. The cookie is the token signed with the server's secret, so a copy of this table lets nobody in without the secret as well.  Which migrations a database has seen is Kysely's record, in kysely.kysely_migration, so bringing it up to date again applies only what is new.  Everything that identifies the business is the operator's to supply: logo is nullable and the interface renders trading_name in its place.  An included-hours figure is a client's, on their agreement, and what is paid to whoever answers is a dated pay_rule.  record_history is append-only and exists to explain a figure, not to police one. An invoice line is followed from its birth: what it was when added, each field changed, and what it was when taken off. A receipt is described rather than copied while its row holds it, and kept whole once the history is the only place it is: replaced, or taken off with its line. made_at is when a change was made on a phone, beside changed_at, when it arrived."
-   ]
-  },
-  {
-   "title": "Pay, as it was paid",
-   "tables": [
-    {
-     "name": "person_payment",
-     "rows": [
-      [
-       "PK",
-       "id",
-       "uuid"
-      ],
-      [
-       "FK",
-       "user_id",
-       "uuid · who was paid"
-      ],
-      [
-       "",
-       "paid_on",
-       "date"
-      ],
-      [
-       "",
-       "how",
-       "text · bank transfer, cash…"
-      ],
-      [
-       "",
-       "note",
-       "text"
-      ],
-      [
-       "UK",
-       "client_uuid",
-       "uuid · made where it was recorded"
-      ],
-      [
-       "FK",
-       "created_by",
-       "uuid · who recorded it"
-      ],
-      [
-       "",
-       "created_at",
-       "timestamptz"
-      ]
-     ]
-    },
-    {
-     "name": "person_payment_item",
-     "rows": [
-      [
-       "PK",
-       "id",
-       "uuid"
-      ],
-      [
-       "FK",
-       "payment_id",
-       "uuid"
-      ],
-      [
-       "FK",
-       "user_id",
-       "uuid · the payment's person"
-      ],
-      [
-       "FK",
-       "time_entry_id",
-       "uuid · an entry's time, or"
-      ],
-      [
-       "FK",
-       "trip_id",
-       "uuid · a trip's miles, or"
-      ],
-      [
-       "FK",
-       "corrects_payment_id",
-       "uuid · an earlier payment"
-      ],
-      [
-       "",
-       "amount",
-       "numeric · as it came to"
-      ],
-      [
-       "",
-       "said",
-       "text · how, in words"
-      ],
-      [
-       "",
-       "paid_as",
-       "its pay, or reimbursement"
-      ]
-     ]
-    }
-   ],
-   "notes": [
-    "A payment to a person is recorded with what it covered: each item a time entry, a trip -- its miles, paid to the owner of the vehicle it was driven in -- or a correction to an earlier payment of theirs, plus or minus.  amount and said are what it came to that day and how: the hours and the rule, in words, whatever the rules say later. A piece of work is paid to a person once.  paid_as is what it paid: what the person's role said their pay was -- guaranteed payments, wages or fees -- or, for a trip, a reimbursement, whatever their role. A correction says which part of the earlier payment it corrects.  Neither table changes once written; a correction is an item on the next payment. reckon records a payment, and the money moves at the bank."
+    "Everything that identifies the business is the operator's to supply: logo is nullable and the interface renders trading_name in its place.  An included-hours figure is a client's, on their agreement, and what is paid to whoever answers is a dated pay_rule.  record_history is append-only and exists to explain a figure, not to police one. An invoice line is followed from its birth: what it was when added, each field changed, and what it was when taken off. A receipt is described rather than copied while its row holds it, and kept whole once the history is the only place it is: replaced, or taken off with its line. made_at is when a change was made on a phone, beside changed_at, when it arrived, and xact is the save it was in, so a change is read with what went with it.  Which migrations a database has seen is Kysely's record, in kysely.kysely_migration, so bringing it up to date again applies only what is new."
    ]
   }
  ]

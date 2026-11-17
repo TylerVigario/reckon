@@ -25,14 +25,16 @@ HERE = pathlib.Path(__file__).resolve().parent
 OUT = HERE / "reference.json"
 
 CLUSTERS = [
-    ("02-who-and-where.drawio",       "Who and where"),
-    ("03-catalogue.drawio",           "What you sell"),
-    ("04-work-captured.drawio",       "Work as it is captured"),
-    ("05-agreements.drawio",          "Agreements"),
-    ("06-money-out.drawio",           "Money out"),
-    ("07-money-in.drawio",            "Money in"),
-    ("08-operator-and-record.drawio", "The operator, and the record"),
-    ("09-pay.drawio",                 "Pay, as it was paid"),
+    ("02-who-and-where.drawio",          "Who and where"),
+    ("03-catalogue.drawio",              "What you sell"),
+    ("04-stock.drawio",                  "Stock"),
+    ("05-work-captured.drawio",          "Work as it is captured"),
+    ("06-agreements.drawio",             "Agreements"),
+    ("07-money-out.drawio",              "Money out"),
+    ("08-money-in.drawio",               "Money in"),
+    ("09-pay.drawio",                    "Pay, as it was paid"),
+    ("10-people-and-signing-in.drawio",  "People, and signing in"),
+    ("11-operator-and-record.drawio",    "The operator, and the record"),
 ]
 
 seen = set()

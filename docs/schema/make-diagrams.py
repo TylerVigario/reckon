@@ -27,13 +27,16 @@ PAGES = [
     ("01-overview.drawio", "The shape of it", "every cluster, and how they meet"),
     ("02-who-and-where.drawio", "Who and where", "clients, their sites, and the people to ask for"),
     ("03-catalogue.drawio", "What you sell", "services, materials, and what each is worth"),
-    ("04-work-captured.drawio", "Work as it is captured", "time and travel, as they are recorded"),
-    ("05-agreements.drawio", "Agreements", "recurring charges and what they include"),
-    ("06-money-out.drawio", "Money out", "invoices and the lines they are built from"),
-    ("07-money-in.drawio", "Money in", "payments, credits, and what closes an invoice"),
-    ("08-operator-and-record.drawio", "The operator, and the record",
-     "the business itself, who signs in, and what changed"),
+    ("04-stock.drawio", "Stock", "what is bought, counted, put right, and drawn"),
+    ("05-work-captured.drawio", "Work as it is captured", "time and travel, as they are recorded"),
+    ("06-agreements.drawio", "Agreements", "recurring charges and what they include"),
+    ("07-money-out.drawio", "Money out", "invoices and the lines they are built from"),
+    ("08-money-in.drawio", "Money in", "payments, credits, and what closes an invoice"),
     ("09-pay.drawio", "Pay, as it was paid", "what each person was paid, and for what"),
+    ("10-people-and-signing-in.drawio", "People, and signing in",
+     "who reaches what, their passkeys and links, and the security log"),
+    ("11-operator-and-record.drawio", "The operator, and the record",
+     "the business itself, and what changed"),
 ]
 
 # Slack inside the viewBox. Edge labels are placed after the extent is taken
