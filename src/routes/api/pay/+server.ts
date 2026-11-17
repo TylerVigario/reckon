@@ -1,6 +1,6 @@
 import { Decimal, sum } from '#lib/decimal.ts';
 import { everyWord } from '#lib/every-word.ts';
-import { UUID } from '#lib/field-rules.ts';
+import { isoDate, UUID } from '#lib/field-rules.ts';
 import { readBody } from '#lib/json.ts';
 import type { PaidAs } from '#lib/server/db/database.ts';
 import { asUser } from '#lib/server/db/index.ts';
@@ -11,7 +11,6 @@ import { owed } from '#lib/server/pay.ts';
 import { problem } from '#lib/server/problem.ts';
 import type { RequestHandler } from './$types';
 
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const AMOUNT = /^-?\d{1,9}(\.\d+)?$/;
 const text = (v: unknown, cap: number) =>
 	typeof v === 'string' && v.trim() && v.trim().length <= cap ? v.trim() : null;
@@ -48,7 +47,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			: no('user_id', 'Who was paid.');
 	const today = businessToday();
 	const paidOn =
-		typeof body.paid_on === 'string' && DAY.test(body.paid_on) && body.paid_on <= today
+		typeof body.paid_on === 'string' && isoDate(body.paid_on).ok && body.paid_on <= today
 			? body.paid_on
 			: no('paid_on', 'The day it was paid. It cannot be in the future.');
 	const how = text(body.how, 40) ?? no('how', 'How it was paid.');

@@ -1,4 +1,4 @@
-import { UUID } from '#lib/field-rules.ts';
+import { isoDate, UUID } from '#lib/field-rules.ts';
 import type { Drive, Stop } from '#lib/trip-legs.ts';
 
 /**
@@ -23,7 +23,6 @@ export type TripInput = {
 
 const MILES = /^\d{1,4}(\.\d{1,2})?$/;
 const ODOMETER = /^\d{1,8}(\.\d)?$/;
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 const text = (v: unknown, cap: number) =>
 	typeof v === 'string' && v.trim() && v.trim().length <= cap ? v.trim() : null;
@@ -38,9 +37,7 @@ export function readTrip(
 
 	const clientUuid = id(body.client_uuid) ?? no('client_uuid', 'Expected the id it was made with.');
 	const travelledOn =
-		typeof body.travelled_on === 'string' &&
-		DAY.test(body.travelled_on) &&
-		!Number.isNaN(Date.parse(body.travelled_on))
+		typeof body.travelled_on === 'string' && isoDate(body.travelled_on).ok
 			? body.travelled_on
 			: no('travelled_on', 'Which day it was driven.');
 	const drivenBy = id(body.driven_by) ?? no('driven_by', 'Who drove.');

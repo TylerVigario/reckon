@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
 import { SITE_URL } from '$app/env/private';
 import { browserName } from '#lib/browser-name.ts';
+import { UUID } from '#lib/field-rules.ts';
 import { safeNext } from '#lib/safe-next.ts';
 import { authHeaders, getAuth } from '#lib/server/auth.ts';
 import { db } from '#lib/server/db/index.ts';
@@ -46,7 +47,7 @@ const text = (v: FormDataEntryValue | null) => (typeof v === 'string' ? v.trim()
 
 /** One of their own passkeys, by its id, or null. */
 async function theirs(userId: string, id: string) {
-	if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+	if (!UUID.test(id)) return null;
 	const p = await db
 		.selectFrom('passkey')
 		.select(['id', 'name', 'aaguid'])

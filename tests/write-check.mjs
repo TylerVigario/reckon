@@ -1366,6 +1366,28 @@ if (agreeWith && otherClient && person) {
 		400
 	);
 	await check(
+		'a trip on a day that does not exist is refused, as that day',
+		'POST',
+		'/api/trips',
+		{ ...again(), travelled_on: '2026-02-30' },
+		(/** @type {{ status: number, body: any }} */ r) =>
+			r.status === 400 && Object.keys(r.body?.errors ?? {}).join() === 'travelled_on'
+	);
+	await check(
+		'a payment on a day that does not exist is refused, as that day',
+		'POST',
+		'/api/pay',
+		{
+			client_uuid: crypto.randomUUID(),
+			user_id: person,
+			paid_on: '2026-02-30',
+			how: 'cash',
+			entries: [crypto.randomUUID()]
+		},
+		(/** @type {{ status: number, body: any }} */ r) =>
+			r.status === 400 && Object.keys(r.body?.errors ?? {}).join() === 'paid_on'
+	);
+	await check(
 		'an odometer that reads backwards is refused',
 		'POST',
 		'/api/trips',
