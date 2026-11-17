@@ -4,6 +4,7 @@
 // security_event's own comment; what is recorded, #lib/server/events.
 import type { Expression, SqlBool } from 'kysely';
 import { browserName } from '#lib/browser-name.ts';
+import { UUID } from '#lib/field-rules.ts';
 import { db } from './db/index.ts';
 import { SAYS, type SecurityEvent } from './events.ts';
 
@@ -181,10 +182,19 @@ export async function securityLog(whose: { person: string } | 'everyone', before
 	return { events, older: rows.length > PAGE && last ? `${last.at}_${last.id}` : null };
 }
 
-const CURSOR = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z)_([0-9a-f-]{36})$/;
+const CURSOR = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z)_(.+)$/;
 
-/** A cursor this page gave, or null for anything else: it starts again from the newest. */
+/**
+ * A cursor this page gave, or null for anything else: it starts again from the
+ * newest. A moment that never was, or an id that is not one, is anything else.
+ */
 function parseCursor(before: string) {
 	const m = CURSOR.exec(before);
-	return m ? { at: m[1], id: m[2] } : null;
+	if (!m || !UUID.test(m[2])) return null;
+	try {
+		Temporal.Instant.from(m[1]);
+	} catch {
+		return null;
+	}
+	return { at: m[1], id: m[2] };
 }

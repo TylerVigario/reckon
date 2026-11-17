@@ -295,6 +295,23 @@ try {
 		'but not to nothing',
 		`${blank.type} ${blank.status}`
 	);
+	const noId = JSON.parse(
+		await (
+			await r2.ask('/profile/passkeys?/rename', {
+				method: 'POST',
+				body: new URLSearchParams({ id: '-'.repeat(36), name: 'Nothing' }),
+				headers: {
+					'content-type': 'application/x-www-form-urlencoded',
+					'x-sveltekit-action': 'true'
+				}
+			})
+		).text()
+	);
+	check(
+		noId.type === 'failure' && noId.status === 404,
+		'and a passkey named by something that is no id is not theirs',
+		`${noId.type} ${noId.status}`
+	);
 
 	// Refused where it should be.
 	phone.verifies = false;

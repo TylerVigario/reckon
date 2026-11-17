@@ -193,6 +193,14 @@ check(
 );
 const older = await asFull('/team/security-log?before=not-a-cursor');
 check(older.ok, 'a page of it asked for by nonsense starts from the newest', String(older.status));
+// Of a cursor's shape, but no moment that was, or no id that is one.
+for (const before of [
+	'2026-13-45T99:99:99Z_00000000-0000-4000-8000-000000000000',
+	'2026-01-01T00:00:00Z_------------------------------------'
+]) {
+	const shaped = await asFull(`/team/security-log?before=${before}`);
+	check(shaped.ok, `and so does ${before}`, String(shaped.status));
+}
 
 console.log('Link codes tried too often');
 // This machine's network, as the link page counts it (#lib/server/links).
