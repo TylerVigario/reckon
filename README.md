@@ -36,8 +36,8 @@ reckon is a SvelteKit project with Kysely, laid out as SvelteKit lays one out.
 | `tests/db/constraints.sql`      | proves the guards, both ways                                                                                    |
 | `tests/`                        | the behaviour checks, which drive the built app in a browser against an invented business                       |
 | `scripts/`                      | the commands: adding people, refreshing tax rates, migrating, proving the guards, printing, making a release    |
-| `docs/schema/*.drawio`          | the data model: an overview and eight clusters                                                                  |
-| `docs/schema/regenerate.py`     | lays the diagrams out from one definition of the tables; overwrites hand edits                                  |
+| `docs/schema/*.drawio`          | the data model: an overview and ten clusters                                                                    |
+| `docs/schema/regenerate.py`     | lays the diagrams out from one description of the tables, checked against the migrations; overwrites hand edits |
 | `docs/schema/make-printable.py` | reads the printed reference's tables and notes out of the diagrams, as data                                     |
 | `docs/schema-reference.typ`     | the printed reference, which reads that data from `docs/schema/reference.json`                                  |
 | `third_party/press/`            | press, the Typst library, fonts and tools the documents are set in, installed from its release                  |
@@ -47,7 +47,7 @@ reckon is a SvelteKit project with Kysely, laid out as SvelteKit lays one out.
 ```bash
 npm run db:test      a scratch database, brought up to date, every guard proven, dropped
 npm run db:types     database.ts, generated from a scratch database the migrations build
-npm run db:drift     database.ts is what the migrations make: generated again, and compared
+npm run db:drift     database.ts and the schema docs are what the migrations make: compared
 npm run db:migrate   bring the database up to date: the one PGDATABASE or DATABASE_URL names
 npm run db:seed      the invented business the checks run against, into that database
 ```
@@ -70,7 +70,9 @@ it is done once, in `#lib/server/valuation`.
 The schema is changed by a migration: a file in `src/lib/server/db/migrations/`,
 named for the moment it was written, listed in that folder's `index.ts`, and
 never edited once it has run anywhere. Then `npm run db:types`, and Kysely
-checks every query against what the migration made. The first migration is the
+checks every query against what the migration made; and the new tables and
+columns described in `docs/schema/regenerate.py`, which `db:drift` holds to the
+migrations as it does `database.ts`. The first migration is the
 whole schema as it stood on 17 November 2026 — the triggers that freeze a sent
 invoice and keep the history among it — and every one after it changes it a
 step at a time.

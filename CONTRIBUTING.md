@@ -52,7 +52,10 @@ wrong reason is what the second assertion catches.
 what the database holds: the first is the whole schema, a file per area, with
 each table's reasons beside it. `src/lib/server/db/database.ts` is generated
 from the database they build, with `npm run db:types`, and Kysely checks every
-query against it; CI fails when it is not what the migrations make.
+query against it; CI fails when it is not what the migrations make. The schema
+documentation, `docs/schema/regenerate.py`, is written by hand, since what it
+says of each table is the point of it, and CI fails the same way when a table,
+a column or a type there is not one the migrations make.
 
 **A migration is added and never edited.** Other people's databases already
 ran the old one. It takes `Kysely<any>` and imports nothing of the app's, so it

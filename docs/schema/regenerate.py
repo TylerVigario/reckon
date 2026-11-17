@@ -5,14 +5,20 @@ WARNING: this OVERWRITES every .drawio file beside it. A box moved or a note
 added in draw.io is lost the next time it runs, so once a diagram is edited by
 hand, the .drawio file is the source and this script is not.
 
-Table definitions here mirror the migrations, src/lib/server/db/migrations. Notes say why a
-table is the shape it is.
+Table definitions here describe what the migrations make,
+src/lib/server/db/migrations: every table, every column, and its type or, for
+one of the schema's types, its words. npm run db:drift checks them against a
+database the migrations build (scripts/db-types.mjs), and fails on any table,
+column or type they disagree on. Notes say why a table is the shape it is.
 
 Usage:  python3 regenerate.py
+        python3 regenerate.py --tables    the definitions, as JSON; writes nothing
 """
 
+import json
 import pathlib
 import re
+import sys
 from xml.sax.saxutils import escape as _escape
 
 
@@ -189,7 +195,8 @@ T["integration"] = [("PK","name","stripe|beancount|press|email"),
 T["service"] = [("PK","id","uuid"),("","code","text"),("","name","text"),
     ("","unit","hour | mile | each"),("","taxable","bool"),("","time_tracked","bool"),
     ("","bill_to_nearest_seconds","int · time only, null = exact"),
-    ("","minimum_charge","numeric · null = none"),("","active","bool")]
+    ("","minimum_charge","numeric · null = none"),("","active","bool"),
+    ("UK","client_uuid","uuid · added on a phone")]
 T["service_price"] = [("PK","id","uuid"),("FK","service_id","uuid"),
     ("FK","entity_id","uuid · null = every client"),("","rate","numeric · the first person"),
     ("","additional_rate","numeric · each one after"),("","effective_from","date")]
@@ -199,20 +206,47 @@ T["pay_rule"] = [("PK","id","uuid"),("FK","service_id","uuid"),
     ("","method","per_hour|percent|fixed|nothing"),("","amount","numeric · none for nothing"),
     ("","effective_from","date"),("","created_at","timestamptz")]
 T["role"] = [("PK","id","uuid"),("UK","name","text · the operator's word"),
-    ("","pays_as","kind of pay · null = not said"),
+    ("","pays_as","pays_as · null = not said"),
     ("","created_at","timestamptz")]
 T["unit"] = [("PK","id","uuid"),("UK","name","text · the operator's"),
     ("","short","text · beside a figure"),("","places","int · 0–4"),("","created_at","timestamptz")]
 T["material"] = [("PK","id","uuid"),("","sku","text"),("","name","text"),
     ("","brand","text"),("FK","unit_id","uuid · counted in"),("","markup_pct","numeric"),
-    ("","taxable","bool"),("","reorder_level","numeric"),("","active","bool")]
+    ("","taxable","bool"),("","reorder_level","numeric · nothing reads it yet"),("","active","bool"),
+    ("","version","int · its saves"),("UK","client_uuid","uuid · received on a phone")]
 T["material_lot"] = [("PK","id","uuid"),("FK","material_id","uuid"),
-    ("","received_on","date"),("","supplier","text"),
+    ("FK","receipt_id","uuid · the receipt it came on, or"),
+    ("FK","adjustment_id","uuid · the find it was"),
+    ("","received_on","date · oldest drawn first"),
     ("","qty_received","numeric"),("","qty_remaining","numeric"),
     ("","ex_tax_cost","numeric · all of it, as the receipt says"),
-    ("","tax_paid","numeric · all of it"),
+    ("","tax_paid","numeric · its share of the receipt's")]
+T["stock_receipt"] = [("PK","id","uuid"),("","received_on","date"),("","supplier","text"),
+    ("","reference","text · the receipt's own number"),
     ("FK","paid_by","uuid · null = the business"),
-    ("","receipt","bytea · photo or PDF"),("","receipt_type","text")]
+    ("","tax_paid","numeric · all the receipt charged"),
+    ("","receipt","bytea · photo or PDF"),("","receipt_type","receipt_type"),
+    ("UK","client_uuid","uuid · sent twice, one receipt"),("","created_at","timestamptz")]
+T["stock_adjustment"] = [("PK","id","uuid"),("FK","material_id","uuid"),
+    ("","made_on","date"),("","way","off|on"),("","qty","numeric · more than nothing"),
+    ("","reason","stock_adjustment_reason"),("","note","text"),
+    ("","ex_tax_cost","numeric · what it moved, at cost"),("","tax_paid","numeric"),
+    ("FK","count_id","uuid · the count it puts right"),
+    ("UK","client_uuid","uuid · with created_by"),("FK","created_by","uuid"),
+    ("","created_at","timestamptz")]
+T["stock_take"] = [("PK","adjustment_id","uuid · with the lot"),
+    ("PK","material_lot_id","uuid · with material_id"),
+    ("FK","material_id","uuid · the adjustment's, and the lot's"),
+    ("","qty","numeric · off this lot")]
+T["stock_count"] = [("PK","id","uuid"),("","counted_on","date"),
+    ("UK","client_uuid","uuid · with created_by"),("FK","created_by","uuid"),
+    ("","created_at","timestamptz"),("","applied_at","timestamptz · null = still open"),
+    ("FK","applied_by","uuid")]
+T["stock_count_line"] = [("PK","id","uuid"),("FK","count_id","uuid"),
+    ("FK","material_id","uuid · once per count"),("","counted","numeric · what was there"),
+    ("","on_hand","numeric · what the shelf said"),
+    ("","cost_each","numeric · only where none is"),
+    ("FK","counted_by","uuid"),("","counted_at","timestamptz")]
 T["material_price"] = [("PK","id","uuid"),("FK","material_id","uuid"),
     ("","price","numeric"),("","effective_from","date")]
 
@@ -224,7 +258,7 @@ T["time_entry"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the phon
     ("FK","worked_by","uuid · null when team"),("FK","created_by","uuid · ran the timer"),
     ("FK","entity_id","uuid · null = internal"),
     ("FK","site_id","uuid"),("FK","service_id","uuid"),("","billable","bool"),
-    ("","note","text"),("","created_at","timestamptz")]
+    ("","note","text"),("","version","int · its saves, 1 when made"),("","created_at","timestamptz")]
 T["time_entry_crew"] = [("PK","time_entry_id","uuid · a team entry"),
     ("PK","user_id","uuid · one of its crew")]
 T["trip"] = [("PK","id","uuid"),("","travelled_on","date"),("FK","driven_by","uuid"),
@@ -243,7 +277,7 @@ T["trip_stop"] = [("PK","id","uuid"),("FK","trip_id","uuid"),("","seq","int"),
     ("","departed_at","timestamptz"),("","address","text · not a site")]
 T["trip_leg"] = [("PK","id","uuid"),("FK","trip_id","uuid"),("","seq","int"),
     ("","miles","numeric"),("FK","entity_id","uuid · who caused it"),
-    ("FK","site_id","uuid"),("FK","service_id","uuid · what it bills as"),("","rule","text"),
+    ("FK","site_id","uuid"),("FK","service_id","uuid · what it bills as"),("","rule","trip_leg_rule"),
     ("FK","to_stop_id","uuid · null = the way back")]
 
 T["agreement"] = [("","billing_interval","weekly|monthly|quarterly|annually"),
@@ -282,7 +316,7 @@ T["invoice_line"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the ph
     ("FK","agreement_period_id","uuid"),("FK","material_id","uuid · drawn from stock"),
     ("FK","moved_from_invoice_id","uuid · meant for, gone out"),
     ("","bought_from","text · from whom"),("FK","paid_by","uuid · null = the business"),
-    ("","receipt","bytea · photo or PDF"),("","receipt_type","text"),
+    ("","receipt","bytea · photo or PDF"),("","receipt_type","receipt_type"),
     ("FK","created_by","uuid · who added it")]
 T["stock_draw"] = [("PK","invoice_line_id","uuid · with material_id"),
     ("PK","material_lot_id","uuid · with material_id"),
@@ -313,7 +347,7 @@ T["operator"] = [("PK","id","uuid"),("","singleton","bool · one row only"),("",
     ("","logo","bytea · null → name"),("","logo_media_type","text"),("","accent_colour","text"),("","address","text"),
     ("","google_place_id","text · the place it is"),
     ("","address_verified_on","date"),
-    ("","tax_number","text"),("","tax_number_label","EIN | VAT | ABN"),
+    ("","tax_number","text"),("","tax_number_label","text · EIN, VAT, ABN…"),
     ("","email","text"),("","phone","text"),
     ("","currency","text"),("","timezone","text"),("","locale","text · BCP 47"),
     ("","tax_rule_set","us_ca|flat_per_site|none"),("","invoice_number_format","text"),
@@ -336,15 +370,12 @@ T["person_payment_item"] = [("PK","id","uuid"),("FK","payment_id","uuid"),
     ("FK","user_id","uuid · the payment's person"),("FK","time_entry_id","uuid · an entry's time, or"),
     ("FK","trip_id","uuid · a trip's miles, or"),("FK","corrects_payment_id","uuid · an earlier payment"),
     ("","amount","numeric · as it came to"),("","said","text · how, in words"),
-    ("","paid_as","its pay, or reimbursement")]
+    ("","paid_as","paid_as · its pay, or a refund")]
 T["user"] = [("PK","id","uuid"),("","name","text"),("UK","email","text · lowercase"),
-    ("","email_verified","bool"),("","image","text"),
+    ("","email_verified","bool · a link there was used"),("","image","text"),
     ("FK","role_id","uuid · null = not paid"),("","active","bool"),
     ("","access","full|field · what they reach"),
-    ("","last_signed_in_at","timestamptz · null = none recorded"),
-    ("","temporary_password","bool · handed over, not yet theirs"),
-    ("","password_set_at","timestamptz · null = unknown"),
-    ("","password_stopped_at","timestamptz · null = works"),
+    ("","last_signed_in_at","timestamptz · null = never"),
     ("","timezone","text · null = the business's"),("","locale","text · null = the business's"),
     ("","hour_cycle","h12|h23 · null = the locale's"),("","week_start","1–7 · null = the locale's"),
     ("","created_at","timestamptz"),("","updated_at","timestamptz")]
@@ -353,25 +384,43 @@ T["session"] = [("PK","id","uuid"),("FK","user_id","uuid"),
     ("","ip_address","text"),("","user_agent","text"),
     ("","created_at","timestamptz"),("","updated_at","timestamptz")]
 T["account"] = [("PK","id","uuid"),("FK","user_id","uuid"),
-    ("","provider_id","text · credential = a password"),("","account_id","text"),
-    ("","password","text · argon2id"),("","access_token","text"),
+    ("","provider_id","text"),("","account_id","text"),
+    ("","password","text · always null"),("","access_token","text"),
     ("","refresh_token","text"),("","id_token","text"),
     ("","access_token_expires_at","timestamptz"),
     ("","refresh_token_expires_at","timestamptz"),("","scope","text"),
     ("","created_at","timestamptz"),("","updated_at","timestamptz")]
-T["verification"] = [("PK","id","uuid"),("","identifier","text"),("","value","text"),
+T["verification"] = [("PK","id","uuid"),("","identifier","text · in a cookie"),
+    ("","value","text · a passkey's challenge"),
     ("","expires_at","timestamptz"),("","created_at","timestamptz"),
     ("","updated_at","timestamptz")]
-T["sign_in_try"] = [("PK","id","uuid"),("","created_at","timestamptz"),
-    ("","page","sign_in|password_change"),("","address","inet"),
-    ("","network","cidr · what is counted"),
-    ("","email_key","text · HMAC of the email"),
-    ("FK","user_id","uuid · null = nobody's"),("","browser","text · its own count"),
-    ("","outcome","right|wrong|inactive|stopped")]
+T["passkey"] = [("PK","id","uuid"),("FK","user_id","uuid"),
+    ("","name","text · theirs to change"),("","public_key","text · the only half here"),
+    ("UK","credential_id","text · WebAuthn's"),("","counter","int"),
+    ("","device_type","singleDevice|multiDevice"),("","backed_up","bool · synced now"),
+    ("","transports","text"),("","aaguid","text · what made it"),
+    ("","created_at","timestamptz"),("","last_used_at","timestamptz"),
+    ("","last_used_from","text · browser and system")]
+T["email_link"] = [("PK","id","uuid"),("FK","user_id","uuid"),
+    ("","purpose","invite|reset|confirm|change"),
+    ("UK","code_hash","bytea · SHA-256, never the code"),
+    ("","sent_to","text · what using it proves"),("","created_at","timestamptz"),
+    ("","expires_at","timestamptz · an hour at most"),
+    ("","used_at","timestamptz · null = not yet"),
+    ("FK","sent_by","uuid · Full, or themselves")]
+T["link_try"] = [("PK","id","uuid"),("","created_at","timestamptz"),
+    ("","address","inet"),("","network","cidr · what is counted")]
+T["rate_limit"] = [("PK","id","uuid"),("UK","key","text · an address and route"),
+    ("","count","int · in the window"),("","last_request","bigint · milliseconds")]
+T["security_event"] = [("PK","id","uuid"),("","at","timestamptz · the database's clock"),
+    ("","name","security_event_name"),("FK","user_id","uuid · whom it is about"),
+    ("FK","by_id","uuid · who did it, if not them"),
+    ("","client_address","inet"),("","user_agent","text · 512 at most"),
+    ("","detail","jsonb · never a secret")]
 T["email_message"] = [("PK","id","uuid · its Message-ID"),("","created_at","timestamptz"),
-    ("","kind","password_changed|password_reset"),("FK","user_id","uuid · null = nobody's"),
+    ("","kind","email_message_kind"),("FK","user_id","uuid · null = nobody's"),
     ("","to_address","text"),("","subject","text"),
-    ("","body","text · null once sent or given up"),
+    ("","body","text · null once sent or given up"),("","html","text · beside body"),
     ("","send_by","timestamptz · then given up"),("","next_try_at","timestamptz"),
     ("","tries","smallint"),("","claimed_until","timestamptz · a sender's"),
     ("","sent_at","timestamptz"),("","gave_up_at","timestamptz"),
@@ -379,11 +428,18 @@ T["email_message"] = [("PK","id","uuid · its Message-ID"),("","created_at","tim
 T["record_history"] = [("PK","id","bigint"),("","table_name","text"),("","row_id","uuid"),
     ("","field","text"),("","old_value","text"),("","new_value","text"),
     ("FK","changed_by","uuid"),("","changed_at","timestamptz · when it arrived"),
-    ("","made_at","timestamptz · when, on a phone")]
+    ("","made_at","timestamptz · when, on a phone"),("","xact","bigint · the save it was in")]
 T["account_map"] = [("PK","role","text · what it is for"),("","account","text · as the ledger names it")]
 T["ledger_export"] = [("PK","id","uuid"),("","event","text"),("","source_table","text"),
     ("","source_id","uuid"),("","dated_on","date"),("","exported_at","timestamptz"),
     ("","transaction_text","text")]
+
+
+if "--tables" in sys.argv:
+    # What npm run db:drift checks against the migrations: every table here, as
+    # [key, column, type or words · a note] rows.
+    print(json.dumps(T))
+    raise SystemExit(0)
 
 
 def at(name, x, y):
@@ -512,20 +568,71 @@ c += [note("n3", "A service is configured, not categorised: what it is charged p
                  "bill_to_nearest_seconds and minimum_charge are the usual next"
                  " questions about an hourly price. Pay is never rounded to them; it is "
                  "counted as worked.\n\n"
-                 "material_lot is where stock enters, and where the Reg 1701 "
-                 "ex-tax purchase price is sourced. It keeps what all of it cost before "
-                 "tax and in tax, as the receipt says them, and a unit's share is worked "
-                 "out from those. A line drawn from stock takes the oldest lots first, and "
-                 "qty_remaining follows what it took (stock_draw). paid_by "
-                 "is whoever paid out of their own pocket and is owed it back, or the "
-                 "business when empty.\n\n"
+                 "material_lot is where stock enters, on a receipt or found, and where "
+                 "the Reg 1701 ex-tax purchase price is sourced. How stock comes and "
+                 "goes is Stock's.\n\n"
+                 "A material received, or a service added, on a phone with no signal "
+                 "keeps the client_uuid the phone made it with: what a line names it by "
+                 "until it arrives. A material's version is its saves, so a change made "
+                 "from an old copy is told of one made since.\n\n"
                  "A material is counted in one of the operator's units -- each, the foot, "
                  "a box of 25 -- each with how it is written and how many places a "
                  "quantity may have. Nothing converts one unit into another, and a line "
                  "keeps its unit's name as it was billed.", 40, 740, 1540, 360)]
 files.append(write("03-catalogue.drawio", "What you sell", c, 1620, 1140))
 
-# 04 -- work captured
+# 04 -- stock
+c = at("material",40,60) + at("stock_count_line",40,420) \
+  + at("material_lot",440,60) + at("stock_draw",440,300) + at("stock_count",440,470) \
+  + at("stock_receipt",840,60) + at("stock_adjustment",840,380) + at("stock_take",1240,380)
+c += [edge("e400","material","material_lot","is on the shelf as"),
+      edge("e401","stock_receipt","material_lot","brought in",
+           S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1")),
+      edge("e402","material_lot","stock_draw","is drawn by a line",
+           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=1")
+                 .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=0")),
+      edge("e403","stock_adjustment","material_lot","found as",
+           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0;exitY=0.2")
+                 .replace("entryX=0;entryY=0.5","entryX=1;entryY=0.8")),
+      edge("e404","stock_adjustment","stock_take","took"),
+      edge("e405","material","stock_count_line","is counted on",
+           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=1")
+                 .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=0")),
+      edge("e406","stock_count","stock_count_line","counts",
+           S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1")),
+      edge("e407","stock_count","stock_adjustment","is put right by")]
+c += [note("n4", "A stock_receipt is what was bought on one receipt or supplier's invoice: "
+                 "from whom, on which day, its own number, who paid -- a person, who is "
+                 "owed it back, or the business when empty -- the tax it charged, all of "
+                 "it, and the paper itself, kept once. Each item on it is a lot, in its "
+                 "own unit, carrying its share of that tax, split by what each cost "
+                 "before tax.\n\n"
+                 "A material_lot is stock on the shelf: what all of it cost before tax "
+                 "and its share of the tax, as the receipt says them, so a unit's share "
+                 "is worked out from those and nothing is lost to rounding a cost per "
+                 "foot. It came on a receipt or was found, one and never both, and the "
+                 "oldest is drawn first.\n\n"
+                 "A line drawn from stock takes off the oldest lots first (stock_draw), "
+                 "and an adjustment taken off does the same (stock_take). A trigger keeps "
+                 "qty_remaining following both, so taking more than is left is refused "
+                 "by the lot's own check.\n\n"
+                 "A stock_adjustment puts one material's stock right by hand: so much "
+                 "off the shelf or on it, on a day, and why. Used, damaged, lost and "
+                 "returned only take off; found only puts on, as a lot of its own; a "
+                 "correction or a count goes either way. What it moved is held at what "
+                 "it cost.\n\n"
+                 "A stock_count is what was on the shelf on a day: open while it is "
+                 "counted, one open at a time, and applied once, when each difference "
+                 "becomes an adjustment that names it. Each line keeps what the shelf "
+                 "said when it was counted beside what was there, so stock that moved "
+                 "meanwhile is told rather than written over, and a cost each only where "
+                 "the shelf has nothing to cost what turned up by.\n\n"
+                 "A receipt, an adjustment and a count keep the client_uuid the page or "
+                 "the phone made them with: sent twice, each is one.",
+           40, 760, 1540, 330)]
+files.append(write("04-stock.drawio", "Stock", c, 1620, 1130))
+
+# 05 -- work captured
 c = at("time_entry",40,60) + at("user",40,480) + at("time_entry_crew",480,480) \
   + at("vehicle",480,600) + at("trip",880,60) + at("trip_stop",880,400) \
   + at("trip_stop_client",880,620) + at("trip_leg",1280,60) + at("entity",1280,330)
@@ -555,10 +662,11 @@ c += [edge("e40","user","time_entry","worked / created",
       edge("e43","entity","trip_leg","caused",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=0")
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1"))]
-c += [note("n4", "started_at and ended_at are when the work was done and zone is where, so it "
+c += [note("n5", "started_at and ended_at are when the work was done and zone is where, so it "
                  "is shown as it was worked; seconds is worked out from them by the server, and "
                  "worked_on is the day it started there. An entry recorded before it kept its "
-                 "times has its length alone.\n\n"
+                 "times has its length alone. version is its saves, 1 when made: a change "
+                 "says which it began from, so one made meanwhile is told.\n\n"
                  "worked_by is who worked the hour, and crew says whether it bills at one "
                  "person's rate or the team's; created_by is who entered it, which is how the row "
                  "is explained later.\n\n"
@@ -588,9 +696,9 @@ c += [note("n4", "started_at and ended_at are when the work was done and zone is
                  "drive later starts from its miles. note and the odometer are the "
                  "trip's own, as a mileage log asks.",
            40, 924, 1576, 380)]
-files.append(write("04-work-captured.drawio", "Work as it is captured", c, 1680, 1344))
+files.append(write("05-work-captured.drawio", "Work as it is captured", c, 1680, 1344))
 
-# 05 -- agreements
+# 06 -- agreements
 c = at("entity",40,60) + at("agreement",440,60) \
   + at("agreement_period",840,60) + at("agreement_service",840,250) + at("site",440,400)
 c += [edge("e50","entity","agreement","signed"),
@@ -599,7 +707,7 @@ c += [edge("e50","entity","agreement","signed"),
       edge("e53","site","agreement","may be for",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=0")
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1"))]
-c += [note("n5", "With site_id empty the agreement is the client's; with it set, it is "
+c += [note("n6", "With site_id empty the agreement is the client's; with it set, it is "
                  "that site's and comes first for work there. A client may hold one of "
                  "its own, one per site, or both.\n\n"
                  "No allotment is assumed: each agreement states its own, and the hours "
@@ -617,9 +725,9 @@ c += [note("n5", "With site_id empty the agreement is the client's; with it set,
                  " an agreement_period — a charged period. Hours it covers bill nothing "
                  "by the hour and are paid as a share of that period's charge.",
            880, 470, 700, 560)]
-files.append(write("05-agreements.drawio", "Agreements", c, 1620, 1060))
+files.append(write("06-agreements.drawio", "Agreements", c, 1620, 1060))
 
-# 06 -- money out
+# 07 -- money out
 c = at("invoice",40,60) + at("invoice_line",440,60) + at("credit_note",880,60) \
   + at("credit_application",880,300) + at("entity",40,430) + at("site",440,800) \
   + at("stock_draw",880,860) + at("material_lot",1240,860)
@@ -634,7 +742,7 @@ c += [edge("e60","invoice","invoice_line","is made of"),
       edge("e64","site","invoice_line","taxed by",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=0")
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1"))]
-c += [note("n6", "A tax override is stored per line, so one invoice can carry lines at "
+c += [note("n7", "A tax override is stored per line, so one invoice can carry lines at "
                  "two sites; setting it across an invoice writes the column many times.\n\n"
                  "Sending dates an invoice, gives it its due date and public_token: the "
                  "link a client opens it by, without signing in, shared from the phone. "
@@ -667,9 +775,9 @@ c += [note("n6", "A tax override is stored per line, so one invoice can carry li
                  "client, and moved_from_invoice_id keeps which it was meant for. A change "
                  "made on a phone says which version it began from, and one made "
                  "meanwhile is merged with it field by field.", 880, 480, 640, 330)]
-files.append(write("06-money-out.drawio", "Money out", c, 1600, 1400))
+files.append(write("07-money-out.drawio", "Money out", c, 1600, 1400))
 
-# 07 -- money in
+# 08 -- money in
 c = at("payment",40,60) + at("payment_allocation",440,60) + at("refund",440,220) \
   + at("payout",40,300) + at("invoice",840,60)
 c += [edge("e70","payment","payment_allocation","is split across"),
@@ -679,78 +787,14 @@ c += [edge("e70","payment","payment_allocation","is split across"),
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1")),
       edge("e73","invoice","payment_allocation","is settled by",
            S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1"))]
-c += [note("n7", "Stripe pays one deposit covering several invoices, net of "
+c += [note("n8", "Stripe pays one deposit covering several invoices, net of "
                  "fees, so a payment knows which payout carried it and the payout knows "
                  "what the bank shows.\n\n"
                  "payment_allocation carries partial payments, and it is why a "
                  "refund never makes an invoice look unpaid: the refund reverses the "
                  "payment, and the invoice is closed by a credit note against the entity.",
            440, 420, 660, 170)]
-files.append(write("07-money-in.drawio", "Money in", c, 1260, 620))
-
-# 08 -- operator and record
-c = at("operator",40,60) + at("user",480,60) + at("session",480,496) \
-  + at("account",480,712) + at("record_history",900,410) + at("account_map",900,60) \
-  + at("ledger_export",900,180) + at("integration",900,650) + at("verification",900,800) \
-  + at("sign_in_try",900,980) + at("email_message",40,880)
-c += [edge("e80","operator","account_map","maps"),
-      edge("e82","user","session","is signed in by",
-           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=1")
-                 .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=0")),
-      edge("e83","user","account","signs in with",
-           S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=0")),
-      edge("e81","user","record_history","changed"),
-      edge("e84","user","sign_in_try","was tried"),
-      edge("e85","user","email_message","is told by",
-           S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1"))]
-c += [note("n8", "What someone can reach is user.access, apart from role_id, the "
-                 "capacity they are paid in, which pay rules are written against. Full "
-                 "is everything, and the only level that bills or pays; Field is their "
-                 "own work and what they are paid for it. Someone new starts with "
-                 "Field, and a trigger keeps someone active on Full. Which routes each "
-                 "level reaches is the app's, in src/lib/access.ts.\n\n"
-                 "Each person keeps a time zone, a locale, a clock and a first day of the "
-                 "week. Empty follows the business's -- its own timezone and locale -- or "
-                 "what the locale says.\n\n"
-                 "user, session, account and verification are Better Auth's, in its "
-                 "shape. A password is an account whose provider_id is credential, and "
-                 "what it holds is an argon2id hash. There is no sign-up: someone with "
-                 "Full adds people on Team, and the first from the command line. A "
-                 "password handed over is temporary_password until they choose their "
-                 "own, and signing in with it reaches nothing else.\n\n"
-                 "sign_in_try is every try at a password, and the limits are worked out "
-                 "from it: five per network in fifteen minutes, ten wrong in a row per "
-                 "email before each waits longer, a browser that has signed in as them "
-                 "counting on its own. It is written for every email tried, whether or "
-                 "not anyone signs in with it, keeps an HMAC of the email rather than "
-                 "the email, and is kept 90 days. A hundred wrong in a row stop the "
-                 "password: password_stopped_at, until a new one is set.\n\n"
-                 "email_message is every email, written in the transaction that makes "
-                 "the change it tells of, so it is sent if and only if that change is "
-                 "kept, and sent afterwards to the relay the environment names. One the "
-                 "relay puts off is tried later each time until send_by; one it refuses "
-                 "for good is given up on. body is kept only while it is still to send, "
-                 "and a row is deleted after 90 days.\n\n"
-                 "A session is a row, not a stateless token: one server, one "
-                 "database, and every page reads it anyway, so a stateless token would "
-                 "save no round trip and cost revocation. The cookie is the token "
-                 "signed with the server's secret, so a copy of this table lets nobody "
-                 "in without the secret as well.\n\n"
-                 "Which migrations a database has seen is Kysely's record, in "
-                 "kysely.kysely_migration, so bringing it up to date again applies only "
-                 "what is new.\n\n"
-                 "Everything that identifies the business is the operator's to supply: "
-                 "logo is nullable and the interface renders trading_name in its place.\n\n"
-                 "An included-hours figure is a client's, on their agreement, "
-                 "and what is paid to whoever answers is a dated pay_rule.\n\n"
-                 "record_history is append-only and exists to explain a figure,"
-                 " not to police one. An invoice line is followed from its birth: what it "
-                 "was when added, each field changed, and what it was when taken off. A "
-                 "receipt is described rather than copied while its row holds it, and kept "
-                 "whole once the history is the only place it is: replaced, or taken off "
-                 "with its line. made_at is when a change was made on a phone, beside "
-                 "changed_at, when it arrived.", 40, 1230, 1300, 460)]
-files.append(write("08-operator-and-record.drawio", "The operator, and the record", c, 1400, 1740))
+files.append(write("08-money-in.drawio", "Money in", c, 1260, 620))
 
 # 09 -- pay, as it was paid
 c = at("person_payment",40,60) + at("person_payment_item",480,60) + at("user",40,330) \
@@ -777,6 +821,100 @@ c += [note("n9", "A payment to a person is recorded with what it covered: each i
                  "payment. reckon records a payment, and the money moves at the bank.",
            40, 800, 1176, 220)]
 files.append(write("09-pay.drawio", "Pay, as it was paid", c, 1260, 1060))
+
+# 10 -- people, and signing in
+c = at("session",40,60) + at("account",40,320) + at("security_event",40,690) \
+  + at("user",440,60) + at("email_message",440,480) \
+  + at("passkey",840,60) + at("email_link",840,420) \
+  + at("verification",1240,60) + at("link_try",1240,260) + at("rate_limit",1240,420)
+c += [edge("e100","user","session","is signed in by",
+           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0;exitY=0.2")
+                 .replace("entryX=0","entryX=1")),
+      edge("e101","user","account","is Better Auth's",
+           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0;exitY=0.5")
+                 .replace("entryX=0","entryX=1")),
+      edge("e102","user","security_event","is in",
+           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0;exitY=0.8")
+                 .replace("entryX=0","entryX=1")),
+      edge("e103","user","passkey","signs in with"),
+      edge("e104","user","email_link","is sent"),
+      edge("e105","user","email_message","is told by",
+           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=1")
+                 .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=0"))]
+c += [note("n10", "What someone can reach is user.access, apart from role_id, the "
+                  "capacity they are paid in, which pay rules are written against. Full "
+                  "is everything, and the only level that bills or pays; Field is their "
+                  "own work and what they are paid for it. Someone new starts with "
+                  "Field, and a trigger keeps someone active on Full. Which routes each "
+                  "level reaches is the app's, in src/lib/access.ts.\n\n"
+                  "Each person keeps a time zone, a locale, a clock and a first day of the "
+                  "week. Empty follows the business's -- its own timezone and locale -- or "
+                  "what the locale says.\n\n"
+                  "Signing in is with a passkey and nothing else: a key pair made on "
+                  "someone's phone, computer or security key, of which only the public "
+                  "half is here. There are no passwords. user, session, account and "
+                  "verification are Better Auth's, in its shape; account can hold no "
+                  "password, and verification keeps the challenge of each passkey being "
+                  "made or signing in until it is answered or lapses.\n\n"
+                  "There is no sign-up: someone with Full adds people on Team, and the "
+                  "first from the command line, and each is emailed a link to make their "
+                  "first passkey. Someone who can't sign in is sent a link to make a new "
+                  "one, which ends none of theirs. A link also confirms the address "
+                  "someone signs in with, or makes a new one theirs, and using one proves "
+                  "they read mail there: email_verified. An email_link is good once, for "
+                  "an hour at most, and only while it still goes to the address its "
+                  "person signs in with; its code is 256 random bits, of which only the "
+                  "SHA-256 is kept. One of each kind waits at a time, and one used is "
+                  "kept 90 days.\n\n"
+                  "link_try is every code tried that was not one to use, by the network "
+                  "it came from, so a network that keeps trying is turned away, and is "
+                  "kept a day. rate_limit is Better Auth's count of requests to its own "
+                  "routes, kept here so a restart forgives nothing.\n\n"
+                  "A session is a row, not a stateless token: one server, one database, "
+                  "and every page reads it anyway, so a stateless token would save no "
+                  "round trip and cost revocation. The cookie is the token signed with "
+                  "the server's secret, so a copy of this table lets nobody in without "
+                  "the secret as well. It lasts until it has gone two weeks unused.\n\n"
+                  "security_event is the security log: every sign-in, refused or not, "
+                  "every passkey and link, everyone added or changed, every change of "
+                  "access and every refusal for lack of it. The database stamps each "
+                  "with its own clock, none is ever changed, and one is removed only "
+                  "once it is a year old. Each person sees their own, and someone with "
+                  "Full everyone's.\n\n"
+                  "email_message is every email, written in the transaction that makes "
+                  "the change it tells of, so it is sent if and only if that change is "
+                  "kept, and sent afterwards to the relay the environment names. One the "
+                  "relay puts off is tried later each time until send_by; one it refuses "
+                  "for good is given up on. body, and html beside it, are kept only while "
+                  "it is still to send, and a row is deleted after 90 days. Someone is "
+                  "told whenever a passkey of theirs is added or removed, or all of them "
+                  "are ended, and whenever their name, their address or their access "
+                  "changes, or they are made inactive or active again.",
+           40, 950, 1540, 470)]
+files.append(write("10-people-and-signing-in.drawio", "People, and signing in", c, 1620, 1460))
+
+# 11 -- the operator and the record
+c = at("operator",40,60) + at("account_map",440,60) + at("ledger_export",440,180) \
+  + at("integration",440,400) + at("record_history",440,560)
+c += [edge("e110","operator","account_map","maps")]
+c += [note("n11", "Everything that identifies the business is the operator's to supply: "
+                  "logo is nullable and the interface renders trading_name in its "
+                  "place.\n\n"
+                  "An included-hours figure is a client's, on their agreement, "
+                  "and what is paid to whoever answers is a dated pay_rule.\n\n"
+                  "record_history is append-only and exists to explain a figure,"
+                  " not to police one. An invoice line is followed from its birth: what it "
+                  "was when added, each field changed, and what it was when taken off. A "
+                  "receipt is described rather than copied while its row holds it, and kept "
+                  "whole once the history is the only place it is: replaced, or taken off "
+                  "with its line. made_at is when a change was made on a phone, beside "
+                  "changed_at, when it arrived, and xact is the save it was in, so a change "
+                  "is read with what went with it.\n\n"
+                  "Which migrations a database has seen is Kysely's record, in "
+                  "kysely.kysely_migration, so bringing it up to date again applies only "
+                  "what is new.",
+           840, 60, 540, 420)]
+files.append(write("11-operator-and-record.drawio", "The operator, and the record", c, 1420, 1000))
 
 for f in files:
     print(f"  {f}")
