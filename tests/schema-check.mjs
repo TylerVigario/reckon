@@ -22,6 +22,8 @@
  *                                   with a constraint name in it
  *   a word the registry refuses     the column's type has it, so the data can,
  *                                   and the screen could not offer it
+ *   a word the type lacks           a registry for some of a type's words names
+ *                                   one it does not have
  *
  * It does NOT complain when the registry is STRICTER than the column. That is
  * the safe direction and often deliberate: `cap(120)` on a `text` column is a
@@ -47,9 +49,16 @@ const { RECEIPT_FIELDS, NEW_MATERIAL_FIELDS } = await import('../src/lib/stock-f
 const { ADJUST_FIELDS } = await import('../src/lib/adjust-fields.ts');
 const { MATERIAL_FIELDS } = await import('../src/lib/material-fields.ts');
 const { COUNT_LINE_FIELDS } = await import('../src/lib/count-fields.ts');
-const { PASSED_ON_FIELDS, FROM_STOCK_FIELDS } = await import('../src/lib/line-fields.ts');
+const { PASSED_ON, PASSED_ON_FIELDS, FROM_STOCK_FIELDS } =
+	await import('../src/lib/line-fields.ts');
 
-/** @type {[string, import('../src/lib/field-rules.ts').Registry][]} */
+/**
+ * Each registry and its table. A third part names a field whose registry is
+ * for some of its column's words by design, and which: a line passed on is
+ * bought or paid for, and the other kinds are made elsewhere.
+ *
+ * @type {[string, import('../src/lib/field-rules.ts').Registry, Record<string, readonly string[]>?][]}
+ */
 const registries = [
 	['site', SITE_FIELDS],
 	['entity', CLIENT_FIELDS],
@@ -67,7 +76,7 @@ const registries = [
 	['material', NEW_MATERIAL_FIELDS],
 	['material', MATERIAL_FIELDS],
 	['stock_count_line', COUNT_LINE_FIELDS],
-	['invoice_line', PASSED_ON_FIELDS],
+	['invoice_line', PASSED_ON_FIELDS, { kind: PASSED_ON }],
 	['invoice_line', FROM_STOCK_FIELDS],
 	['user', PERSON_FIELDS]
 ];
@@ -77,11 +86,12 @@ const columns = await q(`
 	  from information_schema.columns
 	 where table_schema = 'public'`);
 
-// The words of each of the schema's types, in their order.
+// The words of each of the schema's types, in their order. As text: a label
+// is a name, and an array of names arrives as the string Postgres writes.
 const words = new Map(
 	(
 		await q(`
-		select t.typname as type, array_agg(e.enumlabel order by e.enumsortorder) as words
+		select t.typname as type, array_agg(e.enumlabel::text order by e.enumsortorder) as words
 		  from pg_enum e join pg_type t on t.oid = e.enumtypid
 		 group by t.typname`)
 	).map((r) => [r.type, r.words])
@@ -97,7 +107,7 @@ const checks = await q(`
 const complaints = [];
 let looked = 0;
 
-for (const [table, registry] of registries) {
+for (const [table, registry, some = {}] of registries) {
 	for (const [field, parse] of Object.entries(registry)) {
 		looked++;
 		const column = columns.find((c) => c.table_name === table && c.column_name === field);
@@ -123,9 +133,17 @@ for (const [table, registry] of registries) {
 		}
 
 		// Every word the column's type has, the registry has to accept too -- or
-		// the screen cannot offer a value the data already contains.
+		// the screen cannot offer a value the data already contains. A registry
+		// for some of them accepts those, and each has to be one of the type's.
 		if (column.data_type === 'USER-DEFINED') {
-			for (const candidate of words.get(column.udt_name) ?? []) {
+			const all = words.get(column.udt_name) ?? [];
+			const offered = some[field] ?? all;
+			for (const word of offered.filter((w) => !all.includes(w))) {
+				complaints.push(
+					`${table}.${field}: the registry is for '${word}', and the column's type has no such word`
+				);
+			}
+			for (const candidate of offered.filter((w) => all.includes(w))) {
 				if (!parse(candidate).ok) {
 					complaints.push(
 						`${table}.${field}: the column allows '${candidate}' and the registry refuses it`

@@ -20,9 +20,10 @@ import {
 	parseAll,
 	required
 } from './field-rules.ts';
+import type { InvoiceLineKind } from './server/db/database.ts';
 import { countError } from './stock-fields.ts';
 
-export const PASSED_ON = ['bought', 'paid_for'] as const;
+export const PASSED_ON = ['bought', 'paid_for'] as const satisfies readonly InvoiceLineKind[];
 
 export const PASSED_ON_FIELDS = {
 	kind: oneOf(PASSED_ON),
