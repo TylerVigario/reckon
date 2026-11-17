@@ -1,7 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
-import { asc, eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { tripChoices } from '#lib/server/trip-choices.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import { settled } from '#lib/server/trip-write.ts';
@@ -21,51 +19,58 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ params, locals, route, request }) => {
 	if (!UUID.test(params.id)) error(404, 'No trip with that id.');
-	const [trip] = await db.select().from(t.trip).where(eq(t.trip.id, params.id));
+	const trip = await db
+		.selectFrom('trip')
+		.selectAll()
+		.where('id', '=', params.id)
+		.executeTakeFirst();
 	const field = fieldOnly(locals);
 	const me = locals.user!.id;
 	if (!trip) error(404, 'No trip with that id.');
-	if (field && trip.drivenBy !== me) {
+	if (field && trip.driven_by !== me) {
 		await refusedForAccess({ locals, route, request });
 		error(404, 'No trip with that id.');
 	}
-	if (field && trip.createdBy !== me) redirect(303, resolve('/trips/[id]', { id: params.id }));
+	if (field && trip.created_by !== me) redirect(303, resolve('/trips/[id]', { id: params.id }));
 	if (await settled(db, params.id)) redirect(303, resolve('/trips/[id]', { id: params.id }));
 
 	const [choices, stops, clients, legs] = await Promise.all([
 		tripChoices(me, field),
 		db
-			.select({ id: t.tripStop.id, siteId: t.tripStop.siteId, address: t.tripStop.address })
-			.from(t.tripStop)
-			.where(eq(t.tripStop.tripId, params.id))
-			.orderBy(asc(t.tripStop.seq)),
+			.selectFrom('trip_stop')
+			.select(['id', 'site_id as siteId', 'address'])
+			.where('trip_id', '=', params.id)
+			.orderBy('seq')
+			.execute(),
 		db
-			.select({
-				stop: t.tripStopClient.tripStopId,
-				entityId: t.tripStopClient.entityId,
-				siteId: t.tripStopClient.siteId,
-				askedThere: t.tripStopClient.askedThere
-			})
-			.from(t.tripStopClient)
-			.innerJoin(t.tripStop, eq(t.tripStop.id, t.tripStopClient.tripStopId))
-			.where(eq(t.tripStop.tripId, params.id)),
+			.selectFrom('trip_stop_client')
+			.innerJoin('trip_stop', 'trip_stop.id', 'trip_stop_client.trip_stop_id')
+			.select([
+				'trip_stop_client.trip_stop_id as stop',
+				'trip_stop_client.entity_id as entityId',
+				'trip_stop_client.site_id as siteId',
+				'trip_stop_client.asked_there as askedThere'
+			])
+			.where('trip_stop.trip_id', '=', params.id)
+			.execute(),
 		db
-			.select({
-				to: t.tripLeg.toStopId,
-				miles: t.tripLeg.miles,
-				rule: t.tripLeg.rule,
-				entityId: t.tripLeg.entityId,
-				serviceId: t.tripLeg.serviceId
-			})
-			.from(t.tripLeg)
-			.where(eq(t.tripLeg.tripId, params.id))
-			.orderBy(asc(t.tripLeg.seq))
+			.selectFrom('trip_leg')
+			.select([
+				'to_stop_id as to',
+				'miles',
+				'rule',
+				'entity_id as entityId',
+				'service_id as serviceId'
+			])
+			.where('trip_id', '=', params.id)
+			.orderBy('seq')
+			.execute()
 	]);
 
 	const places: Place[] = [
-		trip.startAddress ? { address: trip.startAddress } : 'base',
+		trip.start_address ? { address: trip.start_address } : 'base',
 		...stops.map((s): Place => (s.siteId ? { site: s.siteId } : { address: s.address ?? '' })),
-		trip.endAddress ? { address: trip.endAddress } : 'base'
+		trip.end_address ? { address: trip.end_address } : 'base'
 	];
 	// Each drive's legs: those to its stop, and those with none for the way back.
 	// A trip recorded before legs named their stop has none to go by, and its
@@ -85,13 +90,13 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 		});
 
 	const draft: TripDraft = {
-		clientUuid: trip.clientUuid,
-		day: trip.travelledOn,
-		driver: trip.drivenBy,
-		vehicleId: trip.vehicleId,
+		clientUuid: trip.client_uuid,
+		day: trip.travelled_on,
+		driver: trip.driven_by,
+		vehicleId: trip.vehicle_id,
 		serviceId: legs.find((l) => l.serviceId)?.serviceId ?? null,
-		startAddress: trip.startAddress,
-		endAddress: trip.endAddress,
+		startAddress: trip.start_address,
+		endAddress: trip.end_address,
 		stops: stops.map((s) => ({
 			key: s.id,
 			siteId: s.siteId,
@@ -103,26 +108,22 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 		typed,
 		given,
 		// As it was read: 48213, not the 48213.0 a tenth's column gives back.
-		odometerStart: trip.odometerStart?.replace(/\.0$/, '') ?? '',
-		odometerEnd: trip.odometerEnd?.replace(/\.0$/, '') ?? '',
+		odometerStart: trip.odometer_start?.replace(/\.0$/, '') ?? '',
+		odometerEnd: trip.odometer_end?.replace(/\.0$/, '') ?? '',
 		note: trip.note ?? ''
 	};
 
 	// A vehicle retired since is still the one this trip was driven in.
 	const vehicles =
-		trip.vehicleId && !choices.vehicles.some((v) => v.id === trip.vehicleId)
+		trip.vehicle_id && !choices.vehicles.some((v) => v.id === trip.vehicle_id)
 			? [
 					...choices.vehicles,
 					...(await db
-						.select({
-							id: t.vehicle.id,
-							name: t.vehicle.name,
-							owner_id: t.vehicle.ownerId,
-							owner: t.user.name
-						})
-						.from(t.vehicle)
-						.leftJoin(t.user, eq(t.user.id, t.vehicle.ownerId))
-						.where(eq(t.vehicle.id, trip.vehicleId)))
+						.selectFrom('vehicle')
+						.leftJoin('user', 'user.id', 'vehicle.owner_id')
+						.select(['vehicle.id', 'vehicle.name', 'vehicle.owner_id', 'user.name as owner'])
+						.where('vehicle.id', '=', trip.vehicle_id)
+						.execute())
 				]
 			: choices.vehicles;
 	return { ...choices, vehicles, draft, id: params.id };

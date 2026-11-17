@@ -1,8 +1,7 @@
 import { businessToday } from '#lib/server/calendar.ts';
-import { sql } from 'drizzle-orm';
+import { sql } from 'kysely';
 import { sumMoney } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import type { PageServerLoad } from './$types';
@@ -26,112 +25,154 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async () => {
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
-	const owing = balances(rounding, places);
-	const i = t.invoice;
-	const e = t.entity;
-	const il = t.invoiceLine;
-	const ec = t.entityContact;
-	const c = t.contact;
-	const te = t.timeEntry;
-	const tl = t.tripLeg;
-	const tr = t.trip;
+	const today = businessToday();
 
-	const [[operator], { rows: drafts }] = await Promise.all([
-		db.select({ days: t.operator.ageingAlertDays }).from(t.operator),
-		db.execute<{
-			id: string;
-			number: string;
-			who: string;
-			contact: string | null;
-			area: string | null;
-			rate_pct: string | null;
-			made_of: string | null;
-			period_end: string | null;
-			oldest_worked_on: string | null;
-			days_waiting: number | null;
-			aged: boolean;
-			lines: string;
-			gross: string;
-		}>(sql`
-		with alert as (
-			select coalesce((select ${t.operator.ageingAlertDays} from ${t.operator}), 30) as days
-		),
-		counted as (
-			select ${il.invoiceId} as invoice_id, count(*)::text as lines from ${il} group by 1
-		),
-		-- What the invoice is made of, in the order a reader expects to meet it:
-		-- the standing charge, then the work, then the driving, then the parts,
-		-- whether drawn from stock or bought for the job, then what was paid for
-		-- them.
-		-- Mileage is a service billed by the mile, which is why the unit decides
-		-- it rather than the kind.
-		made_of as (
-			select invoice_id, string_agg(part, ', ' order by ord) as made_of
-			  from (
-			    select distinct ${il.invoiceId} as invoice_id,
-			           case when ${il.kind} = 'recurring' then 1
-			                when ${il.kind} = 'service' and ${il.unit} = 'mile' then 3
-			                when ${il.kind} = 'service' then 2
-			                when ${il.kind} in ('material', 'bought') then 4
-			                when ${il.kind} = 'paid_for' then 5
-			                else 6 end as ord,
-			           case when ${il.kind} = 'recurring' then 'retainer'
-			                when ${il.kind} = 'service' and ${il.unit} = 'mile' then 'mileage'
-			                when ${il.kind} = 'service' then 'labour'
-			                when ${il.kind} in ('material', 'bought') then 'materials'
-			                when ${il.kind} = 'paid_for' then 'expenses'
-			                else 'an adjustment' end as part
-			      from ${il}
-			  ) p
-			 group by invoice_id
-		),
-		-- The rate charged comes from where the work happened, so the name of
-		-- the place that levies it is what identifies it on the row. The state's
-		-- share is on every invoice and names nothing. Both as the lines kept
-		-- them when they were priced (0030), which is what the invoice charges.
-		where_taxed as (
-			select ${il.invoiceId} as invoice_id,
-			       max(${il.taxRatePct})::text as rate_pct,
-			       min(${il.taxJurisdiction}) as area
-			  from ${il}
-			 where ${il.taxJurisdiction} is not null
-			 group by 1
-		),
-		-- How long the oldest thing on it has been waiting. Time has a worked-on
-		-- date of its own; a leg takes its trip's.
-		waiting as (
-			select ${il.invoiceId} as invoice_id,
-			       min(coalesce(${te.workedOn}, ${tr.travelledOn})) as oldest
-			  from ${il}
-			  left join ${te} on ${te.id} = ${il.timeEntryId}
-			  left join ${tl} on ${tl.id} = ${il.tripLegId}
-			  left join ${tr} on ${tr.id} = ${tl.tripId}
-			 group by 1
-		)
-		select ${i.id} as id, ${i.number} as number, ${e.name} as who,
-		       ${c.name} as contact,
-		       w.area, w.rate_pct,
-		       m.made_of,
-		       ${i.periodEnd}::text as period_end,
-		       g.oldest::text as oldest_worked_on,
-		       (${businessToday()}::date - g.oldest)::int as days_waiting,
-		       coalesce(${businessToday()}::date - g.oldest > a.days, false) as aged,
-		       coalesce(n.lines, '0') as lines,
-		       b.gross::text as gross
-		  from ${i}
-		  cross join alert a
-		  join ${e} on ${e.id} = ${i.entityId}
-		  join ${owing} b on b.invoice_id = ${i.id}
-		  left join ${ec} on ${ec.entityId} = ${e.id} and ${ec.isPrimary}
-		  left join ${c} on ${c.id} = ${ec.contactId}
-		  left join counted n on n.invoice_id = ${i.id}
-		  left join made_of m on m.invoice_id = ${i.id}
-		  left join where_taxed w on w.invoice_id = ${i.id}
-		  left join waiting g on g.invoice_id = ${i.id}
-		 where ${i.status} = 'draft'
-		 -- What has waited longest goes first: that is the one that should have
-		 -- gone already.
-		 order by (g.oldest is null), g.oldest, ${i.number}`)
+	const [operator, drafts] = await Promise.all([
+		db.selectFrom('operator').select('ageing_alert_days as days').executeTakeFirst(),
+		db
+			.with('alert', (qc) =>
+				qc.selectNoFrom((eb) =>
+					eb.fn
+						.coalesce(eb.selectFrom('operator').select('operator.ageing_alert_days'), eb.lit(30))
+						.as('days')
+				)
+			)
+			.with('counted', (qc) =>
+				qc
+					.selectFrom('invoice_line as il')
+					.select((eb) => ['il.invoice_id', eb.cast<string>(eb.fn.countAll(), 'text').as('lines')])
+					.groupBy('il.invoice_id')
+			)
+			// What the invoice is made of, in the order a reader expects to meet it:
+			// the standing charge, then the work, then the driving, then the parts,
+			// whether drawn from stock or bought for the job, then what was paid for
+			// them.
+			// Mileage is a service billed by the mile, which is why the unit decides
+			// it rather than the kind.
+			.with('made_of', (qc) =>
+				qc
+					.selectFrom(
+						qc
+							.selectFrom('invoice_line as il')
+							.select((eb) => {
+								const mileage = eb.and([eb('il.kind', '=', 'service'), eb('il.unit', '=', 'mile')]);
+								const goods = eb.or([eb('il.kind', '=', 'material'), eb('il.kind', '=', 'bought')]);
+								return [
+									'il.invoice_id',
+									eb
+										.case()
+										.when('il.kind', '=', 'recurring')
+										.then(eb.lit(1))
+										.when(mileage)
+										.then(eb.lit(3))
+										.when('il.kind', '=', 'service')
+										.then(eb.lit(2))
+										.when(goods)
+										.then(eb.lit(4))
+										.when('il.kind', '=', 'paid_for')
+										.then(eb.lit(5))
+										.else(eb.lit(6))
+										.end()
+										.as('ord'),
+									eb
+										.case()
+										.when('il.kind', '=', 'recurring')
+										.then(sql.lit('retainer'))
+										.when(mileage)
+										.then(sql.lit('mileage'))
+										.when('il.kind', '=', 'service')
+										.then(sql.lit('labour'))
+										.when(goods)
+										.then(sql.lit('materials'))
+										.when('il.kind', '=', 'paid_for')
+										.then(sql.lit('expenses'))
+										.else(sql.lit('an adjustment'))
+										.end()
+										.$castTo<string>()
+										.as('part')
+								];
+							})
+							.distinct()
+							.as('p')
+					)
+					.select((eb) => [
+						'p.invoice_id',
+						eb.fn
+							.agg<string>('string_agg', ['p.part', eb.val(', ')])
+							.orderBy('p.ord')
+							.as('made_of')
+					])
+					.groupBy('p.invoice_id')
+			)
+			// The rate charged comes from where the work happened, so the name of
+			// the place that levies it is what identifies it on the row. The state's
+			// share is on every invoice and names nothing. Both as the lines kept
+			// them when they were priced (0030), which is what the invoice charges.
+			.with('where_taxed', (qc) =>
+				qc
+					.selectFrom('invoice_line as il')
+					.select((eb) => [
+						'il.invoice_id',
+						eb.cast<string>(eb.fn.max('il.tax_rate_pct'), 'text').as('rate_pct'),
+						eb.fn.min<string>('il.tax_jurisdiction').as('area')
+					])
+					.where('il.tax_jurisdiction', 'is not', null)
+					.groupBy('il.invoice_id')
+			)
+			// How long the oldest thing on it has been waiting. Time has a worked-on
+			// date of its own; a leg takes its trip's.
+			.with('waiting', (qc) =>
+				qc
+					.selectFrom('invoice_line as il')
+					.leftJoin('time_entry as te', 'te.id', 'il.time_entry_id')
+					.leftJoin('trip_leg as tl', 'tl.id', 'il.trip_leg_id')
+					.leftJoin('trip as tr', 'tr.id', 'tl.trip_id')
+					.select((eb) => [
+						'il.invoice_id',
+						eb.fn.min<string | null>(eb.fn.coalesce('te.worked_on', 'tr.travelled_on')).as('oldest')
+					])
+					.groupBy('il.invoice_id')
+			)
+			.selectFrom('invoice as i')
+			.crossJoin('alert as a')
+			.innerJoin('entity as e', 'e.id', 'i.entity_id')
+			.innerJoin(balances(rounding, places).as('b'), 'b.invoice_id', 'i.id')
+			.leftJoin('entity_contact as ec', (join) =>
+				join.onRef('ec.entity_id', '=', 'e.id').on('ec.is_primary', '=', true)
+			)
+			.leftJoin('contact as c', 'c.id', 'ec.contact_id')
+			.leftJoin('counted as n', 'n.invoice_id', 'i.id')
+			.leftJoin('made_of as m', 'm.invoice_id', 'i.id')
+			.leftJoin('where_taxed as w', 'w.invoice_id', 'i.id')
+			.leftJoin('waiting as g', 'g.invoice_id', 'i.id')
+			.select((eb) => {
+				const waited = sql<number | null>`${today}::date - ${eb.ref('g.oldest')}`;
+				return [
+					'i.id',
+					'i.number',
+					'e.name as who',
+					'c.name as contact',
+					'w.area',
+					'w.rate_pct',
+					'm.made_of',
+					eb.cast<string | null>('i.period_end', 'text').as('period_end'),
+					eb.cast<string | null>('g.oldest', 'text').as('oldest_worked_on'),
+					eb.cast<number | null>(waited, 'integer').as('days_waiting'),
+					eb.fn
+						.coalesce(eb(waited, '>', eb.ref('a.days')), eb.lit(false))
+						.$castTo<boolean>()
+						.as('aged'),
+					eb.fn.coalesce('n.lines', eb.val('0')).as('lines'),
+					eb.cast<string>('b.gross', 'text').as('gross')
+				];
+			})
+			.where('i.status', '=', 'draft')
+			// What has waited longest goes first: that is the one that should have
+			// gone already.
+			.orderBy((eb) => eb('g.oldest', 'is', null))
+			.orderBy('g.oldest')
+			.orderBy('i.number')
+			.execute()
 	]);
 
 	return {

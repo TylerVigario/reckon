@@ -5,7 +5,7 @@
  *   PGDATABASE=reckon_ci node tests/tax-check.mjs
  *
  * Every tax total is rounded by its tax rule (#lib/server/tax-rules), in SQL
- * (taxSql, lineTaxSql) for balances and invoices and in TypeScript (roundTax)
+ * (taxes, lineTax) for balances and invoices and in TypeScript (roundTax)
  * for the valuation. Two implementations of one rule can drift by a cent, and
  * a cent is the whole difference. So the same lines go through both, for every
  * scope and method, to the places of dollars, yen and dinars (#lib/currency),
@@ -19,15 +19,35 @@
 // First, so .env is read before anything reads what it sets.
 import { database } from '../scripts/env.mjs';
 import pg from 'pg';
-import { PgDialect } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
+import {
+	DummyDriver,
+	expressionBuilder,
+	Kysely,
+	PostgresAdapter,
+	PostgresIntrospector,
+	PostgresQueryCompiler,
+	sql
+} from 'kysely';
 import { Ratio } from '../src/lib/decimal.ts';
-import { invoiceLine } from '../src/lib/server/db/schema/index.ts';
-import { lineTaxSql, roundTax, taxSql } from '../src/lib/server/tax-rules.ts';
+import { lineTax, roundTax, taxes } from '../src/lib/server/tax-rules.ts';
+
+/** @typedef {import('../src/lib/server/db/database.ts').DB} DB */
 
 const pool = new pg.Pool({ ...database(), max: 1 });
-// The casing the app's own db uses (#lib/server/db): workedOn is worked_on.
-const dialect = new PgDialect({ casing: 'snake_case' });
+// Only writes the SQL: its driver runs nothing. Every query goes through the
+// one client below, inside its transaction, where the temporary invoice_line
+// stands in front of the real one.
+/** @type {Kysely<DB>} */
+const compiler = new Kysely({
+	dialect: {
+		createAdapter: () => new PostgresAdapter(),
+		createDriver: () => new DummyDriver(),
+		createIntrospector: (k) => new PostgresIntrospector(k),
+		createQueryCompiler: () => new PostgresQueryCompiler()
+	}
+});
+/** @type {import('kysely').ExpressionBuilder<DB, 'invoice_line'>} */
+const line = expressionBuilder();
 
 // A small, fixed-seed generator: the same lines every run.
 let seed = 20261004;
@@ -65,11 +85,12 @@ try {
 		for (const scope of /** @type {const} */ (['invoice', 'line']))
 			for (const method of /** @type {const} */ (['half_up', 'down', 'up'])) {
 				const rounding = { scope, method };
-				const q = dialect.sqlToQuery(
-					sql`select invoice_id, tax::text as tax from ${taxSql(rounding, places)} t`
-				);
+				const q = compiler
+					.selectFrom(taxes(rounding, places).as('t'))
+					.select((eb) => ['t.invoice_id', eb.cast('t.tax', 'text').as('tax')])
+					.compile();
 				const fromDb = new Map(
-					(await client.query(q.sql, q.params)).rows.map((r) => [r.invoice_id, r.tax])
+					(await client.query(q.sql, [...q.parameters])).rows.map((r) => [r.invoice_id, r.tax])
 				);
 				let differ = 0;
 				for (const invoice of new Set(lines.map((l) => l.invoice))) {
@@ -79,16 +100,25 @@ try {
 						rounding,
 						places
 					);
-					// One invoice through lineTaxSql too, the scalar form.
-					const one = dialect.sqlToQuery(
-						sql`select ${lineTaxSql(
-							sql`${invoiceLine.amount} * ${invoiceLine.taxRatePct} / 100`,
-							rounding,
-							places,
-							sql`from ${invoiceLine} where ${invoiceLine.invoiceId} = ${invoice}`
-						)}::text as tax`
-					);
-					const scalar = (await client.query(one.sql, one.params)).rows[0].tax;
+					// One invoice through lineTax too, the scalar form.
+					const one = compiler
+						.selectNoFrom((eb) =>
+							eb
+								.cast(
+									lineTax(
+										compiler
+											.selectFrom('invoice_line')
+											.where('invoice_line.invoice_id', '=', invoice),
+										sql`${line.ref('invoice_line.amount')} * ${line.ref('invoice_line.tax_rate_pct')} / 100`,
+										rounding,
+										places
+									).$asScalar(),
+									'text'
+								)
+								.as('tax')
+						)
+						.compile();
+					const scalar = (await client.query(one.sql, [...one.parameters])).rows[0].tax;
 					const db = fromDb.get(invoice);
 					if (ts === null || !ts.eq(db) || !ts.eq(scalar)) {
 						differ++;

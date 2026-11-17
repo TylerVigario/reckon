@@ -1,5 +1,5 @@
 import { getRequestEvent } from '$app/server';
-import { sql, type SQLWrapper } from 'drizzle-orm';
+import { sql, type Expression } from 'kysely';
 import { todayIn } from '#lib/format.ts';
 
 /**
@@ -45,13 +45,16 @@ export const personalToday = (): string => todayIn(personalZone());
 /** Today on the business's clock, as "2026-09-17". Bind into SQL as ${businessToday()}::date. */
 export const businessToday = (): string => todayIn(businessZone());
 
-/** The day a moment fell on for the person, in SQL: a timestamptz in, a date out. */
-export const personalDay = (moment: SQLWrapper) =>
-	sql`((${moment}) at time zone ${personalZone()})::date`;
+/**
+ * The day a moment fell on for the person, in SQL: a timestamptz in, a date
+ * out, as the string Postgres writes it (./db). No moment, no day.
+ */
+export const personalDay = <M extends Date | null>(moment: Expression<M>) =>
+	sql<Exclude<M, Date> | string>`((${moment}) at time zone ${personalZone()})::date`;
 
 /** The day a moment fell on for the business, in SQL. */
-export const businessDay = (moment: SQLWrapper) =>
-	sql`((${moment}) at time zone ${businessZone()})::date`;
+export const businessDay = <M extends Date | null>(moment: Expression<M>) =>
+	sql<Exclude<M, Date> | string>`((${moment}) at time zone ${businessZone()})::date`;
 
 /**
  * The first day of the week a calendar day falls in, for a week that starts on

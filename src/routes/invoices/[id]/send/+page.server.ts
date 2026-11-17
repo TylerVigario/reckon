@@ -1,7 +1,6 @@
 import { error, redirect } from '@sveltejs/kit';
-import { and, eq, sql } from 'drizzle-orm';
+import { sql } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { businessToday } from '#lib/server/calendar.ts';
@@ -19,37 +18,63 @@ export const load: PageServerLoad = async ({ params }) => {
 	const owing = balances(rounding, places);
 	const today = businessToday();
 
-	const [inv] = await db
-		.select({
-			id: t.invoice.id,
-			client_uuid: t.invoice.clientUuid,
-			number: t.invoice.number,
-			status: t.invoice.status,
-			who: t.entity.name,
-			terms: sql<number>`coalesce(${t.entity.termsDays},
-			          (select ${t.operator.defaultTermsDays} from ${t.operator}), 0)::int`,
-			due: sql<string>`(select b.gross from ${owing} b where b.invoice_id = ${t.invoice.id})::text`,
-			tax: sql<string>`(select b.tax from ${owing} b where b.invoice_id = ${t.invoice.id})::text`,
-			lines: sql<number>`(select count(*) from ${t.invoiceLine}
-			                     where ${t.invoiceLine.invoiceId} = ${t.invoice.id})::int`
-		})
-		.from(t.invoice)
-		.innerJoin(t.entity, eq(t.entity.id, t.invoice.entityId))
-		.where(eq(t.invoice.id, params.id));
+	const inv = await db
+		.selectFrom('invoice as i')
+		.innerJoin('entity as e', 'e.id', 'i.entity_id')
+		.select((eb) => [
+			'i.id',
+			'i.client_uuid',
+			'i.number',
+			'i.status',
+			'e.name as who',
+			eb
+				.cast<number>(
+					eb.fn.coalesce(
+						'e.terms_days',
+						eb.selectFrom('operator').select('operator.default_terms_days'),
+						eb.lit(0)
+					),
+					'integer'
+				)
+				.as('terms'),
+			eb
+				.cast<string>(
+					eb.selectFrom(owing.as('b')).select('b.gross').whereRef('b.invoice_id', '=', 'i.id'),
+					'text'
+				)
+				.as('due'),
+			eb
+				.cast<string>(
+					eb.selectFrom(owing.as('b')).select('b.tax').whereRef('b.invoice_id', '=', 'i.id'),
+					'text'
+				)
+				.as('tax'),
+			eb
+				.cast<number>(
+					eb
+						.selectFrom('invoice_line')
+						.select((eb) => eb.fn.countAll().as('n'))
+						.whereRef('invoice_line.invoice_id', '=', 'i.id'),
+					'integer'
+				)
+				.as('lines')
+		])
+		.where('i.id', '=', params.id)
+		.executeTakeFirst();
 	if (!inv) error(404, 'no such invoice');
 	if (inv.status !== 'draft') redirect(303, `/invoices/${inv.id}`);
 
-	const [contact] = await db
-		.select({ name: t.contact.name, email: t.contact.email, phone: t.contact.phone })
-		.from(t.entityContact)
-		.innerJoin(t.contact, eq(t.contact.id, t.entityContact.contactId))
-		.innerJoin(t.invoice, eq(t.invoice.entityId, t.entityContact.entityId))
-		.where(and(eq(t.invoice.id, inv.id), eq(t.entityContact.isPrimary, true)));
-	const {
-		rows: [{ due_on }]
-	} = await db.execute<{ due_on: string }>(
-		sql`select (${today}::date + ${inv.terms}::int)::text as due_on`
-	);
+	const contact = await db
+		.selectFrom('entity_contact as ec')
+		.innerJoin('contact as c', 'c.id', 'ec.contact_id')
+		.innerJoin('invoice as i', 'i.entity_id', 'ec.entity_id')
+		.select(['c.name', 'c.email', 'c.phone'])
+		.where('i.id', '=', inv.id)
+		.where('ec.is_primary', '=', true)
+		.executeTakeFirst();
+	const { due_on } = await db
+		.selectNoFrom(sql<string>`(${today}::date + ${inv.terms}::int)::text`.as('due_on'))
+		.executeTakeFirstOrThrow();
 
 	return { invoice: inv, contact: contact ?? null, today, due_on };
 };

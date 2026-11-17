@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
-import { passkey, user } from '#lib/server/db/schema/index.ts';
 import { refuse } from '#lib/server/field-errors.ts';
 import { tell } from '#lib/server/email.ts';
 import { cannotSend, issue, unsentBecause } from '#lib/server/links.ts';
@@ -21,20 +19,22 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 	if (missing) return problem('emailUnset', 409, unsentBecause(missing));
 
 	return asUser(me.id, async (tx) => {
-		const [person] = await tx
-			.select({ id: user.id, active: user.active, joined: user.lastSignedInAt })
-			.from(user)
-			.where(eq(user.id, params.id))
-			.for('update');
+		const person = await tx
+			.selectFrom('user')
+			.select(['id', 'active', 'last_signed_in_at'])
+			.where('id', '=', params.id)
+			.forUpdate()
+			.executeTakeFirst();
 		if (!person) return problem('notFound', 404, 'No person with that id.');
 		if (!person.active)
 			return refuse({ invitation: 'They’re deactivated. Reactivate them first.' });
-		const [held] = await tx
-			.select({ id: passkey.id })
-			.from(passkey)
-			.where(eq(passkey.userId, person.id))
-			.limit(1);
-		if (held || person.joined)
+		const held = await tx
+			.selectFrom('passkey')
+			.select('id')
+			.where('user_id', '=', person.id)
+			.limit(1)
+			.executeTakeFirst();
+		if (held || person.last_signed_in_at)
 			return refuse({
 				invitation: 'They’ve made a passkey already. Send them a new link if they’ve lost it.'
 			});

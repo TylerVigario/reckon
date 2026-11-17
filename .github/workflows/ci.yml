@@ -62,13 +62,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      # The migrator is Drizzle's, run by node from the dependencies.
+      # The migrator is Kysely's, run by node from the dependencies.
       - uses: ./.github/actions/setup
-      - name: The migrations are the schema
-        # The schema is TypeScript and the migrations are generated from it. A
-        # change to one without the other is an app expecting columns no
-        # database has, found at runtime -- so generating must find nothing to
-        # write. It generates into a copy of drizzle/, so the same command runs
+      - name: The types are what the migrations make
+        # The migrations are the schema, and database.ts -- every table, column
+        # and type each query is checked against -- is generated from a
+        # database they build. A migration without the types regenerated is
+        # queries checked against columns no database has, so regenerating
+        # must change nothing. It writes nothing, so the same command runs
         # before a push without touching the working tree.
         run: npm run db:drift
       - name: Every guard, both ways
@@ -222,10 +223,10 @@ jobs:
           npm run db:migrate
           npm run db:seed
           psql -q -v ON_ERROR_STOP=1 -d reckon_ci <<'SQL'
-          GRANT USAGE ON SCHEMA public, drizzle TO reckon;
+          GRANT USAGE ON SCHEMA public, kysely TO reckon;
           GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO reckon;
           GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO reckon;
-          GRANT SELECT ON drizzle.__drizzle_migrations TO reckon;
+          GRANT SELECT ON kysely.kysely_migration TO reckon;
           ALTER DEFAULT PRIVILEGES FOR ROLE reckon_owner IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO reckon;
           ALTER DEFAULT PRIVILEGES FOR ROLE reckon_owner IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO reckon;
           SQL

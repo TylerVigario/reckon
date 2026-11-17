@@ -1,8 +1,7 @@
-import { and, desc, inArray, lte, sql } from 'drizzle-orm';
+import { sql, type NumericString } from 'kysely';
 import { businessToday } from './calendar.ts';
 import { materialWorth } from './valuation/misc.ts';
 import { db, type Reader } from './db/index.ts';
-import * as t from './db/schema/index.ts';
 import { Decimal } from '../decimal.ts';
 import type { Shelf } from '../stock-draw.ts';
 
@@ -21,47 +20,70 @@ import type { Shelf } from '../stock-draw.ts';
 export async function shelves(materialIds: readonly string[], r: Reader = db) {
 	const out = new Map<string, Shelf>();
 	if (materialIds.length === 0) return out;
-	const ml = t.materialLot;
-	const il = t.invoiceLine;
 	const ids = [...materialIds];
-	const { rows } = await r.execute<{
-		material_id: string;
-		id: string;
-		qty_received: string;
-		qty_remaining: string;
-		ex_tax_cost: string;
-		tax_paid: string;
-		ex_tax_worth: string;
-		tax_worth: string;
-	}>(sql`
-		with drawn as (
-			-- What every line that drew from them cost, whatever invoice it is on
-			-- now, and what every take wrote off.
-			select material_id, sum(ex_tax) as ex_tax, sum(tax) as tax from (
-				select ${il.materialId} as material_id,
-				       coalesce(${il.exTaxCost}, 0) as ex_tax,
-				       coalesce(${il.taxPaid}, 0) as tax
-				  from ${il}
-				 where ${inArray(il.materialId, ids)}
-				   and exists (select 1 from ${t.stockDraw} d where d.invoice_line_id = ${il.id})
-				union all
-				select ${t.stockAdjustment.materialId}, ${t.stockAdjustment.exTaxCost}, ${t.stockAdjustment.taxPaid}
-				  from ${t.stockAdjustment}
-				 where ${inArray(t.stockAdjustment.materialId, ids)} and ${t.stockAdjustment.way} = 'off'
-			) d
-			 group by 1
+	const rows = await r
+		.with('drawn', (qc) =>
+			// What every line that drew from them cost, whatever invoice it is on
+			// now, and what every take wrote off.
+			qc
+				.selectFrom((eb) =>
+					eb
+						.selectFrom('invoice_line as il')
+						.select((eb) => [
+							'il.material_id',
+							eb.fn.coalesce('il.ex_tax_cost', eb.lit(0)).$castTo<NumericString>().as('ex_tax'),
+							eb.fn.coalesce('il.tax_paid', eb.lit(0)).$castTo<NumericString>().as('tax')
+						])
+						.where('il.material_id', '=', (eb) => eb.fn.any(eb.val(ids)))
+						.where((eb) =>
+							eb.exists(
+								eb
+									.selectFrom('stock_draw as d')
+									.select(eb.lit(1).as('one'))
+									.whereRef('d.invoice_line_id', '=', 'il.id')
+							)
+						)
+						.unionAll(
+							eb
+								.selectFrom('stock_adjustment as sa')
+								.select(['sa.material_id', 'sa.ex_tax_cost as ex_tax', 'sa.tax_paid as tax'])
+								.where('sa.material_id', '=', (eb) => eb.fn.any(eb.val(ids)))
+								.where('sa.way', '=', 'off')
+						)
+						.as('d')
+				)
+				.select((eb) => [
+					'd.material_id',
+					eb.fn.sum<NumericString>('d.ex_tax').as('ex_tax'),
+					eb.fn.sum<NumericString>('d.tax').as('tax')
+				])
+				.groupBy('d.material_id')
 		)
-		select ${ml.materialId} as material_id, ${ml.id} as id,
-		       ${ml.qtyReceived}::text as qty_received, ${ml.qtyRemaining}::text as qty_remaining,
-		       ${ml.exTaxCost}::text as ex_tax_cost, ${ml.taxPaid}::text as tax_paid,
-		       (sum(${ml.exTaxCost}) over w - coalesce(drawn.ex_tax, 0))::text as ex_tax_worth,
-		       (sum(${ml.taxPaid}) over w - coalesce(drawn.tax, 0))::text as tax_worth
-		  from ${ml}
-		  left join drawn on drawn.material_id = ${ml.materialId}
-		 where ${inArray(ml.materialId, ids)}
-		window w as (partition by ${ml.materialId})
-		 -- Oldest first: the day it arrived, then the order it was entered in.
-		 order by ${ml.receivedOn}, ${ml.id}`);
+		.selectFrom('material_lot as ml')
+		.leftJoin('drawn', 'drawn.material_id', 'ml.material_id')
+		.select((eb) => {
+			const all = (lot: 'ml.ex_tax_cost' | 'ml.tax_paid') =>
+				eb.fn.sum(lot).over((ob) => ob.partitionBy('ml.material_id'));
+			return [
+				'ml.material_id',
+				'ml.id',
+				'ml.qty_received',
+				'ml.qty_remaining',
+				'ml.ex_tax_cost',
+				'ml.tax_paid',
+				sql<NumericString>`${all('ml.ex_tax_cost')} - coalesce(${eb.ref('drawn.ex_tax')}, 0)`.as(
+					'ex_tax_worth'
+				),
+				sql<NumericString>`${all('ml.tax_paid')} - coalesce(${eb.ref('drawn.tax')}, 0)`.as(
+					'tax_worth'
+				)
+			];
+		})
+		.where('ml.material_id', '=', (eb) => eb.fn.any(eb.val(ids)))
+		// Oldest first: the day it arrived, then the order it was entered in.
+		.orderBy('ml.received_on')
+		.orderBy('ml.id')
+		.execute();
 	for (const id of ids) {
 		const mine = rows.filter((x) => x.material_id === id);
 		out.set(id, {
@@ -88,38 +110,37 @@ export async function shelves(materialIds: readonly string[], r: Reader = db) {
  * What the materials list shows of each, and a material's own head.
  */
 export async function materialFigures(materialIds: readonly string[]) {
-	const [own, listed, [op], onShelf] = await Promise.all([
+	const ids = [...materialIds];
+	const [own, listed, op, onShelf] = await Promise.all([
 		db
-			.select({ id: t.material.id, markupPct: t.material.markupPct })
-			.from(t.material)
-			.where(inArray(t.material.id, [...materialIds])),
+			.selectFrom('material')
+			.select(['id', 'markup_pct'])
+			.where('id', '=', (eb) => eb.fn.any(eb.val(ids)))
+			.execute(),
 		// The newest price listed for each, on or before today.
 		db
-			.selectDistinctOn([t.materialPrice.materialId], {
-				materialId: t.materialPrice.materialId,
-				price: t.materialPrice.price
-			})
-			.from(t.materialPrice)
-			.where(
-				and(
-					inArray(t.materialPrice.materialId, [...materialIds]),
-					lte(t.materialPrice.effectiveFrom, sql`${businessToday()}::date`)
-				)
-			)
-			.orderBy(t.materialPrice.materialId, desc(t.materialPrice.effectiveFrom)),
+			.selectFrom('material_price')
+			.distinctOn('material_id')
+			.select(['material_id', 'price'])
+			.where('material_id', '=', (eb) => eb.fn.any(eb.val(ids)))
+			.where('effective_from', '<=', businessToday())
+			.orderBy('material_id')
+			.orderBy('effective_from', 'desc')
+			.execute(),
 		db
-			.select({ markup: t.operator.defaultMarkupPct, costing: t.operator.stockCosting })
-			.from(t.operator),
+			.selectFrom('operator')
+			.select(['default_markup_pct as markup', 'stock_costing as costing'])
+			.executeTakeFirst(),
 		shelves(materialIds)
 	]);
 	const costing = op?.costing ?? 'average';
-	const priceOf = new Map(listed.map((l) => [l.materialId, l.price]));
+	const priceOf = new Map(listed.map((l) => [l.material_id, l.price]));
 	return {
 		costing,
 		markup: op?.markup ?? null,
 		of: new Map(
 			own.map((m) => {
-				const markup = m.markupPct ?? op?.markup ?? '0';
+				const markup = m.markup_pct ?? op?.markup ?? '0';
 				const w = materialWorth(onShelf.get(m.id)!, costing, markup, priceOf.get(m.id) ?? null);
 				return [
 					m.id,

@@ -1,7 +1,6 @@
-import { and, eq } from 'drizzle-orm';
+import type { Updateable } from 'kysely';
 import { asUser, db } from '#lib/server/db/index.ts';
-import { camel } from '#lib/server/db/rows.ts';
-import { entity } from '#lib/server/db/schema/index.ts';
+import type { Entity } from '#lib/server/db/database.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { lookUpClient } from '#lib/server/find.ts';
 import { parseClientField } from '#lib/client-fields.ts';
@@ -62,14 +61,11 @@ export const PATCH: RequestHandler = async (event) => {
 	}
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
-	const [client] = await db
-		.select({
-			id: entity.id,
-			tax_exempt: entity.taxExempt,
-			exemption_certificate: entity.exemptionCertificate
-		})
-		.from(entity)
-		.where(eq(entity.id, id));
+	const client = await db
+		.selectFrom('entity')
+		.select(['id', 'tax_exempt', 'exemption_certificate'])
+		.where('id', '=', id)
+		.executeTakeFirstOrThrow();
 
 	const exempt = 'tax_exempt' in row ? row.tax_exempt : client.tax_exempt;
 	const certificate =
@@ -87,12 +83,14 @@ export const PATCH: RequestHandler = async (event) => {
 		// The version is checked IN the update, not before it: checking first
 		// and writing second leaves a window between them, which is the race
 		// this exists to close.
-		[after] = await asUser(locals.user!.id, (tx) =>
+		after = await asUser(locals.user!.id, (tx) =>
 			tx
-				.update(entity)
-				.set(camel(row) as Partial<typeof entity.$inferInsert>)
-				.where(and(eq(entity.id, id), unchangedSince(pre.version)))
-				.returning({ version: VERSION })
+				.updateTable('entity')
+				.set(row as Updateable<Entity>)
+				.where('id', '=', id)
+				.where(unchangedSince(pre.version))
+				.returning(VERSION.as('version'))
+				.executeTakeFirst()
 		);
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, names, 'entity');

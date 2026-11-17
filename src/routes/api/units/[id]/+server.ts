@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
-import { unit } from '#lib/server/db/schema/index.ts';
 import { refuse, refuseIfTheDatabaseSaidSo, stillReferenced } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { parseUnitField, UNIT_FIELDS } from '#lib/unit-fields.ts';
@@ -37,14 +35,15 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	try {
 		const changed = await asUser(locals.user!.id, (tx) =>
 			tx
-				.update(unit)
+				.updateTable('unit')
 				.set({
 					...('name' in row ? { name: String(row.name) } : {}),
 					...('short' in row ? { short: row.short === null ? null : String(row.short) } : {}),
 					...('places' in row ? { places: Number(row.places) } : {})
 				})
-				.where(eq(unit.id, params.id))
-				.returning({ id: unit.id })
+				.where('id', '=', params.id)
+				.returning('id')
+				.execute()
 		);
 		if (changed.length === 0) return problem('notFound', 404, 'No unit with that id.');
 	} catch (e) {
@@ -63,7 +62,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (!UUID.test(params.id)) return problem('notFound', 404, 'No unit with that id.');
 	try {
 		const gone = await asUser(locals.user!.id, (tx) =>
-			tx.delete(unit).where(eq(unit.id, params.id)).returning({ id: unit.id })
+			tx.deleteFrom('unit').where('id', '=', params.id).returning('id').execute()
 		);
 		if (gone.length === 0) return problem('notFound', 404, 'No unit with that id.');
 	} catch (e) {

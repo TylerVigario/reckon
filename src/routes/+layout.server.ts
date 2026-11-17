@@ -1,7 +1,6 @@
+import { sql } from 'kysely';
 import { businessToday } from '#lib/server/calendar.ts';
-import { and, count, eq, gte, sql, sum } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import { entity, invoice, operator, timeEntry } from '#lib/server/db/schema/index.ts';
 import { iconFromLogo } from '#lib/server/app-icon.ts';
 import { fieldOnly, theirWork } from '#lib/server/mine.ts';
 import { isOfflineCopy } from '#lib/offline-copy.ts';
@@ -20,20 +19,21 @@ import type { LayoutServerLoad } from './$types';
  * (#lib/offline-copy): a count from whenever it was kept would be read as now.
  */
 export const load: LayoutServerLoad = async ({ locals, url }) => {
-	const [found] = await db
-		.select({
-			trading_name: operator.tradingName,
-			short_name: operator.shortName,
-			accent_colour: operator.accentColour,
-			currency: operator.currency,
-			has_logo: sql<boolean>`${operator.logo} is not null`,
+	const found = await db
+		.selectFrom('operator')
+		.select((eb) => [
+			'trading_name',
+			'short_name',
+			'accent_colour',
+			'currency',
+			sql<boolean>`${eb.ref('logo')} is not null`.as('has_logo'),
 			// Enough of the file to read a PNG's header or an SVG's root element,
 			// to say whether the logo can be the installed app's icon.
-			logo_head: sql<Buffer | null>`substring(${operator.logo} from 1 for 4096)`,
-			logo_media_type: operator.logoMediaType
-		})
-		.from(operator)
-		.limit(1);
+			sql<Buffer | null>`substring(${eb.ref('logo')} from 1 for 4096)`.as('logo_head'),
+			'logo_media_type'
+		])
+		.limit(1)
+		.executeTakeFirst();
 
 	// The logo's first bytes are read only to say whether it can be the app's
 	// icon; they are not sent to the browser.
@@ -67,19 +67,31 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 			counts: {}
 		};
 
-	const [[drafts], [entities], [month]] = await Promise.all([
-		db.select({ n: count() }).from(invoice).where(eq(invoice.status, 'draft')),
-		db.select({ n: count() }).from(entity).where(eq(entity.active, true)),
+	const userId = locals.user.id;
+	const [drafts, entities, month] = await Promise.all([
 		db
-			.select({ seconds: sum(timeEntry.seconds).mapWith(Number) })
-			.from(timeEntry)
-			.where(
-				and(
-					gte(timeEntry.workedOn, sql`date_trunc('month', ${businessToday()}::date)::date`),
-					// Someone with Field counts their own month (#lib/access).
-					fieldOnly(locals) ? theirWork(locals.user.id) : undefined
-				)
+			.selectFrom('invoice')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+			.where('status', '=', 'draft')
+			.executeTakeFirstOrThrow(),
+		db
+			.selectFrom('entity')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+			.where('active', '=', true)
+			.executeTakeFirstOrThrow(),
+		db
+			.selectFrom('time_entry')
+			.select((eb) =>
+				eb.cast<number | null>(eb.fn.sum('time_entry.seconds'), 'integer').as('seconds')
 			)
+			.where(
+				'time_entry.worked_on',
+				'>=',
+				sql<string>`date_trunc('month', ${businessToday()}::date)::date`
+			)
+			// Someone with Field counts their own month (#lib/access).
+			.$if(fieldOnly(locals), (qb) => qb.where((eb) => theirWork(eb, userId)))
+			.executeTakeFirstOrThrow()
 	]);
 
 	return {

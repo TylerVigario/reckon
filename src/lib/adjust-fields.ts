@@ -14,10 +14,13 @@
  */
 import { cap, decimal, isoDate, oneOf, optional, parseAll, required } from './field-rules.ts';
 import { countError } from './stock-fields.ts';
+import { everyWord } from './every-word.ts';
+import type { StockAdjustmentReason, StockAdjustmentWay } from './server/db/database.ts';
 
-export const ADJUST_WAYS = ['off', 'on'] as const;
-export type AdjustWay = (typeof ADJUST_WAYS)[number];
-export const ADJUST_REASONS = [
+export type AdjustWay = StockAdjustmentWay;
+export const ADJUST_WAYS = everyWord<AdjustWay>()(['off', 'on']);
+export type AdjustReason = StockAdjustmentReason;
+export const ADJUST_REASONS = everyWord<AdjustReason>()([
 	'used',
 	'damaged',
 	'lost',
@@ -25,8 +28,7 @@ export const ADJUST_REASONS = [
 	'found',
 	'correction',
 	'counted'
-] as const;
-export type AdjustReason = (typeof ADJUST_REASONS)[number];
+]);
 
 /** Why stock moves each way by hand, in the order offered: a count makes its own. */
 export const REASONS_FOR: Record<AdjustWay, readonly AdjustReason[]> = {

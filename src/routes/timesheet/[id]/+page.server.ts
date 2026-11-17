@@ -1,18 +1,8 @@
 import { error } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
 import { personalToday } from '#lib/server/calendar.ts';
 import { clientsAndSites, theTeam, timedServices } from '#lib/server/choices.ts';
 import { pricesToday } from '#lib/server/prices.ts';
 import { db } from '#lib/server/db/index.ts';
-import {
-	invoice,
-	invoiceLine,
-	personPaymentItem,
-	service,
-	timeEntry,
-	timeEntryCrew,
-	user
-} from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import { refusedForAccess } from '#lib/server/refused.ts';
@@ -33,42 +23,44 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ params, locals, route, request }) => {
 	if (!UUID.test(params.id)) error(404, 'No entry with that id.');
-	const [found] = await db
-		.select({
-			id: timeEntry.id,
-			version: timeEntry.version,
-			created_by: timeEntry.createdBy,
-			entered_by: user.name,
-			worked_on: timeEntry.workedOn,
-			seconds: timeEntry.seconds,
-			started_at: timeEntry.startedAt,
-			ended_at: timeEntry.endedAt,
-			zone: timeEntry.zone,
-			crew: timeEntry.crew,
-			worked_by: timeEntry.workedBy,
-			entity_id: timeEntry.entityId,
-			site_id: timeEntry.siteId,
-			service_id: timeEntry.serviceId,
-			service: service.name,
-			billable: timeEntry.billable,
-			note: timeEntry.note,
-			invoice_id: invoiceLine.invoiceId,
-			invoice_number: invoice.number,
-			invoice_status: invoice.status
-		})
-		.from(timeEntry)
-		.innerJoin(user, eq(user.id, timeEntry.createdBy))
-		.innerJoin(service, eq(service.id, timeEntry.serviceId))
-		.leftJoin(invoiceLine, eq(invoiceLine.timeEntryId, timeEntry.id))
-		.leftJoin(invoice, eq(invoice.id, invoiceLine.invoiceId))
-		.where(eq(timeEntry.id, params.id));
+	const found = await db
+		.selectFrom('time_entry')
+		.innerJoin('user', 'user.id', 'time_entry.created_by')
+		.innerJoin('service', 'service.id', 'time_entry.service_id')
+		.leftJoin('invoice_line', 'invoice_line.time_entry_id', 'time_entry.id')
+		.leftJoin('invoice', 'invoice.id', 'invoice_line.invoice_id')
+		.select([
+			'time_entry.id',
+			'time_entry.version',
+			'time_entry.created_by',
+			'user.name as entered_by',
+			'time_entry.worked_on',
+			'time_entry.seconds',
+			'time_entry.started_at',
+			'time_entry.ended_at',
+			'time_entry.zone',
+			'time_entry.crew',
+			'time_entry.worked_by',
+			'time_entry.entity_id',
+			'time_entry.site_id',
+			'time_entry.service_id',
+			'service.name as service',
+			'time_entry.billable',
+			'time_entry.note',
+			'invoice_line.invoice_id',
+			'invoice.number as invoice_number',
+			'invoice.status as invoice_status'
+		])
+		.where('time_entry.id', '=', params.id)
+		.executeTakeFirst();
 	if (!found) error(404, 'No entry with that id.');
 
 	const me = locals.user!.id;
 	const crew = await db
-		.select({ id: timeEntryCrew.userId })
-		.from(timeEntryCrew)
-		.where(eq(timeEntryCrew.timeEntryId, found.id));
+		.selectFrom('time_entry_crew')
+		.select('user_id as id')
+		.where('time_entry_id', '=', found.id)
+		.execute();
 	const crewIds = crew.map((c) => c.id);
 	if (
 		fieldOnly(locals) &&
@@ -80,12 +72,13 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 		error(404, 'No entry with that id.');
 	}
 
-	const [paid] = await db
-		.select({ to: user.name })
-		.from(personPaymentItem)
-		.innerJoin(user, eq(user.id, personPaymentItem.userId))
-		.where(eq(personPaymentItem.timeEntryId, found.id))
-		.limit(1);
+	const paid = await db
+		.selectFrom('person_payment_item')
+		.innerJoin('user', 'user.id', 'person_payment_item.user_id')
+		.select('user.name as to')
+		.where('person_payment_item.time_entry_id', '=', found.id)
+		.limit(1)
+		.executeTakeFirst();
 
 	const [people, entities, services, prices] = await Promise.all([
 		theTeam(),

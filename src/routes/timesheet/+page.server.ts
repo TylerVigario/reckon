@@ -1,8 +1,5 @@
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
 import { db } from '#lib/server/db/index.ts';
 import { personalToday } from '#lib/server/calendar.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { clientsAndSites, crewNames, theTeam, timedServices } from '#lib/server/choices.ts';
 import { pricesToday } from '#lib/server/prices.ts';
 import { fieldOnly, theirWork } from '#lib/server/mine.ts';
@@ -25,45 +22,54 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const day = personalToday();
 	const monthStart = `${day.slice(0, 8)}01`;
-	const u = alias(t.user, 'u');
 	const offline = isOfflineCopy(url);
-	const mine = fieldOnly(locals) || offline ? theirWork(locals.user!.id) : undefined;
+	const me = locals.user!.id;
+	const mine = fieldOnly(locals) || offline;
 
-	const [[month], entries, people, entities, services, prices] = await Promise.all([
+	const [month, entries, people, entities, services, prices] = await Promise.all([
 		db
-			.select({ seconds: sql<string>`coalesce(sum(${t.timeEntry.seconds}), 0)::text` })
-			.from(t.timeEntry)
-			.where(and(gte(t.timeEntry.workedOn, monthStart), mine)),
+			.selectFrom('time_entry')
+			.select((eb) =>
+				eb
+					.cast<string>(eb.fn.coalesce(eb.fn.sum<number>('time_entry.seconds'), eb.lit(0)), 'text')
+					.as('seconds')
+			)
+			.where('time_entry.worked_on', '>=', monthStart)
+			.$if(mine, (qb) => qb.where((eb) => theirWork(eb, me)))
+			.executeTakeFirstOrThrow(),
 		// Today's, newest first. A client's own name for the site, because that
 		// is what the person who worked there calls it.
 		db
-			.select({
-				id: t.timeEntry.id,
-				seconds: t.timeEntry.seconds,
+			.selectFrom('time_entry')
+			.leftJoin('user as u', 'u.id', 'time_entry.worked_by')
+			.innerJoin('service', 'service.id', 'time_entry.service_id')
+			.leftJoin('entity', 'entity.id', 'time_entry.entity_id')
+			.leftJoin('site', 'site.id', 'time_entry.site_id')
+			.leftJoin('invoice_line', 'invoice_line.time_entry_id', 'time_entry.id')
+			.select((eb) => [
+				'time_entry.id',
+				'time_entry.seconds',
 				// When it was worked, where it was worked, to be shown as it was.
-				started_at: t.timeEntry.startedAt,
-				ended_at: t.timeEntry.endedAt,
-				zone: t.timeEntry.zone,
-				billable: t.timeEntry.billable,
-				note: t.timeEntry.note,
-				crew: t.timeEntry.crew,
-				worked_by: u.name,
-				crew_names: crewNames(sql`${t.timeEntry.id}`),
-				entity: t.entity.name,
-				site: t.site.display,
-				service: t.service.name,
+				'time_entry.started_at',
+				'time_entry.ended_at',
+				'time_entry.zone',
+				'time_entry.billable',
+				'time_entry.note',
+				'time_entry.crew',
+				'u.name as worked_by',
+				crewNames(eb.ref('time_entry.id')).as('crew_names'),
+				'entity.name as entity',
+				'site.display as site',
+				'service.name as service',
 				// A moment: drawn on the page, in the person's own zone.
-				at: t.timeEntry.createdAt,
-				invoiced: sql<boolean>`${t.invoiceLine.invoiceId} is not null`
-			})
-			.from(t.timeEntry)
-			.leftJoin(u, eq(u.id, t.timeEntry.workedBy))
-			.innerJoin(t.service, eq(t.service.id, t.timeEntry.serviceId))
-			.leftJoin(t.entity, eq(t.entity.id, t.timeEntry.entityId))
-			.leftJoin(t.site, eq(t.site.id, t.timeEntry.siteId))
-			.leftJoin(t.invoiceLine, eq(t.invoiceLine.timeEntryId, t.timeEntry.id))
-			.where(and(eq(t.timeEntry.workedOn, day), mine))
-			.orderBy(desc(t.timeEntry.createdAt), desc(t.timeEntry.id)),
+				'time_entry.created_at as at',
+				eb('invoice_line.invoice_id', 'is not', null).$castTo<boolean>().as('invoiced')
+			])
+			.where('time_entry.worked_on', '=', day)
+			.$if(mine, (qb) => qb.where((eb) => theirWork(eb, me)))
+			.orderBy('time_entry.created_at', 'desc')
+			.orderBy('time_entry.id', 'desc')
+			.execute(),
 		// What a timer needs to describe itself, and to price what it is timing.
 		theTeam(),
 		clientsAndSites(),
@@ -73,7 +79,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 	return {
 		today: day,
-		me: locals.user!.id,
+		me,
 		monthSeconds: Number(month.seconds),
 		entries,
 		people,

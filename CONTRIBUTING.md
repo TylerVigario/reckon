@@ -47,15 +47,27 @@ wrong thing is refused _and_ that the ordinary thing is allowed. A guard that
 also blocks ordinary use is a bug, not a guard, and a guard that passes for the
 wrong reason is what the second assertion catches.
 
-**The schema is one place, and it says what is true.**
-`src/lib/server/db/schema/` defines every table, a file per area, and is how
-anybody learns what the database holds. The migrations in `drizzle/` are
-generated from it with `npm run db:generate`, and CI fails a schema change that
-arrives without its migration. What Drizzle cannot express is in hand-written
-migrations, beginning with `drizzle/0001_integrity.sql`.
+**The schema is one place, and it says what is true.** The migrations in
+`src/lib/server/db/migrations/` make every table, and are how anybody learns
+what the database holds: the first is the whole schema, a file per area, with
+each table's reasons beside it. `src/lib/server/db/database.ts` is generated
+from the database they build, with `npm run db:types`, and Kysely checks every
+query against it; CI fails when it is not what the migrations make.
 
-**After the first release, a migration is added and never edited.** Other
-people's databases already ran the old one.
+**A migration is added and never edited.** Other people's databases already
+ran the old one. It takes `Kysely<any>` and imports nothing of the app's, so it
+does today what it did the day it was written; it is named for the moment it
+was written, so the names sort in the order they run, and listed in the
+folder's `index.ts`. Each runs in its own transaction, so a word added to one
+of the schema's types is added by one migration and used by a later one:
+Postgres will not use a new enum value in the transaction that added it.
+
+**A query is checked.** Kysely's builder checks every table, column and value
+against `database.ts`. Inside a `sql` template a column is written
+`${eb.ref('invoice.status')}`, which is checked too; a name typed into the
+template is not, so it is not written that way. `sql<T>` says what an
+expression returns and nothing checks it, so it is for what the builder cannot
+type.
 
 **Every route says who reaches it.** `src/lib/access.ts` names the level each
 route needs — open, Field or Full — and `hooks.server.ts` refuses anything
@@ -105,7 +117,7 @@ sets, and connect the way the server does, so `PGHOST`, `PGUSER` and the rest
 apply. If your cluster wants a different user, become one:
 `sudo -u postgres npm run db:migrate`. The server only checks its database,
 and will not start while a migration is waiting: after pulling one, or
-generating your own, `npm run db:migrate` applies it.
+writing your own, `npm run db:migrate` applies it.
 
 Node is pinned in [`.nvmrc`](.nvmrc). Postgres 18 or newer — every id defaults
 to `uuidv7()`, which does not predate it. CI runs 18, which is what the guards
@@ -118,7 +130,7 @@ npm run ci
 ```
 
 That is formatting, linting, typechecking, the unit tests at both ends of the
-date line, the migrations checked against the schema, the guard suite and the
+date line, the generated types checked against the migrations, the guard suite and the
 build, in one command. `pre-push` runs it, so a push it fails does not leave.
 `git push --no-verify` skips it, and CI runs every check regardless.
 

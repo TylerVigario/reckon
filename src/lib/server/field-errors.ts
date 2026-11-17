@@ -29,7 +29,7 @@ const only = (errors: Errors) => {
 	return all.length === 1 ? all[0] : `${all.length} values were refused.`;
 };
 
-/** What Postgres said, under Drizzle's wrapper: the pg error is its cause. */
+/** What Postgres said: pg's own error, which Kysely passes on as it is. */
 type PgError = {
 	code?: string;
 	constraint?: string;
@@ -37,10 +37,7 @@ type PgError = {
 	column?: string;
 	message?: string;
 };
-export function pgError(e: unknown): PgError {
-	const outer = e as { cause?: unknown; code?: string };
-	return (outer?.code === undefined && outer?.cause ? outer.cause : e) as PgError;
-}
+export const pgError = (e: unknown): PgError => e ?? {};
 
 /**
  * Which field a database error is about.

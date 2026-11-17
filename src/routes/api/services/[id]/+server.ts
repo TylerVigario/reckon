@@ -1,7 +1,6 @@
-import { eq } from 'drizzle-orm';
+import type { Updateable } from 'kysely';
 import { asUser, db } from '#lib/server/db/index.ts';
-import { camel } from '#lib/server/db/rows.ts';
-import { service as services } from '#lib/server/db/schema/index.ts';
+import type { Service } from '#lib/server/db/database.ts';
 import { refuse, refuseIfTheDatabaseSaidSo, stillReferenced } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { parseServiceField } from '#lib/service-fields.ts';
@@ -52,10 +51,11 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	}
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
-	const [service] = await db
-		.select({ unit: services.unit, bill_to_nearest_seconds: services.billToNearestSeconds })
-		.from(services)
-		.where(eq(services.id, params.id));
+	const service = await db
+		.selectFrom('service')
+		.select(['unit', 'bill_to_nearest_seconds'])
+		.where('id', '=', params.id)
+		.executeTakeFirst();
 	if (!service) return problem('notFound', 404, 'No service with that id.');
 
 	const unit = 'unit' in row ? String(row.unit) : service.unit;
@@ -74,9 +74,10 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		// rather than recording that somebody did.
 		await asUser(locals.user!.id, (tx) =>
 			tx
-				.update(services)
-				.set(camel(row) as Partial<typeof services.$inferInsert>)
-				.where(eq(services.id, params.id))
+				.updateTable('service')
+				.set(row as Updateable<Service>)
+				.where('id', '=', params.id)
+				.execute()
 		);
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, names, 'service');
@@ -99,7 +100,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (!UUID.test(params.id)) return problem('notFound', 404, 'No service with that id.');
 	try {
 		const gone = await asUser(locals.user!.id, (tx) =>
-			tx.delete(services).where(eq(services.id, params.id)).returning({ id: services.id })
+			tx.deleteFrom('service').where('id', '=', params.id).returning('id').execute()
 		);
 		if (gone.length === 0) return problem('notFound', 404, 'No service with that id.');
 	} catch (e) {

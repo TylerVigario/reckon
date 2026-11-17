@@ -1,6 +1,4 @@
-import { and, desc, eq, isNull, ne } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
-import { emailLink, user } from '#lib/server/db/schema/index.ts';
 import { refuse } from '#lib/server/field-errors.ts';
 import { tell } from '#lib/server/email.ts';
 import { cannotSend, endChange, issue, unsentBecause } from '#lib/server/links.ts';
@@ -24,36 +22,36 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 	if (missing) return problem('emailUnset', 409, unsentBecause(missing));
 
 	return asUser(me.id, async (tx) => {
-		const [person] = await tx
-			.select({ active: user.active })
-			.from(user)
-			.where(eq(user.id, params.id))
-			.for('update');
+		const person = await tx
+			.selectFrom('user')
+			.select('active')
+			.where('id', '=', params.id)
+			.forUpdate()
+			.executeTakeFirst();
 		if (!person) return problem('notFound', 404, 'No person with that id.');
-		const [waiting] = await tx
-			.select({ to: emailLink.sentTo })
-			.from(emailLink)
-			.where(
-				and(
-					eq(emailLink.userId, params.id),
-					isNull(emailLink.usedAt),
-					eq(emailLink.purpose, 'change')
-				)
-			)
-			.orderBy(desc(emailLink.createdAt))
-			.limit(1);
+		const waiting = await tx
+			.selectFrom('email_link')
+			.select('sent_to')
+			.where('user_id', '=', params.id)
+			.where('used_at', 'is', null)
+			.where('purpose', '=', 'change')
+			.orderBy('created_at', 'desc')
+			.limit(1)
+			.executeTakeFirst();
 		if (!waiting) return problem('notFound', 404, 'They have no change of email waiting.');
 		if (!person.active) return refuse({ change: 'They’re deactivated. Reactivate them first.' });
-		const [taken] = await tx
-			.select({ id: user.id })
-			.from(user)
-			.where(and(eq(user.email, waiting.to), ne(user.id, params.id)));
+		const taken = await tx
+			.selectFrom('user')
+			.select('id')
+			.where('email', '=', waiting.sent_to)
+			.where('id', '<>', params.id)
+			.executeTakeFirst();
 		if (taken)
 			return refuse({
-				change: `Someone else signs in with ${waiting.to} now. Cancel this change.`
+				change: `Someone else signs in with ${waiting.sent_to} now. Cancel this change.`
 			});
 		const by = me.id === params.id ? null : me.name;
-		const sent = await issue(tx, params.id, 'change', me.id, waiting.to);
+		const sent = await issue(tx, params.id, 'change', me.id, waiting.sent_to);
 		await tell(
 			tx,
 			params.id,

@@ -1,16 +1,12 @@
-import { eq, inArray } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
-import { RECEIPT_TYPES } from '#lib/server/db/schema/catalogue.ts';
+import type { ReceiptType } from '#lib/server/db/database.ts';
 import { personalToday } from '#lib/server/calendar.ts';
 import { pgError } from '#lib/server/field-errors.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
 import { readReceipt } from '#lib/stock-fields.ts';
 import { splitTax } from '#lib/receipt-split.ts';
 import { UUID } from '#lib/field-rules.ts';
-
-/** What the phone sends is shrunk to well under this; the column holds no more. */
-export const MAX_RECEIPT = 2 * 1024 * 1024;
+import { isReceiptType, MAX_RECEIPT } from './receipt-file.ts';
 
 /** Each foreign key a receipt can break, and what it means to the person fixing it. */
 const GONE: Record<string, [field: string, why: string]> = {
@@ -38,10 +34,11 @@ export type Received =
 
 /** The receipt made with this uuid, if one was. */
 async function madeWith(clientUuid: string) {
-	const [had] = await db
-		.select({ id: t.stockReceipt.id })
-		.from(t.stockReceipt)
-		.where(eq(t.stockReceipt.clientUuid, clientUuid));
+	const had = await db
+		.selectFrom('stock_receipt')
+		.select('id')
+		.where('client_uuid', '=', clientUuid)
+		.executeTakeFirst();
 	return had?.id ?? null;
 }
 
@@ -86,21 +83,18 @@ export async function receive(
 	const [ofMaterial, ofUnit, places] = await Promise.all([
 		ids('material_id').length
 			? db
-					.select({
-						id: t.material.id,
-						name: t.material.name,
-						places: t.unit.places,
-						active: t.material.active
-					})
-					.from(t.material)
-					.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
-					.where(inArray(t.material.id, ids('material_id')))
+					.selectFrom('material as m')
+					.innerJoin('unit as u', 'u.id', 'm.unit_id')
+					.select(['m.id', 'm.name', 'u.places', 'm.active'])
+					.where('m.id', '=', (eb) => eb.fn.any(eb.val(ids('material_id'))))
+					.execute()
 			: [],
 		ids('unit_id').length
 			? db
-					.select({ id: t.unit.id, places: t.unit.places })
-					.from(t.unit)
-					.where(inArray(t.unit.id, ids('unit_id')))
+					.selectFrom('unit')
+					.select(['id', 'places'])
+					.where('id', '=', (eb) => eb.fn.any(eb.val(ids('unit_id'))))
+					.execute()
 			: [],
 		moneyPlaces()
 	]);
@@ -121,13 +115,13 @@ export async function receive(
 	};
 
 	const file = form.get('receipt');
-	let receipt: { bytes: Buffer; type: string } | null = null;
+	let receipt: { bytes: Buffer; type: ReceiptType } | null = null;
 	if (file instanceof File && file.size > 0) {
-		if (!(RECEIPT_TYPES as readonly string[]).includes(file.type))
-			errors.receipt = 'A photo, or a PDF.';
+		const type = file.type;
+		if (!isReceiptType(type)) errors.receipt = 'A photo, or a PDF.';
 		else if (file.size > MAX_RECEIPT)
 			errors.receipt = `Under 2 MB — that is ${(file.size / 1024 / 1024).toFixed(1)} MB.`;
-		else receipt = { bytes: Buffer.from(await file.arrayBuffer()), type: file.type };
+		else receipt = { bytes: Buffer.from(await file.arrayBuffer()), type };
 	}
 	if (Object.keys(errors).length > 0) return { ok: false, status: 400, errors };
 
@@ -142,41 +136,46 @@ export async function receive(
 		const id = await asUser(
 			userId,
 			async (tx) => {
-				const [made] = await tx
-					.insert(t.stockReceipt)
+				const made = await tx
+					.insertInto('stock_receipt')
 					.values({
-						receivedOn: String(values.received_on),
+						received_on: String(values.received_on),
 						supplier: values.supplier === null ? null : String(values.supplier),
 						reference: values.reference === null ? null : String(values.reference),
-						paidBy: values.paid_by === null ? null : String(values.paid_by),
-						taxPaid: tax,
+						paid_by: values.paid_by === null ? null : String(values.paid_by),
+						tax_paid: tax,
 						receipt: receipt?.bytes ?? null,
-						receiptType: receipt?.type ?? null,
-						clientUuid
+						receipt_type: receipt?.type ?? null,
+						client_uuid: clientUuid
 					})
-					.returning({ id: t.stockReceipt.id });
+					.returning('id')
+					.executeTakeFirstOrThrow();
 				for (const [n, item] of read.entries()) {
 					let materialId = item.material_id;
 					if (item.material) {
-						const [fresh] = await tx
-							.insert(t.material)
+						const fresh = await tx
+							.insertInto('material')
 							.values({
 								name: item.material.name,
-								unitId: item.material.unit_id,
-								clientUuid: newUuid(n)
+								unit_id: item.material.unit_id,
+								client_uuid: newUuid(n)
 							})
-							.returning({ id: t.material.id });
+							.returning('id')
+							.executeTakeFirstOrThrow();
 						materialId = fresh.id;
 					}
-					await tx.insert(t.materialLot).values({
-						receiptId: made.id,
-						materialId: materialId!,
-						receivedOn: String(values.received_on),
-						qtyReceived: item.qty,
-						qtyRemaining: item.qty,
-						exTaxCost: item.cost,
-						taxPaid: shares[n]
-					});
+					await tx
+						.insertInto('material_lot')
+						.values({
+							receipt_id: made.id,
+							material_id: materialId!,
+							received_on: String(values.received_on),
+							qty_received: item.qty,
+							qty_remaining: item.qty,
+							ex_tax_cost: item.cost,
+							tax_paid: shares[n]
+						})
+						.execute();
 				}
 				return made.id;
 			},

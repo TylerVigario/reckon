@@ -1,8 +1,6 @@
-import { asc, eq, inArray } from 'drizzle-orm';
 import { Decimal } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { loadAgreements, usedThisMonth } from '#lib/server/valuation/load.ts';
 import { hoursOf } from '#lib/server/valuation/misc.ts';
 import type { PageServerLoad } from './$types';
@@ -18,10 +16,11 @@ export const load: PageServerLoad = async ({ parent }) => {
 	const [theirs, services] = await Promise.all([
 		loadAgreements(db, [agreement.entity_id]),
 		db
-			.select({ id: t.service.id, name: t.service.name })
-			.from(t.service)
-			.where(eq(t.service.active, true))
-			.orderBy(asc(t.service.name))
+			.selectFrom('service')
+			.select(['id', 'name'])
+			.where('active', '=', true)
+			.orderBy('name')
+			.execute()
 	]);
 	const used = await usedThisMonth(db, theirs, businessToday());
 	const names = new Map(services.map((s) => [s.id, s.name]));
@@ -29,9 +28,10 @@ export const load: PageServerLoad = async ({ parent }) => {
 	const missing = mine.services.filter((s) => !names.has(s.serviceId)).map((s) => s.serviceId);
 	if (missing.length)
 		for (const s of await db
-			.select({ id: t.service.id, name: t.service.name })
-			.from(t.service)
-			.where(inArray(t.service.id, missing)))
+			.selectFrom('service')
+			.select(['id', 'name'])
+			.where('id', '=', (eb) => eb.fn.any(eb.val(missing)))
+			.execute())
 			names.set(s.id, s.name);
 	const covers = mine.services
 		.map((s) => ({

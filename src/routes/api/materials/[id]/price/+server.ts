@@ -1,6 +1,4 @@
-import { and, desc, eq, lte, sql } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { refuse } from '#lib/server/field-errors.ts';
 import { problem } from '#lib/server/problem.ts';
@@ -36,26 +34,24 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const { values, errors } = readPricing(fields as Record<string, unknown>);
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
-	const [m] = await db
-		.select({ id: t.material.id, markup: t.material.markupPct })
-		.from(t.material)
-		.where(eq(t.material.id, params.id));
+	const m = await db
+		.selectFrom('material')
+		.select(['id', 'markup_pct as markup'])
+		.where('id', '=', params.id)
+		.executeTakeFirst();
 	if (!m) return problem('notFound', 404, 'No material with that id.');
 
 	const today = businessToday();
 	const said = typeof body.from === 'string' ? isoDate(body.from) : null;
 	const from = said?.ok && String(said.value) <= today ? String(said.value) : today;
-	const [inForce] = await db
-		.select({ price: t.materialPrice.price })
-		.from(t.materialPrice)
-		.where(
-			and(
-				eq(t.materialPrice.materialId, m.id),
-				lte(t.materialPrice.effectiveFrom, sql`${today}::date`)
-			)
-		)
-		.orderBy(desc(t.materialPrice.effectiveFrom))
-		.limit(1);
+	const inForce = await db
+		.selectFrom('material_price')
+		.select('price')
+		.where('material_id', '=', m.id)
+		.where('effective_from', '<=', today)
+		.orderBy('effective_from', 'desc')
+		.limit(1)
+		.executeTakeFirst();
 	const now = pricedBy({ markup_pct: m.markup, listed: inForce?.price ?? null });
 	const mine = pricedBy({
 		markup_pct: values.by === 'markup' ? String(values.markup_pct) : null,
@@ -76,47 +72,43 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	// From the day it was set -- unless a price was set for a later day since,
 	// which this is put over, so it is from today.
-	const [later] = await db
-		.select({ on: t.materialPrice.effectiveFrom })
-		.from(t.materialPrice)
-		.where(
-			and(
-				eq(t.materialPrice.materialId, m.id),
-				sql`${t.materialPrice.effectiveFrom} > ${from}::date`,
-				lte(t.materialPrice.effectiveFrom, sql`${today}::date`)
-			)
-		)
-		.limit(1);
+	const later = await db
+		.selectFrom('material_price')
+		.select('effective_from')
+		.where('material_id', '=', m.id)
+		.where('effective_from', '>', from)
+		.where('effective_from', '<=', today)
+		.limit(1)
+		.executeTakeFirst();
 	const on = later ? today : from;
 
 	await asUser(
 		locals.user!.id,
 		async (tx) => {
-			const [listed] = await tx
-				.select({ price: t.materialPrice.price })
-				.from(t.materialPrice)
-				.where(
-					and(
-						eq(t.materialPrice.materialId, m.id),
-						lte(t.materialPrice.effectiveFrom, sql`${on}::date`)
-					)
-				)
-				.orderBy(desc(t.materialPrice.effectiveFrom))
-				.limit(1);
+			const listed = await tx
+				.selectFrom('material_price')
+				.select('price')
+				.where('material_id', '=', m.id)
+				.where('effective_from', '<=', on)
+				.orderBy('effective_from', 'desc')
+				.limit(1)
+				.executeTakeFirst();
 			const price = values.by === 'price' ? String(values.price) : null;
 			// A set price from the day, or the end of one in force: a row either way.
 			if (price !== null || (listed && listed.price !== null))
 				await tx
-					.insert(t.materialPrice)
-					.values({ materialId: m.id, price, effectiveFrom: on })
-					.onConflictDoUpdate({
-						target: [t.materialPrice.materialId, t.materialPrice.effectiveFrom],
-						set: { price }
-					});
+					.insertInto('material_price')
+					.values({ material_id: m.id, price, effective_from: on })
+					.onConflict((oc) => oc.columns(['material_id', 'effective_from']).doUpdateSet({ price }))
+					.execute();
 			if (values.by !== 'price') {
 				const markup = values.by === 'markup' ? String(values.markup_pct) : null;
 				if (markup !== m.markup)
-					await tx.update(t.material).set({ markupPct: markup }).where(eq(t.material.id, m.id));
+					await tx
+						.updateTable('material')
+						.set({ markup_pct: markup })
+						.where('id', '=', m.id)
+						.execute();
 			}
 		},
 		madeAt(typeof body.made_at === 'string' ? body.made_at : '')

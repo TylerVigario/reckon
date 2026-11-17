@@ -1,7 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'kysely';
 import { asUser } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { businessToday } from '#lib/server/calendar.ts';
@@ -24,44 +23,70 @@ import type { RequestHandler } from './$types';
 export const POST: RequestHandler = async ({ params, locals, url }) => {
 	if (!UUID.test(params.id)) return problem('notFound', 404, 'No invoice with that id.');
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
-	const owing = balances(rounding, places);
 	const today = businessToday();
 
 	const done = await asUser(locals.user!.id, async (tx) => {
-		const [inv] = await tx
-			.select({
-				status: t.invoice.status,
-				token: t.invoice.publicToken,
-				terms: sql<number>`coalesce(${t.entity.termsDays},
-				          (select ${t.operator.defaultTermsDays} from ${t.operator}), 0)::int`
-			})
-			.from(t.invoice)
-			.innerJoin(t.entity, eq(t.entity.id, t.invoice.entityId))
-			.where(eq(t.invoice.id, params.id))
-			.for('update', { of: t.invoice });
+		const inv = await tx
+			.selectFrom('invoice as i')
+			.innerJoin('entity as e', 'e.id', 'i.entity_id')
+			.select((eb) => [
+				'i.status',
+				'i.public_token as token',
+				eb
+					.cast<number>(
+						eb.fn.coalesce(
+							'e.terms_days',
+							eb.selectFrom('operator').select('operator.default_terms_days'),
+							eb.lit(0)
+						),
+						'integer'
+					)
+					.as('terms')
+			])
+			.where('i.id', '=', params.id)
+			.forUpdate('i')
+			.executeTakeFirst();
 		if (!inv) return 'missing' as const;
 		if (inv.status === 'sent') return { token: inv.token!, repeat: true };
 		if (inv.status !== 'draft') return 'void' as const;
 
-		const {
-			rows: [b]
-		} = await tx.execute<{ lines: number; gross: string }>(sql`
-			select (select count(*) from ${t.invoiceLine} where ${t.invoiceLine.invoiceId} = ${params.id})::int as lines,
-			       (select b.gross from ${owing} b where b.invoice_id = ${params.id})::text as gross`);
+		const b = await tx
+			.selectNoFrom((eb) => [
+				eb
+					.cast<number>(
+						eb
+							.selectFrom('invoice_line')
+							.select((eb) => eb.fn.countAll().as('n'))
+							.where('invoice_line.invoice_id', '=', params.id),
+						'integer'
+					)
+					.as('lines'),
+				eb
+					.cast<string>(
+						eb
+							.selectFrom(balances(rounding, places).as('b'))
+							.select('b.gross')
+							.where('b.invoice_id', '=', params.id),
+						'text'
+					)
+					.as('gross')
+			])
+			.executeTakeFirst();
 		if (!b || b.lines === 0) return 'empty' as const;
 		if (Number(b.gross) < 0) return 'negative' as const;
 
 		const token = randomBytes(32).toString('base64url');
 		await tx
-			.update(t.invoice)
+			.updateTable('invoice')
 			.set({
 				status: 'sent',
-				issuedOn: today,
-				dueOn: sql`(${today}::date + ${inv.terms}::int)`,
-				sentAt: sql`now()`,
-				publicToken: token
+				issued_on: today,
+				due_on: sql<string>`(${today}::date + ${inv.terms}::int)`,
+				sent_at: sql<Date>`now()`,
+				public_token: token
 			})
-			.where(eq(t.invoice.id, params.id));
+			.where('id', '=', params.id)
+			.execute();
 		return { token, repeat: false };
 	});
 

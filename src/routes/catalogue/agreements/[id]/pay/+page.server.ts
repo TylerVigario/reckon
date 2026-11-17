@@ -1,8 +1,5 @@
-import { and, desc, eq, lte, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -12,37 +9,35 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ parent }) => {
 	const { agreement } = await parent();
-	const r = alias(t.role, 'r');
-	const u = alias(t.user, 'u');
 	const rules = await db
-		.selectDistinctOn(
-			[t.payRule.serviceId, t.payRule.roleId, t.payRule.userId, t.payRule.paysFor],
-			{
-				id: t.payRule.id,
-				service_id: t.payRule.serviceId,
-				service: t.service.name,
-				payee: sql<string>`coalesce(${r.name}, ${u.name})`,
-				pays_for: t.payRule.paysFor,
-				method: t.payRule.method,
-				amount: t.payRule.amount
-			}
-		)
-		.from(t.payRule)
-		.innerJoin(t.service, eq(t.service.id, t.payRule.serviceId))
-		.leftJoin(r, eq(r.id, t.payRule.roleId))
-		.leftJoin(u, eq(u.id, t.payRule.userId))
-		.where(
-			and(
-				eq(t.payRule.entityId, agreement.entity_id),
-				lte(t.payRule.effectiveFrom, sql`${businessToday()}::date`)
-			)
-		)
-		.orderBy(
-			t.payRule.serviceId,
-			t.payRule.roleId,
-			t.payRule.userId,
-			t.payRule.paysFor,
-			desc(t.payRule.effectiveFrom)
-		);
+		.selectFrom('pay_rule as pr')
+		.innerJoin('service as sv', 'sv.id', 'pr.service_id')
+		.leftJoin('role as r', 'r.id', 'pr.role_id')
+		.leftJoin('user as u', 'u.id', 'pr.user_id')
+		// What it pays for as text, to sort it A to Z rather than in its type's order.
+		.distinctOn([
+			'pr.service_id',
+			'pr.role_id',
+			'pr.user_id',
+			(eb) => eb.cast<string>('pr.pays_for', 'text')
+		])
+		.select((eb) => [
+			'pr.id',
+			'pr.service_id',
+			'sv.name as service',
+			// A rule names a role or a person, never neither (pay_rule_names_one_payee).
+			eb.fn.coalesce('r.name', 'u.name').$notNull().as('payee'),
+			'pr.pays_for',
+			'pr.method',
+			'pr.amount'
+		])
+		.where('pr.entity_id', '=', agreement.entity_id)
+		.where('pr.effective_from', '<=', businessToday())
+		.orderBy('pr.service_id')
+		.orderBy('pr.role_id')
+		.orderBy('pr.user_id')
+		.orderBy((eb) => eb.cast('pr.pays_for', 'text'))
+		.orderBy('pr.effective_from', 'desc')
+		.execute();
 	return { rules };
 };

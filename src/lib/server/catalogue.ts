@@ -1,7 +1,5 @@
 import { businessToday } from './calendar.ts';
-import { sql } from 'drizzle-orm';
 import { db } from './db/index.ts';
-import { entity, payRule, role, servicePrice, user } from './db/schema/index.ts';
 
 export type RowState = 'current' | 'scheduled' | 'superseded';
 
@@ -41,28 +39,52 @@ export type RuleRow = {
  * two; a service's history shows all three.
  */
 export async function prices(serviceId: string | null = null): Promise<PriceRow[]> {
-	const { rows } = await db.execute<PriceRow>(sql`
-		select ${servicePrice.id}, ${servicePrice.serviceId} as service_id,
-		       ${servicePrice.entityId} as entity_id, ${entity.name} as client,
-		       ${servicePrice.rate}, ${servicePrice.additionalRate} as additional_rate,
-		       ${servicePrice.effectiveFrom}::text as effective_from,
-		       (lead(${servicePrice.effectiveFrom}) over scope_by_date)::text as until,
-		       case
-		         when ${servicePrice.effectiveFrom} > ${businessToday()}::date then 'scheduled'
-		         when ${servicePrice.id} = first_value(${servicePrice.id}) over scope_in_force then 'current'
-		         else 'superseded'
-		       end as state
-		  from ${servicePrice}
-		  left join ${entity} on ${entity.id} = ${servicePrice.entityId}
-		 where (${serviceId}::uuid is null or ${servicePrice.serviceId} = ${serviceId}::uuid)
-		window scope_by_date as (partition by ${servicePrice.serviceId}, ${servicePrice.entityId}
-		                         order by ${servicePrice.effectiveFrom}),
-		       scope_in_force as (partition by ${servicePrice.serviceId}, ${servicePrice.entityId}
-		                          order by (${servicePrice.effectiveFrom} <= ${businessToday()}::date) desc,
-		                                   ${servicePrice.effectiveFrom} desc)
-		 order by ${servicePrice.serviceId}, (${servicePrice.entityId} is not null), ${entity.name},
-		          ${servicePrice.effectiveFrom} desc`);
-	return rows;
+	const today = businessToday();
+	const scope = ['sp.service_id', 'sp.entity_id'] as const;
+	return db
+		.selectFrom('service_price as sp')
+		.leftJoin('entity as e', 'e.id', 'sp.entity_id')
+		.$if(serviceId !== null, (qb) => qb.where('sp.service_id', '=', serviceId!))
+		.select((eb) => [
+			'sp.id',
+			'sp.service_id',
+			'sp.entity_id',
+			'e.name as client',
+			'sp.rate',
+			'sp.additional_rate',
+			eb.cast<string>('sp.effective_from', 'text').as('effective_from'),
+			eb
+				.cast<string | null>(
+					eb.fn
+						.agg<string | null>('lead', ['sp.effective_from'])
+						.over((ob) => ob.partitionBy(scope).orderBy('sp.effective_from')),
+					'text'
+				)
+				.as('until'),
+			eb
+				.case()
+				.when('sp.effective_from', '>', today)
+				.then<RowState>('scheduled')
+				.when(
+					'sp.id',
+					'=',
+					eb.fn.agg<string>('first_value', ['sp.id']).over((ob) =>
+						ob
+							.partitionBy(scope)
+							.orderBy(eb('sp.effective_from', '<=', today), 'desc')
+							.orderBy('sp.effective_from', 'desc')
+					)
+				)
+				.then<RowState>('current')
+				.else<RowState>('superseded')
+				.end()
+				.as('state')
+		])
+		.orderBy('sp.service_id')
+		.orderBy((eb) => eb('sp.entity_id', 'is not', null))
+		.orderBy('e.name')
+		.orderBy('sp.effective_from', 'desc')
+		.execute();
 }
 
 /**
@@ -70,31 +92,66 @@ export async function prices(serviceId: string | null = null): Promise<PriceRow[
  * less specific: whom it pays, for what, and for which client.
  */
 export async function rules(serviceId: string | null = null): Promise<RuleRow[]> {
-	const { rows } = await db.execute<RuleRow>(sql`
-		select ${payRule.id}, ${payRule.serviceId} as service_id, ${payRule.roleId} as role_id,
-		       ${payRule.userId} as user_id, ${payRule.entityId} as entity_id,
-		       coalesce(${role.name}, ${user.name}) as payee, ${payRule.roleId} is not null as is_role,
-		       ${entity.name} as client, ${payRule.paysFor} as pays_for, ${payRule.method},
-		       ${payRule.amount}, ${payRule.effectiveFrom}::text as effective_from,
-		       (lead(${payRule.effectiveFrom}) over scope_by_date)::text as until,
-		       case
-		         when ${payRule.effectiveFrom} > ${businessToday()}::date then 'scheduled'
-		         when ${payRule.id} = first_value(${payRule.id}) over scope_in_force then 'current'
-		         else 'superseded'
-		       end as state
-		  from ${payRule}
-		  left join ${role} on ${role.id} = ${payRule.roleId}
-		  left join ${user} on ${user.id} = ${payRule.userId}
-		  left join ${entity} on ${entity.id} = ${payRule.entityId}
-		 where (${serviceId}::uuid is null or ${payRule.serviceId} = ${serviceId}::uuid)
-		window scope_by_date as (partition by ${payRule.serviceId}, ${payRule.roleId}, ${payRule.userId},
-		                                      ${payRule.entityId}, ${payRule.paysFor}
-		                         order by ${payRule.effectiveFrom}),
-		       scope_in_force as (partition by ${payRule.serviceId}, ${payRule.roleId}, ${payRule.userId},
-		                                       ${payRule.entityId}, ${payRule.paysFor}
-		                          order by (${payRule.effectiveFrom} <= ${businessToday()}::date) desc,
-		                                   ${payRule.effectiveFrom} desc)
-		 order by ${payRule.serviceId}, (${payRule.entityId} is not null), ${entity.name},
-		          (${payRule.userId} is not null), payee, ${payRule.effectiveFrom} desc`);
-	return rows;
+	const today = businessToday();
+	const scope = [
+		'pr.service_id',
+		'pr.role_id',
+		'pr.user_id',
+		'pr.entity_id',
+		'pr.pays_for'
+	] as const;
+	return db
+		.selectFrom('pay_rule as pr')
+		.leftJoin('role as r', 'r.id', 'pr.role_id')
+		.leftJoin('user as u', 'u.id', 'pr.user_id')
+		.leftJoin('entity as e', 'e.id', 'pr.entity_id')
+		.$if(serviceId !== null, (qb) => qb.where('pr.service_id', '=', serviceId!))
+		.select((eb) => [
+			'pr.id',
+			'pr.service_id',
+			'pr.role_id',
+			'pr.user_id',
+			'pr.entity_id',
+			// A rule names a role or a person, never neither (pay_rule_names_one_payee).
+			eb.fn.coalesce('r.name', 'u.name').$notNull().as('payee'),
+			eb('pr.role_id', 'is not', null).$castTo<boolean>().as('is_role'),
+			'e.name as client',
+			'pr.pays_for',
+			'pr.method',
+			'pr.amount',
+			eb.cast<string>('pr.effective_from', 'text').as('effective_from'),
+			eb
+				.cast<string | null>(
+					eb.fn
+						.agg<string | null>('lead', ['pr.effective_from'])
+						.over((ob) => ob.partitionBy(scope).orderBy('pr.effective_from')),
+					'text'
+				)
+				.as('until'),
+			eb
+				.case()
+				.when('pr.effective_from', '>', today)
+				.then<RowState>('scheduled')
+				.when(
+					'pr.id',
+					'=',
+					eb.fn.agg<string>('first_value', ['pr.id']).over((ob) =>
+						ob
+							.partitionBy(scope)
+							.orderBy(eb('pr.effective_from', '<=', today), 'desc')
+							.orderBy('pr.effective_from', 'desc')
+					)
+				)
+				.then<RowState>('current')
+				.else<RowState>('superseded')
+				.end()
+				.as('state')
+		])
+		.orderBy('pr.service_id')
+		.orderBy((eb) => eb('pr.entity_id', 'is not', null))
+		.orderBy('e.name')
+		.orderBy((eb) => eb('pr.user_id', 'is not', null))
+		.orderBy('payee')
+		.orderBy('pr.effective_from', 'desc')
+		.execute();
 }

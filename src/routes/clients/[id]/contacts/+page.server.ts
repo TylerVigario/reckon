@@ -1,6 +1,5 @@
-import { sql } from 'drizzle-orm';
+import { sql } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { findClient } from '#lib/server/find.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
@@ -13,27 +12,33 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const { id } = await findClient(params.id);
-	const c = t.contact;
-	const ec = t.entityContact;
-	const { rows: contacts } = await db.execute<{
-		id: string;
-		name: string;
-		email: string | null;
-		phone: string | null;
-		bills: boolean;
-		sites: string[];
-	}>(sql`
-		select ${c.id} as id, ${c.name} as name, ${c.email} as email, ${c.phone} as phone,
-		       ${ec.isPrimary} as bills,
-		       coalesce((select array_agg(${t.site.label} order by ${t.site.label})
-		                   from ${t.siteContact}
-		                   join ${t.site} on ${t.site.id} = ${t.siteContact.siteId}
-		                  where ${t.siteContact.contactId} = ${c.id}
-		                    and ${t.siteContact.entityId} = ${ec.entityId}), '{}') as sites
-		  from ${ec}
-		  join ${c} on ${c.id} = ${ec.contactId}
-		 where ${ec.entityId} = ${id}
-		 order by ${c.name}`);
+	const contacts = await db
+		.selectFrom('entity_contact as ec')
+		.innerJoin('contact as c', 'c.id', 'ec.contact_id')
+		.select((eb) => [
+			'c.id',
+			'c.name',
+			'c.email',
+			'c.phone',
+			'ec.is_primary as bills',
+			eb.fn
+				.coalesce(
+					eb
+						.selectFrom('site_contact as sc')
+						.innerJoin('site as s', 's.id', 'sc.site_id')
+						.select((eb) =>
+							eb.fn.agg<string[]>('array_agg', ['s.label']).orderBy('s.label').as('labels')
+						)
+						.whereRef('sc.contact_id', '=', 'c.id')
+						.whereRef('sc.entity_id', '=', 'ec.entity_id')
+						.$asScalar(),
+					sql<string[]>`'{}'`
+				)
+				.as('sites')
+		])
+		.where('ec.entity_id', '=', id)
+		.orderBy('c.name')
+		.execute();
 	return {
 		contacts: fieldOnly(locals) ? contacts.map((x) => ({ ...x, bills: false })) : contacts
 	};

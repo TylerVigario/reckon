@@ -1,14 +1,5 @@
-import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import {
-	invoice,
-	invoiceLine,
-	material,
-	materialLot,
-	stockCount,
-	timeEntry,
-	trip
-} from '#lib/server/db/schema/index.ts';
+import type { InvoiceLineKind } from '#lib/server/db/database.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { keptEntries, keptTrips } from '#lib/server/kept.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
@@ -47,46 +38,52 @@ export const GET: RequestHandler = async ({ locals }) => {
 	const me = locals.user!.id;
 	const today = businessToday();
 	const [drafts, lines, trips, entries, stocked, counting] = await Promise.all([
-		db.select({ id: invoice.id }).from(invoice).where(eq(invoice.status, 'draft')),
+		db.selectFrom('invoice').select('id').where('status', '=', 'draft').execute(),
 		// Lines added by hand on a draft: each opens on a screen of its own, to be
 		// changed or taken off on site too.
 		db
-			.select({
-				id: invoiceLine.id,
-				invoice_id: invoiceLine.invoiceId,
-				mine: sql<boolean>`${invoiceLine.createdBy} is not distinct from ${me}::uuid`
-			})
-			.from(invoiceLine)
-			.innerJoin(invoice, eq(invoice.id, invoiceLine.invoiceId))
-			.where(
-				and(
-					eq(invoice.status, 'draft'),
-					inArray(invoiceLine.kind, ['material', 'bought', 'paid_for'])
-				)
-			),
+			.selectFrom('invoice_line')
+			.innerJoin('invoice', 'invoice.id', 'invoice_line.invoice_id')
+			.select((eb) => [
+				'invoice_line.id',
+				'invoice_line.invoice_id',
+				eb('invoice_line.created_by', 'is not distinct from', me).$castTo<boolean>().as('mine')
+			])
+			.where('invoice.status', '=', 'draft')
+			.where('invoice_line.kind', '=', (eb) =>
+				eb.fn.any(eb.val<InvoiceLineKind[]>(['material', 'bought', 'paid_for']))
+			)
+			.execute(),
 		db
-			.select({ id: trip.id, mine: sql<boolean>`${trip.createdBy} = ${me}::uuid` })
-			.from(trip)
-			.where(keptTrips(me, today)),
+			.selectFrom('trip')
+			.select((eb) => ['id', eb('created_by', '=', me).$castTo<boolean>().as('mine')])
+			.where((eb) => keptTrips(eb, me, today))
+			.execute(),
 		db
-			.select({ id: timeEntry.id })
-			.from(timeEntry)
-			.where(keptEntries(me, today, locals.weekStart)),
+			.selectFrom('time_entry')
+			.select('id')
+			.where((eb) => keptEntries(eb, me, today, locals.weekStart))
+			.execute(),
 		// The catalogue is Full's (#lib/access).
 		field
 			? []
 			: db
-					.select({ id: material.id })
-					.from(material)
-					.where(
-						or(
-							eq(material.active, true),
-							sql`exists (select 1 from ${materialLot} l where l.material_id = ${material.id} and l.qty_remaining > 0)`
-						)
-					),
-		field
-			? []
-			: db.select({ id: stockCount.id }).from(stockCount).where(isNull(stockCount.appliedAt))
+					.selectFrom('material')
+					.select('id')
+					.where((eb) =>
+						eb.or([
+							eb('material.active', '=', true),
+							eb.exists(
+								eb
+									.selectFrom('material_lot as l')
+									.select(eb.lit(1).as('one'))
+									.whereRef('l.material_id', '=', 'material.id')
+									.where('l.qty_remaining', '>', '0')
+							)
+						])
+					)
+					.execute(),
+		field ? [] : db.selectFrom('stock_count').select('id').where('applied_at', 'is', null).execute()
 	]);
 	return Response.json(
 		{

@@ -1,7 +1,6 @@
-import { asc, eq, gte, inArray, sql } from 'drizzle-orm';
-import type { AnyPgColumn } from 'drizzle-orm/pg-core';
+import { expressionBuilder, sql, type Expression } from 'kysely';
+import type { DB } from './db/database.ts';
 import { db } from './db/index.ts';
-import * as t from './db/schema/index.ts';
 import { businessToday } from './calendar.ts';
 import { sum } from '#lib/decimal.ts';
 import { driveKey, type Place } from '#lib/trip-legs.ts';
@@ -12,17 +11,21 @@ import type { Waypoint } from './routes.ts';
 /**
  * Where a trip went, by town: a trip is titled "Woodland and Elverta", not by
  * street. A trip belongs to the drive, not to any one client, so the place's
- * own name is used rather than a client's name for it.
+ * own name is used rather than a client's name for it. No trip, no towns: a
+ * null id finds no stops.
  */
-export const townsOf = (tripId: AnyPgColumn) =>
-	sql<string | null>`(${db
-		.select({
-			towns: sql`string_agg(distinct coalesce(${t.site.city}, ${t.site.label}, ${t.tripStop.address}), ' and '
-			                      order by coalesce(${t.site.city}, ${t.site.label}, ${t.tripStop.address}))`
+export const townsOf = (tripId: Expression<string | null>) =>
+	expressionBuilder<DB>()
+		.selectFrom('trip_stop')
+		.leftJoin('site', 'site.id', 'trip_stop.site_id')
+		.where('trip_stop.trip_id', '=', tripId)
+		.select((eb) => {
+			const place = eb.fn.coalesce('site.city', 'site.label', 'trip_stop.address');
+			return sql<string | null>`string_agg(distinct ${place}, ' and ' order by ${place})`.as(
+				'towns'
+			);
 		})
-		.from(t.tripStop)
-		.leftJoin(t.site, eq(t.site.id, t.tripStop.siteId))
-		.where(eq(t.tripStop.tripId, tripId))})`;
+		.$asScalar();
 
 /**
  * Each drive between two places as it was last driven (#lib/trip-legs), from
@@ -34,32 +37,31 @@ export async function knownDrives(): Promise<Record<string, { miles: string; on:
 	const since = Temporal.PlainDate.from(businessToday()).subtract({ years: 1 }).toString();
 	const [trips, stops, legs] = await Promise.all([
 		db
-			.select({
-				id: t.trip.id,
-				on: t.trip.travelledOn,
-				start: t.trip.startAddress,
-				end: t.trip.endAddress
-			})
-			.from(t.trip)
-			.where(gte(t.trip.travelledOn, since))
-			.orderBy(asc(t.trip.travelledOn), asc(t.trip.createdAt)),
+			.selectFrom('trip')
+			.select(['id', 'travelled_on as on', 'start_address as start', 'end_address as end'])
+			.where('travelled_on', '>=', since)
+			.orderBy('travelled_on')
+			.orderBy('created_at')
+			.execute(),
 		db
-			.select({
-				id: t.tripStop.id,
-				tripId: t.tripStop.tripId,
-				seq: t.tripStop.seq,
-				siteId: t.tripStop.siteId,
-				address: t.tripStop.address
-			})
-			.from(t.tripStop)
-			.innerJoin(t.trip, eq(t.trip.id, t.tripStop.tripId))
-			.where(gte(t.trip.travelledOn, since))
-			.orderBy(asc(t.tripStop.seq)),
+			.selectFrom('trip_stop')
+			.innerJoin('trip', 'trip.id', 'trip_stop.trip_id')
+			.select([
+				'trip_stop.id',
+				'trip_stop.trip_id as tripId',
+				'trip_stop.seq',
+				'trip_stop.site_id as siteId',
+				'trip_stop.address'
+			])
+			.where('trip.travelled_on', '>=', since)
+			.orderBy('trip_stop.seq')
+			.execute(),
 		db
-			.select({ tripId: t.tripLeg.tripId, to: t.tripLeg.toStopId, miles: t.tripLeg.miles })
-			.from(t.tripLeg)
-			.innerJoin(t.trip, eq(t.trip.id, t.tripLeg.tripId))
-			.where(gte(t.trip.travelledOn, since))
+			.selectFrom('trip_leg')
+			.innerJoin('trip', 'trip.id', 'trip_leg.trip_id')
+			.select(['trip_leg.trip_id as tripId', 'trip_leg.to_stop_id as to', 'trip_leg.miles'])
+			.where('trip.travelled_on', '>=', since)
+			.execute()
 	]);
 	const placeOf = (s: { siteId: string | null; address: string | null }): Place | null =>
 		s.siteId ? { site: s.siteId } : s.address ? { address: s.address } : null;
@@ -101,16 +103,10 @@ export async function waypointsOf(trip: {
 		operatorRow(),
 		ids.length
 			? db
-					.select({
-						id: t.site.id,
-						placeId: t.site.googlePlaceId,
-						street: t.site.street,
-						city: t.site.city,
-						region: t.site.region,
-						postcode: t.site.postcode
-					})
-					.from(t.site)
-					.where(inArray(t.site.id, ids))
+					.selectFrom('site')
+					.select(['id', 'google_place_id as placeId', 'street', 'city', 'region', 'postcode'])
+					.where('id', '=', (eb) => eb.fn.any(eb.val(ids)))
+					.execute()
 			: Promise.resolve([])
 	]);
 	const base = baseOf(operator);

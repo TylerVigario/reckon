@@ -32,11 +32,23 @@ import {
 	whole,
 	type Parsed
 } from './field-rules.ts';
+import { everyWord } from './every-word.ts';
+import type {
+	Allotment,
+	BillingInterval,
+	FinalPeriodProration,
+	Overage
+} from './server/db/database.ts';
 
-export const INTERVALS = ['weekly', 'monthly', 'quarterly', 'annually'] as const;
-export const PRORATION = ['daily', 'none'] as const;
-export const ALLOTMENTS = ['unlimited', 'capped'] as const;
-export const OVERAGES = ['bill', 'no_charge', 'deny'] as const;
+export const INTERVALS = everyWord<BillingInterval>()([
+	'weekly',
+	'monthly',
+	'quarterly',
+	'annually'
+]);
+export const PRORATION = everyWord<FinalPeriodProration>()(['daily', 'none']);
+export const ALLOTMENTS = everyWord<Allotment>()(['unlimited', 'capped']);
+export const OVERAGES = everyWord<Overage>()(['bill', 'no_charge', 'deny']);
 
 const dayOfMonth = (raw: string): Parsed => {
 	const n = whole(1)(raw);

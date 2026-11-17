@@ -1,7 +1,5 @@
-import { desc, eq, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { sql, type NumericString } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -9,28 +7,61 @@ import type { PageServerLoad } from './$types';
  * counted, and how many differences it put right, at what worth.
  */
 export const load: PageServerLoad = async () => {
-	const applier = alias(t.user, 'applier');
 	return {
 		counts: await db
-			.select({
-				id: t.stockCount.id,
-				counted_on: t.stockCount.countedOn,
-				by: t.user.name,
-				applied_by: applier.name,
-				open: sql<boolean>`${t.stockCount.appliedAt} is null`,
-				counted: sql<number>`(select count(*)::int from ${t.stockCountLine} l where l.count_id = stock_count.id)`,
-				differences: sql<number>`(select count(*)::int from ${t.stockAdjustment} a where a.count_id = stock_count.id)`,
+			.selectFrom('stock_count as sc')
+			.innerJoin('user as u', 'u.id', 'sc.created_by')
+			.leftJoin('user as applier', 'applier.id', 'sc.applied_by')
+			.select((eb) => [
+				'sc.id',
+				'sc.counted_on',
+				'u.name as by',
+				'applier.name as applied_by',
+				eb('sc.applied_at', 'is', null).$castTo<boolean>().as('open'),
+				eb
+					.selectFrom('stock_count_line as l')
+					.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+					.whereRef('l.count_id', '=', 'sc.id')
+					.$asScalar()
+					.$notNull()
+					.as('counted'),
+				eb
+					.selectFrom('stock_adjustment as a')
+					.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+					.whereRef('a.count_id', '=', 'sc.id')
+					.$asScalar()
+					.$notNull()
+					.as('differences'),
 				// Short is written off, over is found: what the count moved, each way.
-				net: sql<string>`(select coalesce(sum(case when a.way = 'off' then -(a.ex_tax_cost + a.tax_paid) else a.ex_tax_cost + a.tax_paid end), 0)::text
-				                   from ${t.stockAdjustment} a where a.count_id = stock_count.id)`
-			})
-			.from(t.stockCount)
-			.innerJoin(t.user, eq(t.user.id, t.stockCount.createdBy))
-			.leftJoin(applier, eq(applier.id, t.stockCount.appliedBy))
-			.orderBy(
-				sql`${t.stockCount.appliedAt} is null desc`,
-				desc(t.stockCount.countedOn),
-				desc(t.stockCount.createdAt)
-			)
+				eb
+					.selectFrom('stock_adjustment as a')
+					.select((eb) => {
+						const worth = sql<NumericString>`${eb.ref('a.ex_tax_cost')} + ${eb.ref('a.tax_paid')}`;
+						return eb
+							.cast<string>(
+								eb.fn.coalesce(
+									eb.fn.sum<NumericString>(
+										eb
+											.case()
+											.when('a.way', '=', 'off')
+											.then(sql<NumericString>`-(${worth})`)
+											.else(worth)
+											.end()
+									),
+									eb.lit(0)
+								),
+								'text'
+							)
+							.as('net');
+					})
+					.whereRef('a.count_id', '=', 'sc.id')
+					.$asScalar()
+					.$notNull()
+					.as('net')
+			])
+			.orderBy((eb) => eb('sc.applied_at', 'is', null), 'desc')
+			.orderBy('sc.counted_on', 'desc')
+			.orderBy('sc.created_at', 'desc')
+			.execute()
 	};
 };

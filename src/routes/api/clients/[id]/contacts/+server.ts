@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
-import { entityContact } from '#lib/server/db/schema/index.ts';
 import { refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { lookUpClient } from '#lib/server/find.ts';
 import { personFrom } from '#lib/server/contacts.ts';
@@ -30,18 +28,19 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		await asUser(locals.user!.id, async (tx) => {
 			if (primary)
 				await tx
-					.update(entityContact)
-					.set({ isPrimary: false })
-					.where(eq(entityContact.entityId, client.id));
-			const attach = tx
-				.insert(entityContact)
-				.values({ entityId: client.id, contactId: person.id, isPrimary: primary });
-			await (primary
-				? attach.onConflictDoUpdate({
-						target: [entityContact.entityId, entityContact.contactId],
-						set: { isPrimary: true }
-					})
-				: attach.onConflictDoNothing());
+					.updateTable('entity_contact')
+					.set({ is_primary: false })
+					.where('entity_id', '=', client.id)
+					.execute();
+			await tx
+				.insertInto('entity_contact')
+				.values({ entity_id: client.id, contact_id: person.id, is_primary: primary })
+				.onConflict((oc) =>
+					primary
+						? oc.columns(['entity_id', 'contact_id']).doUpdateSet({ is_primary: true })
+						: oc.doNothing()
+				)
+				.execute();
 		});
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, ['contact_id', 'is_primary'], 'entity_contact');

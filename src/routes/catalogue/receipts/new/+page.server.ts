@@ -1,6 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { personalToday } from '#lib/server/calendar.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
 import type { PageServerLoad } from './$types';
@@ -16,27 +14,21 @@ import type { PageServerLoad } from './$types';
  * for no signal, as a form is (#lib/offline-copy).
  */
 export const load: PageServerLoad = async ({ url }) => {
-	const [materials, units, people, [op], places] = await Promise.all([
+	const [materials, units, people, op, places] = await Promise.all([
 		db
-			.select({
-				id: t.material.id,
-				name: t.material.name,
-				unit_id: t.material.unitId,
-				markup_pct: t.material.markupPct
-			})
-			.from(t.material)
-			.where(eq(t.material.active, true))
-			.orderBy(asc(t.material.name)),
+			.selectFrom('material')
+			.select(['id', 'name', 'unit_id', 'markup_pct'])
+			.where('active', '=', true)
+			.orderBy('name')
+			.execute(),
+		db.selectFrom('unit').select(['id', 'name', 'short', 'places']).orderBy('name').execute(),
 		db
-			.select({ id: t.unit.id, name: t.unit.name, short: t.unit.short, places: t.unit.places })
-			.from(t.unit)
-			.orderBy(asc(t.unit.name)),
-		db
-			.select({ id: t.user.id, name: t.user.name })
-			.from(t.user)
-			.where(eq(t.user.active, true))
-			.orderBy(asc(t.user.name)),
-		db.select({ markup: t.operator.defaultMarkupPct }).from(t.operator),
+			.selectFrom('user')
+			.select(['id', 'name'])
+			.where('active', '=', true)
+			.orderBy('name')
+			.execute(),
+		db.selectFrom('operator').select('default_markup_pct as markup').executeTakeFirst(),
 		moneyPlaces()
 	]);
 	const asked = url.searchParams.get('material');

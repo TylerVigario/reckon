@@ -1,7 +1,5 @@
 import { fail } from '@sveltejs/kit';
-import { and, asc, desc, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import { accountMap, emailMessage, integration } from '#lib/server/db/schema/index.ts';
 import { mailer, sendTest } from '#lib/server/email.ts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -18,30 +16,30 @@ export const load: PageServerLoad = async () => {
 		{ name: 'email', title: 'Email', sub: 'Notices to the people who sign in' }
 	];
 
-	const [rows, mapping, [failing]] = await Promise.all([
+	const [rows, mapping, failing] = await Promise.all([
 		db
-			.select({
-				name: integration.name,
-				connected: integration.connected,
-				detail: integration.detail,
-				checked_at: sql<string | null>`${integration.checkedAt}::text`
-			})
-			.from(integration),
-		db
-			.select({ role: accountMap.role, account: accountMap.account })
-			.from(accountMap)
-			.orderBy(asc(accountMap.role)),
+			.selectFrom('integration')
+			.select((eb) => [
+				'name',
+				'connected',
+				'detail',
+				eb.cast<string | null>('checked_at', 'text').as('checked_at')
+			])
+			.execute(),
+		db.selectFrom('account_map').select(['role', 'account']).orderBy('role').execute(),
 		// The latest message the relay would not take: still waiting, or given up on.
 		db
-			.select({
-				said: emailMessage.lastError,
-				at: sql<string>`coalesce(${emailMessage.gaveUpAt}, ${emailMessage.createdAt})::text`,
-				waiting: sql<boolean>`${emailMessage.gaveUpAt} is null`
-			})
-			.from(emailMessage)
-			.where(and(isNull(emailMessage.sentAt), isNotNull(emailMessage.lastError)))
-			.orderBy(desc(emailMessage.createdAt))
+			.selectFrom('email_message')
+			.select((eb) => [
+				'last_error as said',
+				eb.cast<string>(eb.fn.coalesce('gave_up_at', 'created_at'), 'text').as('at'),
+				eb('gave_up_at', 'is', null).$castTo<boolean>().as('waiting')
+			])
+			.where('sent_at', 'is', null)
+			.where('last_error', 'is not', null)
+			.orderBy('created_at', 'desc')
 			.limit(1)
+			.executeTakeFirst()
 	]);
 
 	// Email is connected when the environment says where it goes

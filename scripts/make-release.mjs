@@ -2,9 +2,9 @@
  * Builds the release: one tarball holding the part of this repository that
  * runs, at the same paths it has here, every package it uses bundled in.
  *
- *   build/             the application, from `vite build`; `node build` runs it
- *   drizzle/           the migrations, which the application applies when it starts,
- *                      or scripts/migrate.mjs does where the host migrates
+ *   build/             the application, from `vite build`; `node build` runs it,
+ *                      carrying its migrations, which it applies as it starts where
+ *                      MIGRATE_ON_START=true, and otherwise only checks
  *   scripts/           user.mjs, the command that adds the first person, before anyone
  *                      can sign in, and migrate.mjs, which brings the database up to
  *                      date as its owner; each bundled with everything it imports
@@ -16,8 +16,9 @@
  *   MANIFEST.sha256    every file above, so what is installed can be checked
  *
  * THE SAME PATHS AS A CLONE. What runs from a release runs from a clone the same
- * way, so nothing has to know which of the two it is in: the server finds its
- * migrations in drizzle/ beside build/ in either.
+ * way, so nothing has to know which of the two it is in. The migrations are in
+ * the bundles themselves (#lib/server/db/migrations), the server's and
+ * migrate.mjs's, so neither looks for them on disk.
  *
  * SELF-CONTAINED. Everything it runs is bundled, so it carries no node_modules
  * and a host needs Node and nothing else -- no registry to reach, nothing to

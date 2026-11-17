@@ -1,6 +1,5 @@
-import { count, sql } from 'drizzle-orm';
+import { sql, type NumericString } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
@@ -16,39 +15,50 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ locals }) => {
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
-	const owing = balances(rounding, places);
-	const e = t.entity;
-	const si = t.site;
-	const ec = t.entityContact;
-	const c = t.contact;
 
-	const { rows: clients } = await db.execute<{
-		id: string;
-		slug: string;
-		name: string;
-		active: boolean;
-		contact: string | null;
-		sites: string;
-		site_labels: string | null;
-		owed: string;
-	}>(sql`
-		with owing as (
-			select entity_id, sum(owed) as owed from ${owing} b
-			 where status = 'sent' group by entity_id
-		)
-		select ${e.id} as id, ${e.slug} as slug, ${e.name} as name, ${e.active} as active,
-		       (select ${c.name} from ${ec} join ${c} on ${c.id} = ${ec.contactId}
-		         where ${ec.entityId} = ${e.id} and ${ec.isPrimary} limit 1) as contact,
-		       count(${si.id})::text as sites,
-		       string_agg(${si.display}, ' · ' order by ${si.display}) as site_labels,
-		       round(coalesce(o.owed, 0), ${places}::int)::text as owed
-		  from ${e}
-		  left join ${si} on ${si.entityId} = ${e.id} and ${si.active}
-		  left join owing o on o.entity_id = ${e.id}
-		 group by ${e.id}, o.owed
-		 order by ${e.active} desc, ${e.name}`);
-
-	const [contacts] = await db.select({ n: count() }).from(t.contact);
+	const [clients, contacts] = await Promise.all([
+		db
+			.with('owing', (qc) =>
+				qc
+					.selectFrom(balances(rounding, places).as('b'))
+					.where('b.status', '=', 'sent')
+					.groupBy('b.entity_id')
+					.select((eb) => ['b.entity_id', eb.fn.sum<NumericString>('b.owed').as('owed')])
+			)
+			.selectFrom('entity as e')
+			.leftJoin('site as si', (join) =>
+				join.onRef('si.entity_id', '=', 'e.id').on('si.active', '=', true)
+			)
+			.leftJoin('owing as o', 'o.entity_id', 'e.id')
+			.select((eb) => [
+				'e.id',
+				'e.slug',
+				'e.name',
+				'e.active',
+				eb
+					.selectFrom('entity_contact as ec')
+					.innerJoin('contact as c', 'c.id', 'ec.contact_id')
+					.select('c.name')
+					.whereRef('ec.entity_id', '=', 'e.id')
+					.where('ec.is_primary', '=', true)
+					.limit(1)
+					.as('contact'),
+				eb.cast<string>(eb.fn.count('si.id'), 'text').as('sites'),
+				eb.fn
+					.agg<string | null>('string_agg', ['si.display', eb.val(' · ')])
+					.orderBy('si.display')
+					.as('site_labels'),
+				sql<string>`round(coalesce(${eb.ref('o.owed')}, 0), ${places}::int)::text`.as('owed')
+			])
+			.groupBy(['e.id', 'o.owed'])
+			.orderBy('e.active', 'desc')
+			.orderBy('e.name')
+			.execute(),
+		db
+			.selectFrom('contact')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+			.executeTakeFirstOrThrow()
+	]);
 
 	return {
 		clients: fieldOnly(locals) ? clients.map((x) => ({ ...x, owed: null })) : clients,

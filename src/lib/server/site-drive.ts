@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
 import { asUser, db } from './db/index.ts';
-import { site } from './db/schema/index.ts';
 import { operatorRow } from './operator.ts';
 import { roundTrip, type Drive, type Waypoint } from './routes.ts';
 
@@ -70,17 +68,18 @@ export async function measureEverySite(
 ): Promise<{ sites: number; unmeasured: number }> {
 	const base = baseOf(await operatorRow());
 	const all = await db
-		.select({
-			id: site.id,
-			placeId: site.googlePlaceId,
-			street: site.street,
-			city: site.city,
-			region: site.region,
-			postcode: site.postcode,
-			miles: site.googleRoundTripMiles,
-			minutes: site.googleDriveMinutes
-		})
-		.from(site);
+		.selectFrom('site')
+		.select([
+			'id',
+			'google_place_id as placeId',
+			'street',
+			'city',
+			'region',
+			'postcode',
+			'google_round_trip_miles as miles',
+			'google_drive_minutes as minutes'
+		])
+		.execute();
 
 	const drives: (Drive | null)[] = [];
 	if (base)
@@ -98,9 +97,10 @@ export async function measureEverySite(
 			// Both to a tenth, as text: Google's toFixed(1) and numeric(8, 1) agree.
 			if (miles === s.miles && minutes === s.minutes) continue;
 			await tx
-				.update(site)
-				.set({ googleRoundTripMiles: miles, googleDriveMinutes: minutes })
-				.where(eq(site.id, s.id));
+				.updateTable('site')
+				.set({ google_round_trip_miles: miles, google_drive_minutes: minutes })
+				.where('id', '=', s.id)
+				.execute();
 		}
 	});
 	return { sites: all.length, unmeasured: all.length - drives.filter(Boolean).length };

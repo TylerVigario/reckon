@@ -1,8 +1,7 @@
 import { businessToday, personalDay, businessDay } from '#lib/server/calendar.ts';
-import { sql } from 'drizzle-orm';
+import { sql } from 'kysely';
 import { Decimal, sumMoney } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
@@ -23,61 +22,64 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
-	const owing = balances(rounding, places);
-	const i = t.invoice;
-	const e = t.entity;
-	const il = t.invoiceLine;
-	const pa = t.paymentAllocation;
-	const p = t.payment;
+	const today = businessToday();
 
-	const { rows } = await db.execute<{
-		id: string;
-		client_uuid: string | null;
-		number: string;
-		status: string;
-		who: string;
-		issued_on: string | null;
-		due_on: string | null;
-		sent_on: string | null;
-		paid_on: string | null;
-		terms: number | null;
-		kinds: string | null;
-		gross: string;
-		owed: string;
-		days_out: number | null;
-		overdue: boolean;
-	}>(sql`
-		with kinds as (
-			select ${il.invoiceId} as invoice_id,
-			       string_agg(distinct ${il.kind}, ', ' order by ${il.kind}) as kinds
-			  from ${il} group by 1
-		),
-		-- The day the last payment against it arrived.
-		settled as (
-			select ${pa.invoiceId} as invoice_id, max(${p.receivedOn}) as paid_on
-			  from ${pa} join ${p} on ${p.id} = ${pa.paymentId}
-			 group by 1
+	const rows = await db
+		.with('kinds', (qc) =>
+			qc
+				.selectFrom('invoice_line as il')
+				.select((eb) => [
+					'il.invoice_id',
+					eb.fn
+						.agg<string>('string_agg', [eb.cast<string>('il.kind', 'text'), eb.val(', ')])
+						.distinct()
+						.orderBy(eb.cast<string>('il.kind', 'text'))
+						.as('kinds')
+				])
+				.groupBy('il.invoice_id')
 		)
-		select ${i.id} as id, ${i.clientUuid} as client_uuid, ${i.number} as number,
-		       ${i.status} as status, ${e.name} as who,
-		       ${i.issuedOn}::text as issued_on, ${i.dueOn}::text as due_on,
-		       ${personalDay(i.sentAt)}::text as sent_on,
-		       s.paid_on::text as paid_on,
-		       ${e.termsDays} as terms,
-		       k.kinds,
-		       b.gross::text as gross,
-		       b.owed::text as owed,
-		       case when ${i.sentAt} is not null
-		            then (${businessToday()}::date - ${businessDay(i.sentAt)}) end as days_out,
-		       (${i.dueOn} is not null and ${i.dueOn} < ${businessToday()}::date and b.owed > 0) as overdue
-		  from ${i}
-		  join ${e} on ${e.id} = ${i.entityId}
-		  join ${owing} b on b.invoice_id = ${i.id}
-		  left join kinds k on k.invoice_id = ${i.id}
-		  left join settled s on s.invoice_id = ${i.id}
-		 where ${i.status} <> 'void'
-		   and (${!fieldOnly(locals)} or ${i.status} = 'draft')
-		 order by ${i.createdAt} desc`);
+		// The day the last payment against it arrived.
+		.with('settled', (qc) =>
+			qc
+				.selectFrom('payment_allocation as pa')
+				.innerJoin('payment as p', 'p.id', 'pa.payment_id')
+				.select((eb) => ['pa.invoice_id', eb.fn.max('p.received_on').as('paid_on')])
+				.groupBy('pa.invoice_id')
+		)
+		.selectFrom('invoice as i')
+		.innerJoin('entity as e', 'e.id', 'i.entity_id')
+		.innerJoin(balances(rounding, places).as('b'), 'b.invoice_id', 'i.id')
+		.leftJoin('kinds as k', 'k.invoice_id', 'i.id')
+		.leftJoin('settled as s', 's.invoice_id', 'i.id')
+		.select((eb) => [
+			'i.id',
+			'i.client_uuid',
+			'i.number',
+			'i.status',
+			'e.name as who',
+			eb.cast<string | null>('i.issued_on', 'text').as('issued_on'),
+			eb.cast<string | null>('i.due_on', 'text').as('due_on'),
+			eb.cast<string | null>(personalDay(eb.ref('i.sent_at')), 'text').as('sent_on'),
+			eb.cast<string | null>('s.paid_on', 'text').as('paid_on'),
+			'e.terms_days as terms',
+			'k.kinds',
+			eb.cast<string>('b.gross', 'text').as('gross'),
+			eb.cast<string>('b.owed', 'text').as('owed'),
+			eb
+				.case()
+				.when('i.sent_at', 'is not', null)
+				.then(sql<number>`${today}::date - ${businessDay(eb.ref('i.sent_at'))}`)
+				.end()
+				.as('days_out'),
+			eb
+				.and([eb('i.due_on', 'is not', null), eb('i.due_on', '<', today), eb('b.owed', '>', '0')])
+				.$castTo<boolean>()
+				.as('overdue')
+		])
+		.where('i.status', '<>', 'void')
+		.$if(fieldOnly(locals), (qb) => qb.where('i.status', '=', 'draft'))
+		.orderBy('i.created_at', 'desc')
+		.execute();
 
 	const drafts = rows.filter((r) => r.status === 'draft');
 	// Out is sent and not yet paid in full: a part-payment leaves the rest owed.

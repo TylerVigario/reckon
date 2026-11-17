@@ -1,5 +1,4 @@
 import { asUser } from '#lib/server/db/index.ts';
-import { role } from '#lib/server/db/schema/index.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { parseAll } from '#lib/field-rules.ts';
 import { PAYS_AS, ROLE_FIELDS } from '#lib/people-fields.ts';
@@ -18,14 +17,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const { values, errors } = parseAll(ROLE_FIELDS, fields);
 	if (Object.keys(errors).length > 0) return refuse(errors);
 	try {
-		const [made] = await asUser(locals.user!.id, (tx) =>
+		const made = await asUser(locals.user!.id, (tx) =>
 			tx
-				.insert(role)
+				.insertInto('role')
 				.values({
 					name: String(values.name),
-					paysAs: values.pays_as as (typeof PAYS_AS)[number]
+					pays_as: values.pays_as as (typeof PAYS_AS)[number]
 				})
-				.returning({ id: role.id })
+				.returning('id')
+				.executeTakeFirstOrThrow()
 		);
 		return Response.json({ id: made.id }, { status: 201 });
 	} catch (e) {

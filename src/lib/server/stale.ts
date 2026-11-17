@@ -1,5 +1,4 @@
-import { sql, type SQL } from 'drizzle-orm';
-import type { AnyPgColumn } from 'drizzle-orm/pg-core';
+import { sql, type Expression } from 'kysely';
 
 /**
  * scripts/refresh-tax-rates.mjs imports this file under plain Node, to judge
@@ -17,5 +16,5 @@ export const STALE_AFTER_DAYS = 90;
  * (#lib/server/calendar's businessToday). Every site has a rate -- stale says
  * the answer is old, not that there is none.
  */
-export const rateIsStale = (areaVerifiedOn: AnyPgColumn | SQL.Aliased | SQL, today: string) =>
+export const rateIsStale = (areaVerifiedOn: Expression<string>, today: string) =>
 	sql<boolean>`(${areaVerifiedOn} < ${today}::date - ${STALE_AFTER_DAYS}::int)`;

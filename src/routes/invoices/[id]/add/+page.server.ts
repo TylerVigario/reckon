@@ -1,7 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
-import { and, asc, eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { formTerms } from '#lib/server/lines.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
@@ -23,18 +21,12 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ params, url, locals, route, request }) => {
 	if (!UUID.test(params.id)) error(404, 'no such invoice');
-	const [draft] = await db
-		.select({
-			id: t.invoice.id,
-			client_uuid: t.invoice.clientUuid,
-			number: t.invoice.number,
-			status: t.invoice.status,
-			entity_id: t.invoice.entityId,
-			who: t.entity.name
-		})
-		.from(t.invoice)
-		.innerJoin(t.entity, eq(t.entity.id, t.invoice.entityId))
-		.where(eq(t.invoice.id, params.id));
+	const draft = await db
+		.selectFrom('invoice as i')
+		.innerJoin('entity as e', 'e.id', 'i.entity_id')
+		.select(['i.id', 'i.client_uuid', 'i.number', 'i.status', 'i.entity_id', 'e.name as who'])
+		.where('i.id', '=', params.id)
+		.executeTakeFirst();
 	if (!draft) error(404, 'no such invoice');
 	if (fieldOnly(locals) && draft.status !== 'draft') {
 		await refusedForAccess({ locals, route, request });
@@ -46,10 +38,12 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 		redirect(303, `/invoices/${draft.id}`);
 	const [sites, terms] = await Promise.all([
 		db
-			.select({ id: t.site.id, label: t.site.display, rate_pct: t.site.taxRatePct })
-			.from(t.site)
-			.where(and(eq(t.site.entityId, draft.entity_id), eq(t.site.active, true)))
-			.orderBy(asc(t.site.display)),
+			.selectFrom('site')
+			.select(['id', 'display as label', 'tax_rate_pct as rate_pct'])
+			.where('entity_id', '=', draft.entity_id)
+			.where('active', '=', true)
+			.orderBy('display')
+			.execute(),
 		formTerms()
 	]);
 	return { draft, sites, ...terms };

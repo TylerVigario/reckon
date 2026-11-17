@@ -35,7 +35,7 @@ export function currency(): string {
 
 /**
  * What a money column holds: ten whole digits, and three places -- enough for
- * every currency Intl knows (#lib/server/db/schema/columns).
+ * every currency Intl knows (numeric(13, 3), #lib/server/db/migrations).
  */
 export const MONEY_WHOLE = 10;
 export const MONEY_SCALE = 3;

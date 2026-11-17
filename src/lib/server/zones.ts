@@ -1,4 +1,3 @@
-import { sql } from 'drizzle-orm';
 import { db } from './db/index.ts';
 
 /**
@@ -22,11 +21,17 @@ export function pickZone(value: string, known: ReadonlyMap<string, string>): str
 }
 
 let names: Promise<Map<string, string>> | null = null;
-/** Postgres's zones, by lower-cased name, read once per process. */
+/**
+ * Postgres's zones, by lower-cased name, read once per process. Its own view,
+ * pg_timezone_names, which no migration makes, so its type is said here.
+ */
 function postgresZones(): Promise<Map<string, string>> {
 	names ??= db
-		.execute<{ name: string }>(sql`select name from pg_timezone_names`)
-		.then((r) => new Map(r.rows.map((z) => [z.name.toLowerCase(), z.name])));
+		.$extendTables<{ pg_timezone_names: { name: string } }>()
+		.selectFrom('pg_timezone_names')
+		.select('name')
+		.execute()
+		.then((rows) => new Map(rows.map((z) => [z.name.toLowerCase(), z.name])));
 	names.catch(() => (names = null));
 	return names;
 }

@@ -1,7 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { and, eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { RequestHandler } from './$types';
@@ -14,15 +12,13 @@ import type { RequestHandler } from './$types';
  */
 export const GET: RequestHandler = async ({ params, locals }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.line)) error(404, 'no such receipt');
-	const [row] = await db
-		.select({
-			receipt: t.invoiceLine.receipt,
-			type: t.invoiceLine.receiptType,
-			status: t.invoice.status
-		})
-		.from(t.invoiceLine)
-		.innerJoin(t.invoice, eq(t.invoice.id, t.invoiceLine.invoiceId))
-		.where(and(eq(t.invoiceLine.id, params.line), eq(t.invoiceLine.invoiceId, params.id)));
+	const row = await db
+		.selectFrom('invoice_line as il')
+		.innerJoin('invoice as i', 'i.id', 'il.invoice_id')
+		.select(['il.receipt', 'il.receipt_type as type', 'i.status'])
+		.where('il.id', '=', params.line)
+		.where('il.invoice_id', '=', params.id)
+		.executeTakeFirst();
 	if (!row?.receipt || !row.type || (fieldOnly(locals) && row.status !== 'draft'))
 		error(404, 'no receipt');
 	const pdf = row.type === 'application/pdf';

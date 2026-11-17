@@ -1,9 +1,7 @@
 import { error } from '@sveltejs/kit';
-import { asc, eq, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { Decimal, Ratio, sum } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { townsOf } from '#lib/server/trips.ts';
 import { loadCatalogue, valueLegs } from '#lib/server/valuation/load.ts';
 import { billedAmount, jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
@@ -33,41 +31,50 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ params, locals, route, request, url }) => {
 	if (!UUID.test(params.id)) error(404, 'no such trip');
 
-	const tr = t.trip;
-	const ts = t.tripStop;
-	const si = t.site;
-	const tl = t.tripLeg;
-	const e = t.entity;
-	const u = t.user;
-	const v = t.vehicle;
-	const owner = alias(t.user, 'owner');
-
-	const [found] = await db
-		.select({
-			id: tr.id,
-			travelled_on: tr.travelledOn,
-			driver: u.name,
-			stops: townsOf(tr.id),
-			start_address: tr.startAddress,
-			end_address: tr.endAddress,
-			note: tr.note,
-			odometer_start: tr.odometerStart,
-			odometer_end: tr.odometerEnd,
-			invoiced: sql<boolean>`exists (select 1 from invoice_line il join trip_leg l on l.id = il.trip_leg_id where l.trip_id = ${tr.id})`,
-			paid_for: sql<boolean>`exists (select 1 from person_payment_item i where i.trip_id = ${tr.id})`,
-			vehicle_id: tr.vehicleId,
-			vehicle: v.name,
-			vehicle_retired_on: v.retiredOn,
-			owner_id: v.ownerId,
-			owner: owner.name,
-			driven_by: tr.drivenBy,
-			created_by: tr.createdBy
-		})
-		.from(tr)
-		.leftJoin(u, eq(u.id, tr.drivenBy))
-		.leftJoin(v, eq(v.id, tr.vehicleId))
-		.leftJoin(owner, eq(owner.id, v.ownerId))
-		.where(eq(tr.id, params.id));
+	const found = await db
+		.selectFrom('trip')
+		.leftJoin('user', 'user.id', 'trip.driven_by')
+		.leftJoin('vehicle', 'vehicle.id', 'trip.vehicle_id')
+		.leftJoin('user as owner', 'owner.id', 'vehicle.owner_id')
+		.select((eb) => [
+			'trip.id',
+			'trip.travelled_on',
+			'user.name as driver',
+			townsOf(eb.ref('trip.id')).as('stops'),
+			'trip.start_address',
+			'trip.end_address',
+			'trip.note',
+			'trip.odometer_start',
+			'trip.odometer_end',
+			eb
+				.exists(
+					eb
+						.selectFrom('invoice_line as il')
+						.innerJoin('trip_leg as l', 'l.id', 'il.trip_leg_id')
+						.select(eb.lit(1).as('one'))
+						.whereRef('l.trip_id', '=', 'trip.id')
+				)
+				.$castTo<boolean>()
+				.as('invoiced'),
+			eb
+				.exists(
+					eb
+						.selectFrom('person_payment_item as i')
+						.select(eb.lit(1).as('one'))
+						.whereRef('i.trip_id', '=', 'trip.id')
+				)
+				.$castTo<boolean>()
+				.as('paid_for'),
+			'trip.vehicle_id',
+			'vehicle.name as vehicle',
+			'vehicle.retired_on as vehicle_retired_on',
+			'vehicle.owner_id',
+			'owner.name as owner',
+			'trip.driven_by',
+			'trip.created_by'
+		])
+		.where('trip.id', '=', params.id)
+		.executeTakeFirst();
 	const field = fieldOnly(locals);
 	const me = locals.user!.id;
 	if (!found) error(404, 'no such trip');
@@ -80,41 +87,47 @@ export const load: PageServerLoad = async ({ params, locals, route, request, url
 		// Each stop, and who it was for there (0025): two clients at one address
 		// are one stop, named by the address.
 		db
-			.select({
-				seq: ts.seq,
-				site: si.display,
-				street: sql<string | null>`${si.street} || ', ' || ${si.city}`,
-				address: ts.address,
-				clients: sql<{ name: string; site: string | null; asked_there: boolean }[]>`(
-					select coalesce(json_agg(json_build_object('name', ce.name, 'site', cs.label,
-					                                           'asked_there', c.asked_there)
-					                         order by c.asked_there, ce.name), '[]')
-					  from trip_stop_client c
-					  join entity ce on ce.id = c.entity_id
-					  left join site cs on cs.id = c.site_id
-					 where c.trip_stop_id = ${ts.id})`
-			})
-			.from(ts)
-			.leftJoin(si, eq(si.id, ts.siteId))
-			.where(eq(ts.tripId, params.id))
-			.orderBy(asc(ts.seq)),
+			.selectFrom('trip_stop as ts')
+			.leftJoin('site as si', 'si.id', 'ts.site_id')
+			.select((eb) => [
+				'ts.seq',
+				'si.display as site',
+				eb(eb('si.street', '||', ', '), '||', eb.ref('si.city'))
+					.$castTo<string | null>()
+					.as('street'),
+				'ts.address',
+				jsonArrayFrom(
+					eb
+						.selectFrom('trip_stop_client as c')
+						.innerJoin('entity as ce', 'ce.id', 'c.entity_id')
+						.leftJoin('site as cs', 'cs.id', 'c.site_id')
+						.select(['ce.name', 'cs.label as site', 'c.asked_there'])
+						.whereRef('c.trip_stop_id', '=', 'ts.id')
+						.orderBy('c.asked_there')
+						.orderBy('ce.name')
+				).as('clients')
+			])
+			.where('ts.trip_id', '=', params.id)
+			.orderBy('ts.seq')
+			.execute(),
 		db
-			.select({
-				id: tl.id,
-				seq: tl.seq,
-				who: e.name,
-				rule: tl.rule,
-				miles: tl.miles,
-				serviceId: tl.serviceId,
-				entityId: tl.entityId,
-				siteId: tl.siteId,
-				roundTripMiles: si.roundTripMiles
-			})
-			.from(tl)
-			.leftJoin(e, eq(e.id, tl.entityId))
-			.leftJoin(si, eq(si.id, tl.siteId))
-			.where(eq(tl.tripId, params.id))
-			.orderBy(asc(tl.seq))
+			.selectFrom('trip_leg as tl')
+			.leftJoin('entity as e', 'e.id', 'tl.entity_id')
+			.leftJoin('site as si', 'si.id', 'tl.site_id')
+			.select([
+				'tl.id',
+				'tl.seq',
+				'e.name as who',
+				'tl.rule',
+				'tl.miles',
+				'tl.service_id as serviceId',
+				'tl.entity_id as entityId',
+				'tl.site_id as siteId',
+				'si.round_trip_miles as roundTripMiles'
+			])
+			.where('tl.trip_id', '=', params.id)
+			.orderBy('tl.seq')
+			.execute()
 	]);
 
 	const travelledOn = found.travelled_on;

@@ -2,11 +2,9 @@
 // at a time, each event in words, with whom it was about, who did it where that
 // was someone else, and where it came from. What is kept, and why, is
 // security_event's own comment; what is recorded, #lib/server/events.
-import { and, desc, eq, or, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import type { Expression, SqlBool } from 'kysely';
 import { browserName } from '#lib/browser-name.ts';
 import { db } from './db/index.ts';
-import { securityEvent, user } from './db/schema/index.ts';
 import { SAYS, type SecurityEvent } from './events.ts';
 
 /** Events on a page. */
@@ -131,46 +129,53 @@ export function inWords(name: SecurityEvent, d: Detail): string {
  * you". `before` is the last event on the page before, as `older` gave it.
  */
 export async function securityLog(whose: { person: string } | 'everyone', before?: string | null) {
-	const them = alias(user, 'them');
-	const whom = alias(user, 'whom');
 	const cursor = before ? parseCursor(before) : null;
 	const rows = await db
-		.select({
-			id: securityEvent.id,
-			at: securityEvent.at,
-			name: securityEvent.name,
-			detail: securityEvent.detail,
-			aboutId: securityEvent.userId,
-			aboutName: them.name,
-			byName: whom.name,
-			address: securityEvent.clientAddress,
-			userAgent: securityEvent.userAgent
+		.selectFrom('security_event as e')
+		.leftJoin('user as them', 'them.id', 'e.user_id')
+		.leftJoin('user as whom', 'whom.id', 'e.by_id')
+		.select([
+			'e.id',
+			'e.at',
+			'e.name',
+			'e.detail',
+			'e.user_id',
+			'them.name as about_name',
+			'whom.name as by_name',
+			'e.client_address',
+			'e.user_agent'
+		])
+		.where((eb) => {
+			const which: Expression<SqlBool>[] = [];
+			if (whose !== 'everyone')
+				which.push(eb.or([eb('e.user_id', '=', whose.person), eb('e.by_id', '=', whose.person)]));
+			if (cursor)
+				which.push(
+					eb(
+						eb.refTuple('e.at', 'e.id'),
+						'<',
+						eb.tuple(
+							eb.cast<Date>(eb.val(cursor.at), 'timestamptz'),
+							eb.cast<string>(eb.val(cursor.id), 'uuid')
+						)
+					)
+				);
+			return eb.and(which);
 		})
-		.from(securityEvent)
-		.leftJoin(them, eq(them.id, securityEvent.userId))
-		.leftJoin(whom, eq(whom.id, securityEvent.byId))
-		.where(
-			and(
-				whose === 'everyone'
-					? undefined
-					: or(eq(securityEvent.userId, whose.person), eq(securityEvent.byId, whose.person)),
-				cursor
-					? sql`(${securityEvent.at}, ${securityEvent.id}) < (${cursor.at}::timestamptz, ${cursor.id}::uuid)`
-					: undefined
-			)
-		)
-		.orderBy(desc(securityEvent.at), desc(securityEvent.id))
-		.limit(PAGE + 1);
+		.orderBy('e.at', 'desc')
+		.orderBy('e.id', 'desc')
+		.limit(PAGE + 1)
+		.execute();
 	const events: LoggedEvent[] = rows.slice(0, PAGE).map((r) => ({
 		id: r.id,
 		at: r.at.toISOString(),
 		name: r.name,
 		says: TITLE[r.name] ?? SAYS[r.name],
 		detail: inWords(r.name, r.detail as Detail),
-		about: r.aboutId ? { id: r.aboutId, name: r.aboutName ?? 'Someone' } : null,
-		by: r.byName,
-		address: r.address,
-		from: browserName(r.userAgent)
+		about: r.user_id ? { id: r.user_id, name: r.about_name ?? 'Someone' } : null,
+		by: r.by_name,
+		address: r.client_address,
+		from: browserName(r.user_agent)
 	}));
 	const last = events.at(-1);
 	return { events, older: rows.length > PAGE && last ? `${last.at}_${last.id}` : null };

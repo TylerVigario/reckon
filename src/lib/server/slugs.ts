@@ -1,6 +1,4 @@
 import { toSlug } from '#lib/slug.ts';
-import type { Tx } from './db/index.ts';
-import { pgError } from './field-errors.ts';
 
 /**
  * Inserts a row a URL names by its slug, making the slug from its name when
@@ -8,22 +6,26 @@ import { pgError } from './field-errors.ts';
  * the same as one already there.
  *
  * The unique constraint decides, not a read beforehand, so two saves at once
- * cannot both take the same slug. Each attempt is a savepoint, so a clash costs
- * a retry rather than the transaction.
+ * cannot both take the same slug. `insert` is handed each slug to try, and
+ * whether it was made here: a made one is inserted ON CONFLICT ON CONSTRAINT
+ * <the slug's> DO NOTHING -- `.$if(made, (qb) => qb.onConflict((oc) =>
+ * oc.constraint(...).doNothing()))` -- so one already taken inserts no row,
+ * and the next is tried; the transaction carries on, as Postgres has it, with
+ * no error to roll back. A slug that was given is inserted as it is, and its
+ * clash is the caller's to refuse.
  */
 export async function insertNamed<T>(
-	tx: Tx,
-	slug: { given: string | null; from: string; fallback: string; constraint: string },
-	insert: (tx: Tx, slug: string) => Promise<T>
+	slug: { given: string | null; from: string; fallback: string },
+	insert: (slug: string, made: boolean) => Promise<T | undefined>
 ): Promise<T> {
-	if (slug.given) return insert(tx, slug.given);
+	if (slug.given) {
+		const row = await insert(slug.given, false);
+		if (row === undefined) throw new Error('The insert returned no row.');
+		return row;
+	}
 	const base = toSlug(slug.from) || slug.fallback;
 	for (let n = 1; ; n++) {
-		const candidate = n === 1 ? base : `${base}-${n}`;
-		try {
-			return await tx.transaction((sp) => insert(sp, candidate));
-		} catch (e) {
-			if (pgError(e).constraint !== slug.constraint) throw e;
-		}
+		const row = await insert(n === 1 ? base : `${base}-${n}`, true);
+		if (row !== undefined) return row;
 	}
 }

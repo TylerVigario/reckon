@@ -103,11 +103,3 @@ describe('goods drawn from stock', () => {
 		expect(fromStock(cable, { ...CA, siteRatePct: null }).needsASite).toBe(true);
 	});
 });
-
-describe('the tax rules it knows', () => {
-	it('are every tax rule the schema has, and no other', async () => {
-		const { TAX_RULE_SETS } = await import('./server/db/schema/operator.ts');
-		const { TAXES } = await import('./passed-on.ts');
-		expect(Object.keys(TAXES).sort()).toEqual([...TAX_RULE_SETS].sort());
-	});
-});

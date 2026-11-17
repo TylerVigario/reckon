@@ -1,5 +1,5 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { sql } from 'drizzle-orm';
+import { sql, type SqlBool } from 'kysely';
 import { problem } from './problem.ts';
 
 /**
@@ -73,12 +73,20 @@ export const withVersion = (response: Response, version: string | null) => {
 	return response;
 };
 
-/** A row's version as the page is given it. */
+/** A row's version as the page is given it: `.returning(VERSION.as('version'))`. */
 export const VERSION = sql<string>`xmin::text`;
 
 /**
+ * The version of one table's row in a query that joins others, which have an
+ * xmin of their own: `versionOf('s')`, by the table's name or alias. xmin is a
+ * system column, which the generated types do not list, so the name is not
+ * checked against them.
+ */
+export const versionOf = (table: string) => sql<string>`${sql.ref(`${table}.xmin`)}::text`;
+
+/**
  * The update's guard: the row is still the version the page read. Nothing to
- * guard when the request named no version.
+ * guard when the request named no version, and the condition says so: true.
  */
 export const unchangedSince = (version: string | null) =>
-	version === null ? undefined : sql`xmin::text = ${version}`;
+	version === null ? sql<SqlBool>`true` : sql<SqlBool>`xmin::text = ${version}`;

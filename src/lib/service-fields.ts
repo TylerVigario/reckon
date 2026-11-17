@@ -34,12 +34,14 @@ import {
 	whole,
 	type Parsed
 } from './field-rules.ts';
+import { everyWord } from './every-word.ts';
+import type { PayRuleMethod, PaysFor, ServiceUnit } from './server/db/database.ts';
 
 export type { Parsed };
 
-export const UNITS = ['hour', 'mile', 'each'] as const;
-export const PAYS_FOR = ['time', 'covered_time', 'vehicle'] as const;
-export const METHODS = ['per_hour', 'percent', 'fixed', 'nothing'] as const;
+export const UNITS = everyWord<ServiceUnit>()(['hour', 'mile', 'each']);
+export const PAYS_FOR = everyWord<PaysFor>()(['time', 'covered_time', 'vehicle']);
+export const METHODS = everyWord<PayRuleMethod>()(['per_hour', 'percent', 'fixed', 'nothing']);
 
 const name = required('A service needs a name.', cap(80));
 

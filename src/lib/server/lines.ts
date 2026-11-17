@@ -1,8 +1,7 @@
-import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { sql } from 'kysely';
 import { materialNamed } from '#lib/server/named.ts';
 import { asUser, db, type Tx } from './db/index.ts';
-import * as t from './db/schema/index.ts';
-import { RECEIPT_TYPES } from './db/schema/catalogue.ts';
+import type { ReceiptType } from './db/database.ts';
 import { moneyPlaces } from './business.ts';
 import { businessToday } from './calendar.ts';
 import { pgError, type Errors } from './field-errors.ts';
@@ -17,6 +16,7 @@ import { UUID } from '../field-rules.ts';
 import { merge, MERGED_FIELDS, same, type Merge } from '../line-merge.ts';
 import type { Conflict, Held } from '../line-conflict.ts';
 import { startIn } from './drafts.ts';
+import { isReceiptType, MAX_RECEIPT } from './receipt-file.ts';
 
 /**
  * A LINE ADDED TO A DRAFT BY HAND: goods drawn from stock (#lib/stock-draw),
@@ -37,9 +37,6 @@ import { startIn } from './drafts.ts';
  * What a line from stock cost is worked out here, off the shelf as it stands
  * when the line arrives. What the phone showed was a preview.
  */
-
-/** What the phone sends is shrunk to well under this; the column holds no more. */
-const MAX_RECEIPT = 2 * 1024 * 1024;
 
 export type Added =
 	| { ok: true; id: string }
@@ -93,29 +90,43 @@ const no = (errors: Errors): Added => {
  * business taxes. Without ids, every active one.
  */
 export function materials(ids?: string[]) {
-	const listed = sql<string | null>`(
-		select ${t.materialPrice.price}::text from ${t.materialPrice}
-		 where ${t.materialPrice.materialId} = ${t.material.id}
-		   and ${t.materialPrice.effectiveFrom} <= ${businessToday()}::date
-		 order by ${t.materialPrice.effectiveFrom} desc limit 1)`;
 	return db
-		.select({
-			id: t.material.id,
-			name: t.material.name,
-			sku: t.material.sku,
-			unit: t.unit.name,
+		.selectFrom('material')
+		.innerJoin('unit', 'unit.id', 'material.unit_id')
+		.select((eb) => [
+			'material.id',
+			'material.name',
+			'material.sku',
+			'unit.name as unit',
 			// How its unit is written beside a figure: "ft", or the name.
-			short: sql<string>`coalesce(${t.unit.short}, ${t.unit.name})`,
-			places: t.unit.places,
-			markup: sql<string>`coalesce(${t.material.markupPct}, (select ${t.operator.defaultMarkupPct} from ${t.operator}), 0)::text`,
-			listed,
-			taxable: t.material.taxable,
-			active: t.material.active
-		})
-		.from(t.material)
-		.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
-		.where(ids ? inArray(t.material.id, ids) : eq(t.material.active, true))
-		.orderBy(asc(t.material.name));
+			eb.fn.coalesce('unit.short', 'unit.name').as('short'),
+			'unit.places',
+			eb
+				.cast<string>(
+					eb.fn.coalesce(
+						'material.markup_pct',
+						eb.selectFrom('operator').select('operator.default_markup_pct'),
+						eb.lit(0)
+					),
+					'text'
+				)
+				.as('markup'),
+			eb
+				.selectFrom('material_price')
+				.select((eb) => eb.cast<string | null>('material_price.price', 'text').as('price'))
+				.whereRef('material_price.material_id', '=', 'material.id')
+				.where('material_price.effective_from', '<=', businessToday())
+				.orderBy('material_price.effective_from', 'desc')
+				.limit(1)
+				.as('listed'),
+			'material.taxable',
+			'material.active'
+		])
+		.where((eb) =>
+			ids ? eb('material.id', '=', eb.fn.any(eb.val(ids))) : eb('material.active', '=', true)
+		)
+		.orderBy('material.name')
+		.execute();
 }
 
 /**
@@ -124,20 +135,22 @@ export function materials(ids?: string[]) {
  * terms, and what is on the shelf.
  */
 export async function formTerms() {
-	const [people, [op], places, all] = await Promise.all([
+	const [people, op, places, all] = await Promise.all([
 		db
-			.select({ id: t.user.id, name: t.user.name })
-			.from(t.user)
-			.where(eq(t.user.active, true))
-			.orderBy(asc(t.user.name)),
+			.selectFrom('user')
+			.select(['id', 'name'])
+			.where('active', '=', true)
+			.orderBy('name')
+			.execute(),
 		db
-			.select({
-				markup: t.operator.purchaseMarkupPct,
-				stock: t.operator.defaultMarkupPct,
-				rules: t.operator.taxRuleSet,
-				costing: t.operator.stockCosting
-			})
-			.from(t.operator),
+			.selectFrom('operator')
+			.select([
+				'purchase_markup_pct as markup',
+				'default_markup_pct as stock',
+				'tax_rule_set as rules',
+				'stock_costing as costing'
+			])
+			.executeTakeFirst(),
 		moneyPlaces(),
 		materials()
 	]);
@@ -186,19 +199,19 @@ export function answer(r: Added) {
 }
 
 /** A line's fields, read so they can be put as Add a line puts them (formFieldsOf). */
-const LINE_AS_FORM = {
-	id: t.invoiceLine.id,
-	version: t.invoiceLine.version,
-	kind: t.invoiceLine.kind,
-	material_id: t.invoiceLine.materialId,
-	description: t.invoiceLine.description,
-	qty: t.invoiceLine.qty,
-	site_id: t.invoiceLine.siteId,
-	bought_from: t.invoiceLine.boughtFrom,
-	ex_tax_cost: t.invoiceLine.exTaxCost,
-	tax_paid: t.invoiceLine.taxPaid,
-	paid_by: t.invoiceLine.paidBy
-};
+const LINE_AS_FORM = [
+	'invoice_line.id',
+	'invoice_line.version',
+	'invoice_line.kind',
+	'invoice_line.material_id',
+	'invoice_line.description',
+	'invoice_line.qty',
+	'invoice_line.site_id',
+	'invoice_line.bought_from',
+	'invoice_line.ex_tax_cost',
+	'invoice_line.tax_paid',
+	'invoice_line.paid_by'
+] as const;
 
 /** A column's value, however it was read: a string from a query, or JSON's number. */
 const str = (v: unknown): string =>
@@ -228,14 +241,16 @@ export function formFieldsOf(
 
 /** Who took a line off, and when: the newest removal its history has. */
 async function takenOff(lineId: string) {
-	const h = t.recordHistory;
-	const [gone] = await db
-		.select({ by: t.user.name, at: h.changedAt, was: h.oldValue })
-		.from(h)
-		.leftJoin(t.user, eq(t.user.id, h.changedBy))
-		.where(and(eq(h.tableName, 'invoice_line'), eq(h.rowId, lineId), eq(h.field, '(deleted)')))
-		.orderBy(desc(h.changedAt))
-		.limit(1);
+	const gone = await db
+		.selectFrom('record_history as h')
+		.leftJoin('user as u', 'u.id', 'h.changed_by')
+		.select(['u.name as by', 'h.changed_at as at', 'h.old_value as was'])
+		.where('h.table_name', '=', 'invoice_line')
+		.where('h.row_id', '=', lineId)
+		.where('h.field', '=', '(deleted)')
+		.orderBy('h.changed_at', 'desc')
+		.limit(1)
+		.executeTakeFirst();
 	return gone ? { by: gone.by, at: gone.at.toISOString(), was: gone.was } : null;
 }
 
@@ -252,19 +267,15 @@ async function collision(
 	m: Merge,
 	places: number
 ): Promise<Conflict> {
-	const h = t.recordHistory;
 	const rows = await db
-		.select({
-			field: h.field,
-			value: h.newValue,
-			who: t.user.name,
-			at: h.changedAt,
-			made_at: h.madeAt
-		})
-		.from(h)
-		.leftJoin(t.user, eq(t.user.id, h.changedBy))
-		.where(and(eq(h.tableName, 'invoice_line'), eq(h.rowId, lineId)))
-		.orderBy(asc(h.changedAt), asc(h.id));
+		.selectFrom('record_history as h')
+		.leftJoin('user as u', 'u.id', 'h.changed_by')
+		.select(['h.field', 'h.new_value as value', 'u.name as who', 'h.changed_at as at', 'h.made_at'])
+		.where('h.table_name', '=', 'invoice_line')
+		.where('h.row_id', '=', lineId)
+		.orderBy('h.changed_at')
+		.orderBy('h.id')
+		.execute();
 	const fields: Extract<Conflict, { what: 'collided' }>['fields'] = {};
 	for (const f of m.collided) {
 		const chain: Held[] = [];
@@ -311,10 +322,12 @@ async function collision(
  * maker's, since the uuid is unique to them and another's finds nothing.
  */
 async function sentBefore(clientUuid: string, userId: string) {
-	const [had] = await db
-		.select({ id: t.invoiceLine.id })
-		.from(t.invoiceLine)
-		.where(and(eq(t.invoiceLine.clientUuid, clientUuid), eq(t.invoiceLine.createdBy, userId)));
+	const had = await db
+		.selectFrom('invoice_line')
+		.select('id')
+		.where('client_uuid', '=', clientUuid)
+		.where('created_by', '=', userId)
+		.executeTakeFirst();
 	return had ?? null;
 }
 
@@ -348,15 +361,17 @@ async function refused(
  */
 async function siteOf(draft: { entity_id: string; who: string }, siteId: string | null) {
 	if (!siteId) return { site: null, why: null };
-	const [site] = await db
-		.select({
-			rate: t.site.taxRatePct,
-			jurisdiction: t.site.taxJurisdiction,
-			state: t.site.stateRatePct,
-			district: t.site.districtRatePct
-		})
-		.from(t.site)
-		.where(and(eq(t.site.id, siteId), eq(t.site.entityId, draft.entity_id)));
+	const site = await db
+		.selectFrom('site')
+		.select([
+			'tax_rate_pct as rate',
+			'tax_jurisdiction as jurisdiction',
+			'state_rate_pct as state',
+			'district_rate_pct as district'
+		])
+		.where('id', '=', siteId)
+		.where('entity_id', '=', draft.entity_id)
+		.executeTakeFirst();
 	return site ? { site, why: null } : { site: null, why: `Not one of ${draft.who}'s sites.` };
 }
 
@@ -371,17 +386,16 @@ function taxedWhere(
 	const at = line.taxable && site !== null;
 	const own = at && line.taxSource === 'site';
 	return {
-		taxJurisdiction: at ? site.jurisdiction : null,
-		stateRatePct: own ? site.state : null,
-		districtRatePct: own ? site.district : null
+		tax_jurisdiction: at ? site.jurisdiction : null,
+		state_rate_pct: own ? site.state : null,
+		district_rate_pct: own ? site.district : null
 	};
 }
 
 /** A receipt sent with a line: a photo or a PDF, and no bigger than the column holds. */
 async function readReceipt(file: File | null, errors: Errors) {
 	if (!file || file.size === 0) return null;
-	if (!(RECEIPT_TYPES as readonly string[]).includes(file.type))
-		errors.receipt = 'A photo, or a PDF.';
+	if (!isReceiptType(file.type)) errors.receipt = 'A photo, or a PDF.';
 	else if (file.size > MAX_RECEIPT)
 		errors.receipt = `Under 2 MB — that is ${(file.size / 1024 / 1024).toFixed(1)} MB.`;
 	else return { bytes: Buffer.from(await file.arrayBuffer()), type: file.type };
@@ -401,18 +415,21 @@ async function target(
 	meant: Draft,
 	userId: string
 ): Promise<{ id: string; number: string; movedFrom: string | null }> {
-	const [now] = await tx
-		.select({ status: t.invoice.status })
-		.from(t.invoice)
-		.where(eq(t.invoice.id, meant.id))
-		.for('no key update');
+	const now = await tx
+		.selectFrom('invoice')
+		.select('status')
+		.where('id', '=', meant.id)
+		.forNoKeyUpdate()
+		.executeTakeFirst();
 	if (now?.status === 'draft') return { id: meant.id, number: meant.number, movedFrom: null };
-	const [started] = await tx
-		.select({ id: t.invoice.id, number: t.invoice.number })
-		.from(t.invoiceLine)
-		.innerJoin(t.invoice, eq(t.invoice.id, t.invoiceLine.invoiceId))
-		.where(and(eq(t.invoiceLine.movedFromInvoiceId, meant.id), eq(t.invoice.status, 'draft')))
-		.limit(1);
+	const started = await tx
+		.selectFrom('invoice_line')
+		.innerJoin('invoice', 'invoice.id', 'invoice_line.invoice_id')
+		.select(['invoice.id', 'invoice.number'])
+		.where('invoice_line.moved_from_invoice_id', '=', meant.id)
+		.where('invoice.status', '=', 'draft')
+		.limit(1)
+		.executeTakeFirst();
 	const to = started ?? (await startIn(tx, { entityId: meant.entity_id, userId }));
 	return { ...to, movedFrom: meant.id };
 }
@@ -431,28 +448,27 @@ export async function addLine(input: {
 	madeAt?: string | null;
 	/** A line put back after it was taken off keeps its id, and its receipt where none comes. */
 	id?: string;
-	kept?: { bytes: Buffer; type: string } | null;
+	kept?: { bytes: Buffer; type: ReceiptType } | null;
 }): Promise<Added> {
 	const had = await sentBefore(input.clientUuid, input.userId);
 	if (had) return { ok: true, id: had.id };
 
-	const [draft] = await db
-		.select({
-			id: t.invoice.id,
-			number: t.invoice.number,
-			entity_id: t.invoice.entityId,
-			who: t.entity.name
-		})
-		.from(t.invoice)
-		.innerJoin(t.entity, eq(t.entity.id, t.invoice.entityId))
+	const draft = await db
+		.selectFrom('invoice')
+		.innerJoin('entity', 'entity.id', 'invoice.entity_id')
+		.select(['invoice.id', 'invoice.number', 'invoice.entity_id', 'entity.name as who'])
 		// By its id, or by the uuid the phone started it with -- that phone's own
 		// draft, so its maker's.
-		.where(
-			or(
-				eq(t.invoice.id, input.invoiceId),
-				and(eq(t.invoice.clientUuid, input.invoiceId), eq(t.invoice.createdBy, input.userId))
-			)
-		);
+		.where((eb) =>
+			eb.or([
+				eb('invoice.id', '=', input.invoiceId),
+				eb.and([
+					eb('invoice.client_uuid', '=', input.invoiceId),
+					eb('invoice.created_by', '=', input.userId)
+				])
+			])
+		)
+		.executeTakeFirst();
 	if (!draft) return { ok: false, status: 404, detail: 'That draft no longer exists.' };
 
 	return input.fields.kind === 'material'
@@ -462,10 +478,17 @@ export async function addLine(input: {
 
 /** The next place on the draft. */
 const nextSeq = async (tx: Tx, invoiceId: string) => {
-	const [{ seq }] = await tx
-		.select({ seq: sql<number>`coalesce(max(${t.invoiceLine.seq}), 0)::int + 1` })
-		.from(t.invoiceLine)
-		.where(eq(t.invoiceLine.invoiceId, invoiceId));
+	const { seq } = await tx
+		.selectFrom('invoice_line')
+		.select((eb) =>
+			eb(
+				eb.cast<number>(eb.fn.coalesce(eb.fn.max('seq'), eb.lit(0)), 'integer'),
+				'+',
+				eb.lit(1)
+			).as('seq')
+		)
+		.where('invoice_id', '=', invoiceId)
+		.executeTakeFirstOrThrow();
 	return seq;
 };
 
@@ -502,8 +525,11 @@ async function fromTheShelf(
 	if (why) errors.site_id = why;
 	if (Object.keys(errors).length > 0 || !m) return no(errors);
 
-	const [[op], places] = await Promise.all([
-		db.select({ rules: t.operator.taxRuleSet, costing: t.operator.stockCosting }).from(t.operator),
+	const [op, places] = await Promise.all([
+		db
+			.selectFrom('operator')
+			.select(['tax_rule_set as rules', 'stock_costing as costing'])
+			.executeTakeFirst(),
 		moneyPlaces()
 	]);
 	const qty = String(values.qty);
@@ -513,10 +539,11 @@ async function fromTheShelf(
 			async (tx): Promise<Added> => {
 				const to = await target(tx, draft, input.userId);
 				await tx
-					.select({ id: t.material.id })
-					.from(t.material)
-					.where(eq(t.material.id, m.id))
-					.for('no key update');
+					.selectFrom('material')
+					.select('id')
+					.where('id', '=', m.id)
+					.forNoKeyUpdate()
+					.execute();
 				const shelf = (await shelves([m.id], tx)).get(m.id)!;
 				const draw = drawFrom(shelf, qty, op?.costing ?? 'average');
 				if ('short' in draw)
@@ -542,39 +569,43 @@ async function fromTheShelf(
 				if (line.needsASite)
 					throw new Refused(no({ site_id: 'Where it went, so its tax rate is known.' }));
 
-				const [added] = await tx
-					.insert(t.invoiceLine)
+				const added = await tx
+					.insertInto('invoice_line')
 					.values({
 						...(input.id ? { id: input.id } : {}),
-						clientUuid: input.clientUuid,
-						createdBy: input.userId,
-						invoiceId: to.id,
-						movedFromInvoiceId: to.movedFrom,
+						client_uuid: input.clientUuid,
+						created_by: input.userId,
+						invoice_id: to.id,
+						moved_from_invoice_id: to.movedFrom,
 						seq: await nextSeq(tx, to.id),
 						kind: 'material',
 						description: String(values.description),
 						qty: line.qty,
 						unit: line.unit,
-						unitPrice: line.unitPrice,
+						unit_price: line.unitPrice,
 						amount: line.amount,
 						taxable: line.taxable,
-						taxRatePct: line.taxRatePct,
-						taxSource: line.taxSource,
+						tax_rate_pct: line.taxRatePct,
+						tax_source: line.taxSource,
 						...taxedWhere(line, site),
-						exTaxCost: line.exTaxCost,
-						taxPaid: line.taxPaid,
-						siteId,
-						materialId: m.id
+						ex_tax_cost: line.exTaxCost,
+						tax_paid: line.taxPaid,
+						site_id: siteId,
+						material_id: m.id
 					})
-					.returning({ id: t.invoiceLine.id });
-				await tx.insert(t.stockDraw).values(
-					draw.takes.map((take) => ({
-						invoiceLineId: added.id,
-						materialLotId: take.lotId,
-						materialId: m.id,
-						qty: take.qty.toString()
-					}))
-				);
+					.returning('id')
+					.executeTakeFirstOrThrow();
+				await tx
+					.insertInto('stock_draw')
+					.values(
+						draw.takes.map((take) => ({
+							invoice_line_id: added.id,
+							material_lot_id: take.lotId,
+							material_id: m.id,
+							qty: take.qty.toString()
+						}))
+					)
+					.execute();
 				return { ok: true, id: added.id };
 			},
 			input.madeAt
@@ -594,7 +625,7 @@ async function boughtOrPaidFor(
 		userId: string;
 		madeAt?: string | null;
 		id?: string;
-		kept?: { bytes: Buffer; type: string } | null;
+		kept?: { bytes: Buffer; type: ReceiptType } | null;
 	}
 ): Promise<Added> {
 	const { values, errors } = readPassedOn(input.fields);
@@ -605,9 +636,10 @@ async function boughtOrPaidFor(
 	const receipt = (await readReceipt(input.receipt, errors)) ?? input.kept ?? null;
 	if (Object.keys(errors).length > 0) return no(errors);
 
-	const [op] = await db
-		.select({ markup: t.operator.purchaseMarkupPct, rules: t.operator.taxRuleSet })
-		.from(t.operator);
+	const op = await db
+		.selectFrom('operator')
+		.select(['purchase_markup_pct as markup', 'tax_rule_set as rules'])
+		.executeTakeFirst();
 	const line = passedOn(
 		{
 			kind: values.kind as 'bought' | 'paid_for',
@@ -628,34 +660,35 @@ async function boughtOrPaidFor(
 			input.userId,
 			async (tx): Promise<Added> => {
 				const to = await target(tx, draft, input.userId);
-				const [added] = await tx
-					.insert(t.invoiceLine)
+				const added = await tx
+					.insertInto('invoice_line')
 					.values({
 						...(input.id ? { id: input.id } : {}),
-						clientUuid: input.clientUuid,
-						createdBy: input.userId,
-						invoiceId: to.id,
-						movedFromInvoiceId: to.movedFrom,
+						client_uuid: input.clientUuid,
+						created_by: input.userId,
+						invoice_id: to.id,
+						moved_from_invoice_id: to.movedFrom,
 						seq: await nextSeq(tx, to.id),
 						kind: values.kind as 'bought' | 'paid_for',
 						description: String(values.description),
 						qty: line.qty,
 						unit: line.unit,
-						unitPrice: line.unitPrice,
+						unit_price: line.unitPrice,
 						amount: line.amount,
 						taxable: line.taxable,
-						taxRatePct: line.taxRatePct,
-						taxSource: line.taxSource,
+						tax_rate_pct: line.taxRatePct,
+						tax_source: line.taxSource,
 						...taxedWhere(line, site),
-						exTaxCost: line.exTaxCost,
-						taxPaid: line.taxPaid,
-						siteId,
-						boughtFrom: values.bought_from === null ? null : String(values.bought_from),
-						paidBy: values.paid_by === null ? null : String(values.paid_by),
+						ex_tax_cost: line.exTaxCost,
+						tax_paid: line.taxPaid,
+						site_id: siteId,
+						bought_from: values.bought_from === null ? null : String(values.bought_from),
+						paid_by: values.paid_by === null ? null : String(values.paid_by),
 						receipt: receipt?.bytes ?? null,
-						receiptType: receipt?.type ?? null
+						receipt_type: receipt?.type ?? null
 					})
-					.returning({ id: t.invoiceLine.id });
+					.returning('id')
+					.executeTakeFirstOrThrow();
 				return { ok: true, id: added.id };
 			},
 			input.madeAt
@@ -694,20 +727,21 @@ export async function changeLine(
 	},
 	attempt = 0
 ): Promise<Added> {
-	const [line] = await db
-		.select({
-			...LINE_AS_FORM,
-			created_by: t.invoiceLine.createdBy,
-			invoice_id: t.invoiceLine.invoiceId,
-			number: t.invoice.number,
-			status: t.invoice.status,
-			entity_id: t.invoice.entityId,
-			who: t.entity.name
-		})
-		.from(t.invoiceLine)
-		.innerJoin(t.invoice, eq(t.invoice.id, t.invoiceLine.invoiceId))
-		.innerJoin(t.entity, eq(t.entity.id, t.invoice.entityId))
-		.where(eq(t.invoiceLine.id, input.lineId));
+	const line = await db
+		.selectFrom('invoice_line')
+		.innerJoin('invoice', 'invoice.id', 'invoice_line.invoice_id')
+		.innerJoin('entity', 'entity.id', 'invoice.entity_id')
+		.select(LINE_AS_FORM)
+		.select([
+			'invoice_line.created_by',
+			'invoice_line.invoice_id',
+			'invoice.number',
+			'invoice.status',
+			'invoice.entity_id',
+			'entity.name as who'
+		])
+		.where('invoice_line.id', '=', input.lineId)
+		.executeTakeFirst();
 	if (!line) {
 		const gone = await takenOff(input.lineId);
 		return gone
@@ -756,16 +790,18 @@ export async function changeLine(
 	 * and the line still the save it was read as, or it is read again.
 	 */
 	const stillADraft = async (tx: Tx) => {
-		const [now] = await tx
-			.select({ status: t.invoice.status })
-			.from(t.invoice)
-			.where(eq(t.invoice.id, line.invoice_id))
-			.for('no key update');
+		const now = await tx
+			.selectFrom('invoice')
+			.select('status')
+			.where('id', '=', line.invoice_id)
+			.forNoKeyUpdate()
+			.executeTakeFirst();
 		if (now?.status !== 'draft') throw new Refused(goneOut());
-		const [same] = await tx
-			.select({ version: t.invoiceLine.version })
-			.from(t.invoiceLine)
-			.where(eq(t.invoiceLine.id, line.id));
+		const same = await tx
+			.selectFrom('invoice_line')
+			.select('version')
+			.where('id', '=', line.id)
+			.executeTakeFirst();
 		if (same?.version !== line.version) throw new MovedOn();
 	};
 
@@ -780,29 +816,28 @@ export async function changeLine(
 			const { site, why } = await siteOf(draft, siteId);
 			if (why) errors.site_id = why;
 			if (Object.keys(errors).length > 0 || !m) return no(errors);
-			const [op] = await db
-				.select({ rules: t.operator.taxRuleSet, costing: t.operator.stockCosting })
-				.from(t.operator);
+			const op = await db
+				.selectFrom('operator')
+				.select(['tax_rule_set as rules', 'stock_costing as costing'])
+				.executeTakeFirst();
 			const qty = String(values.qty);
 			return await asUser(
 				input.userId,
 				async (tx): Promise<Added> => {
 					await stillADraft(tx);
 					await tx
-						.select({ id: t.material.id })
-						.from(t.material)
-						.where(eq(t.material.id, m.id))
-						.for('no key update');
+						.selectFrom('material')
+						.select('id')
+						.where('id', '=', m.id)
+						.forNoKeyUpdate()
+						.execute();
 					// What it draws now, read under the lock: another change may have
 					// been made since it was read above.
-					const [was] = await tx
-						.select({
-							qty: t.invoiceLine.qty,
-							exTaxCost: t.invoiceLine.exTaxCost,
-							taxPaid: t.invoiceLine.taxPaid
-						})
-						.from(t.invoiceLine)
-						.where(eq(t.invoiceLine.id, line.id));
+					const was = await tx
+						.selectFrom('invoice_line')
+						.select(['qty', 'ex_tax_cost', 'tax_paid'])
+						.where('id', '=', line.id)
+						.executeTakeFirst();
 					if (!was)
 						throw new Refused({
 							ok: false,
@@ -812,7 +847,7 @@ export async function changeLine(
 					const shelf = (await shelves([m.id], tx)).get(m.id)!;
 					const change = changeDraw(
 						shelf,
-						{ qty: was.qty, exTaxCost: was.exTaxCost ?? '0', taxPaid: was.taxPaid ?? '0' },
+						{ qty: was.qty, exTaxCost: was.ex_tax_cost ?? '0', taxPaid: was.tax_paid ?? '0' },
 						qty,
 						op?.costing ?? 'average'
 					);
@@ -841,57 +876,64 @@ export async function changeLine(
 					// newest this line drew from first.
 					for (const take of change.takes)
 						await tx
-							.insert(t.stockDraw)
+							.insertInto('stock_draw')
 							.values({
-								invoiceLineId: line.id,
-								materialLotId: take.lotId,
-								materialId: m.id,
+								invoice_line_id: line.id,
+								material_lot_id: take.lotId,
+								material_id: m.id,
 								qty: take.qty.toString()
 							})
-							.onConflictDoUpdate({
-								target: [t.stockDraw.invoiceLineId, t.stockDraw.materialLotId],
-								set: { qty: sql`${t.stockDraw.qty} + excluded.qty` }
-							});
+							.onConflict((oc) =>
+								oc.columns(['invoice_line_id', 'material_lot_id']).doUpdateSet((eb) => ({
+									qty: sql<string>`${eb.ref('stock_draw.qty')} + ${eb.ref('excluded.qty')}`
+								}))
+							)
+							.execute();
 					let back = change.back;
 					if (back.gt(0)) {
 						const drawn = await tx
-							.select({ lot: t.stockDraw.materialLotId, qty: t.stockDraw.qty })
-							.from(t.stockDraw)
-							.innerJoin(t.materialLot, eq(t.materialLot.id, t.stockDraw.materialLotId))
-							.where(eq(t.stockDraw.invoiceLineId, line.id))
-							.orderBy(desc(t.materialLot.receivedOn), desc(t.materialLot.id));
+							.selectFrom('stock_draw')
+							.innerJoin('material_lot', 'material_lot.id', 'stock_draw.material_lot_id')
+							.select(['stock_draw.material_lot_id as lot', 'stock_draw.qty'])
+							.where('stock_draw.invoice_line_id', '=', line.id)
+							.orderBy('material_lot.received_on', 'desc')
+							.orderBy('material_lot.id', 'desc')
+							.execute();
 						for (const d of drawn) {
 							if (back.isZero()) break;
 							const put = Decimal.min(back, Decimal.from(d.qty));
-							const where = and(
-								eq(t.stockDraw.invoiceLineId, line.id),
-								eq(t.stockDraw.materialLotId, d.lot)
-							);
-							if (put.eq(d.qty)) await tx.delete(t.stockDraw).where(where);
+							const which = { invoice_line_id: line.id, material_lot_id: d.lot };
+							if (put.eq(d.qty))
+								await tx
+									.deleteFrom('stock_draw')
+									.where((eb) => eb.and(which))
+									.execute();
 							else
 								await tx
-									.update(t.stockDraw)
+									.updateTable('stock_draw')
 									.set({ qty: Decimal.from(d.qty).sub(put).toString() })
-									.where(where);
+									.where((eb) => eb.and(which))
+									.execute();
 							back = back.sub(put);
 						}
 					}
 					await tx
-						.update(t.invoiceLine)
+						.updateTable('invoice_line')
 						.set({
 							description: String(values.description),
 							qty: priced.qty,
-							unitPrice: priced.unitPrice,
+							unit_price: priced.unitPrice,
 							amount: priced.amount,
 							taxable: priced.taxable,
-							taxRatePct: priced.taxRatePct,
-							taxSource: priced.taxSource,
+							tax_rate_pct: priced.taxRatePct,
+							tax_source: priced.taxSource,
 							...taxedWhere(priced, site),
-							exTaxCost: priced.exTaxCost,
-							taxPaid: priced.taxPaid,
-							siteId
+							ex_tax_cost: priced.exTaxCost,
+							tax_paid: priced.taxPaid,
+							site_id: siteId
 						})
-						.where(eq(t.invoiceLine.id, line.id));
+						.where('id', '=', line.id)
+						.execute();
 					return { ok: true, id: line.id };
 				},
 				input.madeAt
@@ -904,9 +946,10 @@ export async function changeLine(
 		if (why) errors.site_id = why;
 		const receipt = await readReceipt(input.receipt, errors);
 		if (Object.keys(errors).length > 0) return no(errors);
-		const [op] = await db
-			.select({ markup: t.operator.purchaseMarkupPct, rules: t.operator.taxRuleSet })
-			.from(t.operator);
+		const op = await db
+			.selectFrom('operator')
+			.select(['purchase_markup_pct as markup', 'tax_rule_set as rules'])
+			.executeTakeFirst();
 		const priced = passedOn(
 			{
 				kind: line.kind,
@@ -926,24 +969,25 @@ export async function changeLine(
 			async (tx): Promise<Added> => {
 				await stillADraft(tx);
 				await tx
-					.update(t.invoiceLine)
+					.updateTable('invoice_line')
 					.set({
 						description: String(values.description),
-						unitPrice: priced.unitPrice,
+						unit_price: priced.unitPrice,
 						amount: priced.amount,
 						taxable: priced.taxable,
-						taxRatePct: priced.taxRatePct,
-						taxSource: priced.taxSource,
+						tax_rate_pct: priced.taxRatePct,
+						tax_source: priced.taxSource,
 						...taxedWhere(priced, site),
-						exTaxCost: priced.exTaxCost,
-						taxPaid: priced.taxPaid,
-						siteId,
-						boughtFrom: values.bought_from === null ? null : String(values.bought_from),
-						paidBy: values.paid_by === null ? null : String(values.paid_by),
+						ex_tax_cost: priced.exTaxCost,
+						tax_paid: priced.taxPaid,
+						site_id: siteId,
+						bought_from: values.bought_from === null ? null : String(values.bought_from),
+						paid_by: values.paid_by === null ? null : String(values.paid_by),
 						// Kept unless another comes.
-						...(receipt ? { receipt: receipt.bytes, receiptType: receipt.type } : {})
+						...(receipt ? { receipt: receipt.bytes, receipt_type: receipt.type } : {})
 					})
-					.where(eq(t.invoiceLine.id, line.id));
+					.where('id', '=', line.id)
+					.execute();
 				return { ok: true, id: line.id };
 			},
 			input.madeAt
@@ -974,30 +1018,31 @@ export async function removeLine(input: {
 	/** Whoever is taking it off has Field, and takes off only a line they added. */
 	field?: boolean;
 }): Promise<Added> {
-	const [line] = await db
-		.select({
-			id: t.invoiceLine.id,
-			created_by: t.invoiceLine.createdBy,
-			version: t.invoiceLine.version,
-			invoice_id: t.invoiceLine.invoiceId,
-			number: t.invoice.number
-		})
-		.from(t.invoiceLine)
-		.innerJoin(t.invoice, eq(t.invoice.id, t.invoiceLine.invoiceId))
-		.where(eq(t.invoiceLine.id, input.lineId));
+	const line = await db
+		.selectFrom('invoice_line')
+		.innerJoin('invoice', 'invoice.id', 'invoice_line.invoice_id')
+		.select([
+			'invoice_line.id',
+			'invoice_line.created_by',
+			'invoice_line.version',
+			'invoice_line.invoice_id',
+			'invoice.number'
+		])
+		.where('invoice_line.id', '=', input.lineId)
+		.executeTakeFirst();
 	if (!line) return { ok: true, id: input.lineId };
 	if (input.field && line.created_by !== input.userId) return notTheirs;
 	if (input.version !== undefined && !input.force && line.version !== input.version) {
-		const h = t.recordHistory;
-		const [last] = await db
-			.select({ by: t.user.name, at: h.changedAt })
-			.from(h)
-			.leftJoin(t.user, eq(t.user.id, h.changedBy))
-			.where(
-				and(eq(h.tableName, 'invoice_line'), eq(h.rowId, line.id), sql`${h.field} not like '(%'`)
-			)
-			.orderBy(desc(h.changedAt))
-			.limit(1);
+		const last = await db
+			.selectFrom('record_history as h')
+			.leftJoin('user as u', 'u.id', 'h.changed_by')
+			.select(['u.name as by', 'h.changed_at as at'])
+			.where('h.table_name', '=', 'invoice_line')
+			.where('h.row_id', '=', line.id)
+			.where('h.field', 'not like', '(%')
+			.orderBy('h.changed_at', 'desc')
+			.limit(1)
+			.executeTakeFirst();
 		return {
 			ok: false,
 			status: 409,
@@ -1014,13 +1059,14 @@ export async function removeLine(input: {
 		return await asUser(
 			input.userId,
 			async (tx): Promise<Added> => {
-				const [now] = await tx
-					.select({ status: t.invoice.status })
-					.from(t.invoice)
-					.where(eq(t.invoice.id, line.invoice_id))
-					.for('no key update');
+				const now = await tx
+					.selectFrom('invoice')
+					.select('status')
+					.where('id', '=', line.invoice_id)
+					.forNoKeyUpdate()
+					.executeTakeFirst();
 				if (now?.status !== 'draft') return goneOut;
-				await tx.delete(t.invoiceLine).where(eq(t.invoiceLine.id, line.id));
+				await tx.deleteFrom('invoice_line').where('id', '=', line.id).execute();
 				return { ok: true, id: line.id };
 			},
 			input.madeAt
@@ -1047,10 +1093,11 @@ export async function restoreLine(input: {
 	/** Whoever is putting it back has Field, and puts back only a line they added. */
 	field?: boolean;
 }): Promise<Added> {
-	const [back] = await db
-		.select({ id: t.invoiceLine.id })
-		.from(t.invoiceLine)
-		.where(eq(t.invoiceLine.id, input.lineId));
+	const back = await db
+		.selectFrom('invoice_line')
+		.select('id')
+		.where('id', '=', input.lineId)
+		.executeTakeFirst();
 	if (back) return { ok: true, id: back.id };
 	const gone = await takenOff(input.lineId);
 	if (!gone) return { ok: false, status: 404, detail: 'No line was ever taken off with that id.' };
@@ -1062,9 +1109,10 @@ export async function restoreLine(input: {
 	}
 	if (input.field && str(was.created_by) !== input.userId) return notTheirs;
 	const hex = str(was.receipt);
+	// The type as the line's own column held it, which is what its history wrote.
 	const kept =
 		hex.startsWith('\\x') && was.receipt_type
-			? { bytes: Buffer.from(hex.slice(2), 'hex'), type: str(was.receipt_type) }
+			? { bytes: Buffer.from(hex.slice(2), 'hex'), type: str(was.receipt_type) as ReceiptType }
 			: null;
 	return addLine({
 		id: input.lineId,

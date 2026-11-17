@@ -1,10 +1,8 @@
-import { asc, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import type { NotNull } from 'kysely';
 import { Decimal, Ratio, sum } from '#lib/decimal.ts';
 import { dated, formatMoney, formatPrice, miles } from '#lib/format.ts';
 import { PAID_AS_ORDER, paysWhat, type PaidAs } from '#lib/pay-words.ts';
 import { db, type Reader } from './db/index.ts';
-import * as t from './db/schema/index.ts';
 import { businessDefaults, moneyPlaces } from './business.ts';
 import { businessDay } from './calendar.ts';
 import { entryColumns, loadCatalogue, valueEntries, valueLegs } from './valuation/load.ts';
@@ -76,8 +74,8 @@ export async function owed(who?: readonly string[], r: Reader = db): Promise<Map
 	const [{ currency }, catalogue, roleRows, peopleRows] = await Promise.all([
 		businessDefaults(),
 		loadCatalogue(r),
-		r.select({ id: t.role.id, name: t.role.name, paysAs: t.role.paysAs }).from(t.role),
-		r.select({ id: t.user.id, name: t.user.name }).from(t.user)
+		r.selectFrom('role').select(['id', 'name', 'pays_as as paysAs']).execute(),
+		r.selectFrom('user').select(['id', 'name']).execute()
 	]);
 	const roles = new Map(roleRows.map((x) => [x.id, x.name]));
 	const names = new Map(peopleRows.map((x) => [x.id, x.name]));
@@ -92,23 +90,22 @@ export async function owed(who?: readonly string[], r: Reader = db): Promise<Map
 	// Time: each entry's pay to each person on it.
 	const [entries, paidItems] = await Promise.all([
 		r
-			.select({
+			.selectFrom('time_entry')
+			.innerJoin('service', 'service.id', 'time_entry.service_id')
+			.leftJoin('site', 'site.id', 'time_entry.site_id')
+			.leftJoin('entity', 'entity.id', 'time_entry.entity_id')
+			.select((eb) => [
 				...entryColumns,
-				service: t.service.name,
-				place: sql<string>`coalesce(${t.site.display}, ${t.entity.name}, 'Internal')`
-			})
-			.from(t.timeEntry)
-			.innerJoin(t.service, eq(t.service.id, t.timeEntry.serviceId))
-			.leftJoin(t.site, eq(t.site.id, t.timeEntry.siteId))
-			.leftJoin(t.entity, eq(t.entity.id, t.timeEntry.entityId))
-			.orderBy(asc(t.timeEntry.workedOn), asc(t.timeEntry.createdAt)),
+				'service.name as service',
+				eb.fn.coalesce('site.display', 'entity.name', eb.val('Internal')).as('place')
+			])
+			.orderBy('time_entry.worked_on')
+			.orderBy('time_entry.created_at')
+			.execute(),
 		r
-			.select({
-				userId: t.personPaymentItem.userId,
-				entryId: t.personPaymentItem.timeEntryId,
-				tripId: t.personPaymentItem.tripId
-			})
-			.from(t.personPaymentItem)
+			.selectFrom('person_payment_item')
+			.select(['user_id as userId', 'time_entry_id as entryId', 'trip_id as tripId'])
+			.execute()
 	]);
 	const paid = new Set(paidItems.map((p) => `${p.userId}:${p.entryId ?? p.tripId}`));
 	const worth = await valueEntries(r, entries);
@@ -145,35 +142,33 @@ export async function owed(who?: readonly string[], r: Reader = db): Promise<Map
 
 	// Trips: the miles each pays the owner of the vehicle it was driven in.
 	const trips = await r
-		.select({
-			id: t.trip.id,
-			day: t.trip.travelledOn,
-			place: townsOf(t.trip.id),
-			vehicleId: t.trip.vehicleId,
-			vehicle: t.vehicle.name,
-			ownerId: t.vehicle.ownerId
-		})
-		.from(t.trip)
-		.innerJoin(t.vehicle, eq(t.vehicle.id, t.trip.vehicleId))
-		.where(isNotNull(t.vehicle.ownerId))
-		.orderBy(asc(t.trip.travelledOn));
-	const mine = trips.filter((x) => wanted(x.ownerId!) && !paid.has(`${x.ownerId}:${x.id}`));
+		.selectFrom('trip')
+		.innerJoin('vehicle', 'vehicle.id', 'trip.vehicle_id')
+		.select((eb) => [
+			'trip.id',
+			'trip.travelled_on as day',
+			townsOf(eb.ref('trip.id')).as('place'),
+			'trip.vehicle_id as vehicleId',
+			'vehicle.name as vehicle',
+			'vehicle.owner_id as ownerId'
+		])
+		.where('vehicle.owner_id', 'is not', null)
+		.$narrowType<{ ownerId: NotNull }>()
+		.orderBy('trip.travelled_on')
+		.execute();
+	const mine = trips.filter((x) => wanted(x.ownerId) && !paid.has(`${x.ownerId}:${x.id}`));
 	if (mine.length) {
 		const legs = await r
-			.select({
-				id: t.tripLeg.id,
-				tripId: t.tripLeg.tripId,
-				serviceId: t.tripLeg.serviceId,
-				entityId: t.tripLeg.entityId,
-				miles: t.tripLeg.miles
-			})
-			.from(t.tripLeg)
-			.where(
-				inArray(
-					t.tripLeg.tripId,
-					mine.map((x) => x.id)
-				)
-			);
+			.selectFrom('trip_leg')
+			.select([
+				'id',
+				'trip_id as tripId',
+				'service_id as serviceId',
+				'entity_id as entityId',
+				'miles'
+			])
+			.where('trip_id', '=', (eb) => eb.fn.any(eb.val(mine.map((x) => x.id))))
+			.execute();
 		const legWorth = await valueLegs(
 			r,
 			legs.map((l) => {
@@ -187,7 +182,7 @@ export async function owed(who?: readonly string[], r: Reader = db): Promise<Map
 			const amount = pays.every((v) => v !== null) ? sum(pays) : null;
 			if (amount !== null && amount.isZero()) continue;
 			const owner = {
-				id: x.ownerId!,
+				id: x.ownerId,
 				roleId: catalogue.people.find((p) => p.id === x.ownerId)?.roleId ?? null
 			};
 			const used = [
@@ -203,7 +198,7 @@ export async function owed(who?: readonly string[], r: Reader = db): Promise<Map
 					: used.length === 1
 						? `${rulesSaid(used, roles, names, currency)}, each leg`
 						: "by each leg's own rule";
-			add(x.ownerId!, {
+			add(x.ownerId, {
 				kind: 'trip',
 				id: x.id,
 				day: x.day,
@@ -232,30 +227,43 @@ export async function paymentsTo(userId: string, r: Reader = db) {
 	const places = await moneyPlaces();
 	const [rows, parts] = await Promise.all([
 		r
-			.select({
-				id: t.personPayment.id,
-				paid_on: t.personPayment.paidOn,
-				how: t.personPayment.how,
-				note: t.personPayment.note,
+			.selectFrom('person_payment')
+			.select((eb) => [
+				'id',
+				'paid_on',
+				'how',
+				'note',
 				// person_payment named outright: a query with no join writes its own
 				// columns unqualified, and a bare id inside the subquery is the item's.
-				total: sql<string>`(select coalesce(sum(i.amount), 0)::text from person_payment_item i
-				                     where i.payment_id = person_payment.id)`,
-				items: sql<number>`(select count(*)::int from person_payment_item i
-				                     where i.payment_id = person_payment.id)`
-			})
-			.from(t.personPayment)
-			.where(eq(t.personPayment.userId, userId))
-			.orderBy(desc(t.personPayment.paidOn), desc(t.personPayment.createdAt)),
+				eb
+					.selectFrom('person_payment_item as i')
+					.whereRef('i.payment_id', '=', 'person_payment.id')
+					.select((eb) =>
+						eb.cast<string>(eb.fn.coalesce(eb.fn.sum('i.amount'), eb.lit(0)), 'text').as('total')
+					)
+					.$asScalar()
+					.as('total'),
+				eb
+					.selectFrom('person_payment_item as i')
+					.whereRef('i.payment_id', '=', 'person_payment.id')
+					.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('items'))
+					.$asScalar()
+					.as('items')
+			])
+			.where('user_id', '=', userId)
+			.orderBy('paid_on', 'desc')
+			.orderBy('created_at', 'desc')
+			.execute(),
 		r
-			.select({
-				paymentId: t.personPaymentItem.paymentId,
-				paidAs: t.personPaymentItem.paidAs,
-				total: sql<string>`sum(${t.personPaymentItem.amount})::text`
-			})
-			.from(t.personPaymentItem)
-			.where(eq(t.personPaymentItem.userId, userId))
-			.groupBy(t.personPaymentItem.paymentId, t.personPaymentItem.paidAs)
+			.selectFrom('person_payment_item')
+			.select((eb) => [
+				'payment_id as paymentId',
+				'paid_as as paidAs',
+				eb.cast<string>(eb.fn.sum('amount'), 'text').as('total')
+			])
+			.where('user_id', '=', userId)
+			.groupBy(['payment_id', 'paid_as'])
+			.execute()
 	]);
 	return rows.map((p) => ({
 		...p,
@@ -269,49 +277,54 @@ export async function paymentsTo(userId: string, r: Reader = db) {
 
 /** One payment as it was recorded: who, when, how, and each item as it was said. */
 export async function paymentOf(id: string, r: Reader = db) {
-	const by = alias(t.user, 'by');
-	const corrected = alias(t.personPayment, 'corrected');
-	const [payment] = await r
-		.select({
-			id: t.personPayment.id,
-			user_id: t.personPayment.userId,
-			person: t.user.name,
-			paid_on: t.personPayment.paidOn,
-			how: t.personPayment.how,
-			note: t.personPayment.note,
-			recorded_by: by.name,
-			recorded_on: sql<string>`(${businessDay(t.personPayment.createdAt)})::text`
-		})
-		.from(t.personPayment)
-		.innerJoin(t.user, eq(t.user.id, t.personPayment.userId))
-		.innerJoin(by, eq(by.id, t.personPayment.createdBy))
-		.where(eq(t.personPayment.id, id));
+	const payment = await r
+		.selectFrom('person_payment')
+		.innerJoin('user', 'user.id', 'person_payment.user_id')
+		.innerJoin('user as by', 'by.id', 'person_payment.created_by')
+		.select((eb) => [
+			'person_payment.id',
+			'person_payment.user_id',
+			'user.name as person',
+			'person_payment.paid_on',
+			'person_payment.how',
+			'person_payment.note',
+			'by.name as recorded_by',
+			businessDay(eb.ref('person_payment.created_at')).as('recorded_on')
+		])
+		.where('person_payment.id', '=', id)
+		.executeTakeFirst();
 	if (!payment) return null;
 	const items = await r
-		.select({
-			id: t.personPaymentItem.id,
-			amount: t.personPaymentItem.amount,
-			said: t.personPaymentItem.said,
-			paid_as: t.personPaymentItem.paidAs,
-			day: sql<
-				string | null
-			>`coalesce(${t.timeEntry.workedOn}, ${t.trip.travelledOn}, ${corrected.paidOn})`,
-			place: sql<
-				string | null
-			>`coalesce(${t.site.display}, ${t.entity.name}, ${townsOf(t.trip.id)}, case when ${t.timeEntry.id} is not null then 'Internal' end)`,
-			corrects: corrected.paidOn,
-			corrects_id: corrected.id
-		})
-		.from(t.personPaymentItem)
-		.leftJoin(t.timeEntry, eq(t.timeEntry.id, t.personPaymentItem.timeEntryId))
-		.leftJoin(t.site, eq(t.site.id, t.timeEntry.siteId))
-		.leftJoin(t.entity, eq(t.entity.id, t.timeEntry.entityId))
-		.leftJoin(t.trip, eq(t.trip.id, t.personPaymentItem.tripId))
-		.leftJoin(corrected, eq(corrected.id, t.personPaymentItem.correctsPaymentId))
-		.where(eq(t.personPaymentItem.paymentId, id))
-		.orderBy(
-			asc(sql`coalesce(${t.timeEntry.workedOn}, ${t.trip.travelledOn}, ${corrected.paidOn})`)
-		);
+		.selectFrom('person_payment_item')
+		.leftJoin('time_entry', 'time_entry.id', 'person_payment_item.time_entry_id')
+		.leftJoin('site', 'site.id', 'time_entry.site_id')
+		.leftJoin('entity', 'entity.id', 'time_entry.entity_id')
+		.leftJoin('trip', 'trip.id', 'person_payment_item.trip_id')
+		.leftJoin(
+			'person_payment as corrected',
+			'corrected.id',
+			'person_payment_item.corrects_payment_id'
+		)
+		.select((eb) => [
+			'person_payment_item.id',
+			'person_payment_item.amount',
+			'person_payment_item.said',
+			'person_payment_item.paid_as',
+			eb.fn.coalesce('time_entry.worked_on', 'trip.travelled_on', 'corrected.paid_on').as('day'),
+			eb.fn
+				.coalesce(
+					'site.display',
+					'entity.name',
+					townsOf(eb.ref('trip.id')),
+					eb.case().when('time_entry.id', 'is not', null).then('Internal').end()
+				)
+				.as('place'),
+			'corrected.paid_on as corrects',
+			'corrected.id as corrects_id'
+		])
+		.where('person_payment_item.payment_id', '=', id)
+		.orderBy('day')
+		.execute();
 	const places = await moneyPlaces();
 	return {
 		...payment,
@@ -333,22 +346,23 @@ export async function recordedFor(
 	if (!entryIds.length && !tripIds.length)
 		return new Map<string, { amount: Decimal; paidOn: string; userId: string; paidAs: PaidAs }>();
 	const rows = await r
-		.select({
-			userId: t.personPaymentItem.userId,
-			entryId: t.personPaymentItem.timeEntryId,
-			tripId: t.personPaymentItem.tripId,
-			amount: t.personPaymentItem.amount,
-			paidAs: t.personPaymentItem.paidAs,
-			paidOn: t.personPayment.paidOn
-		})
-		.from(t.personPaymentItem)
-		.innerJoin(t.personPayment, eq(t.personPayment.id, t.personPaymentItem.paymentId))
-		.where(
-			or(
-				entryIds.length ? inArray(t.personPaymentItem.timeEntryId, [...entryIds]) : undefined,
-				tripIds.length ? inArray(t.personPaymentItem.tripId, [...tripIds]) : undefined
-			)
-		);
+		.selectFrom('person_payment_item')
+		.innerJoin('person_payment', 'person_payment.id', 'person_payment_item.payment_id')
+		.select([
+			'person_payment_item.user_id as userId',
+			'person_payment_item.time_entry_id as entryId',
+			'person_payment_item.trip_id as tripId',
+			'person_payment_item.amount',
+			'person_payment_item.paid_as as paidAs',
+			'person_payment.paid_on as paidOn'
+		])
+		.where((eb) =>
+			eb.or([
+				eb('person_payment_item.time_entry_id', '=', eb.fn.any(eb.val(entryIds))),
+				eb('person_payment_item.trip_id', '=', eb.fn.any(eb.val(tripIds)))
+			])
+		)
+		.execute();
 	return new Map(
 		rows.map((x) => [
 			`${x.userId}:${x.entryId ?? x.tripId}`,

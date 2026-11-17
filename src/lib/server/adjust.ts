@@ -1,7 +1,5 @@
-import { eq } from 'drizzle-orm';
 import type { Tx } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
-import type { ADJUST_REASONS } from '#lib/server/db/schema/index.ts';
+import type { AdjustReason, AdjustWay } from '#lib/adjust-fields.ts';
 import { drawFrom, unitCost, type Costing, type Shelf } from '#lib/stock-draw.ts';
 import { Decimal, Ratio } from '#lib/decimal.ts';
 import { quantity } from '#lib/format.ts';
@@ -36,10 +34,10 @@ export async function putRight(
 		material: { id: string; name: string; unit: string };
 		shelf: Shelf;
 		costing: Costing;
-		way: 'off' | 'on';
+		way: AdjustWay;
 		qty: string;
 		madeOn: string;
-		reason: (typeof ADJUST_REASONS)[number];
+		reason: AdjustReason;
 		note: string | null;
 		costEach: string | null;
 		countId?: string | null;
@@ -50,15 +48,15 @@ export async function putRight(
 ): Promise<string> {
 	const m = a.material;
 	const row = {
-		materialId: m.id,
-		madeOn: a.madeOn,
+		material_id: m.id,
+		made_on: a.madeOn,
 		way: a.way,
 		qty: a.qty,
 		reason: a.reason,
 		note: a.note,
-		countId: a.countId ?? null,
-		clientUuid: a.clientUuid ?? null,
-		createdBy: a.userId
+		count_id: a.countId ?? null,
+		client_uuid: a.clientUuid ?? null,
+		created_by: a.userId
 	};
 	if (a.way === 'off') {
 		const draw = drawFrom(a.shelf, a.qty, a.costing);
@@ -69,18 +67,26 @@ export async function putRight(
 					? `None of ${m.name} is on the shelf.`
 					: `Only ${quantity(draw.short.toString())} ${m.unit} of ${m.name} is on the shelf.`
 			);
-		const [made] = await tx
-			.insert(t.stockAdjustment)
-			.values({ ...row, exTaxCost: draw.exTaxCost.toString(), taxPaid: draw.taxPaid.toString() })
-			.returning({ id: t.stockAdjustment.id });
-		await tx.insert(t.stockTake).values(
-			draw.takes.map((take) => ({
-				adjustmentId: made.id,
-				materialLotId: take.lotId,
-				materialId: m.id,
-				qty: take.qty.toString()
-			}))
-		);
+		const made = await tx
+			.insertInto('stock_adjustment')
+			.values({
+				...row,
+				ex_tax_cost: draw.exTaxCost.toString(),
+				tax_paid: draw.taxPaid.toString()
+			})
+			.returning('id')
+			.executeTakeFirstOrThrow();
+		await tx
+			.insertInto('stock_take')
+			.values(
+				draw.takes.map((take) => ({
+					adjustment_id: made.id,
+					material_lot_id: take.lotId,
+					material_id: m.id,
+					qty: take.qty.toString()
+				}))
+			)
+			.execute();
 		return made.id;
 	}
 	// A find, at what one is worth on the shelf now, or what one cost as said.
@@ -95,28 +101,28 @@ export async function putRight(
 		);
 	const exTax = Ratio.of(each.exTax).mul(a.qty).round(4);
 	const tax = Ratio.of(each.taxPaid).mul(a.qty).round(4);
-	const [made] = await tx
-		.insert(t.stockAdjustment)
-		.values({ ...row, exTaxCost: exTax.toString(), taxPaid: tax.toString() })
-		.returning({ id: t.stockAdjustment.id });
-	await tx.insert(t.materialLot).values({
-		adjustmentId: made.id,
-		materialId: m.id,
-		receivedOn: a.madeOn,
-		qtyReceived: a.qty,
-		qtyRemaining: a.qty,
-		exTaxCost: exTax.toString(),
-		taxPaid: tax.toString()
-	});
+	const made = await tx
+		.insertInto('stock_adjustment')
+		.values({ ...row, ex_tax_cost: exTax.toString(), tax_paid: tax.toString() })
+		.returning('id')
+		.executeTakeFirstOrThrow();
+	await tx
+		.insertInto('material_lot')
+		.values({
+			adjustment_id: made.id,
+			material_id: m.id,
+			received_on: a.madeOn,
+			qty_received: a.qty,
+			qty_remaining: a.qty,
+			ex_tax_cost: exTax.toString(),
+			tax_paid: tax.toString()
+		})
+		.execute();
 	return made.id;
 }
 
 /** Locks materials' rows, in one order, as a line's draw locks them. */
 export async function lockMaterials(tx: Tx, ids: readonly string[]) {
 	for (const id of [...ids].sort())
-		await tx
-			.select({ id: t.material.id })
-			.from(t.material)
-			.where(eq(t.material.id, id))
-			.for('no key update');
+		await tx.selectFrom('material').select('id').where('id', '=', id).forNoKeyUpdate().execute();
 }

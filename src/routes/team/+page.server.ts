@@ -1,6 +1,5 @@
-import { asc, count, desc, eq, gt, sql } from 'drizzle-orm';
+import { sql } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
-import { passkey, role, session, user } from '#lib/server/db/schema/index.ts';
 import { signingIn } from '#lib/server/links.ts';
 import { passkeyName } from '#lib/server/passkeys.ts';
 import type { PageServerLoad } from './$types';
@@ -18,37 +17,40 @@ import type { PageServerLoad } from './$types';
  * none of its own: it shows who has access, and its audit log what changed.
  */
 export const load: PageServerLoad = async () => {
-	const [people, [{ roles }], keys, open] = await Promise.all([
+	const [people, { roles }, keys, open] = await Promise.all([
 		db
-			.select({
-				id: user.id,
-				name: user.name,
-				email: user.email,
-				active: user.active,
-				access: user.access,
-				last_signed_in_at: user.lastSignedInAt,
-				...signingIn,
-				role: role.name
-			})
-			.from(user)
-			.leftJoin(role, eq(role.id, user.roleId))
-			.orderBy(desc(user.active), asc(user.name)),
-		db.select({ roles: count() }).from(role),
+			.selectFrom('user')
+			.leftJoin('role', 'role.id', 'user.role_id')
+			.select((eb) => [
+				'user.id',
+				'user.name',
+				'user.email',
+				'user.active',
+				'user.access',
+				'user.last_signed_in_at',
+				...signingIn(eb.ref('user.id'), eb.ref('user.email')),
+				'role.name as role'
+			])
+			.orderBy('user.active', 'desc')
+			.orderBy('user.name')
+			.execute(),
 		db
-			.select({ userId: passkey.userId, name: passkey.name, aaguid: passkey.aaguid })
-			.from(passkey)
-			.orderBy(asc(passkey.createdAt)),
+			.selectFrom('role')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('roles'))
+			.executeTakeFirstOrThrow(),
+		db.selectFrom('passkey').select(['user_id', 'name', 'aaguid']).orderBy('created_at').execute(),
 		db
-			.select({ userId: session.userId, sessions: count() })
-			.from(session)
-			.where(gt(session.expiresAt, sql`now()`))
-			.groupBy(session.userId)
+			.selectFrom('session')
+			.select((eb) => ['user_id', eb.cast<number>(eb.fn.countAll(), 'integer').as('sessions')])
+			.where('expires_at', '>', sql<Date>`now()`)
+			.groupBy('user_id')
+			.execute()
 	]);
 	// Each passkey by its name, or null where it has none to say where it is kept.
 	const passkeysOf = new Map<string, (string | null)[]>();
 	for (const k of keys)
-		passkeysOf.set(k.userId, [...(passkeysOf.get(k.userId) ?? []), passkeyName(k)]);
-	const sessionsOf = new Map(open.map((o) => [o.userId, o.sessions]));
+		passkeysOf.set(k.user_id, [...(passkeysOf.get(k.user_id) ?? []), passkeyName(k)]);
+	const sessionsOf = new Map(open.map((o) => [o.user_id, o.sessions]));
 	return {
 		people: people.map((p) => ({
 			...p,

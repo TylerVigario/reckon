@@ -1,7 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
-import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { formFieldsOf, formTerms, materials } from '#lib/server/lines.ts';
 import { shelves } from '#lib/server/stock.ts';
 import { UUID } from '#lib/field-rules.ts';
@@ -16,33 +14,34 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ params, locals }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.line)) error(404, 'no such line');
-	const il = t.invoiceLine;
-	const [line] = await db
-		.select({
-			id: il.id,
-			version: il.version,
-			kind: il.kind,
-			material_id: il.materialId,
-			description: il.description,
-			qty: il.qty,
-			site_id: il.siteId,
-			bought_from: il.boughtFrom,
-			ex_tax_cost: il.exTaxCost,
-			tax_paid: il.taxPaid,
-			paid_by: il.paidBy,
-			receipt: sql<boolean>`${il.receipt} is not null`,
-			invoice_id: t.invoice.id,
-			client_uuid: t.invoice.clientUuid,
-			number: t.invoice.number,
-			status: t.invoice.status,
-			entity_id: t.invoice.entityId,
-			who: t.entity.name,
-			created_by: il.createdBy
-		})
-		.from(il)
-		.innerJoin(t.invoice, eq(t.invoice.id, il.invoiceId))
-		.innerJoin(t.entity, eq(t.entity.id, t.invoice.entityId))
-		.where(and(eq(il.id, params.line), eq(il.invoiceId, params.id)));
+	const line = await db
+		.selectFrom('invoice_line as il')
+		.innerJoin('invoice as i', 'i.id', 'il.invoice_id')
+		.innerJoin('entity as e', 'e.id', 'i.entity_id')
+		.select((eb) => [
+			'il.id',
+			'il.version',
+			'il.kind',
+			'il.material_id',
+			'il.description',
+			'il.qty',
+			'il.site_id',
+			'il.bought_from',
+			'il.ex_tax_cost',
+			'il.tax_paid',
+			'il.paid_by',
+			eb('il.receipt', 'is not', null).$castTo<boolean>().as('receipt'),
+			'i.id as invoice_id',
+			'i.client_uuid',
+			'i.number',
+			'i.status',
+			'i.entity_id',
+			'e.name as who',
+			'il.created_by'
+		])
+		.where('il.id', '=', params.line)
+		.where('il.invoice_id', '=', params.id)
+		.executeTakeFirst();
 	if (!line) error(404, 'no such line');
 	const kind = line.kind;
 	if (
@@ -54,10 +53,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 	const [sites, terms] = await Promise.all([
 		db
-			.select({ id: t.site.id, label: t.site.display, rate_pct: t.site.taxRatePct })
-			.from(t.site)
-			.where(and(eq(t.site.entityId, line.entity_id), eq(t.site.active, true)))
-			.orderBy(asc(t.site.display)),
+			.selectFrom('site')
+			.select(['id', 'display as label', 'tax_rate_pct as rate_pct'])
+			.where('entity_id', '=', line.entity_id)
+			.where('active', '=', true)
+			.orderBy('display')
+			.execute(),
 		formTerms()
 	]);
 	// The line's own item, even with nothing left on the shelf: what it draws

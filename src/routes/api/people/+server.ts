@@ -1,5 +1,4 @@
 import { asUser } from '#lib/server/db/index.ts';
-import { user } from '#lib/server/db/schema/index.ts';
 import { pgError, refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { tell } from '#lib/server/email.ts';
 import { cannotSend, issue, unsentBecause } from '#lib/server/links.ts';
@@ -36,15 +35,16 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const me = locals.user!;
 	try {
 		const made = await asUser(me.id, async (tx) => {
-			const [person] = await tx
-				.insert(user)
+			const person = await tx
+				.insertInto('user')
 				.values({
 					name: String(values.name),
 					email: String(values.email),
-					roleId: values.role_id === null ? null : String(values.role_id),
+					role_id: values.role_id === null ? null : String(values.role_id),
 					access: values.access as Access
 				})
-				.returning({ id: user.id });
+				.returning('id')
+				.executeTakeFirstOrThrow();
 			await record(tx, 'user_created', {
 				user: person.id,
 				detail: { access: values.access as Access }

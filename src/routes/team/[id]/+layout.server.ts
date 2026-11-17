@@ -1,7 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { and, count, eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import { passkey, user } from '#lib/server/db/schema/index.ts';
 import { cannotSend, changing, signingIn } from '#lib/server/links.ts';
 import { UUID } from '#lib/field-rules.ts';
 import type { LayoutServerLoad } from './$types';
@@ -15,28 +13,35 @@ import type { LayoutServerLoad } from './$types';
  */
 export const load: LayoutServerLoad = async ({ params, locals }) => {
 	if (!UUID.test(params.id)) error(404, 'Nobody with that id.');
-	const [[person], [{ onFull }], [{ passkeys }]] = await Promise.all([
+	const [person, { onFull }, { passkeys }] = await Promise.all([
 		db
-			.select({
-				id: user.id,
-				name: user.name,
-				email: user.email,
-				active: user.active,
-				access: user.access,
-				role_id: user.roleId,
-				last_signed_in_at: user.lastSignedInAt,
-				email_verified: user.emailVerified,
-				...signingIn,
-				changing
-			})
-			.from(user)
-			.where(eq(user.id, params.id)),
+			.selectFrom('user')
+			.select((eb) => [
+				'id',
+				'name',
+				'email',
+				'active',
+				'access',
+				'role_id',
+				'last_signed_in_at',
+				'email_verified',
+				...signingIn(eb.ref('user.id'), eb.ref('user.email')),
+				changing(eb.ref('user.id')).as('changing')
+			])
+			.where('id', '=', params.id)
+			.executeTakeFirst(),
 		// Someone active keeps Full; the database refuses otherwise, and the page says so first.
 		db
-			.select({ onFull: count() })
-			.from(user)
-			.where(and(eq(user.active, true), eq(user.access, 'full'))),
-		db.select({ passkeys: count() }).from(passkey).where(eq(passkey.userId, params.id))
+			.selectFrom('user')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('onFull'))
+			.where('active', '=', true)
+			.where('access', '=', 'full')
+			.executeTakeFirstOrThrow(),
+		db
+			.selectFrom('passkey')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('passkeys'))
+			.where('user_id', '=', params.id)
+			.executeTakeFirstOrThrow()
 	]);
 	if (!person) error(404, 'Nobody with that id.');
 	return { person, onFull, passkeys, me: locals.user!.id, cannotSend: cannotSend() };

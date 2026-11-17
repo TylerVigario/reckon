@@ -1,6 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
 import { db } from './db/index.ts';
-import { service } from './db/schema/index.ts';
 import { businessToday } from './calendar.ts';
 import { loadCatalogue } from './valuation/load.ts';
 import { ruleOn } from './valuation/pay.ts';
@@ -18,10 +16,12 @@ export async function vehicleTerms(people: readonly { id: string }[]) {
 	const [catalogue, miled] = await Promise.all([
 		loadCatalogue(db),
 		db
-			.select({ id: service.id, name: service.name })
-			.from(service)
-			.where(and(eq(service.unit, 'mile'), eq(service.active, true)))
-			.orderBy(asc(service.name))
+			.selectFrom('service')
+			.select(['id', 'name'])
+			.where('unit', '=', 'mile')
+			.where('active', '=', true)
+			.orderBy('name')
+			.execute()
 	]);
 	const terms: Record<string, { service: string; rule: VehicleRule | null }[]> = {};
 	for (const p of people) {

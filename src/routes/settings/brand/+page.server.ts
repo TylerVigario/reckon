@@ -1,6 +1,5 @@
 import { fail } from '@sveltejs/kit';
 import { asUser, db } from '#lib/server/db/index.ts';
-import { operator } from '#lib/server/db/schema/index.ts';
 import { operatorRow } from '#lib/server/operator.ts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -37,19 +36,19 @@ export const actions: Actions = {
 			});
 
 		const bytes = Buffer.from(await file.arrayBuffer());
-		const [exists] = await db.select({ id: operator.id }).from(operator).limit(1);
+		const exists = await db.selectFrom('operator').select('id').limit(1).executeTakeFirst();
 		if (!exists)
 			return fail(400, { message: 'Set the trading name first — there is no operator yet.' });
 
 		await asUser(locals.user!.id, (tx) =>
-			tx.update(operator).set({ logo: bytes, logoMediaType: file.type })
+			tx.updateTable('operator').set({ logo: bytes, logo_media_type: file.type }).execute()
 		);
 		return { saved: true };
 	},
 
 	clearLogo: async ({ locals }) => {
 		await asUser(locals.user!.id, (tx) =>
-			tx.update(operator).set({ logo: null, logoMediaType: null })
+			tx.updateTable('operator').set({ logo: null, logo_media_type: null }).execute()
 		);
 		return { saved: true };
 	}

@@ -1,9 +1,8 @@
-import { and, eq } from 'drizzle-orm';
+import type { Updateable } from 'kysely';
 import { Decimal } from '#lib/decimal.ts';
 import { asUser, db } from '#lib/server/db/index.ts';
+import type { Site } from '#lib/server/db/database.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { camel } from '#lib/server/db/rows.ts';
-import { site as sites, siteTaxCheck } from '#lib/server/db/schema/index.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
 import { ADDRESS_FIELDS, parseSiteField } from '#lib/site-fields.ts';
@@ -83,17 +82,11 @@ export const PATCH: RequestHandler = async (event) => {
 	}
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
-	const [site] = await db
-		.select({
-			street: sites.street,
-			city: sites.city,
-			region: sites.region,
-			postcode: sites.postcode,
-			google_place_id: sites.googlePlaceId,
-			tax_rate_pct: sites.taxRatePct
-		})
-		.from(sites)
-		.where(eq(sites.id, id));
+	const site = await db
+		.selectFrom('site')
+		.select(['street', 'city', 'region', 'postcode', 'google_place_id', 'tax_rate_pct'])
+		.where('id', '=', id)
+		.executeTakeFirstOrThrow();
 
 	if (ADDRESS_FIELDS.some((f) => f in row) || 'google_place_id' in row) {
 		const missing = [...ADDRESS_FIELDS, 'google_place_id'].filter((f) => !(f in row));
@@ -162,22 +155,27 @@ export const PATCH: RequestHandler = async (event) => {
 		// Checked in the update rather than before it, so there is no window
 		// between reading the version and writing over it.
 		after = await asUser(locals.user!.id, async (tx) => {
-			const [saved] = await tx
-				.update(sites)
-				.set(camel(row) as Partial<typeof sites.$inferInsert>)
-				.where(and(eq(sites.id, id), unchangedSince(pre.version)))
-				.returning({ version: VERSION });
+			const saved = await tx
+				.updateTable('site')
+				.set(row as Updateable<Site>)
+				.where('id', '=', id)
+				.where(unchangedSince(pre.version))
+				.returning(VERSION.as('version'))
+				.executeTakeFirst();
 			if (saved && answer)
-				await tx.insert(siteTaxCheck).values({
-					siteId: id,
-					taxAreaCode: answer.tac,
-					taxJurisdiction: answer.jurisdiction,
-					ratePct: answer.rate,
-					stateRatePct: answer.state,
-					districtRatePct: answer.district,
-					changed: !Decimal.from(answer.rate).eq(site.tax_rate_pct),
-					note: 'asked because the address changed'
-				});
+				await tx
+					.insertInto('site_tax_check')
+					.values({
+						site_id: id,
+						tax_area_code: answer.tac,
+						tax_jurisdiction: answer.jurisdiction,
+						rate_pct: answer.rate,
+						state_rate_pct: answer.state,
+						district_rate_pct: answer.district,
+						changed: !Decimal.from(answer.rate).eq(site.tax_rate_pct),
+						note: 'asked because the address changed'
+					})
+					.execute();
 			return saved;
 		});
 	} catch (e) {
@@ -203,7 +201,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	const found = await lookUpSite(client.id, params.site);
 	if (!found) return problem('notFound', 404, 'That client has no such site.');
 	await asUser(locals.user!.id, (tx) =>
-		tx.update(sites).set({ active: false }).where(eq(sites.id, found.id))
+		tx.updateTable('site').set({ active: false }).where('id', '=', found.id).execute()
 	);
 	return Response.json({ closed: true });
 };

@@ -1,9 +1,7 @@
 import { serviceNamed } from '#lib/server/named.ts';
-import { and, asc, eq } from 'drizzle-orm';
 import { Decimal, sum } from '#lib/decimal.ts';
 import type { Leg } from '#lib/trip-legs.ts';
 import { db } from './db/index.ts';
-import * as t from './db/schema/index.ts';
 import { moneyPlaces } from './business.ts';
 import { loadCatalogue } from './valuation/load.ts';
 import { legVehiclePay, legWorth } from './valuation/misc.ts';
@@ -12,10 +10,12 @@ import { ruleOn } from './valuation/pay.ts';
 /** The services charged by the mile, which a trip's legs bill as. */
 export const mileServices = () =>
 	db
-		.select({ id: t.service.id, name: t.service.name })
-		.from(t.service)
-		.where(and(eq(t.service.unit, 'mile'), eq(t.service.active, true)))
-		.orderBy(asc(t.service.name));
+		.selectFrom('service')
+		.select(['id', 'name'])
+		.where('unit', '=', 'mile')
+		.where('active', '=', true)
+		.orderBy('name')
+		.execute();
 
 /**
  * The service a trip's billed legs bill as: the one asked for, or the only one
@@ -55,10 +55,11 @@ export async function tripWorth(input: {
 		moneyPlaces(),
 		input.vehicleId
 			? db
-					.select({ ownerId: t.vehicle.ownerId })
-					.from(t.vehicle)
-					.where(eq(t.vehicle.id, input.vehicleId))
-					.then((r) => r[0] ?? null)
+					.selectFrom('vehicle')
+					.select('owner_id as ownerId')
+					.where('id', '=', input.vehicleId)
+					.executeTakeFirst()
+					.then((r) => r ?? null)
 			: Promise.resolve(null)
 	]);
 	const owner = vehicle?.ownerId

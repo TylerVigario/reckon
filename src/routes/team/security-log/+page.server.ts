@@ -1,6 +1,4 @@
-import { count } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import { role, user } from '#lib/server/db/schema/index.ts';
 import { securityLog } from '#lib/server/security-log.ts';
 import type { PageServerLoad } from './$types';
 
@@ -10,10 +8,16 @@ import type { PageServerLoad } from './$types';
  * And the counts Team's other tabs carry.
  */
 export const load: PageServerLoad = async ({ url }) => {
-	const [log, [{ people }], [{ roles }]] = await Promise.all([
+	const [log, { people }, { roles }] = await Promise.all([
 		securityLog('everyone', url.searchParams.get('before')),
-		db.select({ people: count() }).from(user),
-		db.select({ roles: count() }).from(role)
+		db
+			.selectFrom('user')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('people'))
+			.executeTakeFirstOrThrow(),
+		db
+			.selectFrom('role')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('roles'))
+			.executeTakeFirstOrThrow()
 	]);
 	return { ...log, people, roles };
 };

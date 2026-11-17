@@ -6,8 +6,8 @@ package-lock.json
 print
 dist-release
 
-# Drizzle Kit writes these, and its folder is its own.
-drizzle
+# kysely-codegen writes it, from the database the migrations build (npm run db:types).
+src/lib/server/db/database.ts
 
 # docs/schema/make-printable.py writes it, from the diagrams.
 docs/schema/reference.json

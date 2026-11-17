@@ -1,10 +1,9 @@
 import { hours } from '#lib/format.ts';
 import { error, redirect } from '@sveltejs/kit';
 import { resolve } from '$app/paths';
-import { and, eq, gte, isNull, or, sql } from 'drizzle-orm';
+import { sql, type NumericString } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday, personalDay } from '#lib/server/calendar.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { findClient } from '#lib/server/find.ts';
@@ -28,56 +27,64 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
 	const owing = balances(rounding, places);
 	const { id } = await findClient(params.id);
-	const e = t.entity;
-	const cn = t.creditNote;
-	const ca = t.creditApplication;
 
-	const {
-		rows: [client]
-	} = await db.execute<{ id: string; slug: string; credit: string }>(sql`
-		select ${e.id} as id, ${e.slug} as slug,
-		       -- Notes and what has been applied from them, each added up on its
-		       -- own: joined first, a note applied twice would count twice.
-		       ((select coalesce(sum(${cn.amount}), 0) from ${cn} where ${cn.entityId} = ${e.id})
-		        - (select coalesce(sum(${ca.amount}), 0)
-		             from ${ca} join ${cn} on ${cn.id} = ${ca.creditNoteId}
-		            where ${cn.entityId} = ${e.id}))::text as credit
-		  from ${e}
-		 where ${e.id} = ${id}`);
+	const client = await db
+		.selectFrom('entity as e')
+		.select((eb) => {
+			// Notes and what has been applied from them, each added up on its
+			// own: joined first, a note applied twice would count twice.
+			const notes = eb
+				.selectFrom('credit_note as cn')
+				.select((eb) => eb.fn.coalesce(eb.fn.sum<NumericString>('cn.amount'), eb.lit(0)).as('n'))
+				.whereRef('cn.entity_id', '=', 'e.id')
+				.$asScalar();
+			const applied = eb
+				.selectFrom('credit_application as ca')
+				.innerJoin('credit_note as cn', 'cn.id', 'ca.credit_note_id')
+				.select((eb) => eb.fn.coalesce(eb.fn.sum<NumericString>('ca.amount'), eb.lit(0)).as('n'))
+				.whereRef('cn.entity_id', '=', 'e.id')
+				.$asScalar();
+			return ['e.id', 'e.slug', sql<string>`(${notes} - ${applied})::text`.as('credit')];
+		})
+		.where('e.id', '=', id)
+		.executeTakeFirst();
 
 	if (!client) error(404, 'no such client');
 
 	const today = businessToday();
 	const [running, recent] = await Promise.all([
 		db
-			.select({
-				id: t.agreement.id,
-				site: t.site.display,
-				price: t.agreement.price,
-				interval: t.agreement.billingInterval
-			})
-			.from(t.agreement)
-			.leftJoin(t.site, eq(t.site.id, t.agreement.siteId))
-			.where(
-				and(
-					eq(t.agreement.entityId, id),
-					or(isNull(t.agreement.endsOn), gte(t.agreement.endsOn, sql`${businessToday()}::date`))
-				)
+			.selectFrom('agreement as a')
+			.leftJoin('site as s', 's.id', 'a.site_id')
+			.select(['a.id', 's.display as site', 'a.price', 'a.billing_interval as interval'])
+			.where('a.entity_id', '=', id)
+			.where((eb) =>
+				eb.or([
+					eb('a.ends_on', 'is', null),
+					eb('a.ends_on', '>=', eb.cast<string>(eb.val(businessToday()), 'date'))
+				])
 			)
-			.orderBy(sql`${t.site.display} nulls first`),
+			.orderBy('s.display', (ob) => ob.asc().nullsFirst())
+			.execute(),
 		db
-			.execute<{ id: string; number: string; status: string; gross: string; on: string }>(
-				sql`
-				select ${t.invoice.id} as id, ${t.invoice.number} as number, ${t.invoice.status} as status,
-				       b.gross::text as gross,
-				       coalesce(${personalDay(t.invoice.sentAt)}, ${personalDay(t.invoice.createdAt)})::text as on
-				  from ${t.invoice}
-				  join ${owing} b on b.invoice_id = ${t.invoice.id}
-				 where ${t.invoice.entityId} = ${id}
-				 order by coalesce(${t.invoice.sentAt}, ${t.invoice.createdAt}) desc
-				 limit 5`
-			)
-			.then((r) => r.rows)
+			.selectFrom('invoice as i')
+			.innerJoin(owing.as('b'), 'b.invoice_id', 'i.id')
+			.select((eb) => [
+				'i.id',
+				'i.number',
+				'i.status',
+				eb.cast<string>('b.gross', 'text').as('gross'),
+				eb
+					.cast<string>(
+						eb.fn.coalesce(personalDay(eb.ref('i.sent_at')), personalDay(eb.ref('i.created_at'))),
+						'text'
+					)
+					.as('on')
+			])
+			.where('i.entity_id', '=', id)
+			.orderBy((eb) => eb.fn.coalesce('i.sent_at', 'i.created_at'), 'desc')
+			.limit(5)
+			.execute()
 	]);
 
 	// Each running agreement -- the client's, and each site's -- with this
@@ -85,7 +92,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	// hour counts against the agreement it falls under, billable or not.
 	const [agreements, services] = await Promise.all([
 		loadAgreements(db, [id]),
-		db.select({ id: t.service.id, name: t.service.name }).from(t.service)
+		db.selectFrom('service').select(['id', 'name']).execute()
 	]);
 	const minutes = await usedThisMonth(db, agreements, today);
 	const nameOf = new Map(services.map((s) => [s.id, s.name]));

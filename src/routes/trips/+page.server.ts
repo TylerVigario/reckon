@@ -1,9 +1,7 @@
 import { monthOf } from '#lib/format.ts';
-import { and, count, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import { sum } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { townsOf } from '#lib/server/trips.ts';
 import { loadCatalogue, valueLegs } from '#lib/server/valuation/load.ts';
 import { jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
@@ -33,62 +31,69 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 	const from = /^\d{4}-(0[1-9]|1[0-2])$/.test(asked) ? `${asked}-01` : `${day.slice(0, 8)}01`;
 	const to = Temporal.PlainDate.from(from).add({ months: 1 }).toString();
 
-	const tr = t.trip;
-	const u = t.user;
+	const me = locals.user!.id;
+	const field = fieldOnly(locals);
 
 	const found = await db
-		.select({
-			id: tr.id,
-			travelled_on: tr.travelledOn,
-			driver: u.name,
-			vehicle: t.vehicle.name,
-			stops: townsOf(tr.id),
-			stop_count: sql<number>`(${db
-				.select({ n: count() })
-				.from(t.tripStop)
-				.where(eq(t.tripStop.tripId, tr.id))})::int`,
-			clients: sql<string | null>`(${db
-				.select({
-					names: sql`string_agg(distinct ${t.entity.name}, ' then ' order by ${t.entity.name})`
-				})
-				.from(t.tripLeg)
-				.innerJoin(t.entity, eq(t.entity.id, t.tripLeg.entityId))
-				.where(eq(t.tripLeg.tripId, tr.id))})`
-		})
-		.from(tr)
-		.leftJoin(u, eq(u.id, tr.drivenBy))
-		.leftJoin(t.vehicle, eq(t.vehicle.id, tr.vehicleId))
-		.where(
+		.selectFrom('trip')
+		.leftJoin('user', 'user.id', 'trip.driven_by')
+		.leftJoin('vehicle', 'vehicle.id', 'trip.vehicle_id')
+		.select((eb) => [
+			'trip.id',
+			'trip.travelled_on',
+			'user.name as driver',
+			'vehicle.name as vehicle',
+			townsOf(eb.ref('trip.id')).as('stops'),
+			eb
+				.selectFrom('trip_stop')
+				.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+				.whereRef('trip_stop.trip_id', '=', 'trip.id')
+				.$asScalar()
+				.$notNull()
+				.as('stop_count'),
+			eb
+				.selectFrom('trip_leg')
+				.innerJoin('entity', 'entity.id', 'trip_leg.entity_id')
+				.select((eb) =>
+					eb.fn
+						.agg<string | null>('string_agg', ['entity.name', eb.val(' then ')])
+						.distinct()
+						.orderBy('entity.name')
+						.as('names')
+				)
+				.whereRef('trip_leg.trip_id', '=', 'trip.id')
+				.$asScalar()
+				.as('clients')
+		])
+		.where((eb) =>
 			offline
-				? keptTrips(locals.user!.id, day)
-				: and(
-						gte(tr.travelledOn, from),
-						lt(tr.travelledOn, to),
-						fieldOnly(locals) ? eq(tr.drivenBy, locals.user!.id) : undefined
-					)
+				? keptTrips(eb, me, day)
+				: eb.and([
+						eb('trip.travelled_on', '>=', from),
+						eb('trip.travelled_on', '<', to),
+						...(field ? [eb('trip.driven_by', '=', me)] : [])
+					])
 		)
-		.orderBy(desc(tr.travelledOn), desc(tr.id));
+		.orderBy('trip.travelled_on', 'desc')
+		.orderBy('trip.id', 'desc')
+		.execute();
 
 	const legs = found.length
 		? await db
-				.select({
-					id: t.tripLeg.id,
-					tripId: t.tripLeg.tripId,
-					serviceId: t.tripLeg.serviceId,
-					entityId: t.tripLeg.entityId,
-					miles: t.tripLeg.miles,
-					travelledOn: t.trip.travelledOn,
-					invoiced: sql<boolean>`${t.invoiceLine.invoiceId} is not null`
-				})
-				.from(t.tripLeg)
-				.innerJoin(t.trip, eq(t.trip.id, t.tripLeg.tripId))
-				.leftJoin(t.invoiceLine, eq(t.invoiceLine.tripLegId, t.tripLeg.id))
-				.where(
-					inArray(
-						t.tripLeg.tripId,
-						found.map((f) => f.id)
-					)
-				)
+				.selectFrom('trip_leg')
+				.innerJoin('trip', 'trip.id', 'trip_leg.trip_id')
+				.leftJoin('invoice_line', 'invoice_line.trip_leg_id', 'trip_leg.id')
+				.select((eb) => [
+					'trip_leg.id',
+					'trip_leg.trip_id as tripId',
+					'trip_leg.service_id as serviceId',
+					'trip_leg.entity_id as entityId',
+					'trip_leg.miles',
+					'trip.travelled_on as travelledOn',
+					eb('invoice_line.invoice_id', 'is not', null).$castTo<boolean>().as('invoiced')
+				])
+				.where('trip_leg.trip_id', '=', (eb) => eb.fn.any(eb.val(found.map((f) => f.id))))
+				.execute()
 		: [];
 	const [worth, catalogue, places] = await Promise.all([
 		valueLegs(db, legs),
@@ -120,9 +125,11 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 	// them passed off as both.
 	const perMile = (
 		await db
-			.select({ id: t.service.id })
-			.from(t.service)
-			.where(and(eq(t.service.unit, 'mile'), eq(t.service.active, true)))
+			.selectFrom('service')
+			.select('id')
+			.where('unit', '=', 'mile')
+			.where('active', '=', true)
+			.execute()
 	).map((s) => s.id);
 	const rate =
 		perMile.length === 1 ? jobRate(priceOn(catalogue.prices, perMile[0], null, day), 1) : null;

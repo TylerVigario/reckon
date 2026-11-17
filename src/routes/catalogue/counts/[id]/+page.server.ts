@@ -1,8 +1,6 @@
 import { error } from '@sveltejs/kit';
-import { asc, eq, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { sql } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { materialFigures } from '#lib/server/stock.ts';
 import { UUID } from '#lib/field-rules.ts';
 import type { PageServerLoad } from './$types';
@@ -18,57 +16,53 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ params }) => {
 	if (!UUID.test(params.id)) error(404, 'no such count');
-	const starter = alias(t.user, 'starter');
-	const applier = alias(t.user, 'applier');
-	const [count] = await db
-		.select({
-			id: t.stockCount.id,
-			counted_on: t.stockCount.countedOn,
-			by: starter.name,
-			applied_at: t.stockCount.appliedAt,
-			applied_by: applier.name
-		})
-		.from(t.stockCount)
-		.innerJoin(starter, eq(starter.id, t.stockCount.createdBy))
-		.leftJoin(applier, eq(applier.id, t.stockCount.appliedBy))
-		.where(eq(t.stockCount.id, params.id));
+	const count = await db
+		.selectFrom('stock_count as sc')
+		.innerJoin('user as starter', 'starter.id', 'sc.created_by')
+		.leftJoin('user as applier', 'applier.id', 'sc.applied_by')
+		.select([
+			'sc.id',
+			'sc.counted_on',
+			'starter.name as by',
+			'sc.applied_at',
+			'applier.name as applied_by'
+		])
+		.where('sc.id', '=', params.id)
+		.executeTakeFirst();
 	if (!count) error(404, 'no such count');
 
 	const [materials, lines, adjustments] = await Promise.all([
 		db
-			.select({
-				id: t.material.id,
-				name: t.material.name,
-				brand: t.material.brand,
-				sku: t.material.sku,
+			.selectFrom('material as m')
+			.innerJoin('unit as u', 'u.id', 'm.unit_id')
+			.select((eb) => [
+				'm.id',
+				'm.name',
+				'm.brand',
+				'm.sku',
 				// How its unit is written beside a figure: "ft", or the name.
-				unit: sql<string>`coalesce(${t.unit.short}, ${t.unit.name})`,
-				places: t.unit.places,
-				active: t.material.active
-			})
-			.from(t.material)
-			.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
-			.orderBy(asc(t.material.name)),
+				eb.fn.coalesce('u.short', 'u.name').as('unit'),
+				'u.places',
+				'm.active'
+			])
+			.orderBy('m.name')
+			.execute(),
 		db
-			.select({
-				material_id: t.stockCountLine.materialId,
-				counted: t.stockCountLine.counted,
-				on_hand: t.stockCountLine.onHand,
-				cost_each: t.stockCountLine.costEach,
-				by: t.user.name
-			})
-			.from(t.stockCountLine)
-			.innerJoin(t.user, eq(t.user.id, t.stockCountLine.countedBy))
-			.where(eq(t.stockCountLine.countId, count.id)),
+			.selectFrom('stock_count_line as l')
+			.innerJoin('user as u', 'u.id', 'l.counted_by')
+			.select(['l.material_id', 'l.counted', 'l.on_hand', 'l.cost_each', 'u.name as by'])
+			.where('l.count_id', '=', count.id)
+			.execute(),
 		db
-			.select({
-				material_id: t.stockAdjustment.materialId,
-				way: t.stockAdjustment.way,
-				qty: t.stockAdjustment.qty,
-				worth: sql<string>`(${t.stockAdjustment.exTaxCost} + ${t.stockAdjustment.taxPaid})::text`
-			})
-			.from(t.stockAdjustment)
-			.where(eq(t.stockAdjustment.countId, count.id))
+			.selectFrom('stock_adjustment as a')
+			.select((eb) => [
+				'a.material_id',
+				'a.way',
+				'a.qty',
+				sql<string>`(${eb.ref('a.ex_tax_cost')} + ${eb.ref('a.tax_paid')})::text`.as('worth')
+			])
+			.where('a.count_id', '=', count.id)
+			.execute()
 	]);
 	const counted = new Set(lines.map((l) => l.material_id));
 	const figures = await materialFigures(materials.map((m) => m.id));

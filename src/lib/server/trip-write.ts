@@ -1,6 +1,4 @@
-import { sql } from 'drizzle-orm';
 import type { Reader } from './db/index.ts';
-import * as t from './db/schema/index.ts';
 import { pgError, refuse, refuseIfTheDatabaseSaidSo } from './field-errors.ts';
 import type { TripInput } from './trip-input.ts';
 import { mileServiceFor } from './trip-worth.ts';
@@ -71,14 +69,14 @@ export async function legsFor(
 
 /** The trip's own columns, from what was sent. */
 export const tripColumns = (trip: TripInput) => ({
-	travelledOn: trip.travelledOn,
-	drivenBy: trip.drivenBy,
-	vehicleId: trip.vehicleId,
+	travelled_on: trip.travelledOn,
+	driven_by: trip.drivenBy,
+	vehicle_id: trip.vehicleId,
 	note: trip.note,
-	odometerStart: trip.odometerStart,
-	odometerEnd: trip.odometerEnd,
-	startAddress: trip.startAddress,
-	endAddress: trip.endAddress
+	odometer_start: trip.odometerStart,
+	odometer_end: trip.odometerEnd,
+	start_address: trip.startAddress,
+	end_address: trip.endAddress
 });
 
 /** Writes a trip's stops, who each was for, and its legs, under it. */
@@ -90,33 +88,42 @@ export async function writeStops(
 	serviceId: string | null
 ) {
 	const stops = await tx
-		.insert(t.tripStop)
+		.insertInto('trip_stop')
 		.values(
-			trip.stops.map((s, i) => ({ tripId, seq: i + 1, siteId: s.siteId, address: s.address }))
+			trip.stops.map((s, i) => ({
+				trip_id: tripId,
+				seq: i + 1,
+				site_id: s.siteId,
+				address: s.address
+			}))
 		)
-		.returning({ id: t.tripStop.id, seq: t.tripStop.seq });
+		.returning(['id', 'seq'])
+		.execute();
 	const ids = stops.sort((a, b) => a.seq - b.seq).map((s) => s.id);
 	const clients = trip.stops.flatMap((s, i) =>
 		s.visits.map((v) => ({
-			tripStopId: ids[i],
-			entityId: v.entityId,
-			siteId: v.siteId,
-			askedThere: v.askedThere
+			trip_stop_id: ids[i],
+			entity_id: v.entityId,
+			site_id: v.siteId,
+			asked_there: v.askedThere
 		}))
 	);
-	if (clients.length) await tx.insert(t.tripStopClient).values(clients);
-	await tx.insert(t.tripLeg).values(
-		legs.map((l, k) => ({
-			tripId,
-			seq: k + 1,
-			miles: l.miles,
-			entityId: l.entityId,
-			siteId: l.siteId,
-			rule: l.rule,
-			serviceId: l.entityId ? serviceId : null,
-			toStopId: l.drive < ids.length ? ids[l.drive] : null
-		}))
-	);
+	if (clients.length) await tx.insertInto('trip_stop_client').values(clients).execute();
+	await tx
+		.insertInto('trip_leg')
+		.values(
+			legs.map((l, k) => ({
+				trip_id: tripId,
+				seq: k + 1,
+				miles: l.miles,
+				entity_id: l.entityId,
+				site_id: l.siteId,
+				rule: l.rule,
+				service_id: l.entityId ? serviceId : null,
+				to_stop_id: l.drive < ids.length ? ids[l.drive] : null
+			}))
+		)
+		.execute();
 }
 
 /**
@@ -125,13 +132,27 @@ export async function writeStops(
  * leaves it as paid. Null while it is neither, and may change.
  */
 export async function settled(tx: Reader, tripId: string): Promise<'billed' | 'paid' | null> {
-	const [row] = await tx
-		.select({
-			billed: sql<boolean>`exists (select 1 from invoice_line il join trip_leg l on l.id = il.trip_leg_id
-			                             where l.trip_id = ${tripId})`,
-			paid: sql<boolean>`exists (select 1 from person_payment_item i where i.trip_id = ${tripId})`
-		})
-		.from(sql`(select 1) as one`);
+	const row = await tx
+		.selectNoFrom((eb) => [
+			eb
+				.exists(
+					eb
+						.selectFrom('invoice_line as il')
+						.innerJoin('trip_leg as l', 'l.id', 'il.trip_leg_id')
+						.select(eb.lit(1).as('one'))
+						.where('l.trip_id', '=', tripId)
+				)
+				.as('billed'),
+			eb
+				.exists(
+					eb
+						.selectFrom('person_payment_item as i')
+						.select(eb.lit(1).as('one'))
+						.where('i.trip_id', '=', tripId)
+				)
+				.as('paid')
+		])
+		.executeTakeFirstOrThrow();
 	return row.billed ? 'billed' : row.paid ? 'paid' : null;
 }
 

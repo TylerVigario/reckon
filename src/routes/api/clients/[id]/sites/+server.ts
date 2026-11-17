@@ -1,6 +1,5 @@
 import { asUser } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { site as sites, siteTaxCheck } from '#lib/server/db/schema/index.ts';
 import { insertNamed } from '#lib/server/slugs.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { lookUpClient } from '#lib/server/find.ts';
@@ -97,17 +96,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			v === null || v === undefined ? null : as(v);
 		const site = await asUser(locals.user!.id, async (tx) => {
 			const areaVerifiedOn = businessToday();
-			const [made] = await insertNamed(
-				tx,
-				{
-					given: optional(row.slug, String),
-					from: String(row.label),
-					fallback: 'site',
-					constraint: 'site_slug_is_the_clients'
-				},
-				(tx, slug) =>
+			const made = await insertNamed(
+				{ given: optional(row.slug, String), from: String(row.label), fallback: 'site' },
+				(slug, madeHere) =>
 					tx
-						.insert(sites)
+						.insertInto('site')
 						.values({
 							slug,
 							label: String(row.label),
@@ -115,37 +108,44 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 							city: String(row.city),
 							region: String(row.region),
 							postcode: String(row.postcode),
-							googlePlaceId: String(row.google_place_id),
-							addressVerifiedOn: areaVerifiedOn,
-							googleRoundTripMiles: drive?.miles ?? null,
-							googleDriveMinutes: drive?.minutes ?? null,
-							typedRoundTripMiles: optional(row.typed_round_trip_miles, String),
-							typedDriveMinutes: optional(row.typed_drive_minutes, Number),
-							entityId: entity_id,
+							google_place_id: String(row.google_place_id),
+							address_verified_on: areaVerifiedOn,
+							google_round_trip_miles: drive?.miles ?? null,
+							google_drive_minutes: drive?.minutes ?? null,
+							typed_round_trip_miles: optional(row.typed_round_trip_miles, String),
+							typed_drive_minutes: optional(row.typed_drive_minutes, Number),
+							entity_id,
 							active: true,
-							taxRatePct: priced.rate,
-							stateRatePct: priced.state,
-							districtRatePct: priced.district,
-							taxJurisdiction: priced.jurisdiction,
-							taxAreaCode: priced.tac,
-							areaVerifiedOn
+							tax_rate_pct: priced.rate,
+							state_rate_pct: priced.state,
+							district_rate_pct: priced.district,
+							tax_jurisdiction: priced.jurisdiction,
+							tax_area_code: priced.tac,
+							area_verified_on: areaVerifiedOn
 						})
-						.returning({ id: sites.id, slug: sites.slug, display: sites.display })
+						.$if(madeHere, (qb) =>
+							qb.onConflict((oc) => oc.constraint('site_slug_is_the_clients').doNothing())
+						)
+						.returning(['id', 'slug', 'display'])
+						.executeTakeFirst()
 			);
 
 			// The answer is logged as an answer, the same as a refresh's, so the
 			// first thing that happened to this site is in the same record as
 			// everything after it.
-			await tx.insert(siteTaxCheck).values({
-				siteId: made.id,
-				taxAreaCode: priced.tac,
-				taxJurisdiction: priced.jurisdiction,
-				ratePct: priced.rate,
-				stateRatePct: priced.state,
-				districtRatePct: priced.district,
-				changed: true,
-				note: 'asked when the site was created'
-			});
+			await tx
+				.insertInto('site_tax_check')
+				.values({
+					site_id: made.id,
+					tax_area_code: priced.tac,
+					tax_jurisdiction: priced.jurisdiction,
+					rate_pct: priced.rate,
+					state_rate_pct: priced.state,
+					district_rate_pct: priced.district,
+					changed: true,
+					note: 'asked when the site was created'
+				})
+				.execute();
 			return made;
 		});
 

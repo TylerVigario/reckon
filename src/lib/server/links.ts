@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, count, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { expressionBuilder, sql, type Expression } from 'kysely';
+import { jsonBuildObject } from 'kysely/helpers/postgres';
 import { SITE_URL } from '$app/env/private';
 import { actingAs, db, type Tx } from './db/index.ts';
-import { emailLink, linkTry, passkey, user, type LINK_PURPOSES } from './db/schema/index.ts';
-import type { Changing, Waiting } from '#lib/people-fields.ts';
+import type { DB, EmailLinkPurpose } from './db/database.ts';
+import type { Waiting } from '#lib/people-fields.ts';
 import { mailer } from './email.ts';
 import { placeOf } from './network.ts';
 import { record, recordAside } from './events.ts';
@@ -42,7 +43,7 @@ import { record, recordAside } from './events.ts';
  * which codes exist, and counts against the network it came from.
  */
 
-export type Purpose = (typeof LINK_PURPOSES)[number];
+export type Purpose = EmailLinkPurpose;
 
 /** How long a link works, in minutes: an hour, every one (see above). */
 export const LINK_MINUTES = {
@@ -99,33 +100,38 @@ export async function issue(
 	if (!SITE_URL) throw new Error('A link is issued only where SITE_URL is set.');
 	if ((purpose === 'change') !== (changeTo !== undefined))
 		throw new Error('A change, and only a change, is sent to an address of its own.');
-	const [person] = await tx.select({ email: user.email }).from(user).where(eq(user.id, userId));
+	const person = await tx
+		.selectFrom('user')
+		.select('email')
+		.where('id', '=', userId)
+		.executeTakeFirst();
 	if (!person) throw new Error(`Nobody has the id ${userId}.`);
 	const to = changeTo ?? person.email;
 	const code = randomBytes(32).toString('base64url');
 	const alike = ALIKE[purpose];
 	await tx
-		.delete(emailLink)
-		.where(
-			and(
-				eq(emailLink.userId, userId),
-				isNull(emailLink.usedAt),
-				inArray(emailLink.purpose, [...alike])
-			)
-		);
+		.deleteFrom('email_link')
+		.where('user_id', '=', userId)
+		.where('used_at', 'is', null)
+		.where('purpose', '=', (eb) => eb.fn.any(eb.val([...alike])))
+		.execute();
 	// The record of links used is kept 90 days.
-	await tx.delete(emailLink).where(lt(emailLink.usedAt, sql`now() - interval '90 days'`));
-	const [made] = await tx
-		.insert(emailLink)
+	await tx
+		.deleteFrom('email_link')
+		.where('used_at', '<', sql<Date>`now() - interval '90 days'`)
+		.execute();
+	const made = await tx
+		.insertInto('email_link')
 		.values({
-			userId,
+			user_id: userId,
 			purpose,
-			codeHash: hashOf(code),
-			sentTo: to,
-			expiresAt: sql`now() + make_interval(mins => ${LINK_MINUTES[purpose]})`,
-			sentBy
+			code_hash: hashOf(code),
+			sent_to: to,
+			expires_at: sql<Date>`now() + make_interval(mins => ${LINK_MINUTES[purpose]})`,
+			sent_by: sentBy
 		})
-		.returning({ until: emailLink.expiresAt });
+		.returning('expires_at as until')
+		.executeTakeFirstOrThrow();
 	await record(tx, 'authn_link_issued', { user: userId, by: sentBy, detail: { purpose } });
 	return { link: `${SITE_URL}/link#${code}`, until: made.until, to };
 }
@@ -149,26 +155,28 @@ export type Usable = {
  */
 export async function usable(tx: Tx, code: string): Promise<Usable | null> {
 	if (!CODE.test(code)) return null;
-	const [found] = await tx
-		.select({
-			id: emailLink.id,
-			purpose: emailLink.purpose,
-			userId: emailLink.userId,
-			name: user.name,
-			email: emailLink.sentTo
-		})
-		.from(emailLink)
-		.innerJoin(user, eq(user.id, emailLink.userId))
-		.where(
-			and(
-				eq(emailLink.codeHash, hashOf(code)),
-				isNull(emailLink.usedAt),
-				gt(emailLink.expiresAt, sql`now()`),
-				eq(user.active, true),
-				or(eq(emailLink.purpose, 'change'), eq(user.email, emailLink.sentTo))
-			)
+	const found = await tx
+		.selectFrom('email_link')
+		.innerJoin('user', 'user.id', 'email_link.user_id')
+		.select([
+			'email_link.id',
+			'email_link.purpose',
+			'email_link.user_id as userId',
+			'user.name',
+			'email_link.sent_to as email'
+		])
+		.where('email_link.code_hash', '=', hashOf(code))
+		.where('email_link.used_at', 'is', null)
+		.where('email_link.expires_at', '>', sql<Date>`now()`)
+		.where('user.active', '=', true)
+		.where((eb) =>
+			eb.or([
+				eb('email_link.purpose', '=', 'change'),
+				eb('user.email', '=', eb.ref('email_link.sent_to'))
+			])
 		)
-		.for('update', { of: [emailLink, user] });
+		.forUpdate(['email_link', 'user'])
+		.executeTakeFirst();
 	return found ?? null;
 }
 
@@ -179,27 +187,24 @@ export async function usable(tx: Tx, code: string): Promise<Usable | null> {
  * reckon's own code, which has looked the code up first (#lib/server/passkeys).
  */
 export async function usableById(tx: Tx, id: string): Promise<Usable | null> {
-	const [found] = await tx
-		.select({
-			id: emailLink.id,
-			purpose: emailLink.purpose,
-			userId: emailLink.userId,
-			name: user.name,
-			email: emailLink.sentTo
-		})
-		.from(emailLink)
-		.innerJoin(user, eq(user.id, emailLink.userId))
-		.where(
-			and(
-				eq(emailLink.id, id),
-				isNull(emailLink.usedAt),
-				gt(emailLink.expiresAt, sql`now()`),
-				eq(user.active, true),
-				eq(user.email, emailLink.sentTo),
-				inArray(emailLink.purpose, [...MAKES_PASSKEY])
-			)
-		)
-		.for('update', { of: [emailLink, user] });
+	const found = await tx
+		.selectFrom('email_link')
+		.innerJoin('user', 'user.id', 'email_link.user_id')
+		.select([
+			'email_link.id',
+			'email_link.purpose',
+			'email_link.user_id as userId',
+			'user.name',
+			'email_link.sent_to as email'
+		])
+		.where('email_link.id', '=', id)
+		.where('email_link.used_at', 'is', null)
+		.where('email_link.expires_at', '>', sql<Date>`now()`)
+		.where('user.active', '=', true)
+		.whereRef('user.email', '=', 'email_link.sent_to')
+		.where('email_link.purpose', '=', (eb) => eb.fn.any(eb.val([...MAKES_PASSKEY])))
+		.forUpdate(['email_link', 'user'])
+		.executeTakeFirst();
 	return found ?? null;
 }
 
@@ -208,10 +213,15 @@ export async function used(tx: Tx, link: Usable): Promise<void> {
 	// Whatever the link changes is theirs, in record_history.
 	await actingAs(tx, link.userId);
 	await tx
-		.update(emailLink)
-		.set({ usedAt: sql`now()` })
-		.where(eq(emailLink.id, link.id));
-	await tx.update(user).set({ emailVerified: true }).where(eq(user.id, link.userId));
+		.updateTable('email_link')
+		.set({ used_at: sql<Date>`now()` })
+		.where('id', '=', link.id)
+		.execute();
+	await tx
+		.updateTable('user')
+		.set({ email_verified: true })
+		.where('id', '=', link.userId)
+		.execute();
 	await record(tx, 'authn_link_used', {
 		user: link.userId,
 		by: null,
@@ -226,14 +236,11 @@ export async function used(tx: Tx, link: Usable): Promise<void> {
  */
 export async function endPasskeyLinks(tx: Tx, userId: string): Promise<void> {
 	await tx
-		.delete(emailLink)
-		.where(
-			and(
-				eq(emailLink.userId, userId),
-				isNull(emailLink.usedAt),
-				inArray(emailLink.purpose, [...MAKES_PASSKEY])
-			)
-		);
+		.deleteFrom('email_link')
+		.where('user_id', '=', userId)
+		.where('used_at', 'is', null)
+		.where('purpose', '=', (eb) => eb.fn.any(eb.val([...MAKES_PASSKEY])))
+		.execute();
 }
 
 /** Codes a network may try that are not one to use, in a window, before it waits. */
@@ -243,10 +250,12 @@ const WINDOW = sql`interval '15 minutes'`;
 /** Whether `address`'s network has missed too often lately to try again yet. */
 export async function turnedAway(address: string): Promise<boolean> {
 	const { network } = placeOf(address);
-	const [{ n }] = await db
-		.select({ n: count() })
-		.from(linkTry)
-		.where(and(eq(linkTry.network, network), gt(linkTry.createdAt, sql`now() - ${WINDOW}`)));
+	const { n } = await db
+		.selectFrom('link_try')
+		.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+		.where('network', '=', network)
+		.where('created_at', '>', sql<Date>`now() - ${WINDOW}`)
+		.executeTakeFirstOrThrow();
 	if (n < MISSES_ALLOWED) return false;
 	await recordAside('excess_rate_limit_exceeded', {
 		user: null,
@@ -258,54 +267,79 @@ export async function turnedAway(address: string): Promise<boolean> {
 
 /** Counts a code that was not one to use against `address`'s network. */
 export async function missed(address: string): Promise<void> {
-	await db.delete(linkTry).where(lt(linkTry.createdAt, sql`now() - interval '1 day'`));
-	await db.insert(linkTry).values(placeOf(address));
+	await db
+		.deleteFrom('link_try')
+		.where('created_at', '<', sql<Date>`now() - interval '1 day'`)
+		.execute();
+	await db.insertInto('link_try').values(placeOf(address)).execute();
 	await recordAside('authn_link_refused', { user: null, by: null });
 }
 
 /**
  * What Team reads of each person's signing in, as columns of a select from
- * user: whether they have a passkey, and the newest link to make one they have
- * waiting (#lib/people-fields Waiting). The person is named as "user"
- * outright: Drizzle leaves a column unqualified in a query of one table, and
- * inside these it would be read as the inner table's own.
+ * user, given their id and the address they sign in with --
+ * `...signingIn(eb.ref('user.id'), eb.ref('user.email'))`: whether they have a
+ * passkey, and the newest link to make one they have waiting
+ * (#lib/people-fields Waiting).
  */
-export const signingIn = {
-	has_passkey: sql<boolean>`exists (
-		select 1 from ${passkey} where ${passkey.userId} = "user".id)`,
-	waiting: sql<Waiting | null>`(
-		select json_build_object(
-			'purpose', l.purpose,
-			'sent_at', l.created_at,
-			'until', l.expires_at,
-			'lapsed', l.expires_at <= now() or l.sent_to <> "user".email)
-		  from ${emailLink} l
-		 where l.user_id = "user".id and l.used_at is null and l.purpose in ('invite', 'reset')
-		 order by l.created_at desc limit 1)`
+export const signingIn = (userId: Expression<string>, email: Expression<string>) => {
+	const eb = expressionBuilder<DB>();
+	return [
+		eb
+			.exists(eb.selectFrom('passkey').select('passkey.id').where('passkey.user_id', '=', userId))
+			.$castTo<boolean>()
+			.as('has_passkey'),
+		eb
+			.selectFrom('email_link as l')
+			.select((eb) =>
+				jsonBuildObject({
+					purpose: eb.ref('l.purpose').$castTo<Waiting['purpose']>(),
+					sent_at: eb.ref('l.created_at'),
+					until: eb.ref('l.expires_at'),
+					lapsed: eb
+						.or([eb('l.expires_at', '<=', sql<Date>`now()`), eb('l.sent_to', '<>', email)])
+						.$castTo<boolean>()
+				}).as('link')
+			)
+			.where('l.user_id', '=', userId)
+			.where('l.used_at', 'is', null)
+			.where('l.purpose', '=', (eb) => eb.fn.any(eb.val([...MAKES_PASSKEY])))
+			.orderBy('l.created_at', 'desc')
+			.limit(1)
+			.as('waiting')
+	] as const;
 };
 
 /**
- * A change of their address still waiting, as a column of a select from user:
- * the address it is to, when its link went and until when it works, or null
- * (#lib/people-fields Changing). "user" outright, as in signingIn.
+ * A change of their address still waiting, as a column of a select from user,
+ * given their id -- `changing(eb.ref('user.id')).as('changing')`: the address
+ * it is to, when its link went and until when it works, or null
+ * (#lib/people-fields Changing).
  */
-export const changing = sql<Changing | null>`(
-	select json_build_object(
-		'to', l.sent_to,
-		'sent_at', l.created_at,
-		'until', l.expires_at,
-		'lapsed', l.expires_at <= now())
-	  from ${emailLink} l
-	 where l.user_id = "user".id and l.used_at is null and l.purpose = 'change'
-	 order by l.created_at desc limit 1)`;
+export const changing = (userId: Expression<string>) =>
+	expressionBuilder<DB>()
+		.selectFrom('email_link as l')
+		.select((eb) =>
+			jsonBuildObject({
+				to: eb.ref('l.sent_to'),
+				sent_at: eb.ref('l.created_at'),
+				until: eb.ref('l.expires_at'),
+				lapsed: eb('l.expires_at', '<=', sql<Date>`now()`).$castTo<boolean>()
+			}).as('change')
+		)
+		.where('l.user_id', '=', userId)
+		.where('l.used_at', 'is', null)
+		.where('l.purpose', '=', 'change')
+		.orderBy('l.created_at', 'desc')
+		.limit(1);
 
 /** Ends a change of `userId`'s address still waiting: its link stops working. */
 export async function endChange(tx: Tx, userId: string): Promise<boolean> {
 	const ended = await tx
-		.delete(emailLink)
-		.where(
-			and(eq(emailLink.userId, userId), isNull(emailLink.usedAt), eq(emailLink.purpose, 'change'))
-		)
-		.returning({ id: emailLink.id });
-	return ended.length > 0;
+		.deleteFrom('email_link')
+		.where('user_id', '=', userId)
+		.where('used_at', 'is', null)
+		.where('purpose', '=', 'change')
+		.executeTakeFirst();
+	return Number(ended.numDeletedRows) > 0;
 }

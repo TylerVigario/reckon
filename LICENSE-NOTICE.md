@@ -21,8 +21,9 @@ business with different clients in it:
 
 - `src/` and `static/` — the SvelteKit application in full: routes,
   components, the capture queue, the session handling, the database access
-- `drizzle/`, `tests/` and `scripts/` — the migrations, the guard suite and
-  the behaviour checks, and the commands that apply, prove and release them
+  and the migrations that make the database
+- `tests/` and `scripts/` — the guard suite and the behaviour checks, and the
+  commands that apply, prove and release the migrations
 - `docs/schema/` — the diagram generator and the printable it derives
 - `.github/` and the build configuration
 

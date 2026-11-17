@@ -1,6 +1,4 @@
-import { sql } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
-import { timeEntry, timeEntryCrew } from '#lib/server/db/schema/index.ts';
 import {
 	pgError,
 	refuse as refuseFields,
@@ -46,44 +44,40 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	let row;
 	try {
-		[row] = await asUser(created_by, async (tx) => {
+		row = await asUser(created_by, async (tx) => {
 			const added = await tx
-				.insert(timeEntry)
+				.insertInto('time_entry')
 				.values({
-					clientUuid: client_uuid,
-					workedOn: e.workedOn,
+					client_uuid,
+					worked_on: e.workedOn,
 					seconds: e.seconds,
-					startedAt: e.startedAt,
-					endedAt: e.endedAt,
+					started_at: e.startedAt,
+					ended_at: e.endedAt,
 					zone: e.zone,
 					crew: e.crew,
-					workedBy: e.workedBy,
-					createdBy: created_by,
-					entityId: e.entityId,
-					siteId: e.siteId,
-					serviceId: e.serviceId,
+					worked_by: e.workedBy,
+					created_by,
+					entity_id: e.entityId,
+					site_id: e.siteId,
+					service_id: e.serviceId,
 					billable: e.billable,
 					note: e.note
 				})
 				// A repeat is the row already there, returned as if just written.
-				.onConflictDoUpdate({
-					target: [timeEntry.createdBy, timeEntry.clientUuid],
-					set: { clientUuid: sql`excluded.client_uuid` }
-				})
-				.returning({
-					id: timeEntry.id,
-					client_uuid: timeEntry.clientUuid,
-					worked_on: timeEntry.workedOn,
-					seconds: timeEntry.seconds,
-					crew: timeEntry.crew,
-					billable: timeEntry.billable
-				});
+				.onConflict((oc) =>
+					oc
+						.columns(['created_by', 'client_uuid'])
+						.doUpdateSet((eb) => ({ client_uuid: eb.ref('excluded.client_uuid') }))
+				)
+				.returning(['id', 'client_uuid', 'worked_on', 'seconds', 'crew', 'billable'])
+				.executeTakeFirst();
 			// The crew, once: a repeat finds it there already.
-			if (added[0]?.crew === 'team' && e.crewIds.length)
+			if (added?.crew === 'team' && e.crewIds.length)
 				await tx
-					.insert(timeEntryCrew)
-					.values(e.crewIds.map((userId) => ({ timeEntryId: added[0].id, userId })))
-					.onConflictDoNothing();
+					.insertInto('time_entry_crew')
+					.values(e.crewIds.map((user_id) => ({ time_entry_id: added.id, user_id })))
+					.onConflict((oc) => oc.doNothing())
+					.execute();
 			return added;
 		});
 	} catch (err) {

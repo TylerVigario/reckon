@@ -1,5 +1,4 @@
 import { db } from '#lib/server/db/index.ts';
-import { operator } from '#lib/server/db/schema/index.ts';
 import { iconFromLogo } from '#lib/server/app-icon.ts';
 import type { RequestHandler } from './$types';
 
@@ -27,25 +26,20 @@ const DEFAULT_ICONS = [
 ];
 
 export const GET: RequestHandler = async () => {
-	const [row] = await db
-		.select({
-			tradingName: operator.tradingName,
-			shortName: operator.shortName,
-			accent: operator.accentColour,
-			logo: operator.logo,
-			logoMediaType: operator.logoMediaType
-		})
-		.from(operator)
-		.limit(1);
+	const row = await db
+		.selectFrom('operator')
+		.select(['trading_name', 'short_name', 'accent_colour', 'logo', 'logo_media_type'])
+		.limit(1)
+		.executeTakeFirst();
 
-	const name = row?.tradingName ?? 'reckon';
-	const accent = row?.accent?.toLowerCase();
-	const fit = row?.logo ? iconFromLogo(new Uint8Array(row.logo), row.logoMediaType) : null;
+	const name = row?.trading_name ?? 'reckon';
+	const accent = row?.accent_colour?.toLowerCase();
+	const fit = row?.logo ? iconFromLogo(new Uint8Array(row.logo), row.logo_media_type) : null;
 
 	const manifest = {
 		id: '/',
 		name,
-		short_name: row?.shortName ?? name,
+		short_name: row?.short_name ?? name,
 		description: 'Time, trips and invoices',
 		start_url: '/',
 		scope: '/',

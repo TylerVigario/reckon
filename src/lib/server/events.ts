@@ -4,15 +4,15 @@
 // (#lib/server/log). The table's own comment says what it holds and why it
 // stands.
 //
-// Plain TypeScript over Drizzle, with nothing of SvelteKit's, so the commands in
+// Plain TypeScript over Kysely, with nothing of SvelteKit's, so the commands in
 // scripts/ record as the server does. Where a request is in hand, the server
 // says how to read it (readOriginFrom, in hooks.server.ts).
-import { lt, sql } from 'drizzle-orm';
+import { sql } from 'kysely';
 import { db, type Db, type Tx } from './db/index.ts';
-import { securityEvent, type SECURITY_EVENTS } from './db/schema/index.ts';
+import type { SecurityEventName } from './db/database.ts';
 import { log } from './log.ts';
 
-export type SecurityEvent = (typeof SECURITY_EVENTS)[number];
+export type SecurityEvent = SecurityEventName;
 
 /**
  * Each event's level in the log, as OWASP's Logging Vocabulary sets it, its
@@ -93,24 +93,24 @@ export async function record(
 	const by = about.by === undefined ? (from.by ?? null) : about.by;
 	const row = {
 		name,
-		userId: user,
-		byId: by && by !== user ? by : null,
-		clientAddress: from.address ?? null,
-		userAgent: from.userAgent?.slice(0, 512) ?? null,
+		user_id: user,
+		by_id: by && by !== user ? by : null,
+		client_address: from.address ?? null,
+		user_agent: from.userAgent?.slice(0, 512) ?? null,
 		detail: about.detail ?? null
 	};
 	log[LEVEL[name]](
 		{
 			event: name,
-			'user.id': row.userId ?? undefined,
-			'by.user.id': row.byId ?? undefined,
-			'client.address': row.clientAddress ?? undefined,
-			'user_agent.original': row.userAgent ?? undefined,
+			'user.id': row.user_id ?? undefined,
+			'by.user.id': row.by_id ?? undefined,
+			'client.address': row.client_address ?? undefined,
+			'user_agent.original': row.user_agent ?? undefined,
 			...(row.detail ? { detail: row.detail } : {})
 		},
 		SAYS[name]
 	);
-	await to.insert(securityEvent).values(row);
+	await to.insertInto('security_event').values(row).execute();
 }
 
 /**
@@ -132,11 +132,12 @@ export async function recordAside(name: SecurityEvent, about?: Parameters<typeof
  */
 export async function prune(): Promise<number> {
 	const gone = await db
-		.delete(securityEvent)
-		.where(lt(securityEvent.at, sql`now() - interval '1 year'`))
-		.returning({ id: securityEvent.id });
-	if (gone.length) log.info({ removed: gone.length }, 'Security events a year old removed');
-	return gone.length;
+		.deleteFrom('security_event')
+		.where('at', '<', sql<Date>`now() - interval '1 year'`)
+		.executeTakeFirst();
+	const removed = Number(gone.numDeletedRows);
+	if (removed) log.info({ removed }, 'Security events a year old removed');
+	return removed;
 }
 
 const DAY = 24 * 60 * 60 * 1000;

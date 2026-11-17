@@ -1,9 +1,8 @@
 import { getAuthenticatorName } from '@better-auth/passkey';
 import { APIError } from 'better-auth/api';
-import { and, asc, count, eq, sql } from 'drizzle-orm';
+import { sql } from 'kysely';
 import { browserName } from '#lib/browser-name.ts';
 import { db, type Tx } from './db/index.ts';
-import { passkey, session, user } from './db/schema/index.ts';
 import { tell } from './email.ts';
 import { endPasskeyLinks, usableById, used } from './links.ts';
 import { passkeyAdded } from './notices.js';
@@ -56,27 +55,20 @@ export const passkeyLabel = (p: { name: string | null; aaguid: string | null }) 
  */
 export async function listPasskeys(userId: string) {
 	const rows = await db
-		.select({
-			id: passkey.id,
-			name: passkey.name,
-			aaguid: passkey.aaguid,
-			backedUp: passkey.backedUp,
-			createdAt: passkey.createdAt,
-			lastUsedAt: passkey.lastUsedAt,
-			lastUsedFrom: passkey.lastUsedFrom
-		})
-		.from(passkey)
-		.where(eq(passkey.userId, userId))
-		.orderBy(asc(passkey.createdAt));
+		.selectFrom('passkey')
+		.select(['id', 'name', 'aaguid', 'backed_up', 'created_at', 'last_used_at', 'last_used_from'])
+		.where('user_id', '=', userId)
+		.orderBy('created_at')
+		.execute();
 	return rows.map((p) => ({
 		id: p.id,
 		label: passkeyLabel(p),
 		named: !!p.name?.trim(),
 		keeper: getAuthenticatorName(p.aaguid ?? undefined) ?? null,
-		synced: p.backedUp,
-		created: p.createdAt.toISOString(),
-		lastUsed: p.lastUsedAt?.toISOString() ?? null,
-		lastFrom: p.lastUsedFrom
+		synced: p.backed_up,
+		created: p.created_at.toISOString(),
+		lastUsed: p.last_used_at?.toISOString() ?? null,
+		lastFrom: p.last_used_from
 	}));
 }
 
@@ -96,7 +88,7 @@ export async function forTheLink({
 		throw new APIError('UNAUTHORIZED', {
 			message: 'Sign in to add a passkey, or use the link reckon emailed you.'
 		});
-	const link = await db.transaction((tx) => usableById(tx, context));
+	const link = await db.transaction().execute((tx) => usableById(tx, context));
 	if (!link) throw new APIError('UNAUTHORIZED', { message: LINK_GONE });
 	return { id: link.userId, name: link.email, displayName: link.name };
 }
@@ -122,17 +114,15 @@ export async function forTheLink({
  * How many passkeys there were.
  */
 export async function endPasskeys(tx: Tx, userId: string): Promise<number> {
-	const ended = await tx
-		.delete(passkey)
-		.where(eq(passkey.userId, userId))
-		.returning({ id: passkey.id });
-	if (ended.length)
+	const ended = await tx.deleteFrom('passkey').where('user_id', '=', userId).executeTakeFirst();
+	const passkeys = Number(ended.numDeletedRows);
+	if (passkeys)
 		await record(tx, 'authn_passkey_removed', {
 			user: userId,
-			detail: { passkeys: ended.length, why: 'ended' }
+			detail: { passkeys, why: 'ended' }
 		});
 	await signedOutEverywhere(tx, userId, 'their passkeys were ended');
-	return ended.length;
+	return passkeys;
 }
 
 /**
@@ -140,12 +130,9 @@ export async function endPasskeys(tx: Tx, userId: string): Promise<number> {
  * security log's "Signed out everywhere", with why.
  */
 export async function signedOutEverywhere(tx: Tx, userId: string, why: string) {
-	const ended = await tx
-		.delete(session)
-		.where(eq(session.userId, userId))
-		.returning({ id: session.id });
-	if (ended.length)
-		await record(tx, 'session_expired', { user: userId, detail: { sessions: ended.length, why } });
+	const ended = await tx.deleteFrom('session').where('user_id', '=', userId).executeTakeFirst();
+	const sessions = Number(ended.numDeletedRows);
+	if (sessions) await record(tx, 'session_expired', { user: userId, detail: { sessions, why } });
 }
 
 /**
@@ -157,20 +144,23 @@ export async function signedOutEverywhere(tx: Tx, userId: string, why: string) {
  * theirs.
  */
 export async function endPasskey(tx: Tx, userId: string, passkeyId: string) {
-	const [ended] = await tx
-		.delete(passkey)
-		.where(and(eq(passkey.id, passkeyId), eq(passkey.userId, userId)))
-		.returning({ name: passkey.name, aaguid: passkey.aaguid });
+	const ended = await tx
+		.deleteFrom('passkey')
+		.where('id', '=', passkeyId)
+		.where('user_id', '=', userId)
+		.returning(['name', 'aaguid'])
+		.executeTakeFirst();
 	if (!ended) return null;
 	await record(tx, 'authn_passkey_removed', {
 		user: userId,
 		detail: { passkey: passkeyName(ended), why: 'ended' }
 	});
 	await signedOutEverywhere(tx, userId, 'a passkey of theirs was ended');
-	const [{ left }] = await tx
-		.select({ left: count() })
-		.from(passkey)
-		.where(eq(passkey.userId, userId));
+	const { left } = await tx
+		.selectFrom('passkey')
+		.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('left'))
+		.where('user_id', '=', userId)
+		.executeTakeFirstOrThrow();
 	return { name: passkeyName(ended), left };
 }
 
@@ -214,13 +204,13 @@ export async function beforeKeeping({
 	const named = { name: added.name ?? added.from ?? undefined };
 	const noted = { passkey: named.name ?? null };
 	if (!context) {
-		await db.transaction(async (tx) => {
+		await db.transaction().execute(async (tx) => {
 			await record(tx, 'authn_passkey_added', { user: userId, by: null, detail: noted });
 			await tell(tx, userId, (them, business) => passkeyAdded(them, business, added));
 		});
 		return named;
 	}
-	const kept = await db.transaction(async (tx) => {
+	const kept = await db.transaction().execute(async (tx) => {
 		const link = await usableById(tx, context);
 		if (!link || link.userId !== userId) return false;
 		await used(tx, link);
@@ -255,30 +245,36 @@ export async function beforeSigningIn({
 	userVerified: boolean;
 }) {
 	if (!userVerified) throw new APIError('FORBIDDEN', { message: NOT_VERIFIED });
-	const [used] = await db
-		.update(passkey)
+	const used = await db
+		.updateTable('passkey')
 		.set({
-			lastUsedAt: new Date(),
-			lastUsedFrom: browserName(request?.headers.get('user-agent'))
+			last_used_at: new Date(),
+			last_used_from: browserName(request?.headers.get('user-agent'))
 		})
-		.where(eq(passkey.credentialID, credentialId))
-		.returning({ userId: passkey.userId });
-	if (used) await signedInNow(used.userId);
+		.where('credential_id', '=', credentialId)
+		.returning('user_id')
+		.executeTakeFirst();
+	if (used) await signedInNow(used.user_id);
 }
 
-/** What Team says as someone's last sign-in. Not a change to them, so updated_at stays. */
+/** What Team says as someone's last sign-in. */
 const signedInNow = (userId: string) =>
 	db
-		.update(user)
-		.set({ lastSignedInAt: sql`now()`, updatedAt: sql`${user.updatedAt}` })
-		.where(eq(user.id, userId));
+		.updateTable('user')
+		.set({ last_signed_in_at: sql<Date>`now()` })
+		.where('id', '=', userId)
+		.execute();
 
 /**
  * Whether a session opening is for someone still active: one made inactive on
  * Team signs in no more.
  */
 export async function mayOpenSession(userId: string) {
-	const [person] = await db.select({ active: user.active }).from(user).where(eq(user.id, userId));
+	const person = await db
+		.selectFrom('user')
+		.select('active')
+		.where('id', '=', userId)
+		.executeTakeFirst();
 	if (person?.active !== true) throw new APIError('FORBIDDEN', { message: NOT_ACTIVE });
 }
 
@@ -325,14 +321,15 @@ export async function signInRefused(
 						: message === NOT_ACTIVE
 							? 'not active'
 							: 'other';
-	const [found] = credentialId
+	const found = credentialId
 		? await db
-				.select({ userId: passkey.userId })
-				.from(passkey)
-				.where(eq(passkey.credentialID, credentialId))
-		: [];
+				.selectFrom('passkey')
+				.select('user_id')
+				.where('credential_id', '=', credentialId)
+				.executeTakeFirst()
+		: undefined;
 	await recordAside('authn_login_fail', {
-		user: found?.userId ?? null,
+		user: found?.user_id ?? null,
 		by: null,
 		detail: { because }
 	});

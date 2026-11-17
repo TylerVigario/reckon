@@ -1,7 +1,5 @@
-import { asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { personalToday } from '#lib/server/calendar.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { materialFigures } from '#lib/server/stock.ts';
 import { isOfflineCopy } from '#lib/offline-copy.ts';
 import type { PageServerLoad } from './$types';
@@ -18,34 +16,44 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ url }) => {
 	const materials = await db
-		.select({
-			id: t.material.id,
-			name: t.material.name,
-			sku: t.material.sku,
-			brand: t.material.brand,
+		.selectFrom('material as m')
+		.innerJoin('unit as u', 'u.id', 'm.unit_id')
+		.select((eb) => [
+			'm.id',
+			'm.name',
+			'm.sku',
+			'm.brand',
 			// How its unit is written beside a figure: "ft", or the name.
-			unit: sql<string>`coalesce(${t.unit.short}, ${t.unit.name})`,
-			active: t.material.active
-		})
-		.from(t.material)
-		.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
-		.orderBy(desc(t.material.active), asc(t.material.name));
-	const [figures, [open], [last]] = await Promise.all([
+			eb.fn.coalesce('u.short', 'u.name').as('unit'),
+			'm.active'
+		])
+		.orderBy('m.active', 'desc')
+		.orderBy('m.name')
+		.execute();
+	const [figures, open, last] = await Promise.all([
 		materialFigures(materials.map((m) => m.id)),
 		// The count being counted, if one is, and how far it has got.
 		db
-			.select({
-				id: t.stockCount.id,
-				counted: sql<number>`(select count(*)::int from ${t.stockCountLine} l where l.count_id = stock_count.id)`
-			})
-			.from(t.stockCount)
-			.where(isNull(t.stockCount.appliedAt)),
+			.selectFrom('stock_count as sc')
+			.select((eb) => [
+				'sc.id',
+				eb
+					.selectFrom('stock_count_line as l')
+					.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+					.whereRef('l.count_id', '=', 'sc.id')
+					.$asScalar()
+					.$notNull()
+					.as('counted')
+			])
+			.where('sc.applied_at', 'is', null)
+			.executeTakeFirst(),
 		db
-			.select({ on: t.stockCount.countedOn })
-			.from(t.stockCount)
-			.where(isNotNull(t.stockCount.appliedAt))
-			.orderBy(desc(t.stockCount.countedOn))
+			.selectFrom('stock_count')
+			.select('counted_on')
+			.where('applied_at', 'is not', null)
+			.orderBy('counted_on', 'desc')
 			.limit(1)
+			.executeTakeFirst()
 	]);
 	// Kept for no signal with quantities alone (#lib/offline-copy): what each
 	// cost and sells at need a connection.
@@ -54,7 +62,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		as_of: new Date().toISOString(),
 		today: personalToday(),
 		open: open ?? null,
-		lastCounted: last?.on ?? null,
+		lastCounted: last?.counted_on ?? null,
 		materials: materials.map((m) => {
 			const f = figures.of.get(m.id)!;
 			return copy

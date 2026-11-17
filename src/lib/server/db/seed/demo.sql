@@ -65,8 +65,8 @@ INSERT INTO service_price (service_id, rate, additional_rate, effective_from) VA
 -- each field line. When the car is their own, the owner is paid 90% of what
 -- its miles bill and the employee 60%.
 INSERT INTO pay_rule (service_id, role_id, pays_for, method, amount, effective_from)
-SELECT r.service, (SELECT id FROM role WHERE name = r.role), r.pays_for, r.method,
-       r.amount, r.day
+SELECT r.service, (SELECT id FROM role WHERE name = r.role), r.pays_for::pays_for,
+       r.method::pay_rule_method, r.amount, r.day
   FROM (VALUES
     ('2d15bc02-d08e-4242-860c-5d461bf2b1c2'::uuid,    'Partner',    'time',    'per_hour', 45.00, '2026-07-01'::date),
     ('f13e8550-7aec-431c-86e5-856cb36910d7'::uuid, 'Partner',    'time',    'per_hour', 18.00, '2025-03-01'::date),

@@ -1,11 +1,8 @@
 import { monthOf } from '#lib/format.ts';
-import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday, weekOf } from '#lib/server/calendar.ts';
 import { keptEntries } from '#lib/server/kept.ts';
 import { isOfflineCopy } from '#lib/offline-copy.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
 import { crewNames } from '#lib/server/choices.ts';
 import { fieldOnly, theirWork } from '#lib/server/mine.ts';
@@ -39,39 +36,41 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 	const yours = field || url.searchParams.get('who') === 'yours';
 	const me = locals.user!.id;
 
-	const u = alias(t.user, 'u');
-	const [entries, [operator]] = await Promise.all([
+	const [entries, operator] = await Promise.all([
 		db
-			.select({
+			.selectFrom('time_entry')
+			.leftJoin('user as u', 'u.id', 'time_entry.worked_by')
+			.innerJoin('service', 'service.id', 'time_entry.service_id')
+			.leftJoin('entity', 'entity.id', 'time_entry.entity_id')
+			.leftJoin('site', 'site.id', 'time_entry.site_id')
+			.leftJoin('invoice_line', 'invoice_line.time_entry_id', 'time_entry.id')
+			.select((eb) => [
 				...entryColumns,
-				startedAt: t.timeEntry.startedAt,
-				endedAt: t.timeEntry.endedAt,
-				zone: t.timeEntry.zone,
-				note: t.timeEntry.note,
-				workedByName: u.name,
-				teamNames: crewNames(sql`${t.timeEntry.id}`),
-				entity: t.entity.name,
-				site: t.site.display,
-				service: t.service.name,
-				invoiced: sql<boolean>`${t.invoiceLine.invoiceId} is not null`
-			})
-			.from(t.timeEntry)
-			.leftJoin(u, eq(u.id, t.timeEntry.workedBy))
-			.innerJoin(t.service, eq(t.service.id, t.timeEntry.serviceId))
-			.leftJoin(t.entity, eq(t.entity.id, t.timeEntry.entityId))
-			.leftJoin(t.site, eq(t.site.id, t.timeEntry.siteId))
-			.leftJoin(t.invoiceLine, eq(t.invoiceLine.timeEntryId, t.timeEntry.id))
-			.where(
+				'time_entry.started_at as startedAt',
+				'time_entry.ended_at as endedAt',
+				'time_entry.zone',
+				'time_entry.note',
+				'u.name as workedByName',
+				crewNames(eb.ref('time_entry.id')).as('teamNames'),
+				'entity.name as entity',
+				'site.display as site',
+				'service.name as service',
+				eb('invoice_line.invoice_id', 'is not', null).$castTo<boolean>().as('invoiced')
+			])
+			.where((eb) =>
 				offline
-					? keptEntries(me, day, locals.weekStart)
-					: and(
-							gte(t.timeEntry.workedOn, from),
-							lt(t.timeEntry.workedOn, to),
-							yours ? theirWork(me) : undefined
-						)
+					? keptEntries(eb, me, day, locals.weekStart)
+					: eb.and([
+							eb('time_entry.worked_on', '>=', from),
+							eb('time_entry.worked_on', '<', to),
+							...(yours ? [theirWork(eb, me)] : [])
+						])
 			)
-			.orderBy(desc(t.timeEntry.workedOn), desc(t.timeEntry.createdAt), desc(t.timeEntry.id)),
-		db.select({ ageingAlertDays: t.operator.ageingAlertDays }).from(t.operator)
+			.orderBy('time_entry.worked_on', 'desc')
+			.orderBy('time_entry.created_at', 'desc')
+			.orderBy('time_entry.id', 'desc')
+			.execute(),
+		db.selectFrom('operator').select('ageing_alert_days as ageingAlertDays').executeTakeFirst()
 	]);
 	// What each is worth, but for the copy kept for no signal.
 	const worth = offline ? null : await valueEntries(db, entries);

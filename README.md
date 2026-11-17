@@ -24,12 +24,12 @@ against an invented case.
 
 ## Where things are
 
-reckon is a SvelteKit project with Drizzle, laid out as both lay one out.
+reckon is a SvelteKit project with Kysely, laid out as SvelteKit lays one out.
 
 |                                 |                                                                                                                 |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `src/lib/server/db/schema/`     | the schema, in TypeScript, a file per area, with every table's reasons beside it                                |
-| `drizzle/`                      | the schema as applied SQL: generated from the above, and hand-written migrations for whatever Drizzle can't say |
+| `src/lib/server/db/migrations/` | the schema: Kysely migrations, the first the whole schema a file per area, with every table's reasons beside it |
+| `src/lib/server/db/database.ts` | every table and type as the migrations make them, generated, for Kysely to check each query against             |
 | `src/lib/server/db/migrate.ts`  | brings a database up to date as its owner, and checks, as the server starts, that it is                         |
 | `src/lib/server/valuation/`     | what an hour bills, what it pays, what a retainer covers, and the tax split — exact decimals, tested            |
 | `src/lib/server/log.ts`         | the log: one JSON line for each thing the server records — see [Logging](#logging)                              |
@@ -45,19 +45,21 @@ reckon is a SvelteKit project with Drizzle, laid out as both lay one out.
 ## The database
 
 ```bash
-npm run db:test                              a scratch database, brought up to date, every guard proven, dropped
-npm run db:drift                             the migrations match the schema: generated into a copy, connecting to nothing
-npm run db:migrate                           bring the database up to date: the one PGDATABASE or DATABASE_URL names
-npm run db:seed                              the invented business the checks run against, into that database
-npm run db:generate -- --name what-changed   the migration for a change to the schema
+npm run db:test      a scratch database, brought up to date, every guard proven, dropped
+npm run db:types     database.ts, generated from a scratch database the migrations build
+npm run db:drift     database.ts is what the migrations make: generated again, and compared
+npm run db:migrate   bring the database up to date: the one PGDATABASE or DATABASE_URL names
+npm run db:seed      the invented business the checks run against, into that database
 ```
 
 **The database is brought up to date before the server starts**, as its own
 step: `npm run db:migrate`, or `node scripts/migrate.mjs` in a release, applies
-every migration in `drizzle/` the database has not seen, by Drizzle's migrator,
-those waiting in one transaction, so one that fails leaves it as it was. The
-server only checks: while a migration beside it is waiting it does not start,
-so nothing is ever served from a database the code does not expect.
+every migration the build carries that the database has not seen, by Kysely's
+migrator, each in a transaction of its own, so one that fails is undone and
+stops there, those before it kept. The server only checks: while a migration
+in its build is waiting, or the database has run one its build does not have,
+it does not start, so nothing is ever served from a database the code does not
+expect.
 
 Where the database can hold a rule about what may be stored rather than
 trusting the application to remember it, it does — and every guard is tested
@@ -65,14 +67,13 @@ both ways, because one that also blocks ordinary use is a bug rather than a
 guard. What a stored row is _worth_ is the application's: it is arithmetic, and
 it is done once, in `#lib/server/valuation`.
 
-The schema is changed in `src/lib/server/db/schema/`, and the migration
-written from it with `npm run db:generate`. What Drizzle cannot express — the
-triggers that freeze a sent invoice and keep the history, one foreign key, the
-roles every operator starts with — is in the hand-written
-`drizzle/0001_integrity.sql`, with its invoice guards made to hold in
-`0002_sent_invoices_hold.sql` and a file described in the history rather than
-copied into it in `0003_history_describes_binary.sql`. A new one starts as
-`npm run db:generate -- --custom --name what-changed`.
+The schema is changed by a migration: a file in `src/lib/server/db/migrations/`,
+named for the moment it was written, listed in that folder's `index.ts`, and
+never edited once it has run anywhere. Then `npm run db:types`, and Kysely
+checks every query against what the migration made. The first migration is the
+whole schema as it stood on 17 November 2026 — the triggers that freeze a sent
+invoice and keep the history among it — and every one after it changes it a
+step at a time.
 
 The commands connect the way every other Postgres client does — `PGHOST`,
 `PGPORT`, `PGUSER`, `PGPASSWORD` — and add nothing of their own. Whoever owns a
@@ -80,7 +81,7 @@ database owns everything a migration makes; `npm run db:migrate`, run by a role
 that may become the owner — `postgres`, say — acts as the owner, and run by one
 that may not, stops before anything is applied.
 
-Afterwards nothing in `public` or `drizzle` — where the record of applied
+Afterwards nothing in `public` or `kysely` — where the record of applied
 migrations is kept — may be owned by anyone else, or it stops. An object made by
 another role is invisible to an application connected as the owner, and that
 surfaces as a permission error from whichever query reaches it first — a long
@@ -112,10 +113,10 @@ Then `node scripts/migrate.mjs` as `reckon_owner`, and once more as `postgres`,
 in the database, what the server may do:
 
 ```sql
-GRANT USAGE ON SCHEMA public, drizzle TO reckon;
+GRANT USAGE ON SCHEMA public, kysely TO reckon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO reckon;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO reckon;
-GRANT SELECT ON drizzle.__drizzle_migrations TO reckon;
+GRANT SELECT ON kysely.kysely_migration TO reckon;
 -- and every table and sequence a later migration makes, as the owner makes it
 ALTER DEFAULT PRIVILEGES FOR ROLE reckon_owner IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO reckon;
 ALTER DEFAULT PRIVILEGES FOR ROLE reckon_owner IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO reckon;
@@ -560,8 +561,7 @@ nothing else.
 
 |                   |                                                                                                                                                  |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `build/`          | the application; `node build` runs it                                                                                                            |
-| `drizzle/`        | the migrations, which `scripts/migrate.mjs` applies                                                                                              |
+| `build/`          | the application, carrying its migrations; `node build` runs it                                                                                   |
 | `scripts/`        | `user.mjs`, which adds the first person and gives a link to make a passkey, and `migrate.mjs`, which brings the database up to date as its owner |
 | `package.json`    | and `package-lock.json`: which version of each package is bundled                                                                                |
 | `RELEASE`         | the version, the commit, and the Node it was built with                                                                                          |
@@ -573,8 +573,9 @@ Every package is a devDependency: adapter-node bundles everything but
 `dependencies`, and a test fails if one appears there. Each command in
 `scripts/` is bundled as `build/` is, into one file at the path it has here.
 
-Run it from its own directory — a service unit's `WorkingDirectory` — since the
-migrations are read from `drizzle/` there. A deploy is a backup of the database,
+Run it from its own directory — a service unit's `WorkingDirectory` — as a
+clone is run from its own. The migrations travel inside the bundles, the
+server's and `migrate.mjs`'s, so nothing is read from disk for them. A deploy is a backup of the database,
 the release unpacked, `node scripts/migrate.mjs` run from it as the database's
 owner, and the server restarted, which does not start on a database still
 behind it.
@@ -715,7 +716,7 @@ read as markup, and a changed `reference.json` builds the reference again.
 
 ## The stack
 
-**SvelteKit** (Svelte 5 runes), **Postgres** 18 through **Drizzle** on
+**SvelteKit** (Svelte 5 runes), **Postgres** 18 through **Kysely** on
 node-postgres, **Better Auth**, and an **offline queue** for time capture —
 IndexedDB plus retry, not a sync engine.
 Printed invoices through Typst, and payments through Stripe on the client's

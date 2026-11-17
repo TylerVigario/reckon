@@ -1,6 +1,5 @@
-import { eq } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
-import { service, servicePrice, UNITS } from '#lib/server/db/schema/index.ts';
+import type { ServiceUnit } from '#lib/server/db/database.ts';
 import { pgError, refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { isoDate, UUID } from '#lib/field-rules.ts';
 import { readNewService } from '#lib/service-fields.ts';
@@ -13,10 +12,11 @@ import { readBody } from '#lib/json.ts';
 
 /** The service added with this uuid, if one was. */
 async function madeWith(clientUuid: string) {
-	const [had] = await db
-		.select({ id: service.id })
-		.from(service)
-		.where(eq(service.clientUuid, clientUuid));
+	const had = await db
+		.selectFrom('service')
+		.select('id')
+		.where('client_uuid', '=', clientUuid)
+		.executeTakeFirst();
 	return had?.id ?? null;
 }
 
@@ -56,42 +56,43 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const from = said?.ok && String(said.value) <= today ? String(said.value) : today;
 
 	try {
-		const [made] = await asUser(
+		const service = await asUser(
 			locals.user!.id,
 			async (tx) => {
 				const added = await insertNamed(
-					tx,
-					{
-						given: null,
-						from: String(values.name),
-						fallback: 'service',
-						constraint: 'service_code_key'
-					},
-					(tx, code) =>
+					{ given: null, from: String(values.name), fallback: 'service' },
+					(code, made) =>
 						tx
-							.insert(service)
+							.insertInto('service')
 							.values({
 								code,
 								name: String(values.name),
-								unit: String(values.unit) as (typeof UNITS)[number],
-								billToNearestSeconds: values.unit === 'hour' ? 60 : null,
-								clientUuid
+								unit: String(values.unit) as ServiceUnit,
+								bill_to_nearest_seconds: values.unit === 'hour' ? 60 : null,
+								client_uuid: clientUuid
 							})
-							.returning({ id: service.id })
+							.$if(made, (qb) =>
+								qb.onConflict((oc) => oc.constraint('service_code_key').doNothing())
+							)
+							.returning('id')
+							.executeTakeFirst()
 				);
 				if (values.rate !== null)
-					await tx.insert(servicePrice).values({
-						serviceId: added[0].id,
-						entityId: null,
-						rate: String(values.rate),
-						additionalRate: String(values.additional_rate),
-						effectiveFrom: from
-					});
+					await tx
+						.insertInto('service_price')
+						.values({
+							service_id: added.id,
+							entity_id: null,
+							rate: String(values.rate),
+							additional_rate: String(values.additional_rate),
+							effective_from: from
+						})
+						.execute();
 				return added;
 			},
 			madeAt(typeof body.made_at === 'string' ? body.made_at : '')
 		);
-		return Response.json({ id: made.id }, { status: 201 });
+		return Response.json({ id: service.id }, { status: 201 });
 	} catch (e) {
 		// Sent twice at once: the other one made it.
 		if (pgError(e).constraint === 'service_client_uuid_key') {

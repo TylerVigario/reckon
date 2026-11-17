@@ -1,8 +1,5 @@
-import { desc, eq } from 'drizzle-orm';
 import { isOfflineCopy } from '#lib/offline-copy.ts';
-import { alias } from 'drizzle-orm/pg-core';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -14,26 +11,27 @@ import type { PageServerLoad } from './$types';
  * cost, and who paid for it, need a connection.
  */
 export const load: PageServerLoad = async ({ params, url }) => {
-	const payer = alias(t.user, 'payer');
 	const lots = await db
-		.select({
-			id: t.materialLot.id,
-			receipt_id: t.materialLot.receiptId,
-			adjustment_id: t.materialLot.adjustmentId,
-			received_on: t.materialLot.receivedOn,
-			supplier: t.stockReceipt.supplier,
-			reference: t.stockReceipt.reference,
-			qty_received: t.materialLot.qtyReceived,
-			qty_remaining: t.materialLot.qtyRemaining,
-			ex_tax_cost: t.materialLot.exTaxCost,
-			tax_paid: t.materialLot.taxPaid,
-			paid_by: payer.name
-		})
-		.from(t.materialLot)
-		.leftJoin(t.stockReceipt, eq(t.stockReceipt.id, t.materialLot.receiptId))
-		.leftJoin(payer, eq(payer.id, t.stockReceipt.paidBy))
-		.where(eq(t.materialLot.materialId, params.id))
-		.orderBy(desc(t.materialLot.receivedOn), desc(t.materialLot.id));
+		.selectFrom('material_lot as ml')
+		.leftJoin('stock_receipt as sr', 'sr.id', 'ml.receipt_id')
+		.leftJoin('user as payer', 'payer.id', 'sr.paid_by')
+		.select([
+			'ml.id',
+			'ml.receipt_id',
+			'ml.adjustment_id',
+			'ml.received_on',
+			'sr.supplier',
+			'sr.reference',
+			'ml.qty_received',
+			'ml.qty_remaining',
+			'ml.ex_tax_cost',
+			'ml.tax_paid',
+			'payer.name as paid_by'
+		])
+		.where('ml.material_id', '=', params.id)
+		.orderBy('ml.received_on', 'desc')
+		.orderBy('ml.id', 'desc')
+		.execute();
 	if (!isOfflineCopy(url)) return { lots };
 	return { lots: lots.map((l) => ({ ...l, ex_tax_cost: null, tax_paid: null, paid_by: null })) };
 };

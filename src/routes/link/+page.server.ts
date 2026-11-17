@@ -1,7 +1,5 @@
 import { fail } from '@sveltejs/kit';
-import { and, eq, ne } from 'drizzle-orm';
 import { actingAs, db } from '#lib/server/db/index.ts';
-import { user } from '#lib/server/db/schema/index.ts';
 import { authHeaders, getAuth } from '#lib/server/auth.ts';
 import { MAKES_PASSKEY, missed, turnedAway, usable, used } from '#lib/server/links.ts';
 import { whomToContact } from '#lib/server/whom-to-contact.ts';
@@ -56,7 +54,7 @@ export const actions: Actions = {
 		const address = event.getClientAddress();
 		if (await turnedAway(address)) return WAIT;
 		const code = text((await event.request.formData()).get('code'));
-		const link = await db.transaction((tx) => usable(tx, code));
+		const link = await db.transaction().execute((tx) => usable(tx, code));
 		if (!link || !(MAKES_PASSKEY as readonly string[]).includes(link.purpose)) {
 			await missed(address);
 			return fail(404, DEAD);
@@ -78,7 +76,7 @@ export const actions: Actions = {
 		const address = getClientAddress();
 		if (await turnedAway(address)) return WAIT;
 		const code = text((await request.formData()).get('code'));
-		const found = await db.transaction((tx) => usable(tx, code));
+		const found = await db.transaction().execute((tx) => usable(tx, code));
 		if (!found) {
 			await missed(address);
 			return fail(404, DEAD);
@@ -91,7 +89,7 @@ export const actions: Actions = {
 		const address = getClientAddress();
 		if (await turnedAway(address)) return WAIT;
 		const code = text((await request.formData()).get('code'));
-		const confirmed = await db.transaction(async (tx) => {
+		const confirmed = await db.transaction().execute(async (tx) => {
 			const link = await usable(tx, code);
 			if (!link || link.purpose !== 'confirm') return null;
 			await used(tx, link);
@@ -116,16 +114,22 @@ export const actions: Actions = {
 		const code = text((await request.formData()).get('code'));
 		let changed: Awaited<ReturnType<typeof usable>> | 'taken';
 		try {
-			changed = await db.transaction(async (tx) => {
+			changed = await db.transaction().execute(async (tx) => {
 				const link = await usable(tx, code);
 				if (!link || link.purpose !== 'change') return null;
-				const [taken] = await tx
-					.select({ id: user.id })
-					.from(user)
-					.where(and(eq(user.email, link.email), ne(user.id, link.userId)));
+				const taken = await tx
+					.selectFrom('user')
+					.select('id')
+					.where('email', '=', link.email)
+					.where('id', '<>', link.userId)
+					.executeTakeFirst();
 				if (taken) return 'taken' as const;
 				await actingAs(tx, link.userId);
-				await tx.update(user).set({ email: link.email }).where(eq(user.id, link.userId));
+				await tx
+					.updateTable('user')
+					.set({ email: link.email })
+					.where('id', '=', link.userId)
+					.execute();
 				await record(tx, 'user_updated', {
 					user: link.userId,
 					by: null,

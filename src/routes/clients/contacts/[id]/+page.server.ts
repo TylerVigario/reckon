@@ -1,7 +1,6 @@
 import { error } from '@sveltejs/kit';
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
@@ -15,33 +14,38 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ params, locals }) => {
 	if (!UUID.test(params.id)) error(404, 'no such contact');
-	const c = t.contact;
-	const ec = t.entityContact;
-	const e = t.entity;
-	const sc = t.siteContact;
-	const s = t.site;
-
-	const [person] = await db
-		.select({ id: c.id, name: c.name, email: c.email, phone: c.phone, note: c.note })
-		.from(c)
-		.where(eq(c.id, params.id));
+	const person = await db
+		.selectFrom('contact')
+		.select(['id', 'name', 'email', 'phone', 'note'])
+		.where('id', '=', params.id)
+		.executeTakeFirst();
 	if (!person) error(404, 'no such contact');
 
-	const { rows: clients } = await db.execute<{
-		slug: string;
-		name: string;
-		bills: boolean;
-		sites: string[];
-	}>(sql`
-		select ${e.slug} as slug, ${e.name} as name, ${ec.isPrimary} as bills,
-		       coalesce((select array_agg(${s.label} order by ${s.label})
-		                   from ${sc} join ${s} on ${s.id} = ${sc.siteId}
-		                  where ${sc.contactId} = ${ec.contactId}
-		                    and ${sc.entityId} = ${ec.entityId}), '{}') as sites
-		  from ${ec}
-		  join ${e} on ${e.id} = ${ec.entityId}
-		 where ${ec.contactId} = ${person.id}
-		 order by ${e.name}`);
+	const clients = await db
+		.selectFrom('entity_contact as ec')
+		.innerJoin('entity as e', 'e.id', 'ec.entity_id')
+		.select((eb) => [
+			'e.slug',
+			'e.name',
+			'ec.is_primary as bills',
+			eb.fn
+				.coalesce(
+					eb
+						.selectFrom('site_contact as sc')
+						.innerJoin('site as s', 's.id', 'sc.site_id')
+						.select((eb) =>
+							eb.fn.agg<string[]>('array_agg', ['s.label']).orderBy('s.label').as('labels')
+						)
+						.whereRef('sc.contact_id', '=', 'ec.contact_id')
+						.whereRef('sc.entity_id', '=', 'ec.entity_id')
+						.$asScalar(),
+					sql<string[]>`'{}'`
+				)
+				.as('sites')
+		])
+		.where('ec.contact_id', '=', person.id)
+		.orderBy('e.name')
+		.execute();
 
 	const field = fieldOnly(locals);
 	return {

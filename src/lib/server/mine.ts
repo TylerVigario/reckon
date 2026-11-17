@@ -1,6 +1,5 @@
-import { eq, inArray, or } from 'drizzle-orm';
-import { db } from './db/index.ts';
-import * as t from './db/schema/index.ts';
+import type { Expression, ExpressionBuilder, SqlBool } from 'kysely';
+import type { DB } from './db/database.ts';
 
 /**
  * WHAT IS SOMEONE'S OWN, for the routes Field reaches (#lib/access): the
@@ -11,15 +10,20 @@ import * as t from './db/schema/index.ts';
 /** Whether the person asking has Field, and so sees only their own. */
 export const fieldOnly = (locals: App.Locals) => locals.user?.access !== 'full';
 
-/** Time entries someone worked: their own, and team entries that name them on the crew. */
-export const theirWork = (userId: string) =>
-	or(
-		eq(t.timeEntry.workedBy, userId),
-		inArray(
-			t.timeEntry.id,
-			db
-				.select({ id: t.timeEntryCrew.timeEntryId })
-				.from(t.timeEntryCrew)
-				.where(eq(t.timeEntryCrew.userId, userId))
+/**
+ * Time entries someone worked: their own, and team entries that name them on
+ * the crew. A condition on time_entry, for a query's where:
+ * `.where((eb) => theirWork(eb, userId))`.
+ */
+export const theirWork = (
+	eb: ExpressionBuilder<DB, 'time_entry'>,
+	userId: string
+): Expression<SqlBool> =>
+	eb.or([
+		eb('time_entry.worked_by', '=', userId),
+		eb(
+			'time_entry.id',
+			'in',
+			eb.selectFrom('time_entry_crew').select('time_entry_id').where('user_id', '=', userId)
 		)
-	);
+	]);

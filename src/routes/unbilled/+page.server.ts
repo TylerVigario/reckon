@@ -1,9 +1,8 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, notExists, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { expressionBuilder, type Expression } from 'kysely';
 import { Ratio, sum, sumMoney } from '#lib/decimal.ts';
+import type { DB } from '#lib/server/db/database.ts';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { crewNames } from '#lib/server/choices.ts';
 import { entryColumns, valueEntries, valueLegs } from '#lib/server/valuation/load.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
@@ -31,79 +30,82 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async () => {
 	const day = businessToday();
-	const u = alias(t.user, 'u');
 	const notOnAnInvoice = (
-		column: typeof t.invoiceLine.timeEntryId | typeof t.invoiceLine.tripLegId,
-		id: typeof t.timeEntry.id | typeof t.tripLeg.id
-	) =>
-		notExists(
-			db
-				.select({ x: sql`1` })
-				.from(t.invoiceLine)
-				.where(eq(column, id))
+		column: 'invoice_line.time_entry_id' | 'invoice_line.trip_leg_id',
+		id: Expression<string>
+	) => {
+		const eb = expressionBuilder<DB>();
+		return eb.not(
+			eb.exists(
+				eb
+					.selectFrom('invoice_line')
+					.select((eb) => eb.lit(1).as('x'))
+					.where(column, '=', id)
+			)
 		);
+	};
 	const lastMonth = Temporal.PlainDate.from(day)
 		.with({ day: 1 })
 		.subtract({ months: 1 })
 		.toString();
 
-	const [entries, legs, given, [operator]] = await Promise.all([
+	const [entries, legs, given, operator] = await Promise.all([
 		db
-			.select({
+			.selectFrom('time_entry')
+			.innerJoin('service', 'service.id', 'time_entry.service_id')
+			.innerJoin('entity', 'entity.id', 'time_entry.entity_id')
+			.leftJoin('user as u', 'u.id', 'time_entry.worked_by')
+			.leftJoin('site', 'site.id', 'time_entry.site_id')
+			.select((eb) => [
 				...entryColumns,
-				who: t.entity.name,
-				service: t.service.name,
-				workedByName: u.name,
+				'entity.name as who',
+				'service.name as service',
+				'u.name as workedByName',
 				// A team entry names its crew (0023), and the row says who was there.
-				teamNames: crewNames(sql`${t.timeEntry.id}`),
-				site: t.site.display
-			})
-			.from(t.timeEntry)
-			.innerJoin(t.service, eq(t.service.id, t.timeEntry.serviceId))
-			.innerJoin(t.entity, eq(t.entity.id, t.timeEntry.entityId))
-			.leftJoin(u, eq(u.id, t.timeEntry.workedBy))
-			.leftJoin(t.site, eq(t.site.id, t.timeEntry.siteId))
-			.where(
-				and(
-					eq(t.timeEntry.billable, true),
-					notOnAnInvoice(t.invoiceLine.timeEntryId, t.timeEntry.id)
-				)
-			)
-			.orderBy(asc(t.timeEntry.workedOn), asc(t.entity.name)),
+				crewNames(eb.ref('time_entry.id')).as('teamNames'),
+				'site.display as site'
+			])
+			.where('time_entry.billable', '=', true)
+			.where((eb) => notOnAnInvoice('invoice_line.time_entry_id', eb.ref('time_entry.id')))
+			.orderBy('time_entry.worked_on')
+			.orderBy('entity.name')
+			.execute(),
 		db
-			.select({
-				id: t.tripLeg.id,
-				tripId: t.tripLeg.tripId,
-				serviceId: t.tripLeg.serviceId,
-				entityId: t.tripLeg.entityId,
-				miles: t.tripLeg.miles,
-				travelledOn: t.trip.travelledOn
-			})
-			.from(t.tripLeg)
-			.innerJoin(t.trip, eq(t.trip.id, t.tripLeg.tripId))
-			.where(
-				and(isNotNull(t.tripLeg.entityId), notOnAnInvoice(t.invoiceLine.tripLegId, t.tripLeg.id))
-			),
+			.selectFrom('trip_leg')
+			.innerJoin('trip', 'trip.id', 'trip_leg.trip_id')
+			.select([
+				'trip_leg.id',
+				'trip_leg.trip_id as tripId',
+				'trip_leg.service_id as serviceId',
+				'trip_leg.entity_id as entityId',
+				'trip_leg.miles',
+				'trip.travelled_on as travelledOn'
+			])
+			.where('trip_leg.entity_id', 'is not', null)
+			.where((eb) => notOnAnInvoice('invoice_line.trip_leg_id', eb.ref('trip_leg.id')))
+			.execute(),
 		// Not billable, and still worth counting. An hour given away is a
 		// decision, and a decision nobody can see was never made.
 		db
-			.select({
-				id: t.timeEntry.id,
-				service: t.service.name,
-				who: t.entity.name,
-				worked_by: u.name,
-				worked_on: t.timeEntry.workedOn,
-				site: t.site.display,
-				seconds: t.timeEntry.seconds
-			})
-			.from(t.timeEntry)
-			.innerJoin(t.service, eq(t.service.id, t.timeEntry.serviceId))
-			.leftJoin(t.entity, eq(t.entity.id, t.timeEntry.entityId))
-			.leftJoin(u, eq(u.id, t.timeEntry.workedBy))
-			.leftJoin(t.site, eq(t.site.id, t.timeEntry.siteId))
-			.where(and(eq(t.timeEntry.billable, false), gte(t.timeEntry.workedOn, lastMonth)))
-			.orderBy(desc(t.timeEntry.workedOn)),
-		db.select({ days: t.operator.ageingAlertDays }).from(t.operator)
+			.selectFrom('time_entry')
+			.innerJoin('service', 'service.id', 'time_entry.service_id')
+			.leftJoin('entity', 'entity.id', 'time_entry.entity_id')
+			.leftJoin('user as u', 'u.id', 'time_entry.worked_by')
+			.leftJoin('site', 'site.id', 'time_entry.site_id')
+			.select([
+				'time_entry.id',
+				'service.name as service',
+				'entity.name as who',
+				'u.name as worked_by',
+				'time_entry.worked_on',
+				'site.display as site',
+				'time_entry.seconds'
+			])
+			.where('time_entry.billable', '=', false)
+			.where('time_entry.worked_on', '>=', lastMonth)
+			.orderBy('time_entry.worked_on', 'desc')
+			.execute(),
+		db.selectFrom('operator').select('ageing_alert_days as days').executeTakeFirst()
 	]);
 	const [worth, legWorth, places] = await Promise.all([
 		valueEntries(db, entries),
@@ -143,14 +145,15 @@ export const load: PageServerLoad = async () => {
 	const days = [...new Set(legs.map((l) => l.travelledOn))].sort();
 	const placeNames = days.length
 		? await db
-				.select({
-					day: t.trip.travelledOn,
-					place: sql<string>`coalesce(${t.site.city}, ${t.site.label}, ${t.tripStop.address})`
-				})
-				.from(t.tripStop)
-				.innerJoin(t.trip, eq(t.trip.id, t.tripStop.tripId))
-				.leftJoin(t.site, eq(t.site.id, t.tripStop.siteId))
-				.where(inArray(t.trip.travelledOn, days))
+				.selectFrom('trip_stop')
+				.innerJoin('trip', 'trip.id', 'trip_stop.trip_id')
+				.leftJoin('site', 'site.id', 'trip_stop.site_id')
+				.select((eb) => [
+					'trip.travelled_on as day',
+					eb.fn.coalesce('site.city', 'site.label', 'trip_stop.address').as('place')
+				])
+				.where('trip.travelled_on', '=', (eb) => eb.fn.any(eb.val(days)))
+				.execute()
 		: [];
 	const mileage = days.map((d) => {
 		const mine = legs.filter((l) => l.travelledOn === d);

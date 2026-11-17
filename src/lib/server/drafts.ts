@@ -1,6 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
 import { asUser, db, type Tx } from './db/index.ts';
-import * as t from './db/schema/index.ts';
 import { pgError, type Errors } from './field-errors.ts';
 import { numberFrom } from '../numbering.ts';
 
@@ -24,28 +22,27 @@ export async function startIn(
 ): Promise<{ id: string; number: string }> {
 	// The row held while the number is taken and moved on, so nobody else takes
 	// the same one in between.
-	const [op] = await tx
-		.select({
-			id: t.operator.id,
-			format: t.operator.invoiceNumberFormat,
-			next: t.operator.nextInvoiceNumber
-		})
-		.from(t.operator)
-		.for('update');
+	const op = await tx
+		.selectFrom('operator')
+		.select(['id', 'invoice_number_format as format', 'next_invoice_number as next'])
+		.forUpdate()
+		.executeTakeFirst();
 	if (!op) throw new NoOperator();
-	const [made] = await tx
-		.insert(t.invoice)
+	const made = await tx
+		.insertInto('invoice')
 		.values({
-			clientUuid: input.clientUuid ?? null,
+			client_uuid: input.clientUuid ?? null,
 			number: numberFrom(op.format, op.next),
-			entityId: input.entityId,
-			createdBy: input.userId
+			entity_id: input.entityId,
+			created_by: input.userId
 		})
-		.returning({ id: t.invoice.id, number: t.invoice.number });
+		.returning(['id', 'number'])
+		.executeTakeFirstOrThrow();
 	await tx
-		.update(t.operator)
-		.set({ nextInvoiceNumber: sql`${t.operator.nextInvoiceNumber} + 1` })
-		.where(eq(t.operator.id, op.id));
+		.updateTable('operator')
+		.set((eb) => ({ next_invoice_number: eb('next_invoice_number', '+', 1) }))
+		.where('id', '=', op.id)
+		.execute();
 	return made;
 }
 
@@ -54,10 +51,12 @@ export async function startIn(
  * maker's, since the uuid is unique to them and another's finds nothing.
  */
 export async function startedOnPhone(clientUuid: string, userId: string) {
-	const [had] = await db
-		.select({ id: t.invoice.id, number: t.invoice.number })
-		.from(t.invoice)
-		.where(and(eq(t.invoice.clientUuid, clientUuid), eq(t.invoice.createdBy, userId)));
+	const had = await db
+		.selectFrom('invoice')
+		.select(['id', 'number'])
+		.where('client_uuid', '=', clientUuid)
+		.where('created_by', '=', userId)
+		.executeTakeFirst();
 	return had ?? null;
 }
 

@@ -28,9 +28,11 @@ import {
 } from './field-rules.ts';
 import { pickLocale } from './locales.ts';
 import { ACCESS } from './access.ts';
+import { everyWord } from './every-word.ts';
+import type { HourCycle, PaysAs } from './server/db/database.ts';
 
-/** As the schema has them (#lib/server/db/schema/people), and PAID_AS_WORDS says them. */
-export const PAYS_AS = ['guaranteed_payment', 'wages', 'fee'] as const;
+/** As the database has them, and PAID_AS_WORDS says them. */
+export const PAYS_AS = everyWord<PaysAs>()(['guaranteed_payment', 'wages', 'fee']);
 
 export const ROLE_FIELDS = {
 	name: required('A role needs a name.', cap(40)),
@@ -71,7 +73,7 @@ export const PERSON_FIELDS = {
 	// business's zone and locale, and the locale's clock and first day of the week.
 	timezone: optional(cap(64, aZone)),
 	locale: optional(aLocale),
-	hour_cycle: optional(oneOf(['h12', 'h23'])),
+	hour_cycle: optional(oneOf(everyWord<HourCycle>()(['h12', 'h23']))),
 	week_start: optional(whole(1, 7))
 };
 

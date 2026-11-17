@@ -1,6 +1,4 @@
-import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { materialFigures } from '#lib/server/stock.ts';
 import type { PageServerLoad } from './$types';
 
@@ -12,17 +10,18 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async () => {
 	const materials = await db
-		.select({
-			id: t.material.id,
-			name: t.material.name,
+		.selectFrom('material as m')
+		.innerJoin('unit as u', 'u.id', 'm.unit_id')
+		.select((eb) => [
+			'm.id',
+			'm.name',
 			// How its unit is written beside a figure: "ft", or the name.
-			unit: sql<string>`coalesce(${t.unit.short}, ${t.unit.name})`,
-			places: t.unit.places,
-			active: t.material.active
-		})
-		.from(t.material)
-		.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
-		.orderBy(asc(t.material.name));
+			eb.fn.coalesce('u.short', 'u.name').as('unit'),
+			'u.places',
+			'm.active'
+		])
+		.orderBy('m.name')
+		.execute();
 	const figures = await materialFigures(materials.map((m) => m.id));
 	return {
 		as_of: new Date().toISOString(),

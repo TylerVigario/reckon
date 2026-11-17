@@ -50,6 +50,8 @@ import {
 } from './field-rules.ts';
 import { isCurrency } from './currency.ts';
 import { COSTINGS } from './stock-draw.ts';
+import { everyWord } from './every-word.ts';
+import type { FilingBasis, MileageAssignment, TaxRuleSet } from './server/db/database.ts';
 import { pickLocale } from './locales.ts';
 
 export type { Parsed };
@@ -107,7 +109,7 @@ export const FIELDS: Record<string, Parse> = {
 			}
 		})
 	),
-	tax_rule_set: oneOf(['none', 'us_ca', 'flat_per_site']),
+	tax_rule_set: oneOf(everyWord<TaxRuleSet>()(['none', 'us_ca', 'flat_per_site'])),
 	default_markup_pct: orDefault('25', decimal(7, 4)),
 	// Goods bought for a job and passed on; empty passes them on as they cost.
 	purchase_markup_pct: orDefault('0', decimal(7, 4)),
@@ -141,7 +143,7 @@ export const FIELDS: Record<string, Parse> = {
 	// --- Tax ----------------------------------------------------------------
 	tax_registration: optional(cap(60)),
 	tax_agency: optional(cap(60)),
-	filing_basis: optional(oneOf(['annual', 'quarterly', 'monthly'])),
+	filing_basis: optional(oneOf(everyWord<FilingBasis>()(['annual', 'quarterly', 'monthly']))),
 	// The month it ends in; the year ends on that month's last day, which is a
 	// rule rather than a second field to get out of step with the first.
 	fiscal_year_end_month: optional(whole(1, 12)),
@@ -156,7 +158,7 @@ export const FIELDS: Record<string, Parse> = {
 	}),
 	// NOT trip_leg.rule's vocabulary. That says what a leg IS; this says how
 	// legs are handed to clients, and they are different questions.
-	mileage_assignment: oneOf(['actual', 'round_trip_per_client'])
+	mileage_assignment: oneOf(everyWord<MileageAssignment>()(['actual', 'round_trip_per_client']))
 };
 
 /** Field names, for anything that needs to iterate them. */
