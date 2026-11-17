@@ -38,9 +38,9 @@ import { refusedForAccess } from '#lib/server/refused.ts';
  * of answering every request with a 500.
  *
  * And the database is checked first (#lib/server/db/migrate): a migration in
- * the drizzle/ beside the build it has not seen stops the server starting,
- * before the first request is answered, so nothing is ever served from a
- * database the code does not expect. Migrating is its own step, run as the
+ * the build it has not seen, or one it has run that the build does not have,
+ * stops the server starting, before the first request is answered, so nothing
+ * is ever served from a database the code does not expect. Migrating is its own step, run as the
  * database's owner; where MIGRATE_ON_START=true the server, connected as the
  * owner, brings it up to date itself, and one that fails stops the start the
  * same way. Not while building, when there is no database to reach.

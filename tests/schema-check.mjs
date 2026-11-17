@@ -20,7 +20,8 @@
  *   a NOT NULL column accepting ''  the registry says optional, the column
  *                                   does not; the refusal comes from Postgres
  *                                   with a constraint name in it
- *   a choice the column forbids     oneOf offers a value the CHECK rejects
+ *   a word the registry refuses     the column's type has it, so the data can,
+ *                                   and the screen could not offer it
  *
  * It does NOT complain when the registry is STRICTER than the column. That is
  * the safe direction and often deliberate: `cap(120)` on a `text` column is a
@@ -72,9 +73,19 @@ const registries = [
 ];
 
 const columns = await q(`
-	select table_name, column_name, data_type, is_nullable, column_default
+	select table_name, column_name, data_type, udt_name, is_nullable, column_default
 	  from information_schema.columns
 	 where table_schema = 'public'`);
+
+// The words of each of the schema's types, in their order.
+const words = new Map(
+	(
+		await q(`
+		select t.typname as type, array_agg(e.enumlabel order by e.enumsortorder) as words
+		  from pg_enum e join pg_type t on t.oid = e.enumtypid
+		 group by t.typname`)
+	).map((r) => [r.type, r.words])
+);
 
 // regclass names "user" with its quotes, because user is a keyword; relname
 // is the table's plain name, as the registries have it.
@@ -111,20 +122,10 @@ for (const [table, registry] of registries) {
 			);
 		}
 
-		// Every value the registry offers has to be one the column allows. The
-		// list read is the one that constrains THIS column -- `field = ANY
-		// (ARRAY[...])` -- not every quoted word in a check that mentions it:
-		// pay_rule's amount check names the methods, and they are not amounts.
-		const own = new RegExp(`\\(${field} = ANY \\(ARRAY\\[([^\\]]*)\\]`);
-		const enumeration = checks
-			.filter((c) => c.table_name === table)
-			.map((c) => own.exec(c.def)?.[1])
-			.find(Boolean);
-		if (enumeration) {
-			const allowed = [...enumeration.matchAll(/'([^']+)'::text/g)].map((m) => m[1]);
-			for (const candidate of allowed) {
-				// Anything the column allows, the registry should too -- or the
-				// screen cannot offer a value the data already contains.
+		// Every word the column's type has, the registry has to accept too -- or
+		// the screen cannot offer a value the data already contains.
+		if (column.data_type === 'USER-DEFINED') {
+			for (const candidate of words.get(column.udt_name) ?? []) {
 				if (!parse(candidate).ok) {
 					complaints.push(
 						`${table}.${field}: the column allows '${candidate}' and the registry refuses it`

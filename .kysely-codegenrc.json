@@ -1,0 +1,13 @@
+{
+	"dialect": "postgres",
+	"includePattern": "public.*",
+	"dateParser": "string",
+	"numericParser": "string",
+	"typeMapping": {
+		"numeric": "NumericColumn"
+	},
+	"customImports": {
+		"NumericColumn": "./numeric.ts"
+	},
+	"outFile": "./src/lib/server/db/database.ts"
+}

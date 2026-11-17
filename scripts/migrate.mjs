@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Brings a database up to date before the server starts (#lib/server/db/migrate):
- * every migration in drizzle/ it has not seen, then a check that everything in
+ * every migration it carries that it has not seen, then a check that everything in
  * it belongs to its owner.
  *
  *   npm run db:migrate                in a clone

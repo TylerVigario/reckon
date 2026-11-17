@@ -17,7 +17,6 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 /** Taken from the repository as they are, at the same paths. */
 export const RELEASE_FILES = [
 	'build',
-	'drizzle',
 	// Node reads `"type": "module"` from it to run build/; with the lockfile,
 	// it says which version of each package the bundles hold.
 	'package.json',
