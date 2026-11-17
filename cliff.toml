@@ -83,9 +83,10 @@ commit_parsers = [
 ]
 
 [bump]
-# Before 1.0 a feature bumps the minor version and so does a breaking change --
-# semver's own rule for major version zero, where anything may change. 1.0 is
-# declared, not reached by accident.
+# Before 1.0 a feature bumps the minor version and so does a breaking change:
+# git-cliff's bump, as the two keys below set it. SemVer prescribes no bump for
+# major version zero, where "Anything MAY change at any time". 1.0 is declared,
+# not reached by accident.
 features_always_bump_minor = true
 breaking_always_bump_major = false
 initial_tag = "v0.1.0"
