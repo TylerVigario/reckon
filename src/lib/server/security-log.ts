@@ -150,15 +150,20 @@ export async function securityLog(whose: { person: string } | 'everyone', before
 			const which: Expression<SqlBool>[] = [];
 			if (whose !== 'everyone')
 				which.push(eb.or([eb('e.user_id', '=', whose.person), eb('e.by_id', '=', whose.person)]));
+			// Older than the cursor's event, as the database holds its moment: to
+			// the microsecond, where a Date would keep the millisecond and lose
+			// whatever followed the last event inside it. Events written in one
+			// transaction share their moment exactly.
 			if (cursor)
 				which.push(
 					eb(
 						eb.refTuple('e.at', 'e.id'),
 						'<',
-						eb.tuple(
-							eb.cast<Date>(eb.val(cursor.at), 'timestamptz'),
-							eb.cast<string>(eb.val(cursor.id), 'uuid')
-						)
+						eb
+							.selectFrom('security_event as c')
+							.select(['c.at', 'c.id'])
+							.where('c.id', '=', cursor)
+							.$asTuple('at', 'id')
 					)
 				);
 			return eb.and(which);
@@ -179,22 +184,15 @@ export async function securityLog(whose: { person: string } | 'everyone', before
 		from: browserName(r.user_agent)
 	}));
 	const last = events.at(-1);
-	return { events, older: rows.length > PAGE && last ? `${last.at}_${last.id}` : null };
+	return { events, older: rows.length > PAGE && last ? last.id : null };
 }
 
-const CURSOR = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z)_(.+)$/;
-
 /**
- * A cursor this page gave, or null for anything else: it starts again from the
- * newest. A moment that never was, or an id that is not one, is anything else.
+ * A cursor this page gave -- the id of the last event on the page before -- or
+ * null for anything else: it starts again from the newest. One naming no event
+ * shows none, as an event is removed only once it is a year old, and every
+ * event older than it is gone by then too.
  */
 function parseCursor(before: string) {
-	const m = CURSOR.exec(before);
-	if (!m || !UUID.test(m[2])) return null;
-	try {
-		Temporal.Instant.from(m[1]);
-	} catch {
-		return null;
-	}
-	return { at: m[1], id: m[2] };
+	return UUID.test(before) ? before.toLowerCase() : null;
 }

@@ -252,6 +252,36 @@ check(
 	fieldRow.slice(0, 300).replace(/\s+/g, ' ')
 );
 
+console.log('Every event, page by page');
+// Events written in one transaction share their moment exactly, so a page
+// can end among them. Each must still be on one page or the next.
+await db.query(
+	`insert into security_event (name, user_id)
+	 select 'authn_login_success', $1 from generate_series(1, 60)`,
+	[full]
+);
+const [{ held }] = (
+	await db.query(
+		'select count(*)::int as held from security_event where user_id = $1 or by_id = $1',
+		[full]
+	)
+).rows;
+let shown = 0;
+let pages = 0;
+for (let next = '/profile/security-log'; next && pages < 20; pages++) {
+	const html = await (await asFull(next)).text();
+	shown += html.match(/class="box-row ev\b/g)?.length ?? 0;
+	// The link is relative to the page it is on, as SvelteKit writes it.
+	const href = /href="([^"]*\?before=[^"]*)"/.exec(html)?.[1]?.replace(/&amp;/g, '&');
+	const to = href ? new URL(href, base + next) : null;
+	next = to ? to.pathname + to.search : '';
+}
+check(
+	shown === held,
+	'every event about someone is on one page of their log, those that share a moment too',
+	`${shown} shown over ${pages} pages, ${held} held`
+);
+
 console.log('Signing out');
 const out = await asField('/logout', {
 	method: 'POST',
