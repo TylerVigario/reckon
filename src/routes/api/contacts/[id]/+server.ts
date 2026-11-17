@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
-import { contact } from '#lib/server/db/schema/index.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { CONTACT_FIELDS, parseContactField } from '#lib/contact-fields.ts';
@@ -36,12 +34,13 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	try {
 		const changed = await asUser(locals.user!.id, (tx) =>
 			tx
-				.update(contact)
-				.set({ [name]: parsed.value })
-				.where(eq(contact.id, params.id))
-				.returning({ id: contact.id })
+				.updateTable('contact')
+				.set(name, parsed.value as string | null)
+				.where('id', '=', params.id)
+				.returning('id')
+				.executeTakeFirst()
 		);
-		if (changed.length === 0) return problem('notFound', 404, 'No contact with that id.');
+		if (!changed) return problem('notFound', 404, 'No contact with that id.');
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, [name], 'contact');
 		if (refused) return refused;

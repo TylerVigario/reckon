@@ -2,10 +2,11 @@
  * Loading what the valuation needs, so a page asks for entries and gets them
  * valued without knowing what that took.
  */
-import { and, between, eq, gte, inArray, or, sql } from 'drizzle-orm';
+import { expressionBuilder, sql } from 'kysely';
+import { jsonArrayFrom } from 'kysely/helpers/postgres';
+import type { DB } from '../db/database.ts';
 import { type Reader } from '../db/index.ts';
 import { businessToday, businessDay } from '../calendar.ts';
-import * as t from '../db/schema/index.ts';
 import {
 	agreementFor,
 	worth,
@@ -20,58 +21,80 @@ import { legVehiclePay, legWorth } from './misc.ts';
 import { moneyPlaces, taxRounding } from '../business.ts';
 import { invoiceTax, type InvoiceTax } from './tax.ts';
 
-/** The columns of a time entry the valuation reads. */
-export const entryColumns = {
-	id: t.timeEntry.id,
-	entityId: t.timeEntry.entityId,
-	siteId: t.timeEntry.siteId,
-	serviceId: t.timeEntry.serviceId,
-	workedOn: t.timeEntry.workedOn,
-	seconds: t.timeEntry.seconds,
-	billable: t.timeEntry.billable,
-	crew: t.timeEntry.crew,
-	workedBy: t.timeEntry.workedBy,
+const te = expressionBuilder<DB, 'time_entry'>();
+
+/**
+ * The columns of a time entry the valuation reads, from the unaliased
+ * time_entry: `.select(entryColumns)`, or `.select([...entryColumns, ...])`
+ * beside others.
+ */
+export const entryColumns = [
+	'time_entry.id',
+	'time_entry.entity_id as entityId',
+	'time_entry.site_id as siteId',
+	'time_entry.service_id as serviceId',
+	'time_entry.worked_on as workedOn',
+	'time_entry.seconds',
+	'time_entry.billable',
+	'time_entry.crew',
+	'time_entry.worked_by as workedBy',
 	// Who a team entry names (0023).
-	crewIds: sql<
-		string[]
-	>`(select coalesce(array_agg(c.user_id::text order by c.user_id), '{}')::text[]
-		from ${t.timeEntryCrew} c where c.time_entry_id = ${t.timeEntry.id})`,
-	createdAt: t.timeEntry.createdAt
-};
+	te
+		.selectFrom('time_entry_crew as c')
+		.whereRef('c.time_entry_id', '=', 'time_entry.id')
+		.select((eb) =>
+			eb.fn
+				.coalesce(
+					eb.fn
+						.agg<string[] | null>('array_agg', [eb.cast<string>('c.user_id', 'text')])
+						.orderBy('c.user_id'),
+					sql<string[]>`'{}'`
+				)
+				.as('ids')
+		)
+		.$asScalar()
+		// An aggregate: always one row, so never null.
+		.$notNull()
+		.as('crewIds'),
+	'time_entry.created_at as createdAt'
+] as const;
 
 /** Services, prices, pay rules and people: small tables, read whole. */
 export async function loadCatalogue(r: Reader): Promise<Omit<Context, 'agreements' | 'places'>> {
 	const [services, prices, rules, people] = await Promise.all([
 		r
-			.select({
-				id: t.service.id,
-				unit: t.service.unit,
-				billToNearestSeconds: t.service.billToNearestSeconds,
-				minimumCharge: t.service.minimumCharge
-			})
-			.from(t.service),
+			.selectFrom('service')
+			.select([
+				'id',
+				'unit',
+				'bill_to_nearest_seconds as billToNearestSeconds',
+				'minimum_charge as minimumCharge'
+			])
+			.execute(),
 		r
-			.select({
-				serviceId: t.servicePrice.serviceId,
-				entityId: t.servicePrice.entityId,
-				rate: t.servicePrice.rate,
-				additionalRate: t.servicePrice.additionalRate,
-				effectiveFrom: t.servicePrice.effectiveFrom
-			})
-			.from(t.servicePrice),
+			.selectFrom('service_price')
+			.select([
+				'service_id as serviceId',
+				'entity_id as entityId',
+				'rate',
+				'additional_rate as additionalRate',
+				'effective_from as effectiveFrom'
+			])
+			.execute(),
 		r
-			.select({
-				serviceId: t.payRule.serviceId,
-				roleId: t.payRule.roleId,
-				userId: t.payRule.userId,
-				entityId: t.payRule.entityId,
-				paysFor: t.payRule.paysFor,
-				method: t.payRule.method,
-				amount: t.payRule.amount,
-				effectiveFrom: t.payRule.effectiveFrom
-			})
-			.from(t.payRule),
-		r.select({ id: t.user.id, roleId: t.user.roleId, active: t.user.active }).from(t.user)
+			.selectFrom('pay_rule')
+			.select([
+				'service_id as serviceId',
+				'role_id as roleId',
+				'user_id as userId',
+				'entity_id as entityId',
+				'pays_for as paysFor',
+				'method',
+				'amount',
+				'effective_from as effectiveFrom'
+			])
+			.execute(),
+		r.selectFrom('user').select(['id', 'role_id as roleId', 'active']).execute()
 	]);
 	return {
 		services: new Map<string, ServiceTerms>(services.map((s) => [s.id, s])),
@@ -87,19 +110,41 @@ export async function loadAgreements(
 	entityIds: readonly string[]
 ): Promise<Agreement[]> {
 	if (!entityIds.length) return [];
-	const rows = await r.query.agreement.findMany({
-		where: inArray(t.agreement.entityId, [...entityIds]),
-		columns: { id: true, entityId: true, siteId: true, startsOn: true, endsOn: true },
-		with: {
-			services: {
-				columns: { serviceId: true, allotment: true, includedHours: true, overage: true }
-			},
-			periods: {
-				columns: { id: true, periodStart: true, periodEnd: true, amount: true, given: true }
-			}
-		}
-	});
-	return rows;
+	return r
+		.selectFrom('agreement')
+		.select((eb) => [
+			'agreement.id',
+			'agreement.entity_id as entityId',
+			'agreement.site_id as siteId',
+			'agreement.starts_on as startsOn',
+			'agreement.ends_on as endsOn',
+			// Figures as text: a NUMERIC inside JSON would arrive as a JS number.
+			jsonArrayFrom(
+				eb
+					.selectFrom('agreement_service as s')
+					.select((eb) => [
+						's.service_id as serviceId',
+						's.allotment',
+						eb.cast<string | null>('s.included_hours', 'text').as('includedHours'),
+						's.overage'
+					])
+					.whereRef('s.agreement_id', '=', 'agreement.id')
+			).as('services'),
+			jsonArrayFrom(
+				eb
+					.selectFrom('agreement_period as p')
+					.select((eb) => [
+						'p.id',
+						'p.period_start as periodStart',
+						'p.period_end as periodEnd',
+						eb.cast<string>('p.amount', 'text').as('amount'),
+						'p.given'
+					])
+					.whereRef('p.agreement_id', '=', 'agreement.id')
+			).as('periods')
+		])
+		.where('agreement.entity_id', '=', (eb) => eb.fn.any(eb.val(entityIds)))
+		.execute();
 }
 
 /**
@@ -119,14 +164,11 @@ export async function usedThisMonth(
 	const entityIds = [...new Set(agreements.map((a) => a.entityId))];
 	if (!entityIds.length) return used;
 	const entries = await r
+		.selectFrom('time_entry')
 		.select(entryColumns)
-		.from(t.timeEntry)
-		.where(
-			and(
-				inArray(t.timeEntry.entityId, entityIds),
-				gte(t.timeEntry.workedOn, `${today.slice(0, 8)}01`)
-			)
-		);
+		.where('time_entry.entity_id', '=', (eb) => eb.fn.any(eb.val(entityIds)))
+		.where('time_entry.worked_on', '>=', `${today.slice(0, 8)}01`)
+		.execute();
 	for (const e of entries) {
 		const hit = agreementFor(e, agreements);
 		if (!hit) continue;
@@ -155,18 +197,20 @@ async function withPeers(r: Reader, entries: readonly Entry[], agreements: reado
 	if (!ranges.length) return entries;
 
 	const peers = await r
+		.selectFrom('time_entry')
 		.select(entryColumns)
-		.from(t.timeEntry)
-		.where(
-			and(
-				eq(t.timeEntry.billable, true),
-				or(
-					...ranges.map((x) =>
-						and(eq(t.timeEntry.entityId, x.entityId), between(t.timeEntry.workedOn, x.from, x.to))
-					)
+		.where('time_entry.billable', '=', true)
+		.where((eb) =>
+			eb.or(
+				ranges.map((x) =>
+					eb.and([
+						eb('time_entry.entity_id', '=', x.entityId),
+						eb.between('time_entry.worked_on', x.from, x.to)
+					])
 				)
 			)
-		);
+		)
+		.execute();
 	const all = new Map(entries.map((e) => [e.id, e]));
 	for (const p of peers) if (!all.has(p.id)) all.set(p.id, p);
 	return [...all.values()];
@@ -237,35 +281,38 @@ export async function taxOfInvoices(
 	const day = businessToday();
 	const [lines, issued] = await Promise.all([
 		r
-			.select({
-				invoiceId: t.invoiceLine.invoiceId,
-				amount: t.invoiceLine.amount,
-				taxable: t.invoiceLine.taxable,
-				taxRatePct: t.invoiceLine.taxRatePct,
-				siteId: t.invoiceLine.siteId
-			})
-			.from(t.invoiceLine)
-			.where(inArray(t.invoiceLine.invoiceId, ids)),
+			.selectFrom('invoice_line')
+			.select([
+				'invoice_id as invoiceId',
+				'amount',
+				'taxable',
+				'tax_rate_pct as taxRatePct',
+				'site_id as siteId'
+			])
+			.where('invoice_id', '=', (eb) => eb.fn.any(eb.val(ids)))
+			.execute(),
 		r
-			.select({ id: t.invoice.id, issuedOn: t.invoice.issuedOn })
-			.from(t.invoice)
-			.where(inArray(t.invoice.id, ids))
+			.selectFrom('invoice')
+			.select(['id', 'issued_on as issuedOn'])
+			.where('id', '=', (eb) => eb.fn.any(eb.val(ids)))
+			.execute()
 	]);
 	const sites = [...new Set(lines.map((l) => l.siteId).filter((x): x is string => x !== null))];
 	const checks = sites.length
 		? await r
-				.select({
-					siteId: t.siteTaxCheck.siteId,
+				.selectFrom('site_tax_check')
+				.select((eb) => [
+					'site_id as siteId',
 					// The day it was asked, by the database's calendar.
-					checkedOn: sql<string>`${businessDay(t.siteTaxCheck.checkedAt)}::text`,
-					checkedAt: t.siteTaxCheck.checkedAt,
-					ratePct: t.siteTaxCheck.ratePct,
-					statePct: t.siteTaxCheck.stateRatePct,
-					districtPct: t.siteTaxCheck.districtRatePct,
-					jurisdiction: t.siteTaxCheck.taxJurisdiction
-				})
-				.from(t.siteTaxCheck)
-				.where(inArray(t.siteTaxCheck.siteId, sites))
+					eb.cast<string>(businessDay(eb.ref('checked_at')), 'text').as('checkedOn'),
+					'checked_at as checkedAt',
+					'rate_pct as ratePct',
+					'state_rate_pct as statePct',
+					'district_rate_pct as districtPct',
+					'tax_jurisdiction as jurisdiction'
+				])
+				.where('site_id', '=', (eb) => eb.fn.any(eb.val(sites)))
+				.execute()
 		: [];
 	return invoiceTax(
 		lines,

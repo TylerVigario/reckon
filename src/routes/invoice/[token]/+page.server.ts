@@ -1,7 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { businessToday } from '#lib/server/calendar.ts';
@@ -20,36 +18,38 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ params, setHeaders }) => {
 	// Never kept by a shared cache, and never reused for somebody else.
 	setHeaders({ 'cache-control': 'private, no-store' });
-	const gone = () => error(404, 'There is no invoice at this link.');
+	const gone: () => never = () => error(404, 'There is no invoice at this link.');
 	if (!/^[A-Za-z0-9_-]{20,64}$/.test(params.token)) gone();
 
-	const [inv] = await db
-		.select({
-			id: t.invoice.id,
-			number: t.invoice.number,
-			status: t.invoice.status,
-			issued_on: t.invoice.issuedOn,
-			due_on: t.invoice.dueOn,
-			expires_on: t.invoice.tokenExpiresOn,
-			to: t.entity.name
-		})
-		.from(t.invoice)
-		.innerJoin(t.entity, eq(t.entity.id, t.invoice.entityId))
-		.where(eq(t.invoice.publicToken, params.token));
+	const inv = await db
+		.selectFrom('invoice as i')
+		.innerJoin('entity as e', 'e.id', 'i.entity_id')
+		.select([
+			'i.id',
+			'i.number',
+			'i.status',
+			'i.issued_on',
+			'i.due_on',
+			'i.token_expires_on as expires_on',
+			'e.name as to'
+		])
+		.where('i.public_token', '=', params.token)
+		.executeTakeFirst();
 	if (!inv || inv.status === 'draft') gone();
 	if (inv.expires_on && inv.expires_on < businessToday())
 		error(410, 'This link has expired. Ask for a new one.');
 
-	const [from] = await db
-		.select({
-			name: t.operator.tradingName,
-			address: t.operator.address,
-			phone: t.operator.phone,
-			email: t.operator.email,
-			has_logo: sql<boolean>`${t.operator.logo} is not null`
-		})
-		.from(t.operator)
-		.limit(1);
+	const from = await db
+		.selectFrom('operator')
+		.select((eb) => [
+			'trading_name as name',
+			'address',
+			'phone',
+			'email',
+			eb('logo', 'is not', null).$castTo<boolean>().as('has_logo')
+		])
+		.limit(1)
+		.executeTakeFirst();
 	const invoice = {
 		number: inv.number,
 		to: inv.to,
@@ -59,42 +59,52 @@ export const load: PageServerLoad = async ({ params, setHeaders }) => {
 	if (inv.status === 'void') return { from, invoice, voided: true as const };
 
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
-	const owing = balances(rounding, places);
-	const [lines, [totals]] = await Promise.all([
+	const [lines, totals] = await Promise.all([
 		db
-			.select({
-				description: t.invoiceLine.description,
-				qty: t.invoiceLine.qty,
-				unit: t.invoiceLine.unit,
-				unit_price: t.invoiceLine.unitPrice,
-				amount: t.invoiceLine.amount,
+			.selectFrom('invoice_line as il')
+			.leftJoin('time_entry as te', 'te.id', 'il.time_entry_id')
+			.leftJoin('trip_leg as tl', 'tl.id', 'il.trip_leg_id')
+			.leftJoin('trip as tr', 'tr.id', 'tl.trip_id')
+			.select((eb) => [
+				'il.description',
+				'il.qty',
+				'il.unit',
+				'il.unit_price',
+				'il.amount',
 				// The day the work or the drive was, where the line came from one.
-				on: sql<string | null>`coalesce(${t.timeEntry.workedOn}, ${t.trip.travelledOn})::text`
-			})
-			.from(t.invoiceLine)
-			.leftJoin(t.timeEntry, eq(t.timeEntry.id, t.invoiceLine.timeEntryId))
-			.leftJoin(t.tripLeg, eq(t.tripLeg.id, t.invoiceLine.tripLegId))
-			.leftJoin(t.trip, eq(t.trip.id, t.tripLeg.tripId))
-			.where(eq(t.invoiceLine.invoiceId, inv.id))
-			.orderBy(asc(t.invoiceLine.seq)),
+				eb.cast<string | null>(eb.fn.coalesce('te.worked_on', 'tr.travelled_on'), 'text').as('on')
+			])
+			.where('il.invoice_id', '=', inv.id)
+			.orderBy('il.seq')
+			.execute(),
 		db
-			.execute<{
-				tax: string;
-				gross: string;
-				paid: string;
-				credited: string;
-				owed: string;
-				rate_pct: string | null;
-				rates: number;
-			}>(
-				sql`select b.tax::text, b.gross::text, b.paid::text, b.credited::text, b.owed::text,
-				           (select max(${t.invoiceLine.taxRatePct})::text from ${t.invoiceLine}
-				             where ${t.invoiceLine.invoiceId} = ${inv.id} and ${t.invoiceLine.taxable}) as rate_pct,
-				           (select count(distinct ${t.invoiceLine.taxRatePct})::int from ${t.invoiceLine}
-				             where ${t.invoiceLine.invoiceId} = ${inv.id} and ${t.invoiceLine.taxable}) as rates
-				      from ${owing} b where b.invoice_id = ${inv.id}`
-			)
-			.then((r) => r.rows)
+			.selectFrom(balances(rounding, places).as('b'))
+			.select((eb) => {
+				// Its taxed lines.
+				const taxed = () =>
+					eb
+						.selectFrom('invoice_line as il')
+						.where('il.invoice_id', '=', inv.id)
+						.where('il.taxable', '=', true);
+				return [
+					eb.cast<string>('b.tax', 'text').as('tax'),
+					eb.cast<string>('b.gross', 'text').as('gross'),
+					eb.cast<string>('b.paid', 'text').as('paid'),
+					eb.cast<string>('b.credited', 'text').as('credited'),
+					eb.cast<string>('b.owed', 'text').as('owed'),
+					taxed()
+						.select((eb) => eb.cast<string | null>(eb.fn.max('il.tax_rate_pct'), 'text').as('r'))
+						.as('rate_pct'),
+					taxed()
+						.select((eb) =>
+							eb.cast<number>(eb.fn.count('il.tax_rate_pct').distinct(), 'integer').as('n')
+						)
+						.as('rates')
+				];
+			})
+			.where('b.invoice_id', '=', inv.id)
+			// Its own balance: there whenever the invoice is.
+			.executeTakeFirstOrThrow()
 	]);
 	return { from, invoice, voided: false as const, lines, totals };
 };

@@ -1,4 +1,6 @@
 import type { RouteId } from '$app/types';
+import { everyWord } from './every-word.ts';
+import type { Access } from './server/db/database.ts';
 
 /**
  * WHAT EACH PERSON CAN REACH (0031), apart from what they are paid as.
@@ -10,8 +12,8 @@ import type { RouteId } from '$app/types';
  * with Full; someone new starts with Field, and the database keeps one active
  * person on Full.
  */
-export const ACCESS = ['full', 'field'] as const;
-export type Access = (typeof ACCESS)[number];
+export const ACCESS = everyWord<Access>()(['full', 'field']);
+export type { Access };
 
 /** Each level as a person is told it: in brief, and in full where it is chosen. */
 export const ACCESS_WORDS: Record<Access, { label: string; reach: string; detail: string }> = {

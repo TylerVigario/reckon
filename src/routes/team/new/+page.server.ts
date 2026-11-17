@@ -1,6 +1,4 @@
-import { asc } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import { role } from '#lib/server/db/schema/index.ts';
 import { cannotSend } from '#lib/server/links.ts';
 import type { PageServerLoad } from './$types';
 
@@ -9,6 +7,6 @@ import type { PageServerLoad } from './$types';
  * to send them their invitation, if anything -- without which nobody is added.
  */
 export const load: PageServerLoad = async () => ({
-	roles: await db.select({ id: role.id, name: role.name }).from(role).orderBy(asc(role.name)),
+	roles: await db.selectFrom('role').select(['id', 'name']).orderBy('name').execute(),
 	cannotSend: cannotSend()
 });

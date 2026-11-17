@@ -1,6 +1,4 @@
-import { and, eq } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { refuse } from '#lib/server/field-errors.ts';
 import { readTrip } from '#lib/server/trip-input.ts';
 import { legsFor, refuseTrip, tripColumns, writeStops } from '#lib/server/trip-write.ts';
@@ -18,16 +16,13 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async ({ url, locals }) => {
 	const uuid = url.searchParams.get('client_uuid') ?? '';
 	if (!UUID.test(uuid)) return problem('malformed', 400, 'Expected ?client_uuid=.');
-	const [found] = await db
-		.select({ id: t.trip.id })
-		.from(t.trip)
-		.where(
-			and(
-				eq(t.trip.clientUuid, uuid.toLowerCase()),
-				// The phone's uuid is its maker's own (#lib/queue).
-				eq(t.trip.createdBy, locals.user!.id)
-			)
-		);
+	const found = await db
+		.selectFrom('trip')
+		.select('id')
+		.where('client_uuid', '=', uuid.toLowerCase())
+		// The phone's uuid is its maker's own (#lib/queue).
+		.where('created_by', '=', locals.user!.id)
+		.executeTakeFirst();
 	return found
 		? Response.json({ id: found.id })
 		: problem('notFound', 404, 'No trip has arrived with that id.');
@@ -50,19 +45,24 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	try {
 		const made = await asUser(locals.user!.id, async (tx) => {
-			const [row] = await tx
-				.insert(t.trip)
-				.values({ ...tripColumns(trip), clientUuid: trip.clientUuid, createdBy: locals.user!.id })
-				.onConflictDoNothing({ target: [t.trip.createdBy, t.trip.clientUuid] })
-				.returning({ id: t.trip.id });
+			const row = await tx
+				.insertInto('trip')
+				.values({
+					...tripColumns(trip),
+					client_uuid: trip.clientUuid,
+					created_by: locals.user!.id
+				})
+				.onConflict((oc) => oc.columns(['created_by', 'client_uuid']).doNothing())
+				.returning('id')
+				.executeTakeFirst();
 			// A repeat is the trip already there, answered as if just written.
 			if (!row) {
-				const [was] = await tx
-					.select({ id: t.trip.id })
-					.from(t.trip)
-					.where(
-						and(eq(t.trip.clientUuid, trip.clientUuid), eq(t.trip.createdBy, locals.user!.id))
-					);
+				const was = await tx
+					.selectFrom('trip')
+					.select('id')
+					.where('client_uuid', '=', trip.clientUuid)
+					.where('created_by', '=', locals.user!.id)
+					.executeTakeFirstOrThrow();
 				return { id: was.id, repeat: true };
 			}
 			await writeStops(tx, row.id, trip, worked.legs, worked.serviceId);

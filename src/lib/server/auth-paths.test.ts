@@ -8,7 +8,7 @@ vi.mock('$app/env/private', () => ({
 	SITE_URL: 'https://reckon.kestrel.example'
 }));
 vi.mock('$app/server', () => ({ getRequestEvent: () => undefined }));
-vi.mock('./db/index.ts', () => ({ db: {}, schema: {} }));
+vi.mock('./db/index.ts', () => ({ db: {} }));
 
 const { getAuth } = await import('./auth.ts');
 const { CLOSED_AUTH_PATHS, OPEN_AUTH_PATHS, UNCLOSED_AUTH_PATHS } = await import('./auth-paths.ts');

@@ -1,1 +1,0 @@
-ALTER TABLE "operator" DROP COLUMN "date_format";

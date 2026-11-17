@@ -13,7 +13,7 @@ export type TaxRounding = {
 
 /**
  * The tax on a set of one invoice's lines, rounded by `rounding` to `places`:
- * each line's exact tax, with its rate. The TypeScript twin of taxSql.
+ * each line's exact tax, with its rate. The TypeScript twin of taxes (#lib/server/tax-rules).
  */
 export function roundTax(
 	lines: readonly { rate: string; tax: Ratio }[],

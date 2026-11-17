@@ -1,8 +1,6 @@
-import { and, eq } from 'drizzle-orm';
 import { Decimal } from '#lib/decimal.ts';
 import { asUser, db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { site as sites, siteTaxCheck } from '#lib/server/db/schema/index.ts';
 import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
 import { priceAddress, NoAnswer } from '#lib/server/cdtfa.ts';
 import { problem } from '#lib/server/problem.ts';
@@ -29,15 +27,11 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 	const found = await lookUpSite(client.id, params.site);
 	if (!found) return problem('notFound', 404, 'That client has no such site.');
 
-	const [was] = await db
-		.select({
-			street: sites.street,
-			city: sites.city,
-			postcode: sites.postcode,
-			rate: sites.taxRatePct
-		})
-		.from(sites)
-		.where(eq(sites.id, found.id));
+	const was = await db
+		.selectFrom('site')
+		.select(['street', 'city', 'postcode', 'tax_rate_pct as rate'])
+		.where('id', '=', found.id)
+		.executeTakeFirstOrThrow();
 
 	let answer;
 	try {
@@ -53,36 +47,36 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 	const today = businessToday();
 
 	const saved = await asUser(locals.user!.id, async (tx) => {
-		const [row] = await tx
-			.update(sites)
+		const row = await tx
+			.updateTable('site')
 			.set({
-				taxRatePct: answer.rate,
-				stateRatePct: answer.state,
-				districtRatePct: answer.district,
-				taxJurisdiction: answer.jurisdiction,
-				taxAreaCode: answer.tac,
-				areaVerifiedOn: today
+				tax_rate_pct: answer.rate,
+				state_rate_pct: answer.state,
+				district_rate_pct: answer.district,
+				tax_jurisdiction: answer.jurisdiction,
+				tax_area_code: answer.tac,
+				area_verified_on: today
 			})
-			.where(
-				and(
-					eq(sites.id, found.id),
-					eq(sites.street, was.street),
-					eq(sites.city, was.city),
-					eq(sites.postcode, was.postcode)
-				)
-			)
-			.returning({ version: VERSION });
+			.where('id', '=', found.id)
+			.where('street', '=', was.street)
+			.where('city', '=', was.city)
+			.where('postcode', '=', was.postcode)
+			.returning(VERSION.as('version'))
+			.executeTakeFirst();
 		if (row)
-			await tx.insert(siteTaxCheck).values({
-				siteId: found.id,
-				taxAreaCode: answer.tac,
-				taxJurisdiction: answer.jurisdiction,
-				ratePct: answer.rate,
-				stateRatePct: answer.state,
-				districtRatePct: answer.district,
-				changed,
-				note: 'asked again'
-			});
+			await tx
+				.insertInto('site_tax_check')
+				.values({
+					site_id: found.id,
+					tax_area_code: answer.tac,
+					tax_jurisdiction: answer.jurisdiction,
+					rate_pct: answer.rate,
+					state_rate_pct: answer.state,
+					district_rate_pct: answer.district,
+					changed,
+					note: 'asked again'
+				})
+				.execute();
 		return row;
 	});
 	if (!saved)

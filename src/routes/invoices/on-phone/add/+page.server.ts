@@ -1,6 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { formTerms } from '#lib/server/lines.ts';
 import type { PageServerLoad } from './$types';
 
@@ -13,15 +11,11 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async () => {
 	const [sites, terms] = await Promise.all([
 		db
-			.select({
-				id: t.site.id,
-				entity_id: t.site.entityId,
-				label: t.site.display,
-				rate_pct: t.site.taxRatePct
-			})
-			.from(t.site)
-			.where(eq(t.site.active, true))
-			.orderBy(asc(t.site.display)),
+			.selectFrom('site')
+			.select(['id', 'entity_id', 'display as label', 'tax_rate_pct as rate_pct'])
+			.where('active', '=', true)
+			.orderBy('display')
+			.execute(),
 		formTerms()
 	]);
 	return { sites, ...terms };

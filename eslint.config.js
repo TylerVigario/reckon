@@ -26,7 +26,6 @@ export default defineConfig([
 		'.svelte-kit/',
 		'node_modules/',
 		'static/',
-		'drizzle/',
 		'third_party/',
 		'print/',
 		'dist-release/'
@@ -90,6 +89,17 @@ export default defineConfig([
 			'@typescript-eslint/no-unsafe-call': 'off',
 			'@typescript-eslint/no-unsafe-return': 'off'
 		}
+	},
+
+	{
+		// A migration is handed Kysely<any>, as Kysely's migration guide says it
+		// must be: "It's important to use Kysely<any> and not
+		// Kysely<YourDatabase>. Migrations should never depend on the current
+		// code of your app because they need to work even when the app changes."
+		// A migration typed against database.ts would stop compiling the day a
+		// later one changed a table, though what it did then is still right.
+		files: ['src/lib/server/db/migrations/**', 'src/lib/server/db/migrate.ts'],
+		rules: { '@typescript-eslint/no-explicit-any': 'off' }
 	},
 
 	{

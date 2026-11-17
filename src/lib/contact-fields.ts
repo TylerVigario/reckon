@@ -3,9 +3,9 @@
  * send the invoices to.
  *
  * A person is shared, not owned: one bookkeeper can act for two clients
- * (#lib/server/db/schema/clients). So these are the person themselves, said
- * once on their own page, and every client and site they act for shows the
- * same name, email and phone.
+ * (the schema's clients, #lib/server/db/migrations). So these are the person
+ * themselves, said once on their own page, and every client and site they act
+ * for shows the same name, email and phone.
  */
 import { anEmail, cap, optional, parseIn, phone, required, type Parsed } from './field-rules.ts';
 

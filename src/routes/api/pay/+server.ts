@@ -1,10 +1,9 @@
-import { and, eq } from 'drizzle-orm';
-import { PAID_AS } from '#lib/server/db/schema/pay.ts';
 import { Decimal, sum } from '#lib/decimal.ts';
+import { everyWord } from '#lib/every-word.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { readBody } from '#lib/json.ts';
+import type { PaidAs } from '#lib/server/db/database.ts';
 import { asUser } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
 import { pgError, refuse } from '#lib/server/field-errors.ts';
@@ -20,6 +19,8 @@ const ids = (v: unknown) =>
 	Array.isArray(v) && v.length <= 1000 && v.every((x) => typeof x === 'string' && UUID.test(x))
 		? (v as string[])
 		: null;
+/** What an item pays: the person's pay, as their role says it is, or a reimbursement. */
+const PAID_AS = everyWord<PaidAs>()(['guaranteed_payment', 'wages', 'fee', 'reimbursement']);
 
 /**
  * Records a payment made to one person: the day, how, a note, the work it
@@ -64,7 +65,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		paymentId: string;
 		amount: Decimal;
 		why: string;
-		paidAs: (typeof PAID_AS)[number];
+		paidAs: PaidAs;
 	} | null = null;
 	if (c && typeof c === 'object') {
 		const paymentId =
@@ -79,7 +80,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const why = text(c.why, 200) ?? no('correction', 'Why it is corrected.');
 		const paidAs =
 			typeof c.paid_as === 'string' && (PAID_AS as readonly string[]).includes(c.paid_as)
-				? (c.paid_as as (typeof PAID_AS)[number])
+				? (c.paid_as as PaidAs)
 				: no('correction', 'Which part of that payment it corrects.');
 		if (paymentId && amount && why && paidAs) correction = { paymentId, amount, why, paidAs };
 	}
@@ -110,74 +111,69 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	try {
 		const made = await asUser(locals.user!.id, async (tx) => {
 			if (correction) {
-				const [earlier] = await tx
-					.select({ paidOn: t.personPayment.paidOn })
-					.from(t.personPayment)
-					.where(
-						and(eq(t.personPayment.id, correction.paymentId), eq(t.personPayment.userId, userId!))
-					);
-				if (!earlier || earlier.paidOn > paidOn!) return 'not-theirs' as const;
-				const [part] = await tx
-					.select({ id: t.personPaymentItem.id })
-					.from(t.personPaymentItem)
-					.where(
-						and(
-							eq(t.personPaymentItem.paymentId, correction.paymentId),
-							eq(t.personPaymentItem.paidAs, correction.paidAs)
-						)
-					)
-					.limit(1);
+				const earlier = await tx
+					.selectFrom('person_payment')
+					.select('paid_on')
+					.where('id', '=', correction.paymentId)
+					.where('user_id', '=', userId!)
+					.executeTakeFirst();
+				if (!earlier || earlier.paid_on > paidOn!) return 'not-theirs' as const;
+				const part = await tx
+					.selectFrom('person_payment_item')
+					.select('id')
+					.where('payment_id', '=', correction.paymentId)
+					.where('paid_as', '=', correction.paidAs)
+					.limit(1)
+					.executeTakeFirst();
 				if (!part) return 'no-such-part' as const;
 			}
-			const [row] = await tx
-				.insert(t.personPayment)
+			const row = await tx
+				.insertInto('person_payment')
 				.values({
-					userId: userId!,
-					paidOn: paidOn!,
+					user_id: userId!,
+					paid_on: paidOn!,
 					how: how!,
 					note,
-					clientUuid: clientUuid!,
-					createdBy: locals.user!.id
+					client_uuid: clientUuid!,
+					created_by: locals.user!.id
 				})
-				.onConflictDoNothing({ target: [t.personPayment.createdBy, t.personPayment.clientUuid] })
-				.returning({ id: t.personPayment.id });
+				.onConflict((oc) => oc.columns(['created_by', 'client_uuid']).doNothing())
+				.returning('id')
+				.executeTakeFirst();
 			// A repeat is the payment already there, answered as if just written.
 			if (!row) {
-				const [was] = await tx
-					.select({ id: t.personPayment.id })
-					.from(t.personPayment)
-					.where(
-						and(
-							eq(t.personPayment.clientUuid, clientUuid!),
-							eq(t.personPayment.createdBy, locals.user!.id)
-						)
-					);
+				const was = await tx
+					.selectFrom('person_payment')
+					.select('id')
+					.where('client_uuid', '=', clientUuid!)
+					.where('created_by', '=', locals.user!.id)
+					.executeTakeFirstOrThrow();
 				return { id: was.id, repeat: true };
 			}
 			const rows = [
 				...items.map((i) => ({
-					paymentId: row.id,
-					userId: userId!,
-					timeEntryId: i!.kind === 'time' ? i!.id : null,
-					tripId: i!.kind === 'trip' ? i!.id : null,
+					payment_id: row.id,
+					user_id: userId!,
+					time_entry_id: i!.kind === 'time' ? i!.id : null,
+					trip_id: i!.kind === 'trip' ? i!.id : null,
 					amount: i!.amount!,
 					said: i!.said,
-					paidAs: i!.paidAs!
+					paid_as: i!.paidAs!
 				})),
 				...(correction
 					? [
 							{
-								paymentId: row.id,
-								userId: userId!,
-								correctsPaymentId: correction.paymentId,
+								payment_id: row.id,
+								user_id: userId!,
+								corrects_payment_id: correction.paymentId,
 								amount: correction.amount.toString(),
 								said: correction.why,
-								paidAs: correction.paidAs
+								paid_as: correction.paidAs
 							}
 						]
 					: [])
 			];
-			await tx.insert(t.personPaymentItem).values(rows);
+			await tx.insertInto('person_payment_item').values(rows).execute();
 			return { id: row.id, repeat: false };
 		});
 		if (made === 'not-theirs')

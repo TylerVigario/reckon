@@ -1,12 +1,5 @@
-import { and, eq } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
-import {
-	agreement,
-	agreementService,
-	ALLOTMENTS,
-	OVERAGES,
-	service
-} from '#lib/server/db/schema/index.ts';
+import type { Allotment, Overage } from '#lib/server/db/database.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { COVERAGE_FIELDS, readCoverage } from '#lib/agreement-fields.ts';
@@ -31,27 +24,30 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	const { values, errors } = readCoverage(fields);
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
-	const [[isAgreement], [isService]] = await Promise.all([
-		db.select({ id: agreement.id }).from(agreement).where(eq(agreement.id, params.id)),
-		db.select({ id: service.id }).from(service).where(eq(service.id, params.service))
+	const [isAgreement, isService] = await Promise.all([
+		db.selectFrom('agreement').select('id').where('id', '=', params.id).executeTakeFirst(),
+		db.selectFrom('service').select('id').where('id', '=', params.service).executeTakeFirst()
 	]);
 	if (!isAgreement || !isService) return problem('notFound', 404, 'No such agreement or service.');
 
 	try {
 		const allotment = {
-			allotment: String(values.allotment) as (typeof ALLOTMENTS)[number],
-			includedHours: values.included_hours === null ? null : String(values.included_hours),
-			overage:
-				values.overage === null ? null : (String(values.overage) as (typeof OVERAGES)[number])
+			allotment: String(values.allotment) as Allotment,
+			included_hours: values.included_hours === null ? null : String(values.included_hours),
+			overage: values.overage === null ? null : (String(values.overage) as Overage)
 		};
 		await asUser(locals.user!.id, (tx) =>
 			tx
-				.insert(agreementService)
-				.values({ agreementId: params.id, serviceId: params.service, ...allotment })
-				.onConflictDoUpdate({
-					target: [agreementService.agreementId, agreementService.serviceId],
-					set: allotment
-				})
+				.insertInto('agreement_service')
+				.values({ agreement_id: params.id, service_id: params.service, ...allotment })
+				.onConflict((oc) =>
+					oc.columns(['agreement_id', 'service_id']).doUpdateSet((eb) => ({
+						allotment: eb.ref('excluded.allotment'),
+						included_hours: eb.ref('excluded.included_hours'),
+						overage: eb.ref('excluded.overage')
+					}))
+				)
+				.execute()
 		);
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, Object.keys(COVERAGE_FIELDS), 'agreement_service');
@@ -66,14 +62,11 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 		return problem('notFound', 404, 'No such agreement or service.');
 	const gone = await asUser(locals.user!.id, (tx) =>
 		tx
-			.delete(agreementService)
-			.where(
-				and(
-					eq(agreementService.agreementId, params.id),
-					eq(agreementService.serviceId, params.service)
-				)
-			)
-			.returning({ id: agreementService.id })
+			.deleteFrom('agreement_service')
+			.where('agreement_id', '=', params.id)
+			.where('service_id', '=', params.service)
+			.returning('id')
+			.execute()
 	);
 	if (gone.length === 0)
 		return problem('notFound', 404, 'The agreement does not cover that service.');

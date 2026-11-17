@@ -1,6 +1,5 @@
-import { and, count, eq, sql } from 'drizzle-orm';
+import { sql, type NumericString } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { findClient } from '#lib/server/find.ts';
@@ -17,37 +16,43 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 	const { id } = await findClient(params.id);
 	const field = fieldOnly(locals);
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
-	const owing = balances(rounding, places);
-	const e = t.entity;
+	const owing = balances(rounding, places).as('b');
 
-	const [
-		{
-			rows: [client]
-		},
-		[sites],
-		[contacts]
-	] = await Promise.all([
-		db.execute<{
-			id: string;
-			slug: string;
-			name: string;
-			active: boolean;
-			owed: string;
-			out: string;
-		}>(sql`
-			select ${e.id} as id, ${e.slug} as slug, ${e.name} as name, ${e.active} as active,
-			       round(coalesce((select sum(b.owed) from ${owing} b
-			                        where b.entity_id = ${e.id} and b.status = 'sent'), 0),
-			             ${places}::int)::text as owed,
-			       (select count(*) from ${owing} b
-			         where b.entity_id = ${e.id} and b.status = 'sent' and b.owed > 0)::text as out
-			  from ${e}
-			 where ${e.id} = ${id}`),
+	const [client, sites, contacts] = await Promise.all([
 		db
-			.select({ n: count() })
-			.from(t.site)
-			.where(and(eq(t.site.entityId, id), eq(t.site.active, true))),
-		db.select({ n: count() }).from(t.entityContact).where(eq(t.entityContact.entityId, id))
+			.selectFrom('entity as e')
+			.select((eb) => {
+				const sent = eb
+					.selectFrom(owing)
+					.whereRef('b.entity_id', '=', 'e.id')
+					.where('b.status', '=', 'sent');
+				const owed = sent.select((eb) => eb.fn.sum<NumericString>('b.owed').as('owed')).$asScalar();
+				const out = sent
+					.where('b.owed', '>', '0')
+					.select((eb) => eb.fn.countAll().as('n'))
+					.$asScalar();
+				return [
+					'e.id',
+					'e.slug',
+					'e.name',
+					'e.active',
+					sql<string>`round(coalesce(${owed}, 0), ${places}::int)::text`.as('owed'),
+					eb.cast<string>(out, 'text').as('out')
+				];
+			})
+			.where('e.id', '=', id)
+			.executeTakeFirstOrThrow(),
+		db
+			.selectFrom('site')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+			.where('entity_id', '=', id)
+			.where('active', '=', true)
+			.executeTakeFirstOrThrow(),
+		db
+			.selectFrom('entity_contact')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+			.where('entity_id', '=', id)
+			.executeTakeFirstOrThrow()
 	]);
 
 	return {

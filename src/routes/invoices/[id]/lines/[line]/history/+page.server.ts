@@ -1,7 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
 import type { PageServerLoad } from './$types';
 
@@ -12,32 +10,26 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ params }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.line)) error(404, 'no such line');
-	const h = t.recordHistory;
-	const [rows, [draft], [line]] = await Promise.all([
+	const [rows, draft, line] = await Promise.all([
 		db
-			.select({
-				field: h.field,
-				old_value: h.oldValue,
-				new_value: h.newValue,
-				changed_by: h.changedBy,
-				changed_at: h.changedAt,
-				made_at: h.madeAt
-			})
-			.from(h)
-			.where(and(eq(h.tableName, 'invoice_line'), eq(h.rowId, params.line)))
-			.orderBy(asc(h.changedAt), asc(h.id)),
+			.selectFrom('record_history')
+			.select(['field', 'old_value', 'new_value', 'changed_by', 'changed_at', 'made_at'])
+			.where('table_name', '=', 'invoice_line')
+			.where('row_id', '=', params.line)
+			.orderBy('changed_at')
+			.orderBy('id')
+			.execute(),
 		db
-			.select({ id: t.invoice.id, number: t.invoice.number, status: t.invoice.status })
-			.from(t.invoice)
-			.where(eq(t.invoice.id, params.id)),
+			.selectFrom('invoice')
+			.select(['id', 'number', 'status'])
+			.where('id', '=', params.id)
+			.executeTakeFirst(),
 		db
-			.select({
-				id: t.invoiceLine.id,
-				description: t.invoiceLine.description,
-				unit: t.invoiceLine.unit
-			})
-			.from(t.invoiceLine)
-			.where(and(eq(t.invoiceLine.id, params.line), eq(t.invoiceLine.invoiceId, params.id)))
+			.selectFrom('invoice_line')
+			.select(['id', 'description', 'unit'])
+			.where('id', '=', params.line)
+			.where('invoice_id', '=', params.id)
+			.executeTakeFirst()
 	]);
 	if (!draft || (!line && rows.length === 0)) error(404, 'no such line');
 
@@ -68,15 +60,17 @@ export const load: PageServerLoad = async ({ params }) => {
 	const [named, sites] = await Promise.all([
 		people.length
 			? db
-					.select({ id: t.user.id, name: t.user.name })
-					.from(t.user)
-					.where(inArray(t.user.id, people))
+					.selectFrom('user')
+					.select(['id', 'name'])
+					.where('id', '=', (eb) => eb.fn.any(eb.val(people)))
+					.execute()
 			: [],
 		places.length
 			? db
-					.select({ id: t.site.id, name: t.site.display })
-					.from(t.site)
-					.where(inArray(t.site.id, places))
+					.selectFrom('site')
+					.select(['id', 'display as name'])
+					.where('id', '=', (eb) => eb.fn.any(eb.val(places)))
+					.execute()
 			: []
 	]);
 	return {

@@ -1,6 +1,6 @@
-import { eq, sql } from 'drizzle-orm';
+import type { ExpressionBuilder } from 'kysely';
+import type { DB } from '#lib/server/db/database.ts';
 import { asUser, type Tx } from '#lib/server/db/index.ts';
-import { passkey, user } from '#lib/server/db/schema/index.ts';
 import { tell } from '#lib/server/email.ts';
 import { cannotSend, endChange, issue, unsentBecause } from '#lib/server/links.ts';
 import {
@@ -24,19 +24,8 @@ import { fieldOnly } from '#lib/server/mine.ts';
 import { record } from '#lib/server/events.ts';
 import { signedOutEverywhere } from '#lib/server/passkeys.ts';
 
-/** Each field as the user table names it. */
-const COLUMN = {
-	name: 'name',
-	email: 'email',
-	active: 'active',
-	role_id: 'roleId',
-	access: 'access',
-	timezone: 'timezone',
-	locale: 'locale',
-	hour_cycle: 'hourCycle',
-	week_start: 'weekStart'
-} as const;
-type Field = keyof typeof COLUMN;
+/** Each field, a column of user by the same name. */
+type Field = keyof typeof PERSON_FIELDS;
 
 /**
  * One thing about a person at a time.
@@ -101,16 +90,18 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 
 	try {
 		const changed = await asUser(locals.user!.id, async (tx) => {
-			const [before] = await tx
-				.select({ name: user.name, access: user.access, active: user.active })
-				.from(user)
-				.where(eq(user.id, params.id))
-				.for('update');
+			const before = await tx
+				.selectFrom('user')
+				.select(['name', 'access', 'active'])
+				.where('id', '=', params.id)
+				.forUpdate()
+				.executeTakeFirst();
 			const rows = await tx
-				.update(user)
-				.set({ [COLUMN[name]]: value })
-				.where(eq(user.id, params.id))
-				.returning({ id: user.id });
+				.updateTable('user')
+				.set(name, value)
+				.where('id', '=', params.id)
+				.returning('id')
+				.execute();
 			if (rows.length && !own && before) {
 				await recorded(tx, params.id, name, before, value, why);
 				await told(tx, params.id, name, before, value, { by: locals.user!.name, why });
@@ -205,6 +196,15 @@ async function told(
 
 const TAKEN = 'Someone else signs in with that email.';
 
+/** Whether they hold a passkey, as a column of a select from user. */
+const held = (eb: ExpressionBuilder<DB, 'user'>) =>
+	eb
+		.exists(
+			eb.selectFrom('passkey').select('passkey.id').whereRef('passkey.user_id', '=', 'user.id')
+		)
+		.$castTo<boolean>()
+		.as('held');
+
 /**
  * A NEW ADDRESS for someone. Someone who can sign in -- active, and signed in
  * before or holding a passkey -- keeps the one they have until
@@ -225,24 +225,22 @@ async function changeEmail(
 ): Promise<Response> {
 	try {
 		return await asUser(me.id, async (tx) => {
-			const [person] = await tx
-				.select({
-					email: user.email,
-					active: user.active,
-					joined: user.lastSignedInAt,
-					// "user" outright: Drizzle leaves a column unqualified in a query of one
-					// table, and inside this it would be read as passkey's own.
-					held: sql<boolean>`exists (select 1 from ${passkey} where ${passkey.userId} = "user".id)`
-				})
-				.from(user)
-				.where(eq(user.id, id))
-				.for('update');
+			const person = await tx
+				.selectFrom('user')
+				.select((eb) => ['email', 'active', 'last_signed_in_at', held(eb)])
+				.where('id', '=', id)
+				.forUpdate()
+				.executeTakeFirst();
 			if (!person) return problem('notFound', 404, 'No person with that id.');
 			if (person.email === to) return Response.json({ saved: { email: to } });
 
-			const canSignIn = person.active && (person.joined !== null || person.held);
+			const canSignIn = person.active && (person.last_signed_in_at !== null || person.held);
 			if (!canSignIn) {
-				await tx.update(user).set({ email: to, emailVerified: false }).where(eq(user.id, id));
+				await tx
+					.updateTable('user')
+					.set({ email: to, email_verified: false })
+					.where('id', '=', id)
+					.execute();
 				await record(tx, 'user_updated', { user: id, detail: { changed: 'email' } });
 				await endChange(tx, id);
 				await inviteAgain(tx, id, me);
@@ -254,7 +252,11 @@ async function changeEmail(
 				return refuse({
 					email: `${unsentBecause(missing)} A new address can’t be confirmed without it.`
 				});
-			const [taken] = await tx.select({ id: user.id }).from(user).where(eq(user.email, to));
+			const taken = await tx
+				.selectFrom('user')
+				.select('id')
+				.where('email', '=', to)
+				.executeTakeFirst();
 			if (taken) return refuse({ email: TAKEN });
 			const by = me.id === id ? null : me.name;
 			const sent = await issue(tx, id, 'change', me.id, to);
@@ -282,17 +284,12 @@ async function changeEmail(
  */
 async function inviteAgain(tx: Tx, userId: string, me: { id: string; name: string }) {
 	if (cannotSend()) return;
-	const [person] = await tx
-		.select({
-			active: user.active,
-			joined: user.lastSignedInAt,
-			// "user" outright: Drizzle leaves a column unqualified in a query of one
-			// table, and inside this it would be read as passkey's own.
-			held: sql<boolean>`exists (select 1 from ${passkey} where ${passkey.userId} = "user".id)`
-		})
-		.from(user)
-		.where(eq(user.id, userId));
-	if (!person?.active || person.joined || person.held) return;
+	const person = await tx
+		.selectFrom('user')
+		.select((eb) => ['active', 'last_signed_in_at', held(eb)])
+		.where('id', '=', userId)
+		.executeTakeFirst();
+	if (!person?.active || person.last_signed_in_at || person.held) return;
 	const sent = await issue(tx, userId, 'invite', me.id);
 	await tell(
 		tx,

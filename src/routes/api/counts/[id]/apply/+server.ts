@@ -1,6 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { lockMaterials, putRight, ShelfRefused } from '#lib/server/adjust.ts';
 import { problem } from '#lib/server/problem.ts';
 import { shelves } from '#lib/server/stock.ts';
@@ -46,39 +44,37 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	try {
 		const made = await asUser(userId, async (tx) => {
-			const [count] = await tx
-				.select({
-					id: t.stockCount.id,
-					on: t.stockCount.countedOn,
-					applied: t.stockCount.appliedAt
-				})
-				.from(t.stockCount)
-				.where(eq(t.stockCount.id, params.id))
-				.for('update');
+			const count = await tx
+				.selectFrom('stock_count')
+				.select(['id', 'counted_on', 'applied_at'])
+				.where('id', '=', params.id)
+				.forUpdate()
+				.executeTakeFirst();
 			if (!count) throw new Answer(problem('notFound', 404, 'No count with that id.'));
-			if (count.applied)
+			if (count.applied_at)
 				throw new Answer(problem('conflict', 409, 'That count has been applied already.'));
 			const lines = await tx
-				.select({
-					material: t.material.id,
-					name: t.material.name,
-					unit: t.unit.short,
-					unitName: t.unit.name,
-					counted: t.stockCountLine.counted,
-					was: t.stockCountLine.onHand,
-					costEach: t.stockCountLine.costEach
-				})
-				.from(t.stockCountLine)
-				.innerJoin(t.material, eq(t.material.id, t.stockCountLine.materialId))
-				.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
-				.where(eq(t.stockCountLine.countId, count.id))
-				.orderBy(asc(t.material.name));
+				.selectFrom('stock_count_line as l')
+				.innerJoin('material as m', 'm.id', 'l.material_id')
+				.innerJoin('unit as u', 'u.id', 'm.unit_id')
+				.select([
+					'm.id as material',
+					'm.name',
+					'u.short as unit',
+					'u.name as unit_name',
+					'l.counted',
+					'l.on_hand as was',
+					'l.cost_each'
+				])
+				.where('l.count_id', '=', count.id)
+				.orderBy('m.name')
+				.execute();
 			if (lines.length === 0)
 				throw new Answer(problem('malformed', 400, 'Nothing has been counted on it yet.'));
 
 			const ids = lines.map((l) => l.material);
 			await lockMaterials(tx, ids);
-			const [op] = await tx.select({ costing: t.operator.stockCosting }).from(t.operator);
+			const op = await tx.selectFrom('operator').select('stock_costing').executeTakeFirst();
 			const shelf = await shelves(ids, tx);
 			const now = (id: string) => onHandOf(shelf.get(id)!).toString();
 
@@ -94,7 +90,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 								moved: outdated.map((l) => ({
 									material_id: l.material,
 									name: l.name,
-									unit: l.unit ?? l.unitName,
+									unit: l.unit ?? l.unit_name,
 									counted: l.counted,
 									was: l.was,
 									now: now(l.material)
@@ -107,7 +103,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			let adjusted = 0;
 			for (const l of lines) {
 				const after = shelfAfter({ counted: l.counted, was: l.was }, now(l.material), keep);
-				const unit = l.unit ?? l.unitName;
+				const unit = l.unit ?? l.unit_name;
 				if (after === null)
 					throw new Answer(
 						problem(
@@ -121,22 +117,23 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				await putRight(tx, {
 					material: { id: l.material, name: l.name, unit },
 					shelf: shelf.get(l.material)!,
-					costing: op?.costing ?? 'average',
+					costing: op?.stock_costing ?? 'average',
 					way: diff.lt(0) ? 'off' : 'on',
 					qty: (diff.lt(0) ? diff.neg() : diff).toString(),
-					madeOn: count.on,
+					madeOn: count.counted_on,
 					reason: 'counted',
 					note: null,
-					costEach: diff.lt(0) ? null : l.costEach,
+					costEach: diff.lt(0) ? null : l.cost_each,
 					countId: count.id,
 					userId
 				});
 				adjusted++;
 			}
 			await tx
-				.update(t.stockCount)
-				.set({ appliedAt: new Date(), appliedBy: userId })
-				.where(eq(t.stockCount.id, count.id));
+				.updateTable('stock_count')
+				.set({ applied_at: new Date(), applied_by: userId })
+				.where('id', '=', count.id)
+				.execute();
 			return adjusted;
 		});
 		return Response.json({ adjusted: made });

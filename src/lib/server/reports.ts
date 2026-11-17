@@ -1,9 +1,8 @@
-import { and, asc, between, desc, eq, inArray, lte, gte, isNull, or, sql } from 'drizzle-orm';
+import { sql, type NotNull, type NumericString } from 'kysely';
 import { Decimal, sum, sumMoney } from '#lib/decimal.ts';
 import { db } from './db/index.ts';
 import { businessToday } from './calendar.ts';
 import { moneyPlaces } from './business.ts';
-import * as t from './db/schema/index.ts';
 import type { Period } from './periods.ts';
 import { agreementFor, team } from './valuation/entries.ts';
 import {
@@ -22,7 +21,6 @@ import { crewNames } from './choices.ts';
 import { townsOf } from './trips.ts';
 import { owed, recordedFor } from './pay.ts';
 import { PAID_AS_ORDER, type PaidAs } from '#lib/pay-words.ts';
-import { alias } from 'drizzle-orm/pg-core';
 import { Ratio } from '#lib/decimal.ts';
 
 /**
@@ -87,75 +85,89 @@ export type ScheduleA = {
  * added or ended in between would have been charged wrongly ever since.
  */
 export async function scheduleA(p: Period): Promise<ScheduleA> {
-	const [[{ claims }], places] = await Promise.all([
-		db.select({ claims: t.operator.claimsTaxPaidPurchasesResold }).from(t.operator),
+	const [{ claims }, places] = await Promise.all([
+		db
+			.selectFrom('operator')
+			.select('claims_tax_paid_purchases_resold as claims')
+			.executeTakeFirstOrThrow(),
 		moneyPlaces()
 	]);
-	const { site, invoice, invoiceLine, entity } = t;
+	const today = businessToday();
 
-	const { rows: districts } = await db.execute<DistrictRow>(sql`
-		select ${invoiceLine.taxJurisdiction} as area,
-		       ${invoiceLine.taxRatePct}::text as rate_pct,
-		       max(${invoiceLine.stateRatePct})::text as state_rate_pct,
-		       max(${invoiceLine.districtRatePct})::text as district_rate_pct,
-		       round(sum(${invoiceLine.amount}), ${places}::int)::text as measure,
-		       -- Reg 1701: tax already paid on goods that were resold comes off
-		       -- the measure, and only if the operator has made that election.
-		       round(case when ${claims} then coalesce(sum(${invoiceLine.exTaxCost}), 0)
-		                  else 0 end, ${places}::int)::text as deduction,
-		       round(sum(${invoiceLine.amount})
-		             - case when ${claims} then coalesce(sum(${invoiceLine.exTaxCost}), 0)
-		                    else 0 end, ${places}::int)::text as net,
-		       round((sum(${invoiceLine.amount})
-		              - case when ${claims} then coalesce(sum(${invoiceLine.exTaxCost}), 0)
-		                     else 0 end)
-		             * ${invoiceLine.taxRatePct} / 100, ${places}::int)::text as tax,
-		       count(*)::int as lines,
-		       count(distinct ${invoiceLine.siteId})::int as sites
-		  from ${invoiceLine}
-		  join ${invoice} on ${invoice.id} = ${invoiceLine.invoiceId}
-		 where ${invoice.status} = 'sent'
-		   and ${invoice.issuedOn} between ${p.start} and ${p.end}
-		   and ${invoiceLine.taxJurisdiction} is not null
-		 group by ${invoiceLine.taxJurisdiction}, ${invoiceLine.taxRatePct}
-		 order by 1, ${invoiceLine.taxRatePct}`);
+	const districts: DistrictRow[] = await db
+		.selectFrom('invoice_line as il')
+		.innerJoin('invoice as i', 'i.id', 'il.invoice_id')
+		.select((eb) => {
+			const measure = eb.fn.sum<NumericString>('il.amount');
+			// Reg 1701: tax already paid on goods that were resold comes off
+			// the measure, and only if the operator has made that election.
+			const deduction = eb
+				.case()
+				.when(eb.val(claims))
+				.then(eb.fn.coalesce(eb.fn.sum<NumericString>('il.ex_tax_cost'), eb.lit(0)))
+				.else(eb.lit(0))
+				.end();
+			const net = sql`${measure} - ${deduction}`;
+			return [
+				'il.tax_jurisdiction as area',
+				eb.cast<string>('il.tax_rate_pct', 'text').as('rate_pct'),
+				eb.cast<string | null>(eb.fn.max('il.state_rate_pct'), 'text').as('state_rate_pct'),
+				eb.cast<string | null>(eb.fn.max('il.district_rate_pct'), 'text').as('district_rate_pct'),
+				sql<string>`round(${measure}, ${places}::int)::text`.as('measure'),
+				sql<string>`round(${deduction}, ${places}::int)::text`.as('deduction'),
+				sql<string>`round(${net}, ${places}::int)::text`.as('net'),
+				sql<string>`round((${net}) * ${eb.ref('il.tax_rate_pct')} / 100, ${places}::int)::text`.as(
+					'tax'
+				),
+				eb.cast<number>(eb.fn.countAll(), 'integer').as('lines'),
+				eb.cast<number>(eb.fn.count('il.site_id').distinct(), 'integer').as('sites')
+			];
+		})
+		.where('i.status', '=', 'sent')
+		.where((eb) => eb.between('i.issued_on', p.start, p.end))
+		.where('il.tax_jurisdiction', 'is not', null)
+		.$narrowType<{ area: NotNull }>()
+		.groupBy(['il.tax_jurisdiction', 'il.tax_rate_pct'])
+		.orderBy('il.tax_jurisdiction')
+		.orderBy('il.tax_rate_pct')
+		.execute();
 
-	const { rows: stale } = await db.execute<{
-		site: string;
-		client: string;
-		priced_on: string;
-		days: number;
-		client_slug: string;
-		site_slug: string;
-	}>(sql`
-		select ${site.display} as site, ${entity.name} as client,
-		       ${entity.slug} as client_slug, ${site.slug} as site_slug,
-		       ${site.areaVerifiedOn}::text as priced_on,
-		       ${businessToday()}::date - ${site.areaVerifiedOn} as days
-		  from ${site}
-		  join ${entity} on ${entity.id} = ${site.entityId}
-		 where ${site.active} and ${rateIsStale(site.areaVerifiedOn, businessToday())}
-		 order by ${site.areaVerifiedOn}, ${entity.name}, ${site.display}`);
+	const stale = await db
+		.selectFrom('site')
+		.innerJoin('entity', 'entity.id', 'site.entity_id')
+		.select((eb) => [
+			'site.display as site',
+			'entity.name as client',
+			'entity.slug as client_slug',
+			'site.slug as site_slug',
+			eb.cast<string>('site.area_verified_on', 'text').as('priced_on'),
+			sql<number>`${today}::date - ${eb.ref('site.area_verified_on')}`.as('days')
+		])
+		.where('site.active', '=', true)
+		.where((eb) => rateIsStale(eb.ref('site.area_verified_on'), today))
+		.$narrowType<{ site: NotNull }>()
+		.orderBy('site.area_verified_on')
+		.orderBy('entity.name')
+		.orderBy('site.display')
+		.execute();
 
 	// A rate that did not come from the site is never folded into an area.
 	// It is shown on its own, with the reason it was overridden.
 	const overrides = await db
-		.select({
-			invoice: invoice.number,
-			description: invoiceLine.description,
-			rate_pct: invoiceLine.taxRatePct,
-			reason: invoiceLine.taxOverrideReason
-		})
-		.from(invoiceLine)
-		.innerJoin(invoice, eq(invoice.id, invoiceLine.invoiceId))
-		.where(
-			and(
-				eq(invoice.status, 'sent'),
-				between(invoice.issuedOn, p.start, p.end),
-				eq(invoiceLine.taxSource, 'override')
-			)
-		)
-		.orderBy(asc(invoice.number), asc(invoiceLine.seq));
+		.selectFrom('invoice_line as il')
+		.innerJoin('invoice as i', 'i.id', 'il.invoice_id')
+		.select([
+			'i.number as invoice',
+			'il.description',
+			'il.tax_rate_pct as rate_pct',
+			'il.tax_override_reason as reason'
+		])
+		.where('i.status', '=', 'sent')
+		.where((eb) => eb.between('i.issued_on', p.start, p.end))
+		.where('il.tax_source', '=', 'override')
+		.orderBy('i.number')
+		.orderBy('il.seq')
+		.execute();
 
 	return {
 		districts,
@@ -207,12 +219,13 @@ export type Obligation = {
  * that goes wrong under audit.
  */
 export async function taxObligation(p: Period): Promise<Obligation> {
-	const { invoice, taxRemittance: tr } = t;
 	const places = await moneyPlaces();
 	const raised = await db
-		.select({ id: invoice.id })
-		.from(invoice)
-		.where(and(eq(invoice.status, 'sent'), between(invoice.issuedOn, p.start, p.end)));
+		.selectFrom('invoice')
+		.select('id')
+		.where('status', '=', 'sent')
+		.where((eb) => eb.between('issued_on', p.start, p.end))
+		.execute();
 	const taxes = [
 		...(
 			await taxOfInvoices(
@@ -223,18 +236,12 @@ export async function taxObligation(p: Period): Promise<Obligation> {
 	];
 
 	const filings = await db
-		.select({
-			id: tr.id,
-			period_start: tr.periodStart,
-			period_end: tr.periodEnd,
-			filed_on: tr.filedOn,
-			paid_on: tr.paidOn,
-			amount: tr.amount,
-			reference: tr.reference
-		})
-		.from(tr)
-		.where(and(lte(tr.periodStart, p.end), gte(tr.periodEnd, p.start)))
-		.orderBy(asc(tr.periodStart));
+		.selectFrom('tax_remittance')
+		.select(['id', 'period_start', 'period_end', 'filed_on', 'paid_on', 'amount', 'reference'])
+		.where('period_start', '<=', p.end)
+		.where('period_end', '>=', p.start)
+		.orderBy('period_start')
+		.execute();
 
 	const charged = sum(taxes.map((x) => x.tax));
 	const remitted = sum(filings.map((f) => f.amount));
@@ -340,17 +347,19 @@ const sumKnown = (xs: (Decimal | null)[]) => {
 export async function payOwed(p: Period): Promise<PayOwed> {
 	const places = await moneyPlaces();
 	const entries = await db
-		.select({
+		.selectFrom('time_entry')
+		.innerJoin('entity', 'entity.id', 'time_entry.entity_id')
+		.leftJoin('site', 'site.id', 'time_entry.site_id')
+		.leftJoin('user', 'user.id', 'time_entry.worked_by')
+		.select((eb) => [
 			...entryColumns,
-			place: sql<string>`coalesce(${t.site.display}, ${t.entity.name})`,
-			who: t.user.name,
-			teamNames: crewNames(sql`${t.timeEntry.id}`)
-		})
-		.from(t.timeEntry)
-		.innerJoin(t.entity, eq(t.entity.id, t.timeEntry.entityId))
-		.leftJoin(t.site, eq(t.site.id, t.timeEntry.siteId))
-		.leftJoin(t.user, eq(t.user.id, t.timeEntry.workedBy))
-		.where(and(eq(t.timeEntry.billable, true), between(t.timeEntry.workedOn, p.start, p.end)));
+			eb.fn.coalesce('site.display', 'entity.name').as('place'),
+			'user.name as who',
+			crewNames(eb.ref('time_entry.id')).as('teamNames')
+		])
+		.where('time_entry.billable', '=', true)
+		.where((eb) => eb.between('time_entry.worked_on', p.start, p.end))
+		.execute();
 	const worth = await valueEntries(db, entries);
 	// What payments recorded for this work: paid at that figure, whatever the
 	// rules say now (0026).
@@ -360,14 +369,15 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 			[]
 		),
 		db
-			.select({ id: t.user.id, name: t.user.name, paysAs: t.role.paysAs })
-			.from(t.user)
-			.leftJoin(t.role, eq(t.role.id, t.user.roleId))
+			.selectFrom('user')
+			.leftJoin('role', 'role.id', 'user.role_id')
+			.select(['user.id', 'user.name', 'role.pays_as'])
+			.execute()
 	]);
 	const first = new Map(firstNames.map((u) => [u.id, u.name.split(' ')[0]]));
 	// What the month's pay is: as a payment recorded it, or as the person's role
 	// says now (0027).
-	const paysAs = new Map(firstNames.map((u) => [u.id, u.paysAs]));
+	const paysAs = new Map(firstNames.map((u) => [u.id, u.pays_as]));
 	const dueAs = new Map<PaidAs | null, Decimal>();
 	const owe = (as: PaidAs | null, v: Decimal | null) =>
 		v && !v.isZero() && dueAs.set(as, (dueAs.get(as) ?? Decimal.ZERO).add(v));
@@ -464,47 +474,44 @@ async function tripsPaid(
 	places: number,
 	first: ReadonlyMap<string, string>
 ): Promise<PayTrip[]> {
-	const owner = alias(t.user, 'owner');
 	const found = await db
-		.select({
-			id: t.trip.id,
-			travelledOn: t.trip.travelledOn,
-			towns: townsOf(t.trip.id),
-			vehicleId: t.trip.vehicleId,
-			vehicle: t.vehicle.name,
-			ownerId: t.vehicle.ownerId,
-			owner: owner.name
-		})
-		.from(t.trip)
-		.leftJoin(t.vehicle, eq(t.vehicle.id, t.trip.vehicleId))
-		.leftJoin(owner, eq(owner.id, t.vehicle.ownerId))
-		.where(between(t.trip.travelledOn, p.start, p.end))
-		.orderBy(asc(t.trip.travelledOn), asc(t.trip.id));
+		.selectFrom('trip')
+		.leftJoin('vehicle', 'vehicle.id', 'trip.vehicle_id')
+		.leftJoin('user as owner', 'owner.id', 'vehicle.owner_id')
+		.select((eb) => [
+			'trip.id',
+			'trip.travelled_on',
+			townsOf(eb.ref('trip.id')).as('towns'),
+			'trip.vehicle_id',
+			'vehicle.name as vehicle',
+			'vehicle.owner_id',
+			'owner.name as owner'
+		])
+		.where((eb) => eb.between('trip.travelled_on', p.start, p.end))
+		.orderBy('trip.travelled_on')
+		.orderBy('trip.id')
+		.execute();
 	if (!found.length) return [];
 	const legs = await db
-		.select({
-			id: t.tripLeg.id,
-			tripId: t.tripLeg.tripId,
-			serviceId: t.tripLeg.serviceId,
-			entityId: t.tripLeg.entityId,
-			miles: t.tripLeg.miles
-		})
-		.from(t.tripLeg)
-		.where(
-			inArray(
-				t.tripLeg.tripId,
-				found.map((f) => f.id)
-			)
-		);
+		.selectFrom('trip_leg')
+		.select([
+			'id',
+			'trip_id as tripId',
+			'service_id as serviceId',
+			'entity_id as entityId',
+			'miles'
+		])
+		.where('trip_id', '=', (eb) => eb.fn.any(eb.val(found.map((f) => f.id))))
+		.execute();
 	const worth = await valueLegs(
 		db,
 		legs.map((l) => {
 			const f = found.find((x) => x.id === l.tripId)!;
 			return {
 				...l,
-				travelledOn: f.travelledOn,
-				vehicleId: f.vehicleId,
-				vehicleOwnerId: f.ownerId
+				travelledOn: f.travelled_on,
+				vehicleId: f.vehicle_id,
+				vehicleOwnerId: f.owner_id
 			};
 		})
 	);
@@ -517,7 +524,7 @@ async function tripsPaid(
 		const earned = sumKnown(mine.map((l) => worth.get(l.id)?.billed ?? null));
 		const pays = mine.map((l) => worth.get(l.id)?.paid ?? null);
 		// As a payment recorded it, or as it works out now.
-		const kept = f.ownerId ? recorded.get(`${f.ownerId}:${f.id}`) : undefined;
+		const kept = f.owner_id ? recorded.get(`${f.owner_id}:${f.id}`) : undefined;
 		const paid = kept
 			? kept.amount
 			: pays.length && pays.every((x) => x !== null)
@@ -526,7 +533,7 @@ async function tripsPaid(
 		return {
 			trip_id: f.id,
 			job: f.towns ?? 'No stops recorded',
-			worked_on: f.travelledOn,
+			worked_on: f.travelled_on,
 			vehicle: f.vehicle,
 			owner: f.owner,
 			miles: sum(mine.map((l) => l.miles)).toFixed(2),
@@ -558,34 +565,43 @@ async function peopleOwed(places: number): Promise<PersonOwed[]> {
 	const [owing, people, lastPaid] = await Promise.all([
 		owed(),
 		db
-			.select({ id: t.user.id, name: t.user.name, role: t.role.name, paysAs: t.role.paysAs })
-			.from(t.user)
-			.leftJoin(t.role, eq(t.role.id, t.user.roleId)),
+			.selectFrom('user')
+			.leftJoin('role', 'role.id', 'user.role_id')
+			.select(['user.id', 'user.name', 'role.name as role', 'role.pays_as'])
+			.execute(),
 		db
-			.selectDistinctOn([t.personPayment.userId], {
-				userId: t.personPayment.userId,
-				paid_on: t.personPayment.paidOn,
-				how: t.personPayment.how,
-				// Named outright: unjoined, a bare id inside would be the item's.
-				total: sql<string>`(select coalesce(sum(i.amount), 0)::text from person_payment_item i
-				                     where i.payment_id = person_payment.id)`
-			})
-			.from(t.personPayment)
-			.orderBy(
-				t.personPayment.userId,
-				desc(t.personPayment.paidOn),
-				desc(t.personPayment.createdAt)
-			)
+			.selectFrom('person_payment')
+			.distinctOn('person_payment.user_id')
+			.select((eb) => [
+				'person_payment.user_id',
+				'person_payment.paid_on',
+				'person_payment.how',
+				eb
+					.selectFrom('person_payment_item as i')
+					.select((eb) =>
+						eb.cast<string>(eb.fn.coalesce(eb.fn.sum('i.amount'), eb.lit(0)), 'text').as('total')
+					)
+					// Named outright: unjoined, a bare id inside would be the item's.
+					.whereRef('i.payment_id', '=', 'person_payment.id')
+					.$asScalar()
+					// An aggregate: always one row, so never null.
+					.$notNull()
+					.as('total')
+			])
+			.orderBy('person_payment.user_id')
+			.orderBy('person_payment.paid_on', 'desc')
+			.orderBy('person_payment.created_at', 'desc')
+			.execute()
 	]);
 	return people
 		.map((u) => {
 			const items = owing.get(u.id) ?? [];
-			const last = lastPaid.find((l) => l.userId === u.id);
+			const last = lastPaid.find((l) => l.user_id === u.id);
 			return {
 				id: u.id,
 				name: u.name,
 				role: u.role,
-				pays_as: u.paysAs,
+				pays_as: u.pays_as,
 				owed: sum(items.map((i) => i.amount)).toFixed(places),
 				owed_work: sum(
 					items.filter((i) => i.paidAs !== 'reimbursement').map((i) => i.amount)
@@ -641,20 +657,24 @@ export async function anHourNow(): Promise<HourNow[]> {
 	const day = businessToday();
 	const [catalogue, places] = await Promise.all([loadCatalogue(db), moneyPlaces()]);
 	const names_ = new Map(
-		(await db.select({ id: t.user.id, name: t.user.name }).from(t.user)).map((u) => [u.id, u.name])
+		(await db.selectFrom('user').select(['id', 'name']).execute()).map((u) => [u.id, u.name])
 	);
 	const people = team(catalogue.people);
 	const services = await db
-		.select({ id: t.service.id, name: t.service.name })
-		.from(t.service)
-		.where(and(eq(t.service.active, true), eq(t.service.unit, 'hour')));
+		.selectFrom('service')
+		.select(['id', 'name'])
+		.where('active', '=', true)
+		.where('unit', '=', 'hour')
+		.execute();
 	const teamWorked = new Set(
 		(
 			await db
-				.selectDistinct({ id: t.timeEntry.serviceId })
-				.from(t.timeEntry)
-				.where(eq(t.timeEntry.crew, 'team'))
-		).map((r) => r.id)
+				.selectFrom('time_entry')
+				.select('service_id')
+				.distinct()
+				.where('crew', '=', 'team')
+				.execute()
+		).map((r) => r.service_id)
 	);
 
 	const hour = Ratio.of(1);
@@ -785,35 +805,34 @@ export type RetainerMeter = {
  */
 export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 	const running = await db
-		.select({
-			id: t.agreement.id,
-			entityId: t.agreement.entityId,
-			price: t.agreement.price,
-			client: t.entity.name,
-			site: t.site.display
-		})
-		.from(t.agreement)
-		.innerJoin(t.entity, eq(t.entity.id, t.agreement.entityId))
-		.leftJoin(t.site, eq(t.site.id, t.agreement.siteId))
-		.where(
-			and(
-				lte(t.agreement.startsOn, p.end),
-				or(isNull(t.agreement.endsOn), gte(t.agreement.endsOn, p.start))
-			)
-		);
+		.selectFrom('agreement')
+		.innerJoin('entity', 'entity.id', 'agreement.entity_id')
+		.leftJoin('site', 'site.id', 'agreement.site_id')
+		.select([
+			'agreement.id',
+			'agreement.entity_id',
+			'agreement.price',
+			'entity.name as client',
+			'site.display as site'
+		])
+		.where('agreement.starts_on', '<=', p.end)
+		.where((eb) =>
+			eb.or([eb('agreement.ends_on', 'is', null), eb('agreement.ends_on', '>=', p.start)])
+		)
+		.execute();
 	if (!running.length) return { rows: [], charged: '0.00', paid: '0.00', kept: '0.00' };
 
-	const entityIds = [...new Set(running.map((r) => r.entityId))];
+	const entityIds = [...new Set(running.map((r) => r.entity_id))];
 	const [agreements, entries, serviceNames, names, places] = await Promise.all([
 		loadAgreements(db, entityIds),
 		db
+			.selectFrom('time_entry')
 			.select(entryColumns)
-			.from(t.timeEntry)
-			.where(
-				and(inArray(t.timeEntry.entityId, entityIds), between(t.timeEntry.workedOn, p.start, p.end))
-			),
-		db.select({ id: t.service.id, name: t.service.name }).from(t.service),
-		db.select({ id: t.user.id, name: t.user.name }).from(t.user),
+			.where('time_entry.entity_id', '=', (eb) => eb.fn.any(eb.val(entityIds)))
+			.where((eb) => eb.between('time_entry.worked_on', p.start, p.end))
+			.execute(),
+		db.selectFrom('service').select(['id', 'name']).execute(),
+		db.selectFrom('user').select(['id', 'name']).execute(),
 		moneyPlaces()
 	]);
 	const serviceName = new Map(serviceNames.map((s) => [s.id, s.name]));
@@ -933,10 +952,12 @@ export type GivenRow = { service: string; hours: string; worth: string | null };
 export async function nonBillable(p: Period) {
 	const places = await moneyPlaces();
 	const entries = await db
-		.select({ ...entryColumns, service: t.service.name })
-		.from(t.timeEntry)
-		.innerJoin(t.service, eq(t.service.id, t.timeEntry.serviceId))
-		.where(and(eq(t.timeEntry.billable, false), between(t.timeEntry.workedOn, p.start, p.end)));
+		.selectFrom('time_entry')
+		.innerJoin('service', 'service.id', 'time_entry.service_id')
+		.select([...entryColumns, 'service.name as service'])
+		.where('time_entry.billable', '=', false)
+		.where((eb) => eb.between('time_entry.worked_on', p.start, p.end))
+		.execute();
 	const worth = await valueEntries(db, entries);
 
 	const groups = new Map<string, { seconds: number; billed: (Decimal | null)[] }>();

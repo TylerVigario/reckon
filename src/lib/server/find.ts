@@ -1,7 +1,6 @@
 import { error } from '@sveltejs/kit';
-import { and, desc, eq, or, sql } from 'drizzle-orm';
+import { sql } from 'kysely';
 import { db } from './db/index.ts';
-import { entity, site } from './db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
 
 /**
@@ -10,31 +9,35 @@ import { UUID } from '#lib/field-rules.ts';
  * URLs carry slugs, and an id resolves too -- a row pasted out of psql, the id
  * an invoice screen already has to hand. So both work. If a string is both one
  * row's slug and another's id, the slug wins: the rows are ordered with a slug
- * match first.
+ * match first. Only a string shaped like an id is compared with one: anything
+ * else is no uuid, and Postgres would refuse it.
  */
-const byIdToo = (column: typeof entity.id | typeof site.id, idOrSlug: string) =>
-	UUID.test(idOrSlug) ? eq(column, idOrSlug) : undefined;
 
 /** Null rather than a throw, for callers that answer with a problem document. */
 export async function lookUpClient(idOrSlug: string) {
-	const [row] = await db
-		.select({ id: entity.id, slug: entity.slug })
-		.from(entity)
-		.where(or(eq(entity.slug, idOrSlug), byIdToo(entity.id, idOrSlug)))
-		.orderBy(desc(sql`${entity.slug} = ${idOrSlug}`))
-		.limit(1);
+	const row = await db
+		.selectFrom('entity')
+		.select(['id', 'slug'])
+		.where((eb) =>
+			eb.or([eb('slug', '=', idOrSlug), ...(UUID.test(idOrSlug) ? [eb('id', '=', idOrSlug)] : [])])
+		)
+		.orderBy((eb) => sql`${eb.ref('slug')} = ${idOrSlug}`, 'desc')
+		.limit(1)
+		.executeTakeFirst();
 	return row ?? null;
 }
 
 export async function lookUpSite(clientId: string, idOrSlug: string) {
-	const [row] = await db
-		.select({ id: site.id, slug: site.slug })
-		.from(site)
-		.where(
-			and(eq(site.entityId, clientId), or(eq(site.slug, idOrSlug), byIdToo(site.id, idOrSlug)))
+	const row = await db
+		.selectFrom('site')
+		.select(['id', 'slug'])
+		.where('entity_id', '=', clientId)
+		.where((eb) =>
+			eb.or([eb('slug', '=', idOrSlug), ...(UUID.test(idOrSlug) ? [eb('id', '=', idOrSlug)] : [])])
 		)
-		.orderBy(desc(sql`${site.slug} = ${idOrSlug}`))
-		.limit(1);
+		.orderBy((eb) => sql`${eb.ref('slug')} = ${idOrSlug}`, 'desc')
+		.limit(1)
+		.executeTakeFirst();
 	return row ?? null;
 }
 

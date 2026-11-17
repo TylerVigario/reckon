@@ -1,9 +1,14 @@
-import { sql, type SQL } from 'drizzle-orm';
-import { invoiceLine } from './db/schema/index.ts';
-import type { TAX_RULE_SETS } from './db/schema/operator.ts';
+import {
+	expressionBuilder,
+	sql,
+	type Expression,
+	type NumericString,
+	type SelectQueryBuilder
+} from 'kysely';
+import type { DB, TaxRuleSet } from './db/database.ts';
 import type { TaxRounding } from '../tax-rounding.ts';
 
-export type TaxRuleSet = (typeof TAX_RULE_SETS)[number];
+export type { TaxRuleSet } from './db/database.ts';
 
 /**
  * HOW A TAX IS ROUNDED is the tax's own rule, not a preference of the business:
@@ -17,7 +22,7 @@ export type TaxRuleSet = (typeof TAX_RULE_SETS)[number];
  *           rounds as the mirror of a charge.
  *
  * Every tax total in reckon -- on an invoice, in a balance, on the home page,
- * in the valuation -- rounds through this, in SQL (taxSql) or in TypeScript
+ * in the valuation -- rounds through this, in SQL (taxes, lineTax) or in TypeScript
  * (roundTax), so the same lines can never come to two different taxes.
  *
  * A rule whose law lets the business choose -- Japan's method, the UK's line or
@@ -40,17 +45,17 @@ export const TAX_ROUNDING: Record<TaxRuleSet, TaxRounding> = {
 };
 
 /** A value rounded to `places` by `method`, in SQL. */
-export function roundSql(value: SQL, method: TaxRounding['method'], places: number): SQL {
+export function roundSql(value: Expression<string>, method: TaxRounding['method'], places: number) {
 	switch (method) {
 		case 'half_up':
 			// Postgres rounds a numeric half away from zero.
-			return sql`round(${value}, ${places}::int)`;
+			return sql<NumericString>`round(${value}, ${places}::int)`;
 		case 'down':
-			return sql`trunc(${value}, ${places}::int)`;
+			return sql<NumericString>`trunc(${value}, ${places}::int)`;
 		case 'up':
 			// numeric throughout: 10 ^ 2 on integers is a float, and a float is
 			// how 37.82 comes back as 37.82000000000001.
-			return sql`round(sign(${value}) * ceil(abs(${value}) * power(10::numeric, ${places}::int))
+			return sql<NumericString>`round(sign(${value}) * ceil(abs(${value}) * power(10::numeric, ${places}::int))
 			                 / power(10::numeric, ${places}::int), ${places}::int)`;
 	}
 }
@@ -60,30 +65,58 @@ export function roundSql(value: SQL, method: TaxRounding['method'], places: numb
  * lines' tax, rounded by `rounding` to `places`. Lines carry their rate, so a
  * line marked untaxable, at 0%, adds nothing.
  */
-export function taxSql(rounding: TaxRounding, places: number): SQL {
-	const il = invoiceLine;
-	const exact = sql`${il.amount} * ${il.taxRatePct} / 100`;
-	return rounding.scope === 'line'
-		? sql`(select ${il.invoiceId} as invoice_id,
-		              sum(${roundSql(exact, rounding.method, places)}) as tax
-		         from ${il} group by 1)`
-		: sql`(select invoice_id, sum(tax) as tax
-		         from (select ${il.invoiceId} as invoice_id,
-		                      ${roundSql(sql`sum(${exact})`, rounding.method, places)} as tax
-		                 from ${il} group by ${il.invoiceId}, ${il.taxRatePct}) by_rate
-		        group by invoice_id)`;
+export function taxes(rounding: TaxRounding, places: number) {
+	const eb = expressionBuilder<DB>();
+	const line = expressionBuilder<DB, 'invoice_line'>();
+	const exact = sql<NumericString>`${line.ref('invoice_line.amount')} * ${line.ref('invoice_line.tax_rate_pct')} / 100`;
+	if (rounding.scope === 'line')
+		return eb
+			.selectFrom('invoice_line')
+			.select([
+				'invoice_line.invoice_id',
+				sql<NumericString>`sum(${roundSql(exact, rounding.method, places)})`.as('tax')
+			])
+			.groupBy('invoice_line.invoice_id');
+	return eb
+		.selectFrom(
+			eb
+				.selectFrom('invoice_line')
+				.select([
+					'invoice_line.invoice_id',
+					roundSql(sql`sum(${exact})`, rounding.method, places).as('tax')
+				])
+				.groupBy(['invoice_line.invoice_id', 'invoice_line.tax_rate_pct'])
+				.as('by_rate')
+		)
+		.select((eb) => [
+			'by_rate.invoice_id',
+			sql<NumericString>`sum(${eb.ref('by_rate.tax')})`.as('tax')
+		])
+		.groupBy('by_rate.invoice_id');
 }
 
 /**
- * One invoice's tax as a single value, over the lines `from` selects -- a FROM
- * clause and its WHERE -- each line's tax before rounding being `exact`. For a
- * figure that is not the invoice's own tax, such as what is due on the return
- * once tax-paid goods resold come off.
+ * One invoice's tax as a single value over `lines` -- invoice_line, filtered to
+ * the lines it is over -- each line's tax before rounding being `exact`, an
+ * expression over invoice_line. For a figure that is not the invoice's own
+ * tax, such as what is due on the return once tax-paid goods resold come off.
  */
-export function lineTaxSql(exact: SQL, rounding: TaxRounding, places: number, from: SQL): SQL {
-	return rounding.scope === 'line'
-		? sql`(select coalesce(sum(${roundSql(exact, rounding.method, places)}), 0) ${from})`
-		: sql`(select coalesce(sum(t), 0)
-		         from (select ${roundSql(sql`sum(${exact})`, rounding.method, places)} as t
-		                 ${from} group by ${invoiceLine.taxRatePct}) by_rate)`;
+export function lineTax(
+	lines: SelectQueryBuilder<DB, 'invoice_line', object>,
+	exact: Expression<string>,
+	rounding: TaxRounding,
+	places: number
+) {
+	if (rounding.scope === 'line')
+		return lines.select(
+			sql<NumericString>`coalesce(sum(${roundSql(exact, rounding.method, places)}), 0)`.as('tax')
+		);
+	return expressionBuilder<DB>()
+		.selectFrom(
+			lines
+				.select(roundSql(sql`sum(${exact})`, rounding.method, places).as('tax'))
+				.groupBy('invoice_line.tax_rate_pct')
+				.as('by_rate')
+		)
+		.select((eb) => sql<NumericString>`coalesce(sum(${eb.ref('by_rate.tax')}), 0)`.as('tax'));
 }

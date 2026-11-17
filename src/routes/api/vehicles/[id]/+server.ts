@@ -1,6 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
-import { vehicle } from '#lib/server/db/schema/index.ts';
 import { refuse, refuseIfTheDatabaseSaidSo, stillReferenced } from '#lib/server/field-errors.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { UUID } from '#lib/field-rules.ts';
@@ -39,20 +37,21 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	try {
 		const changed = await asUser(locals.user!.id, (tx) =>
 			tx
-				.update(vehicle)
-				.set({
+				.updateTable('vehicle')
+				.set((eb) => ({
 					...('name' in row ? { name: String(row.name) } : {}),
 					// Retired again keeps the day it was first.
 					...('retired' in row
 						? {
-								retiredOn: row.retired
-									? sql`coalesce(${vehicle.retiredOn}, ${businessToday()}::date)`
+								retired_on: row.retired
+									? eb.fn.coalesce('retired_on', eb.cast<string>(eb.val(businessToday()), 'date'))
 									: null
 							}
 						: {})
-				})
-				.where(eq(vehicle.id, params.id))
-				.returning({ id: vehicle.id })
+				}))
+				.where('id', '=', params.id)
+				.returning('id')
+				.execute()
 		);
 		if (changed.length === 0) return problem('notFound', 404, 'No vehicle with that id.');
 	} catch (e) {
@@ -71,7 +70,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (!UUID.test(params.id)) return problem('notFound', 404, 'No vehicle with that id.');
 	try {
 		const gone = await asUser(locals.user!.id, (tx) =>
-			tx.delete(vehicle).where(eq(vehicle.id, params.id)).returning({ id: vehicle.id })
+			tx.deleteFrom('vehicle').where('id', '=', params.id).returning('id').execute()
 		);
 		if (gone.length === 0) return problem('notFound', 404, 'No vehicle with that id.');
 	} catch (e) {

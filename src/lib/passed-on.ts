@@ -1,7 +1,8 @@
 import { Decimal, Ratio } from './decimal.ts';
+import type { TaxRuleSet } from './server/db/database.ts';
 
-/** The operator's tax rules, by name (#lib/server/tax-rules). */
-export type RuleSet = 'us_ca' | 'flat_per_site' | 'none';
+/** The operator's tax rules, by name (#lib/server/tax-rules), as the database has them. */
+export type RuleSet = TaxRuleSet;
 
 /**
  * WHAT A TAX RULE TAXES, of what is passed on to a client: goods, bought for the

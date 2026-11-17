@@ -1,7 +1,5 @@
-import { lte } from 'drizzle-orm';
 import { db } from './db/index.ts';
 import { businessToday } from './calendar.ts';
-import { servicePrice } from './db/schema/index.ts';
 import type { Price } from '#lib/rates.ts';
 import { jobRate, priceOn } from './valuation/pricing.ts';
 import { loadCatalogue } from './valuation/load.ts';
@@ -18,16 +16,18 @@ export async function pricesToday(): Promise<Price[]> {
 	const [catalogue, scopes] = await Promise.all([
 		loadCatalogue(db),
 		db
-			.selectDistinct({ serviceId: servicePrice.serviceId, entityId: servicePrice.entityId })
-			.from(servicePrice)
-			.where(lte(servicePrice.effectiveFrom, day))
+			.selectFrom('service_price')
+			.select(['service_id', 'entity_id'])
+			.distinct()
+			.where('effective_from', '<=', day)
+			.execute()
 	]);
 	const heads = Math.max(team(catalogue.people).length, 1);
-	return scopes.map(({ serviceId, entityId }) => {
-		const p = priceOn(catalogue.prices, serviceId, entityId, day);
+	return scopes.map(({ service_id, entity_id }) => {
+		const p = priceOn(catalogue.prices, service_id, entity_id, day);
 		return {
-			service_id: serviceId,
-			entity_id: entityId,
+			service_id,
+			entity_id,
 			byHeads: Array.from({ length: heads + 1 }, (_, n) =>
 				n === 0 ? null : (jobRate(p, n)?.toString() ?? null)
 			)

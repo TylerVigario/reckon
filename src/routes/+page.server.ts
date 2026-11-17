@@ -1,8 +1,6 @@
-import { and, desc, eq, gte, notExists, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { sql, type Expression, type NotNull, type NumericString, type SqlBool } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday, personalDay, businessDay, personalToday } from '#lib/server/calendar.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { sum } from '#lib/decimal.ts';
 import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
 import { rateIsStale } from '#lib/server/stale.ts';
@@ -42,33 +40,33 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
 	const owing = balances(rounding, places);
 	const today = businessToday();
-	const i = t.invoice;
-	const il = t.invoiceLine;
-	const e = t.entity;
-	const s = t.site;
 
 	// The newest drafts, for either day.
 	const recentDrafts = () =>
 		db
-			.execute<{
-				id: string;
-				number: string;
-				who: string;
-				lines: string;
-				gross: string;
-			}>(
-				sql`
-		select ${i.id} as id, ${i.number} as number, ${e.name} as who,
-		       (select count(*) from ${il} where ${il.invoiceId} = ${i.id})::text as lines,
-		       b.gross::text as gross
-		  from ${i}
-		  join ${e} on ${e.id} = ${i.entityId}
-		  join ${owing} b on b.invoice_id = ${i.id}
-		 where ${i.status} = 'draft'
-		 order by ${i.createdAt} desc
-		 limit 3`
-			)
-			.then((r) => r.rows);
+			.selectFrom('invoice as i')
+			.innerJoin('entity as e', 'e.id', 'i.entity_id')
+			.innerJoin(owing.as('b'), 'b.invoice_id', 'i.id')
+			.select((eb) => [
+				'i.id',
+				'i.number',
+				'e.name as who',
+				eb
+					.cast<string>(
+						eb
+							.selectFrom('invoice_line')
+							.select((eb) => eb.fn.countAll().as('n'))
+							.whereRef('invoice_line.invoice_id', '=', 'i.id')
+							.$asScalar(),
+						'text'
+					)
+					.as('lines'),
+				eb.cast<string>('b.gross', 'text').as('gross')
+			])
+			.where('i.status', '=', 'draft')
+			.orderBy('i.created_at', 'desc')
+			.limit(3)
+			.execute();
 
 	// Names for whatever the browser has a timer running against. The timer
 	// itself is local -- it survives a refresh because it is written down in the
@@ -76,14 +74,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	// here.
 	const timerNames = async () => {
 		const [entities, services] = await Promise.all([
-			db
-				.select({ id: t.entity.id, name: t.entity.name })
-				.from(t.entity)
-				.where(eq(t.entity.active, true)),
-			db
-				.select({ id: t.service.id, name: t.service.name })
-				.from(t.service)
-				.where(eq(t.service.active, true))
+			db.selectFrom('entity').select(['id', 'name']).where('active', '=', true).execute(),
+			db.selectFrom('service').select(['id', 'name']).where('active', '=', true).execute()
 		]);
 		return {
 			entity: Object.fromEntries(entities.map((x) => [x.id, x.name])),
@@ -94,32 +86,40 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	if (fieldOnly(locals) || offline) {
 		const me = locals.user!.id;
 		const day = personalToday();
-		const u = alias(t.user, 'u');
-		const [drafts, names, [month], work, pay] = await Promise.all([
+		const [drafts, names, month, work, pay] = await Promise.all([
 			recentDrafts(),
 			timerNames(),
 			db
-				.select({ seconds: sql<string>`coalesce(sum(${t.timeEntry.seconds}), 0)::text` })
-				.from(t.timeEntry)
-				.where(and(gte(t.timeEntry.workedOn, `${day.slice(0, 8)}01`), theirWork(me))),
+				.selectFrom('time_entry')
+				.select((eb) =>
+					eb
+						.cast<string>(eb.fn.coalesce(eb.fn.sum('time_entry.seconds'), eb.lit(0)), 'text')
+						.as('seconds')
+				)
+				.where('time_entry.worked_on', '>=', `${day.slice(0, 8)}01`)
+				.where((eb) => theirWork(eb, me))
+				.executeTakeFirstOrThrow(),
 			db
-				.select({
-					id: t.timeEntry.id,
-					seconds: t.timeEntry.seconds,
-					crew: t.timeEntry.crew,
-					worked_by: u.name,
-					crew_names: crewNames(sql`${t.timeEntry.id}`),
-					entity: t.entity.name,
-					site: t.site.display,
-					service: t.service.name
-				})
-				.from(t.timeEntry)
-				.leftJoin(u, eq(u.id, t.timeEntry.workedBy))
-				.innerJoin(t.service, eq(t.service.id, t.timeEntry.serviceId))
-				.leftJoin(t.entity, eq(t.entity.id, t.timeEntry.entityId))
-				.leftJoin(t.site, eq(t.site.id, t.timeEntry.siteId))
-				.where(and(eq(t.timeEntry.workedOn, day), theirWork(me)))
-				.orderBy(desc(t.timeEntry.createdAt), desc(t.timeEntry.id)),
+				.selectFrom('time_entry')
+				.leftJoin('user as u', 'u.id', 'time_entry.worked_by')
+				.innerJoin('service', 'service.id', 'time_entry.service_id')
+				.leftJoin('entity', 'entity.id', 'time_entry.entity_id')
+				.leftJoin('site', 'site.id', 'time_entry.site_id')
+				.select((eb) => [
+					'time_entry.id',
+					'time_entry.seconds',
+					'time_entry.crew',
+					'u.name as worked_by',
+					crewNames(eb.ref('time_entry.id')).as('crew_names'),
+					'entity.name as entity',
+					'site.display as site',
+					'service.name as service'
+				])
+				.where('time_entry.worked_on', '=', day)
+				.where((eb) => theirWork(eb, me))
+				.orderBy('time_entry.created_at', 'desc')
+				.orderBy('time_entry.id', 'desc')
+				.execute(),
 			offline
 				? null
 				: Promise.all([owed([me]).then((m) => m.get(me) ?? []), paymentsTo(me)]).then(
@@ -146,78 +146,121 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		};
 	}
 
-	const {
-		rows: [totals]
-	} = await db.execute<{
-		owed: string;
-		owed_count: string;
-		drafts: string;
-		draft_count: string;
-		tax_held: string;
-	}>(sql`
-		select
-		  round(coalesce(sum(b.owed) filter (where b.status = 'sent'), 0), ${places}::int)::text as owed,
-		  count(*) filter (where b.status = 'sent' and b.owed > 0)::text              as owed_count,
-		  round(coalesce(sum(b.gross) filter (where b.status = 'draft'), 0), ${places}::int)::text as drafts,
-		  count(*) filter (where b.status = 'draft')::text                          as draft_count,
-		  -- Collected on somebody else's behalf, so the figure worth seeing is
-		  -- what is STILL HELD: charged on what has gone out, less the Reg 1701
-		  -- credit that comes off the return, less what has been handed to
-		  -- CDTFA. Whether a return was paid is a fact about the world, not
-		  -- something the invoices know, which is why it is subtracted from a
-		  -- table rather than inferred.
-		  round(coalesce(sum(b.tax) filter (where b.status = 'sent'), 0)
-		   - (select coalesce(sum(${il.exTaxCost} * ${il.taxRatePct} / 100), 0)
-		        from ${il} join ${i} on ${i.id} = ${il.invoiceId}
-		       where ${il.taxable} and ${i.status} = 'sent'
-		         and (select ${t.operator.claimsTaxPaidPurchasesResold} from ${t.operator}))
-		   - (select coalesce(sum(${t.taxRemittance.amount}), 0) from ${t.taxRemittance}),
-		   ${places}::int)::text as tax_held
-		  from ${owing} b
-		 where b.status in ('sent', 'draft')`);
+	const totals = await db
+		.selectFrom(owing.as('b'))
+		.select((eb) => {
+			const sent = eb('b.status', '=', 'sent');
+			const draft = eb('b.status', '=', 'draft');
+			const at = (v: Expression<unknown>) => sql<string>`round(${v}, ${places}::int)::text`;
+			const total = (figure: 'b.owed' | 'b.gross' | 'b.tax', where: Expression<SqlBool>) =>
+				eb.fn.coalesce(eb.fn.sum<NumericString>(figure).filterWhere(where), eb.lit(0));
+			const resold = eb
+				.selectFrom('invoice_line as il')
+				.innerJoin('invoice as i', 'i.id', 'il.invoice_id')
+				.select((eb) =>
+					eb.fn
+						.coalesce(
+							sql<NumericString>`sum(${eb.ref('il.ex_tax_cost')} * ${eb.ref('il.tax_rate_pct')} / 100)`,
+							eb.lit(0)
+						)
+						.as('resold')
+				)
+				.where('il.taxable', '=', true)
+				.where('i.status', '=', 'sent')
+				.where((eb) =>
+					eb.selectFrom('operator').select('claims_tax_paid_purchases_resold').$asScalar()
+				)
+				.$asScalar();
+			const remitted = eb
+				.selectFrom('tax_remittance')
+				.select((eb) =>
+					eb.fn.coalesce(eb.fn.sum<NumericString>('amount'), eb.lit(0)).as('remitted')
+				)
+				.$asScalar();
+			return [
+				at(total('b.owed', sent)).as('owed'),
+				eb
+					.cast<string>(
+						eb.fn.countAll().filterWhere(eb.and([sent, eb('b.owed', '>', '0')])),
+						'text'
+					)
+					.as('owed_count'),
+				at(total('b.gross', draft)).as('drafts'),
+				eb.cast<string>(eb.fn.countAll().filterWhere(draft), 'text').as('draft_count'),
+				// Collected on somebody else's behalf, so the figure worth seeing is
+				// what is STILL HELD: charged on what has gone out, less the Reg 1701
+				// credit that comes off the return, less what has been handed to
+				// CDTFA. Whether a return was paid is a fact about the world, not
+				// something the invoices know, which is why it is subtracted from a
+				// table rather than inferred.
+				at(sql`${total('b.tax', sent)} - ${resold} - ${remitted}`).as('tax_held')
+			];
+		})
+		.where('b.status', '=', (eb) => eb.fn.any(eb.val(['sent', 'draft'] as const)))
+		// An aggregate: always one row.
+		.executeTakeFirstOrThrow();
 
 	// Anything that cannot proceed until somebody decides. An invoice out past
 	// the operator's own chase-after figure, which opens the invoice, and an
 	// address CDTFA has not been asked about lately, which opens its site,
 	// where CDTFA is asked again.
-	const { rows: found } = await db.execute<{
-		kind: 'invoice' | 'district';
-		client: string;
-		ref: string;
-		dated_on: string;
-		amount: string | null;
-		days: number;
-		client_slug: string | null;
-		site_slug: string | null;
-		invoice_id: string | null;
-	}>(sql`
-		select * from (
-		select 'invoice' as kind, ${e.name} as client, ${i.number} as ref,
-		       ${personalDay(i.sentAt)}::text as dated_on,
-		       b.owed::text as amount,
-		       ${businessToday()}::date - ${businessDay(i.sentAt)} as days,
-		       'Invoice ' || ${i.number} || ' · ' || ${e.name} as sort,
-		       null as client_slug, null as site_slug, ${i.id}::text as invoice_id
-		  from ${i}
-		  join ${e} on ${e.id} = ${i.entityId}
-		  join ${owing} b on b.invoice_id = ${i.id}
-		 where ${i.status} = 'sent'
-		   and b.owed > 0
-		   and ${i.sentAt} is not null
-		   and ${businessToday()}::date - ${businessDay(i.sentAt)}
-		       > coalesce((select ${t.operator.ageingAlertDays} from ${t.operator}), 30)
-		union all
-		select 'district', ${e.name}, ${s.display}, ${s.areaVerifiedOn}::text, null,
-		       ${businessToday()}::date - ${s.areaVerifiedOn},
-		       ${e.name} || ' · ' || ${s.display} || ' · rate is old',
-		       ${e.slug}, ${s.slug}, null
-		  from ${s}
-		  join ${e} on ${e.id} = ${s.entityId}
-		 where ${s.active} and ${rateIsStale(s.areaVerifiedOn, businessToday())}
-		) d
-		 -- Critical before warning, by severity rather than by how the kind
-		 -- column happens to sort.
-		 order by case kind when 'invoice' then 0 else 1 end, sort`);
+	const overdueInvoices = db
+		.selectFrom('invoice as i')
+		.innerJoin('entity as e', 'e.id', 'i.entity_id')
+		.innerJoin(owing.as('b'), 'b.invoice_id', 'i.id')
+		.select((eb) => [
+			sql.lit<'invoice' | 'district'>('invoice').as('kind'),
+			'e.name as client',
+			'i.number as ref',
+			eb.cast<string>(personalDay(eb.ref('i.sent_at')), 'text').as('dated_on'),
+			eb.cast<string | null>('b.owed', 'text').as('amount'),
+			sql<number>`${today}::date - ${businessDay(eb.ref('i.sent_at'))}`.as('days'),
+			sql<string>`'Invoice ' || ${eb.ref('i.number')} || ' · ' || ${eb.ref('e.name')}`.as('sort'),
+			sql.lit<string | null>(null).as('client_slug'),
+			sql.lit<string | null>(null).as('site_slug'),
+			eb.cast<string | null>('i.id', 'text').as('invoice_id')
+		])
+		.where('i.status', '=', 'sent')
+		.where('b.owed', '>', '0')
+		.where('i.sent_at', 'is not', null)
+		.where((eb) =>
+			eb(
+				sql<number>`${today}::date - ${businessDay(eb.ref('i.sent_at'))}`,
+				'>',
+				eb.fn.coalesce(
+					eb.selectFrom('operator').select('ageing_alert_days').$asScalar(),
+					eb.lit(30)
+				)
+			)
+		);
+	const staleRates = db
+		.selectFrom('site as s')
+		.innerJoin('entity as e', 'e.id', 's.entity_id')
+		.select((eb) => [
+			sql.lit<'invoice' | 'district'>('district').as('kind'),
+			'e.name as client',
+			's.display as ref',
+			eb.cast<string>('s.area_verified_on', 'text').as('dated_on'),
+			sql.lit<string | null>(null).as('amount'),
+			sql<number>`${today}::date - ${eb.ref('s.area_verified_on')}`.as('days'),
+			sql<string>`${eb.ref('e.name')} || ' · ' || ${eb.ref('s.display')} || ' · rate is old'`.as(
+				'sort'
+			),
+			'e.slug as client_slug',
+			's.slug as site_slug',
+			sql.lit<string | null>(null).as('invoice_id')
+		])
+		.where('s.active', '=', true)
+		.where((eb) => rateIsStale(eb.ref('s.area_verified_on'), today))
+		.$narrowType<{ ref: NotNull }>();
+	const found = await db
+		.selectFrom(overdueInvoices.unionAll(staleRates).as('d'))
+		.selectAll('d')
+		// Critical before warning, by severity rather than by how the kind
+		// column happens to sort.
+		.orderBy((eb) => eb.case('d.kind').when('invoice').then(eb.lit(0)).else(eb.lit(1)).end())
+		.orderBy('d.sort')
+		.execute();
 	// Written here, with #lib/format, like every other date and count a person
 	// reads.
 	const decisions = found.map((d) =>
@@ -253,19 +296,20 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	// a retainer covers is not waiting on anything: the retainer has charged
 	// for it.
 	const unbilled = await db
+		.selectFrom('time_entry')
 		.select(entryColumns)
-		.from(t.timeEntry)
-		.where(
-			and(
-				eq(t.timeEntry.billable, true),
-				notExists(
-					db
-						.select({ x: sql`1` })
-						.from(t.invoiceLine)
-						.where(eq(t.invoiceLine.timeEntryId, t.timeEntry.id))
+		.where('time_entry.billable', '=', true)
+		.where((eb) =>
+			eb.not(
+				eb.exists(
+					eb
+						.selectFrom('invoice_line')
+						.select((eb) => eb.lit(1).as('x'))
+						.whereRef('invoice_line.time_entry_id', '=', 'time_entry.id')
 				)
 			)
-		);
+		)
+		.execute();
 	const worth = await valueEntries(db, unbilled);
 	const daysAgo = (d: string) => Temporal.PlainDate.from(d).until(today).days;
 	const buckets = new Map<Age, { n: number; worth: (string | null)[]; oldest: number }>();

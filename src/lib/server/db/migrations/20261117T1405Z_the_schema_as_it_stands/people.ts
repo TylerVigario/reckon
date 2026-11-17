@@ -14,23 +14,39 @@
 import { sql, type Kysely, type SqlBool } from 'kysely';
 import { recorded } from './record.ts';
 
-/** Has `table`'s updated_at stamped by the database on every update. */
-async function stampsUpdatedAt(db: Kysely<any>, table: string): Promise<void> {
+/**
+ * Has `table`'s updated_at stamped by the database whenever the row changes:
+ * any column but updated_at itself and those `ignoring` names, which change
+ * without the row being said to.
+ */
+async function stampsUpdatedAt(
+	db: Kysely<any>,
+	table: string,
+	{ ignoring = [] as string[] } = {}
+): Promise<void> {
+	const args = sql.join(ignoring.map((c) => sql.lit(c)));
 	await sql`create trigger stamp_updated_at before update on ${sql.table(table)}
-		for each row execute function stamp_updated_at()`.execute(db);
+		for each row execute function stamp_updated_at(${args})`.execute(db);
 }
 
 export async function people(db: Kysely<any>): Promise<void> {
-	// updated_at is when the row last changed, and the database stamps it on
-	// every update, whoever writes it -- Better Auth sets it on its own writes,
-	// and reckon writes user directly -- as PostgreSQL's own trigger example
-	// does (PL/pgSQL, Example 41.3, which stamps last_date). A person's history
-	// leaves it out (h_user): a stamp is not a change to them.
+	// updated_at is when the row last changed, and the database stamps it,
+	// whoever writes it -- Better Auth sets it on its own writes, and reckon
+	// writes user directly -- as PostgreSQL's own trigger example does (PL/pgSQL,
+	// Example 41.3, which stamps last_date). Only a change stamps it: an update
+	// that changes nothing, or only what the trigger names (a sign-in's
+	// last_signed_in_at), leaves it as it was. A person's history leaves it out
+	// (h_user): a stamp is not a change to them.
 	await sql`
 		create function stamp_updated_at() returns trigger
 		language plpgsql as $function$
+		DECLARE
+		  -- A trigger given no columns has TG_ARGV null, not empty.
+		  ignored text[] := coalesce(TG_ARGV, '{}') || '{updated_at}';
 		BEGIN
-		  NEW.updated_at := now();
+		  IF to_jsonb(NEW) - ignored IS DISTINCT FROM to_jsonb(OLD) - ignored THEN
+		    NEW.updated_at := now();
+		  END IF;
 		  RETURN NEW;
 		END $function$`.execute(db);
 
@@ -131,7 +147,7 @@ export async function people(db: Kysely<any>): Promise<void> {
 		.addColumn('updated_at', 'timestamptz', (c) => c.notNull().defaultTo(sql`now()`))
 		.addCheckConstraint('user_email_lowercase', sql`email = lower(email)`)
 		.execute();
-	await stampsUpdatedAt(db, 'user');
+	await stampsUpdatedAt(db, 'user', { ignoring: ['last_signed_in_at'] });
 
 	// Someone active keeps Full, or nobody could change anyone's access again:
 	// refused for whatever leaves active people and none of them on Full -- the

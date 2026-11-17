@@ -1,3 +1,4 @@
+import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { Decimal, sum } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
@@ -18,31 +19,66 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async () => {
 	const day = businessToday();
 	const [rows, agreements] = await Promise.all([
-		db.query.agreement.findMany({
-			columns: { id: true, entityId: true, price: true, billingInterval: true, endsOn: true },
-			with: {
-				entity: { columns: { name: true } },
-				site: { columns: { display: true } },
-				services: {
-					columns: { serviceId: true, allotment: true, includedHours: true },
-					with: { service: { columns: { name: true } } }
-				},
-				periods: { columns: { periodStart: true, periodEnd: true, amount: true, given: true } }
-			}
-		}),
-		db.query.agreement
-			.findMany({ columns: { entityId: true } })
-			.then((all) => loadAgreements(db, [...new Set(all.map((a) => a.entityId))]))
+		db
+			.selectFrom('agreement as a')
+			.select((eb) => [
+				'a.id',
+				'a.price',
+				'a.billing_interval',
+				'a.ends_on',
+				eb
+					.selectFrom('entity as e')
+					.select('e.name')
+					.whereRef('e.id', '=', 'a.entity_id')
+					.$asScalar()
+					.$notNull()
+					.as('who'),
+				eb
+					.selectFrom('site as s')
+					.select('s.display')
+					.whereRef('s.id', '=', 'a.site_id')
+					.as('site'),
+				// As text: a NUMERIC inside JSON would arrive as a JS number.
+				jsonArrayFrom(
+					eb
+						.selectFrom('agreement_service as c')
+						.innerJoin('service as sv', 'sv.id', 'c.service_id')
+						.select((eb) => [
+							'c.service_id',
+							'c.allotment',
+							eb.cast<string | null>('c.included_hours', 'text').as('included_hours'),
+							'sv.name as service'
+						])
+						.whereRef('c.agreement_id', '=', 'a.id')
+				).as('services'),
+				jsonArrayFrom(
+					eb
+						.selectFrom('agreement_period as p')
+						.select((eb) => [
+							'p.period_start',
+							'p.period_end',
+							eb.cast<string>('p.amount', 'text').as('amount'),
+							'p.given'
+						])
+						.whereRef('p.agreement_id', '=', 'a.id')
+				).as('periods')
+			])
+			.execute(),
+		db
+			.selectFrom('agreement')
+			.select('entity_id')
+			.execute()
+			.then((all) => loadAgreements(db, [...new Set(all.map((a) => a.entity_id))]))
 	]);
 	const used = await usedThisMonth(db, agreements, day);
 
 	const all = rows
 		.map((a) => {
-			const period = a.periods.find((p) => p.periodStart <= day && day <= p.periodEnd);
+			const period = a.periods.find((p) => p.period_start <= day && day <= p.period_end);
 			return {
 				id: a.id,
-				who: a.entity.name,
-				site: a.site?.display ?? null,
+				who: a.who,
+				site: a.site,
 				price: a.price,
 				// This period's charge, made in advance -- or given, or not made yet.
 				now: period
@@ -51,15 +87,15 @@ export const load: PageServerLoad = async () => {
 							amount: period.amount
 						}
 					: { state: 'uncharged' as const, amount: null },
-				interval: a.billingInterval,
-				ended: a.endsOn !== null && a.endsOn < day,
+				interval: a.billing_interval,
+				ended: a.ends_on !== null && a.ends_on < day,
 				covers: a.services
 					.map((s) => ({
-						service: s.service.name,
+						service: s.service,
 						allotment: s.allotment,
 						hours:
-							s.allotment === 'capped' ? Decimal.from(s.includedHours ?? '0').toFixed(2) : null,
-						used: hoursOf(used.get(`${a.id}:${s.serviceId}`) ?? 0)
+							s.allotment === 'capped' ? Decimal.from(s.included_hours ?? '0').toFixed(2) : null,
+						used: hoursOf(used.get(`${a.id}:${s.service_id}`) ?? 0)
 					}))
 					.sort((x, y) => byText(x.service, y.service))
 			};

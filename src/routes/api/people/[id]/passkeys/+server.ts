@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
-import { passkey, user } from '#lib/server/db/schema/index.ts';
 import { refuse } from '#lib/server/field-errors.ts';
 import { tell } from '#lib/server/email.ts';
 import { endPasskeys } from '#lib/server/passkeys.ts';
@@ -22,17 +20,19 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (params.id === me.id) return refuse({ passkeys: 'Your own passkeys are on Your profile.' });
 
 	return asUser(me.id, async (tx) => {
-		const [person] = await tx
-			.select({ id: user.id })
-			.from(user)
-			.where(eq(user.id, params.id))
-			.for('update');
+		const person = await tx
+			.selectFrom('user')
+			.select('id')
+			.where('id', '=', params.id)
+			.forUpdate()
+			.executeTakeFirst();
 		if (!person) return problem('notFound', 404, 'No person with that id.');
-		const [keyed] = await tx
-			.select({ id: passkey.id })
-			.from(passkey)
-			.where(eq(passkey.userId, person.id))
-			.limit(1);
+		const keyed = await tx
+			.selectFrom('passkey')
+			.select('id')
+			.where('user_id', '=', person.id)
+			.limit(1)
+			.executeTakeFirst();
 		if (!keyed) return refuse({ passkeys: 'They have no passkey to end.' }, 409);
 		const ended = await endPasskeys(tx, person.id);
 		await tell(tx, person.id, (them, business) =>

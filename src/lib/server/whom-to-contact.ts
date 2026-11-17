@@ -1,5 +1,4 @@
 import { db } from './db/index.ts';
-import { operator } from './db/schema/index.ts';
 import { contactFor } from './contact.js';
 
 /**
@@ -8,9 +7,10 @@ import { contactFor } from './contact.js';
  * their administrator where it gives neither.
  */
 export async function whomToContact(): Promise<string> {
-	const [business] = await db
-		.select({ tradingName: operator.tradingName, email: operator.email, phone: operator.phone })
-		.from(operator)
-		.limit(1);
+	const business = await db
+		.selectFrom('operator')
+		.select(['trading_name as tradingName', 'email', 'phone'])
+		.limit(1)
+		.executeTakeFirst();
 	return contactFor(business ?? {});
 }

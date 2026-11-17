@@ -1,7 +1,5 @@
 import { businessToday, personalToday } from '#lib/server/calendar.ts';
-import { asc, desc, eq, gte, isNull, or, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import { agreement, agreementService, entity, service, site } from '#lib/server/db/schema/index.ts';
 import { anHourNow } from '#lib/server/reports.ts';
 import { prices, rules } from '#lib/server/catalogue.ts';
 import type { PageServerLoad } from './$types';
@@ -18,16 +16,11 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async () => {
 	const [services, priced, paying, covered, kept] = await Promise.all([
 		db
-			.select({
-				id: service.id,
-				name: service.name,
-				unit: service.unit,
-				bill_to_nearest_seconds: service.billToNearestSeconds,
-				minimum_charge: service.minimumCharge,
-				active: service.active
-			})
-			.from(service)
-			.orderBy(desc(service.active), asc(service.name)),
+			.selectFrom('service')
+			.select(['id', 'name', 'unit', 'bill_to_nearest_seconds', 'minimum_charge', 'active'])
+			.orderBy('active', 'desc')
+			.orderBy('name')
+			.execute(),
 
 		prices(),
 		rules(),
@@ -36,21 +29,23 @@ export const load: PageServerLoad = async () => {
 		// client. The agreement says so, service by service, and it is joined
 		// in here rather than stored twice.
 		db
-			.select({
-				agreement_id: agreementService.agreementId,
-				service_id: agreementService.serviceId,
-				who: entity.name,
-				site: site.display,
-				allotment: agreementService.allotment,
-				hours: agreementService.includedHours,
-				overage: agreementService.overage
-			})
-			.from(agreementService)
-			.innerJoin(agreement, eq(agreement.id, agreementService.agreementId))
-			.innerJoin(entity, eq(entity.id, agreement.entityId))
-			.leftJoin(site, eq(site.id, agreement.siteId))
-			.where(or(isNull(agreement.endsOn), gte(agreement.endsOn, sql`${businessToday()}::date`)))
-			.orderBy(asc(entity.name), sql`${site.display} nulls first`),
+			.selectFrom('agreement_service as c')
+			.innerJoin('agreement as a', 'a.id', 'c.agreement_id')
+			.innerJoin('entity as e', 'e.id', 'a.entity_id')
+			.leftJoin('site as s', 's.id', 'a.site_id')
+			.select([
+				'c.agreement_id',
+				'c.service_id',
+				'e.name as who',
+				's.display as site',
+				'c.allotment',
+				'c.included_hours as hours',
+				'c.overage'
+			])
+			.where((eb) => eb.or([eb('a.ends_on', 'is', null), eb('a.ends_on', '>=', businessToday())]))
+			.orderBy('e.name')
+			.orderBy('s.display', (ob) => ob.nullsFirst())
+			.execute(),
 
 		// What an hour leaves the business, worked out once for this screen and
 		// the pay report alike.

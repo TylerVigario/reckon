@@ -1,6 +1,5 @@
-import { count, sql } from 'drizzle-orm';
+import { sql, type Expression } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
@@ -10,42 +9,47 @@ import type { PageServerLoad } from './$types';
  * (#lib/access).
  */
 export const load: PageServerLoad = async ({ locals }) => {
-	const c = t.contact;
-	const ec = t.entityContact;
-	const e = t.entity;
-	const sc = t.siteContact;
-	const si = t.site;
-
-	const [{ rows: contacts }, [clients]] = await Promise.all([
-		db.execute<{
-			id: string;
-			name: string;
-			email: string | null;
-			phone: string | null;
-			note: string | null;
-			clients: string[];
-			sites: string[];
-			primary_for: string[];
-		}>(sql`
-		select ${c.id} as id, ${c.name} as name, ${c.email} as email, ${c.phone} as phone,
-		       ${c.note} as note,
-		       -- coalesce, not just array_remove: array_agg over no rows is NULL,
-		       -- and a filtered aggregate matching nothing is exactly that case --
-		       -- a contact who is nobody's primary would hand the page a null to
-		       -- call .includes() on.
-		       coalesce(array_remove(array_agg(distinct ${e.name}), null), '{}') as clients,
-		       coalesce(array_remove(array_agg(distinct ${si.display}), null), '{}') as sites,
-		       coalesce(array_remove(array_agg(distinct ${e.name})
-		                             filter (where ${ec.isPrimary}), null), '{}') as primary_for
-		  from ${c}
-		  left join ${ec} on ${ec.contactId} = ${c.id}
-		  left join ${e} on ${e.id} = ${ec.entityId}
-		  left join ${sc} on ${sc.contactId} = ${c.id}
-		  left join ${si} on ${si.id} = ${sc.siteId}
-		 group by ${c.id}
-		 order by ${c.name}`),
+	const [contacts, clients] = await Promise.all([
+		db
+			.selectFrom('contact as c')
+			.leftJoin('entity_contact as ec', 'ec.contact_id', 'c.id')
+			.leftJoin('entity as e', 'e.id', 'ec.entity_id')
+			.leftJoin('site_contact as sc', 'sc.contact_id', 'c.id')
+			.leftJoin('site as si', 'si.id', 'sc.site_id')
+			.select((eb) => {
+				// coalesce, not just array_remove: array_agg over no rows is NULL,
+				// and a filtered aggregate matching nothing is exactly that case --
+				// a contact who is nobody's primary would hand the page a null to
+				// call .includes() on.
+				const names = (agg: Expression<string[] | null>) =>
+					eb.fn.coalesce(
+						eb.fn<string[] | null>('array_remove', [agg, eb.lit(null)]),
+						sql<string[]>`'{}'`
+					);
+				return [
+					'c.id',
+					'c.name',
+					'c.email',
+					'c.phone',
+					'c.note',
+					names(eb.fn.agg<string[] | null>('array_agg', ['e.name']).distinct()).as('clients'),
+					names(eb.fn.agg<string[] | null>('array_agg', ['si.display']).distinct()).as('sites'),
+					names(
+						eb.fn
+							.agg<string[] | null>('array_agg', ['e.name'])
+							.distinct()
+							.filterWhere('ec.is_primary', '=', true)
+					).as('primary_for')
+				];
+			})
+			.groupBy('c.id')
+			.orderBy('c.name')
+			.execute(),
 		// For Entities' other tab, counted as the client list counts them.
-		db.select({ n: count() }).from(e)
+		db
+			.selectFrom('entity')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+			.executeTakeFirstOrThrow()
 	]);
 
 	return {

@@ -1,6 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { lockMaterials } from '#lib/server/adjust.ts';
 import { refuse } from '#lib/server/field-errors.ts';
 import { pgError } from '#lib/server/field-errors.ts';
@@ -15,16 +13,18 @@ import type { RequestHandler } from './$types';
 
 /** The count, if it is still being counted, and the material, with the places its unit counts in. */
 async function find(countId: string, materialId: string) {
-	const [[count], [m]] = await Promise.all([
+	const [count, m] = await Promise.all([
 		db
-			.select({ id: t.stockCount.id, applied: sql<boolean>`${t.stockCount.appliedAt} is not null` })
-			.from(t.stockCount)
-			.where(eq(t.stockCount.id, countId)),
+			.selectFrom('stock_count')
+			.select((eb) => ['id', eb('applied_at', 'is not', null).as('applied')])
+			.where('id', '=', countId)
+			.executeTakeFirst(),
 		db
-			.select({ id: t.material.id, places: t.unit.places })
-			.from(t.material)
-			.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
-			.where(eq(t.material.id, materialId))
+			.selectFrom('material as m')
+			.innerJoin('unit as u', 'u.id', 'm.unit_id')
+			.select(['m.id', 'u.places'])
+			.where('m.id', '=', materialId)
+			.executeTakeFirst()
 	]);
 	return { count, m };
 }
@@ -65,19 +65,17 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 						: onHandOf((await shelves([m.id], tx)).get(m.id)!).toString();
 				const line = {
 					counted: String(values.counted),
-					onHand,
+					on_hand: onHand,
 					// A cost each is only for stock found where nothing on the shelf costs it.
-					costEach: values.cost_each === null ? null : String(values.cost_each),
-					countedBy: locals.user!.id,
-					countedAt: new Date()
+					cost_each: values.cost_each === null ? null : String(values.cost_each),
+					counted_by: locals.user!.id,
+					counted_at: new Date()
 				};
 				await tx
-					.insert(t.stockCountLine)
-					.values({ countId: count.id, materialId: m.id, ...line })
-					.onConflictDoUpdate({
-						target: [t.stockCountLine.countId, t.stockCountLine.materialId],
-						set: line
-					});
+					.insertInto('stock_count_line')
+					.values({ count_id: count.id, material_id: m.id, ...line })
+					.onConflict((oc) => oc.columns(['count_id', 'material_id']).doUpdateSet(line))
+					.execute();
 				return onHand;
 			},
 			madeAt(typeof body.made_at === 'string' ? body.made_at : '')
@@ -96,13 +94,10 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	try {
 		await asUser(locals.user!.id, (tx) =>
 			tx
-				.delete(t.stockCountLine)
-				.where(
-					and(
-						eq(t.stockCountLine.countId, params.id),
-						eq(t.stockCountLine.materialId, params.material)
-					)
-				)
+				.deleteFrom('stock_count_line')
+				.where('count_id', '=', params.id)
+				.where('material_id', '=', params.material)
+				.execute()
 		);
 	} catch (e) {
 		if (/stays as it was/.test(pgError(e).message ?? '')) return applied();

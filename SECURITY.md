@@ -20,8 +20,8 @@ around them. In particular:
 - anything that reaches data without a session
 - anything that gets a password, a session token or a client's records out of
   the system
-- a constraint in `drizzle/` that can be worked around from the
-  application
+- a constraint in the migrations (`src/lib/server/db/migrations/`) that can
+  be worked around from the application
 
 ## What is not
 

@@ -1,7 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { count, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { personalToday } from '#lib/server/calendar.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { materialFigures } from '#lib/server/stock.ts';
@@ -16,32 +14,38 @@ import type { LayoutServerLoad } from './$types';
  */
 export const load: LayoutServerLoad = async ({ params, url }) => {
 	if (!UUID.test(params.id)) error(404, 'no such material');
-	const [found] = await db
-		.select({
-			id: t.material.id,
-			name: t.material.name,
-			sku: t.material.sku,
-			brand: t.material.brand,
+	const found = await db
+		.selectFrom('material as m')
+		.innerJoin('unit as u', 'u.id', 'm.unit_id')
+		.select((eb) => [
+			'm.id',
+			'm.name',
+			'm.sku',
+			'm.brand',
 			// How its unit is written beside a figure: "ft", or the name.
-			unit: sql<string>`coalesce(${t.unit.short}, ${t.unit.name})`,
-			unit_id: t.material.unitId,
-			places: t.unit.places,
-			taxable: t.material.taxable,
-			active: t.material.active,
-			own_markup: t.material.markupPct,
-			version: t.material.version
-		})
-		.from(t.material)
-		.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
-		.where(eq(t.material.id, params.id));
+			eb.fn.coalesce('u.short', 'u.name').as('unit'),
+			'm.unit_id',
+			'u.places',
+			'm.taxable',
+			'm.active',
+			'm.markup_pct as own_markup',
+			'm.version'
+		])
+		.where('m.id', '=', params.id)
+		.executeTakeFirst();
 	if (!found) error(404, 'no such material');
-	const [figures, [adjusted], [received]] = await Promise.all([
+	const [figures, adjusted, received] = await Promise.all([
 		materialFigures([found.id]),
 		db
-			.select({ n: count() })
-			.from(t.stockAdjustment)
-			.where(eq(t.stockAdjustment.materialId, found.id)),
-		db.select({ n: count() }).from(t.materialLot).where(eq(t.materialLot.materialId, found.id))
+			.selectFrom('stock_adjustment')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+			.where('material_id', '=', found.id)
+			.executeTakeFirstOrThrow(),
+		db
+			.selectFrom('material_lot')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+			.where('material_id', '=', found.id)
+			.executeTakeFirstOrThrow()
 	]);
 	const copy = isOfflineCopy(url);
 	const worth = figures.of.get(found.id)!;

@@ -1,7 +1,7 @@
 import { fail } from '@sveltejs/kit';
-import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
+import { sql, type ExpressionBuilder } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
-import { emailLink, user } from '#lib/server/db/schema/index.ts';
+import type { DB } from '#lib/server/db/database.ts';
 import { tell } from '#lib/server/email.ts';
 import { cannotSend, changing, issue, unsentBecause } from '#lib/server/links.ts';
 import { emailConfirmation } from '#lib/server/notices.js';
@@ -21,23 +21,25 @@ import type { Actions, PageServerLoad } from './$types';
  * the new one: said here, with where it went and until when.
  */
 export const load: PageServerLoad = async ({ locals }) => {
-	const [[me], [waiting], contact] = await Promise.all([
+	const [me, waiting, contact] = await Promise.all([
 		db
-			.select({
-				email: user.email,
-				email_verified: user.emailVerified,
-				timezone: user.timezone,
-				locale: user.locale,
-				hour_cycle: user.hourCycle,
-				week_start: user.weekStart,
-				changing
-			})
-			.from(user)
-			.where(eq(user.id, locals.user!.id)),
+			.selectFrom('user')
+			.select((eb) => [
+				'email',
+				'email_verified',
+				'timezone',
+				'locale',
+				'hour_cycle',
+				'week_start',
+				changing(eb.ref('user.id')).as('changing')
+			])
+			.where('id', '=', locals.user!.id)
+			.executeTakeFirstOrThrow(),
 		db
-			.select({ until: emailLink.expiresAt })
-			.from(emailLink)
-			.where(confirmationWaiting(locals.user!.id)),
+			.selectFrom('email_link')
+			.select('expires_at as until')
+			.where(confirmationWaiting(locals.user!.id))
+			.executeTakeFirst(),
 		whomToContact()
 	]);
 	return {
@@ -53,14 +55,18 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 /** A confirmation link of theirs still working, to the address they have now. */
-const confirmationWaiting = (userId: string) =>
-	and(
-		eq(emailLink.userId, userId),
-		eq(emailLink.purpose, 'confirm'),
-		isNull(emailLink.usedAt),
-		gt(emailLink.expiresAt, sql`now()`),
-		sql`${emailLink.sentTo} = (select ${user.email} from ${user} where ${user.id} = ${userId})`
-	);
+const confirmationWaiting = (userId: string) => (eb: ExpressionBuilder<DB, 'email_link'>) =>
+	eb.and([
+		eb('email_link.user_id', '=', userId),
+		eb('email_link.purpose', '=', 'confirm'),
+		eb('email_link.used_at', 'is', null),
+		eb('email_link.expires_at', '>', sql<Date>`now()`),
+		eb(
+			'email_link.sent_to',
+			'=',
+			eb.selectFrom('user').select('user.email').where('user.id', '=', userId)
+		)
+	]);
 
 /** How long after one confirmation link another can be asked for. */
 const AGAIN_AFTER_SECONDS = 60;
@@ -71,23 +77,28 @@ export const actions: Actions = {
 		const me = locals.user!;
 		const missing = cannotSend();
 		if (missing) return fail(409, { confirm: unsentBecause(missing) });
-		const [newest] = await db
-			.select({
-				recent: sql<boolean>`${emailLink.createdAt} > now() - make_interval(secs => ${AGAIN_AFTER_SECONDS})`
-			})
-			.from(emailLink)
-			.where(and(eq(emailLink.userId, me.id), eq(emailLink.purpose, 'confirm')))
-			.orderBy(desc(emailLink.createdAt))
-			.limit(1);
+		const newest = await db
+			.selectFrom('email_link')
+			.select((eb) =>
+				eb('created_at', '>', sql<Date>`now() - make_interval(secs => ${AGAIN_AFTER_SECONDS})`).as(
+					'recent'
+				)
+			)
+			.where('user_id', '=', me.id)
+			.where('purpose', '=', 'confirm')
+			.orderBy('created_at', 'desc')
+			.limit(1)
+			.executeTakeFirst();
 		if (newest?.recent)
 			return fail(429, { confirm: 'One went a moment ago. Give it a minute to arrive.' });
 
-		const sent = await db.transaction(async (tx) => {
-			const [held] = await tx
-				.select({ verified: user.emailVerified })
-				.from(user)
-				.where(eq(user.id, me.id))
-				.for('update');
+		const sent = await db.transaction().execute(async (tx) => {
+			const held = await tx
+				.selectFrom('user')
+				.select('email_verified as verified')
+				.where('id', '=', me.id)
+				.forUpdate()
+				.executeTakeFirst();
 			if (held?.verified) return null;
 			const link = await issue(tx, me.id, 'confirm', me.id);
 			await tell(

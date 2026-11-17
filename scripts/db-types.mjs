@@ -37,7 +37,8 @@ await cluster.connect();
 await cluster.query(`drop database if exists ${SCRATCH}`);
 await cluster.query(`create database ${SCRATCH}`);
 
-let status = 1;
+/** @type {number} */
+let status;
 try {
 	const pool = new pg.Pool({ host, database: SCRATCH, max: 1 });
 	try {
@@ -65,9 +66,7 @@ try {
 	if (run.error) throw run.error;
 	status = run.status ?? 1;
 	if (status && verify)
-		console.error(
-			'\ndatabase.ts is not what the migrations make. Regenerate it: npm run db:types'
-		);
+		console.error('\ndatabase.ts is not what the migrations make. Regenerate it: npm run db:types');
 } finally {
 	await cluster.query(`drop database if exists ${SCRATCH}`);
 	await cluster.end();

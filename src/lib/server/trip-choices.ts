@@ -1,6 +1,4 @@
-import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { db } from './db/index.ts';
-import * as t from './db/schema/index.ts';
 import { personalToday } from './calendar.ts';
 import { operatorRow } from './operator.ts';
 import { knownDrives } from './trips.ts';
@@ -17,49 +15,51 @@ export async function tripChoices(me: string, field: boolean) {
 	const [people, vehicles, lastDriven, entities, sites, known, services, operator] =
 		await Promise.all([
 			db
-				.select({ id: t.user.id, name: t.user.name })
-				.from(t.user)
-				.where(and(eq(t.user.active, true), field ? eq(t.user.id, me) : undefined))
-				.orderBy(asc(t.user.name)),
+				.selectFrom('user')
+				.select(['id', 'name'])
+				.where('active', '=', true)
+				.$if(field, (qb) => qb.where('id', '=', me))
+				.orderBy('name')
+				.execute(),
 			db
-				.select({
-					id: t.vehicle.id,
-					name: t.vehicle.name,
-					owner_id: t.vehicle.ownerId,
-					owner: t.user.name
-				})
-				.from(t.vehicle)
-				.leftJoin(t.user, eq(t.user.id, t.vehicle.ownerId))
-				.where(isNull(t.vehicle.retiredOn))
-				.orderBy(asc(t.vehicle.name)),
+				.selectFrom('vehicle')
+				.leftJoin('user', 'user.id', 'vehicle.owner_id')
+				.select(['vehicle.id', 'vehicle.name', 'vehicle.owner_id', 'user.name as owner'])
+				.where('vehicle.retired_on', 'is', null)
+				.orderBy('vehicle.name')
+				.execute(),
 			// What each driver last drove: a trip starts in it.
 			db
-				.selectDistinctOn([t.trip.drivenBy], {
-					driver: t.trip.drivenBy,
-					vehicle: t.trip.vehicleId
-				})
-				.from(t.trip)
-				.where(isNotNull(t.trip.vehicleId))
-				.orderBy(t.trip.drivenBy, desc(t.trip.travelledOn), desc(t.trip.createdAt)),
+				.selectFrom('trip')
+				.distinctOn('driven_by')
+				.select(['driven_by as driver', 'vehicle_id as vehicle'])
+				.where('vehicle_id', 'is not', null)
+				.orderBy('driven_by')
+				.orderBy('travelled_on', 'desc')
+				.orderBy('created_at', 'desc')
+				.execute(),
 			db
-				.select({ id: t.entity.id, name: t.entity.name })
-				.from(t.entity)
-				.where(eq(t.entity.active, true))
-				.orderBy(asc(t.entity.name)),
+				.selectFrom('entity')
+				.select(['id', 'name'])
+				.where('active', '=', true)
+				.orderBy('name')
+				.execute(),
 			db
-				.select({
-					id: t.site.id,
-					entity_id: t.site.entityId,
-					label: t.site.label,
-					street: t.site.street,
-					city: t.site.city,
-					postcode: t.site.postcode,
-					round_trip_miles: t.site.roundTripMiles
-				})
-				.from(t.site)
-				.innerJoin(t.entity, eq(t.entity.id, t.site.entityId))
-				.where(and(eq(t.site.active, true), eq(t.entity.active, true)))
-				.orderBy(asc(t.site.label)),
+				.selectFrom('site')
+				.innerJoin('entity', 'entity.id', 'site.entity_id')
+				.select([
+					'site.id',
+					'site.entity_id',
+					'site.label',
+					'site.street',
+					'site.city',
+					'site.postcode',
+					'site.round_trip_miles'
+				])
+				.where('site.active', '=', true)
+				.where('entity.active', '=', true)
+				.orderBy('site.label')
+				.execute(),
 			knownDrives(),
 			mileServices(),
 			operatorRow()

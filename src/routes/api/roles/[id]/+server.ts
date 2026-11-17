@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
-import { role } from '#lib/server/db/schema/index.ts';
 import { refuse, refuseIfTheDatabaseSaidSo, stillReferenced } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { PAYS_AS, parseRoleField, ROLE_FIELDS } from '#lib/people-fields.ts';
@@ -29,14 +27,15 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	try {
 		const changed = await asUser(locals.user!.id, (tx) =>
 			tx
-				.update(role)
+				.updateTable('role')
 				.set(
 					field === 'name'
 						? { name: String(parsed.value) }
-						: { paysAs: parsed.value as (typeof PAYS_AS)[number] }
+						: { pays_as: parsed.value as (typeof PAYS_AS)[number] }
 				)
-				.where(eq(role.id, params.id))
-				.returning({ id: role.id })
+				.where('id', '=', params.id)
+				.returning('id')
+				.execute()
 		);
 		if (changed.length === 0) return problem('notFound', 404, 'No role with that id.');
 	} catch (e) {
@@ -56,7 +55,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (!UUID.test(params.id)) return problem('notFound', 404, 'No role with that id.');
 	try {
 		const gone = await asUser(locals.user!.id, (tx) =>
-			tx.delete(role).where(eq(role.id, params.id)).returning({ id: role.id })
+			tx.deleteFrom('role').where('id', '=', params.id).returning('id').execute()
 		);
 		if (gone.length === 0) return problem('notFound', 404, 'No role with that id.');
 	} catch (e) {

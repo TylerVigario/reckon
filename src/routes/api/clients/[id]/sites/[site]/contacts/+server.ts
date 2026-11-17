@@ -1,6 +1,4 @@
-import { and, eq } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
-import { entityContact, site as sites, siteContact } from '#lib/server/db/schema/index.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
@@ -29,10 +27,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	if (!found) return problem('notFound', 404, 'That client has no such site.');
 
 	const body = await readBody(request);
-	const [site] = await db
-		.select({ id: sites.id, entityId: sites.entityId })
-		.from(sites)
-		.where(eq(sites.id, found.id));
+	const site = await db
+		.selectFrom('site')
+		.select(['id', 'entity_id'])
+		.where('id', '=', found.id)
+		.executeTakeFirstOrThrow();
 
 	const person = await personFrom(body);
 	if ('refused' in person) return person.refused;
@@ -43,24 +42,31 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	try {
 		await asUser(locals.user!.id, async (tx) => {
 			await tx
-				.insert(entityContact)
-				.values({ entityId: site.entityId, contactId })
-				.onConflictDoNothing();
+				.insertInto('entity_contact')
+				.values({ entity_id: site.entity_id, contact_id: contactId })
+				.onConflict((oc) => oc.doNothing())
+				.execute();
 			// One person answers first. Standing the new one up means standing
 			// the old one down, in the same transaction as the partial unique
 			// index that would otherwise refuse it.
 			if (primary)
 				await tx
-					.update(siteContact)
-					.set({ isPrimary: false })
-					.where(eq(siteContact.siteId, site.id));
+					.updateTable('site_contact')
+					.set({ is_primary: false })
+					.where('site_id', '=', site.id)
+					.execute();
 			await tx
-				.insert(siteContact)
-				.values({ siteId: site.id, entityId: site.entityId, contactId, isPrimary: primary })
-				.onConflictDoUpdate({
-					target: [siteContact.siteId, siteContact.contactId],
-					set: { isPrimary: primary }
-				});
+				.insertInto('site_contact')
+				.values({
+					site_id: site.id,
+					entity_id: site.entity_id,
+					contact_id: contactId,
+					is_primary: primary
+				})
+				.onConflict((oc) =>
+					oc.columns(['site_id', 'contact_id']).doUpdateSet({ is_primary: primary })
+				)
+				.execute();
 		});
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, ['contact_id', 'is_primary'], 'site_contact');
@@ -84,8 +90,10 @@ export const DELETE: RequestHandler = async ({ params, request, locals }) => {
 
 	await asUser(locals.user!.id, (tx) =>
 		tx
-			.delete(siteContact)
-			.where(and(eq(siteContact.siteId, id), eq(siteContact.contactId, contactId)))
+			.deleteFrom('site_contact')
+			.where('site_id', '=', id)
+			.where('contact_id', '=', contactId)
+			.execute()
 	);
 	return Response.json({ removed: true });
 };

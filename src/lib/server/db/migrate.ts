@@ -34,7 +34,7 @@ const codeOf = (e: unknown) => (e as { code?: string }).code;
 
 /** Migrations from a list, rather than a folder: the build carries them. */
 const listed = (migrations: typeof MIGRATIONS): MigrationProvider => ({
-	getMigrations: async () => migrations
+	getMigrations: () => Promise.resolve(migrations)
 });
 
 /**
@@ -76,7 +76,8 @@ export async function bringUpToDate(pool: pg.Pool, migrations = MIGRATIONS): Pro
 	for (;;) {
 		const { error, results = [] } = await migrator.migrateUp();
 		if (error) {
-			if (codeOf(error) !== DENIED) throw error;
+			if (codeOf(error) !== DENIED)
+				throw error instanceof Error ? error : new Error('The migration failed.', { cause: error });
 			const {
 				rows: [who]
 			} = await pool.query<{ role: string; owner: string }>(

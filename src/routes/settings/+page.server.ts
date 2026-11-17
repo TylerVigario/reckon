@@ -1,7 +1,5 @@
-import { and, asc, count, eq, isNull } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { integration, service, unit, vehicle } from '#lib/server/db/schema/index.ts';
 import { operatorRow } from '#lib/server/operator.ts';
 import { loadCatalogue } from '#lib/server/valuation/load.ts';
 import { jobRate, priceOn } from '#lib/server/valuation/pricing.ts';
@@ -14,16 +12,26 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async () => {
 	const day = businessToday();
-	const [row, [connected], units, mileServices, catalogue, [vehicles]] = await Promise.all([
+	const [row, connected, units, mileServices, catalogue, vehicles] = await Promise.all([
 		operatorRow(),
-		db.select({ n: count() }).from(integration).where(eq(integration.connected, true)),
-		db.select({ name: unit.name }).from(unit).orderBy(asc(unit.name)),
 		db
-			.select({ id: service.id })
-			.from(service)
-			.where(and(eq(service.unit, 'mile'), eq(service.active, true))),
+			.selectFrom('integration')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+			.where('connected', '=', true)
+			.executeTakeFirstOrThrow(),
+		db.selectFrom('unit').select('name').orderBy('name').execute(),
+		db
+			.selectFrom('service')
+			.select('id')
+			.where('unit', '=', 'mile')
+			.where('active', '=', true)
+			.execute(),
 		loadCatalogue(db),
-		db.select({ n: count() }).from(vehicle).where(isNull(vehicle.retiredOn))
+		db
+			.selectFrom('vehicle')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+			.where('retired_on', 'is', null)
+			.executeTakeFirstOrThrow()
 	]);
 	// The mileage rate, when there is exactly one service charged by the mile.
 	const mileage =

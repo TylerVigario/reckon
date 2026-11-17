@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import { contact } from '#lib/server/db/schema/index.ts';
 import { refuse } from '#lib/server/field-errors.ts';
 import { UUID, parseAll } from '#lib/field-rules.ts';
 import { CONTACT_FIELDS } from '#lib/contact-fields.ts';
@@ -21,20 +19,25 @@ export async function personFrom(
 ): Promise<{ id: string } | { refused: Response }> {
 	const given = textField(body, 'contact_id');
 	if (UUID.test(given)) {
-		const [exists] = await db.select({ id: contact.id }).from(contact).where(eq(contact.id, given));
+		const exists = await db
+			.selectFrom('contact')
+			.select('id')
+			.where('id', '=', given)
+			.executeTakeFirst();
 		return exists ? { id: exists.id } : { refused: refuse({ contact_id: 'No such person.' }) };
 	}
 
 	const { values, errors } = parseAll(CONTACT_FIELDS, body ?? {});
 	if (Object.keys(errors).length > 0) return { refused: refuse(errors) };
-	const [made] = await db
-		.insert(contact)
+	const made = await db
+		.insertInto('contact')
 		.values({
 			name: String(values.name),
 			email: (values.email as string | null) ?? null,
 			phone: (values.phone as string | null) ?? null,
 			note: (values.note as string | null) ?? null
 		})
-		.returning({ id: contact.id });
+		.returning('id')
+		.executeTakeFirstOrThrow();
 	return { id: made.id };
 }

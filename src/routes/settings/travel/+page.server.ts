@@ -1,6 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import { service } from '#lib/server/db/schema/index.ts';
 import { prices } from '#lib/server/catalogue.ts';
 import { operatorRow } from '#lib/server/operator.ts';
 import type { PageServerLoad } from './$types';
@@ -13,10 +11,12 @@ export const load: PageServerLoad = async () => {
 	const [operator, mileage, priced] = await Promise.all([
 		operatorRow(),
 		db
-			.select({ id: service.id, name: service.name })
-			.from(service)
-			.where(and(eq(service.unit, 'mile'), eq(service.active, true)))
-			.orderBy(asc(service.name)),
+			.selectFrom('service')
+			.select(['id', 'name'])
+			.where('unit', '=', 'mile')
+			.where('active', '=', true)
+			.orderBy('name')
+			.execute(),
 		prices()
 	]);
 	// The mileage rate is a service price, dated, like every other price: the

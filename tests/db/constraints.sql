@@ -3237,4 +3237,46 @@ SELECT must_fail($$
    WHERE id = (SELECT time_entry_id FROM person_payment_item WHERE time_entry_id IS NOT NULL LIMIT 1)
 $$, 'changing an entry a payment was recorded for');
 
+\echo ''
+\echo '=== 57. a row''s updated_at is when it changed, and signing in is no change ==='
+
+DO $$
+DECLARE p uuid := 'a1000000-0000-4000-8000-000000000070';
+BEGIN
+  -- Set outright, a stamp is kept as it is said: so the checks below can tell
+  -- a stamp from none, though the suite runs within one now().
+  UPDATE "user" SET updated_at = '2000-01-01Z' WHERE id = p;
+  IF (SELECT updated_at FROM "user" WHERE id = p) <> '2000-01-01Z' THEN
+    RAISE EXCEPTION 'GUARD WRONG: an updated_at said outright was not kept';
+  END IF;
+  UPDATE "user" SET last_signed_in_at = coalesce(last_signed_in_at, now()) + interval '1 minute'
+   WHERE id = p;
+  IF (SELECT updated_at FROM "user" WHERE id = p) <> '2000-01-01Z' THEN
+    RAISE EXCEPTION 'GUARD WRONG: signing in was stamped as a change to the person';
+  END IF;
+  UPDATE "user" SET name = name WHERE id = p;
+  IF (SELECT updated_at FROM "user" WHERE id = p) <> '2000-01-01Z' THEN
+    RAISE EXCEPTION 'GUARD WRONG: a save that changed nothing was stamped';
+  END IF;
+  UPDATE "user" SET name = 'Stamped' WHERE id = p;
+  IF (SELECT updated_at FROM "user" WHERE id = p) = '2000-01-01Z' THEN
+    RAISE EXCEPTION 'GUARD MISSING: a person who changed was not stamped';
+  END IF;
+  RAISE NOTICE '  stamps    a person who changes, not one who signs in or a save that changes nothing';
+END $$;
+
+DO $$
+DECLARE s uuid;
+BEGIN
+  INSERT INTO session (token, user_id, expires_at, updated_at)
+  VALUES ('stamped-session', 'a1000000-0000-4000-8000-000000000070', now() + interval '1 day', '2000-01-01Z')
+  RETURNING id INTO s;
+  UPDATE session SET expires_at = expires_at + interval '1 day' WHERE id = s;
+  IF (SELECT updated_at FROM session WHERE id = s) = '2000-01-01Z' THEN
+    RAISE EXCEPTION 'GUARD MISSING: a session carried forward was not stamped';
+  END IF;
+  DELETE FROM session WHERE id = s;
+  RAISE NOTICE '  stamps    a session carried forward';
+END $$;
+
 \echo 'All guards hold.'

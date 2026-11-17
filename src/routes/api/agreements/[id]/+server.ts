@@ -1,7 +1,6 @@
-import { and, eq } from 'drizzle-orm';
+import type { Updateable } from 'kysely';
 import { asUser, db } from '#lib/server/db/index.ts';
-import { camel } from '#lib/server/db/rows.ts';
-import { agreement as agreements, entityContact } from '#lib/server/db/schema/index.ts';
+import type { Agreement } from '#lib/server/db/database.ts';
 import { refuse, refuseIfTheDatabaseSaidSo, stillReferenced } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { parseAgreementField } from '#lib/agreement-fields.ts';
@@ -41,14 +40,11 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	}
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
-	const [agreement] = await db
-		.select({
-			entity_id: agreements.entityId,
-			starts_on: agreements.startsOn,
-			ends_on: agreements.endsOn
-		})
-		.from(agreements)
-		.where(eq(agreements.id, params.id));
+	const agreement = await db
+		.selectFrom('agreement')
+		.select(['entity_id', 'starts_on', 'ends_on'])
+		.where('id', '=', params.id)
+		.executeTakeFirst();
 	if (!agreement) return problem('notFound', 404, 'No agreement with that id.');
 
 	// Said in words before the schema says it in a constraint name.
@@ -59,24 +55,22 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 			['ends_on' in row ? 'ends_on' : 'starts_on']: 'It cannot end before it starts.'
 		});
 	if (row.contact_id) {
-		const [theirs] = await db
-			.select({ id: entityContact.contactId })
-			.from(entityContact)
-			.where(
-				and(
-					eq(entityContact.entityId, agreement.entity_id),
-					eq(entityContact.contactId, String(row.contact_id))
-				)
-			);
+		const theirs = await db
+			.selectFrom('entity_contact')
+			.select('contact_id as id')
+			.where('entity_id', '=', agreement.entity_id)
+			.where('contact_id', '=', String(row.contact_id))
+			.executeTakeFirst();
 		if (!theirs) return refuse({ contact_id: 'Not one of this client’s contacts.' });
 	}
 
 	try {
 		await asUser(locals.user!.id, (tx) =>
 			tx
-				.update(agreements)
-				.set(camel(row) as Partial<typeof agreements.$inferInsert>)
-				.where(eq(agreements.id, params.id))
+				.updateTable('agreement')
+				.set(row as Updateable<Agreement>)
+				.where('id', '=', params.id)
+				.execute()
 		);
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, names, 'agreement');
@@ -95,7 +89,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (!UUID.test(params.id)) return problem('notFound', 404, 'No agreement with that id.');
 	try {
 		const gone = await asUser(locals.user!.id, (tx) =>
-			tx.delete(agreements).where(eq(agreements.id, params.id)).returning({ id: agreements.id })
+			tx.deleteFrom('agreement').where('id', '=', params.id).returning('id').execute()
 		);
 		if (gone.length === 0) return problem('notFound', 404, 'No agreement with that id.');
 	} catch (e) {

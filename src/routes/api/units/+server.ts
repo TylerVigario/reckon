@@ -1,5 +1,4 @@
 import { asUser } from '#lib/server/db/index.ts';
-import { unit } from '#lib/server/db/schema/index.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { parseAll } from '#lib/field-rules.ts';
 import { UNIT_FIELDS } from '#lib/unit-fields.ts';
@@ -14,15 +13,16 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const { values, errors } = parseAll(UNIT_FIELDS, fields);
 	if (Object.keys(errors).length > 0) return refuse(errors);
 	try {
-		const [made] = await asUser(locals.user!.id, (tx) =>
+		const made = await asUser(locals.user!.id, (tx) =>
 			tx
-				.insert(unit)
+				.insertInto('unit')
 				.values({
 					name: String(values.name),
 					short: values.short === null ? null : String(values.short),
 					places: Number(values.places)
 				})
-				.returning({ id: unit.id })
+				.returning('id')
+				.executeTakeFirstOrThrow()
 		);
 		return Response.json({ id: made.id }, { status: 201 });
 	} catch (e) {

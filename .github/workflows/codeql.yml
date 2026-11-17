@@ -18,9 +18,9 @@ name: CodeQL
 # - Svelte components. CodeQL extracts .ts, .js and Vue, not .svelte, so the
 #   markup and the script blocks in src/routes and src/lib/*.svelte
 #   are not read. The modules they import are.
-# - drizzle/ and tests/db/: the migrations and the guard suite are SQL, and
-#   nothing here analyses SQL; the guard suite is itself the check on the
-#   schema.
+# - SQL: the guard suite in tests/db/, and the SQL inside the migrations'
+#   sql`` templates. Nothing here analyses SQL; the guard suite is itself the
+#   check on the schema.
 # - workflow_dispatch inputs. The actions queries treat data an outsider
 #   controls as untrusted, not inputs a collaborator dispatches.
 #

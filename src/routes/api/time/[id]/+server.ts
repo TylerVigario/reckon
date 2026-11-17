@@ -1,15 +1,5 @@
 import { crewChange } from '#lib/crew-change.ts';
-import { and, desc, eq, inArray, notLike } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
-import {
-	invoice,
-	invoiceLine,
-	personPaymentItem,
-	recordHistory,
-	timeEntry,
-	timeEntryCrew,
-	user
-} from '#lib/server/db/schema/index.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
 import { UUID } from '#lib/field-rules.ts';
@@ -29,41 +19,44 @@ import { fieldsOfEntry, mergeEntry, type EntryConflict } from '#lib/entry-merge.
  * payment. The database holds to the same (0051, and ON DELETE RESTRICT).
  */
 async function found(id: string) {
-	const [entry] = await db
-		.select({
-			createdBy: timeEntry.createdBy,
-			version: timeEntry.version,
-			worked_on: timeEntry.workedOn,
-			seconds: timeEntry.seconds,
-			started_at: timeEntry.startedAt,
-			ended_at: timeEntry.endedAt,
-			zone: timeEntry.zone,
-			crew: timeEntry.crew,
-			worked_by: timeEntry.workedBy,
-			entity_id: timeEntry.entityId,
-			site_id: timeEntry.siteId,
-			service_id: timeEntry.serviceId,
-			billable: timeEntry.billable,
-			note: timeEntry.note,
-			number: invoice.number,
-			status: invoice.status
-		})
-		.from(timeEntry)
-		.leftJoin(invoiceLine, eq(invoiceLine.timeEntryId, timeEntry.id))
-		.leftJoin(invoice, eq(invoice.id, invoiceLine.invoiceId))
-		.where(eq(timeEntry.id, id));
+	const entry = await db
+		.selectFrom('time_entry')
+		.leftJoin('invoice_line', 'invoice_line.time_entry_id', 'time_entry.id')
+		.leftJoin('invoice', 'invoice.id', 'invoice_line.invoice_id')
+		.select([
+			'time_entry.created_by as createdBy',
+			'time_entry.version',
+			'time_entry.worked_on',
+			'time_entry.seconds',
+			'time_entry.started_at',
+			'time_entry.ended_at',
+			'time_entry.zone',
+			'time_entry.crew',
+			'time_entry.worked_by',
+			'time_entry.entity_id',
+			'time_entry.site_id',
+			'time_entry.service_id',
+			'time_entry.billable',
+			'time_entry.note',
+			'invoice.number',
+			'invoice.status'
+		])
+		.where('time_entry.id', '=', id)
+		.executeTakeFirst();
 	if (!entry) return null;
-	const [[paidTo], crew] = await Promise.all([
+	const [paidTo, crew] = await Promise.all([
 		db
-			.select({ name: user.name })
-			.from(personPaymentItem)
-			.innerJoin(user, eq(user.id, personPaymentItem.userId))
-			.where(eq(personPaymentItem.timeEntryId, id))
-			.limit(1),
+			.selectFrom('person_payment_item')
+			.innerJoin('user', 'user.id', 'person_payment_item.user_id')
+			.select('user.name')
+			.where('person_payment_item.time_entry_id', '=', id)
+			.limit(1)
+			.executeTakeFirst(),
 		db
-			.select({ id: timeEntryCrew.userId })
-			.from(timeEntryCrew)
-			.where(eq(timeEntryCrew.timeEntryId, id))
+			.selectFrom('time_entry_crew')
+			.select('user_id as id')
+			.where('time_entry_id', '=', id)
+			.execute()
 	]);
 	return {
 		...entry,
@@ -99,19 +92,20 @@ function inUse(entry: Found, what: string) {
 
 /** Who removed an entry, and when, and whose it was: the removal its history keeps. */
 async function removed(id: string) {
-	const [gone] = await db
-		.select({ by: user.name, at: recordHistory.changedAt, was: recordHistory.oldValue })
-		.from(recordHistory)
-		.leftJoin(user, eq(user.id, recordHistory.changedBy))
-		.where(
-			and(
-				eq(recordHistory.tableName, 'time_entry'),
-				eq(recordHistory.rowId, id),
-				eq(recordHistory.field, '(deleted)')
-			)
-		)
-		.orderBy(desc(recordHistory.changedAt))
-		.limit(1);
+	const gone = await db
+		.selectFrom('record_history')
+		.leftJoin('user', 'user.id', 'record_history.changed_by')
+		.select([
+			'user.name as by',
+			'record_history.changed_at as at',
+			'record_history.old_value as was'
+		])
+		.where('record_history.table_name', '=', 'time_entry')
+		.where('record_history.row_id', '=', id)
+		.where('record_history.field', '=', '(deleted)')
+		.orderBy('record_history.changed_at', 'desc')
+		.limit(1)
+		.executeTakeFirst();
 	if (!gone) return null;
 	let createdBy: unknown;
 	try {
@@ -124,19 +118,17 @@ async function removed(id: string) {
 
 /** Who last changed an entry on the server, and when: a save, not one it began with. */
 async function lastChanged(id: string) {
-	const [last] = await db
-		.select({ by: user.name, at: recordHistory.changedAt })
-		.from(recordHistory)
-		.leftJoin(user, eq(user.id, recordHistory.changedBy))
-		.where(
-			and(
-				eq(recordHistory.tableName, 'time_entry'),
-				eq(recordHistory.rowId, id),
-				notLike(recordHistory.field, '(%')
-			)
-		)
-		.orderBy(desc(recordHistory.changedAt), desc(recordHistory.id))
-		.limit(1);
+	const last = await db
+		.selectFrom('record_history')
+		.leftJoin('user', 'user.id', 'record_history.changed_by')
+		.select(['user.name as by', 'record_history.changed_at as at'])
+		.where('record_history.table_name', '=', 'time_entry')
+		.where('record_history.row_id', '=', id)
+		.where('record_history.field', 'not like', '(%')
+		.orderBy('record_history.changed_at', 'desc')
+		.orderBy('record_history.id', 'desc')
+		.limit(1)
+		.executeTakeFirst();
 	return { by: last?.by ?? null, at: last?.at.toISOString() ?? null };
 }
 
@@ -238,42 +230,46 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 					// names one (team_keeps_its_crew). Only who changed is taken
 					// off or put on, so its history says who did (0059).
 					const had = await tx
-						.select({ id: timeEntryCrew.userId })
-						.from(timeEntryCrew)
-						.where(eq(timeEntryCrew.timeEntryId, params.id));
+						.selectFrom('time_entry_crew')
+						.select('user_id as id')
+						.where('time_entry_id', '=', params.id)
+						.execute();
 					const { gone, joined } = crewChange(
 						had.map((c) => c.id),
 						e.crew === 'team' ? e.crewIds : []
 					);
 					if (gone.length)
 						await tx
-							.delete(timeEntryCrew)
-							.where(
-								and(eq(timeEntryCrew.timeEntryId, params.id), inArray(timeEntryCrew.userId, gone))
-							);
-					const [row] = await tx
-						.update(timeEntry)
+							.deleteFrom('time_entry_crew')
+							.where('time_entry_id', '=', params.id)
+							.where('user_id', '=', (eb) => eb.fn.any(eb.val(gone)))
+							.execute();
+					const row = await tx
+						.updateTable('time_entry')
 						.set({
-							workedOn: e.workedOn,
+							worked_on: e.workedOn,
 							seconds: e.seconds,
-							startedAt: e.startedAt,
-							endedAt: e.endedAt,
+							started_at: e.startedAt,
+							ended_at: e.endedAt,
 							zone: e.zone,
 							crew: e.crew,
-							workedBy: e.workedBy,
-							entityId: e.entityId,
-							siteId: e.siteId,
-							serviceId: e.serviceId,
+							worked_by: e.workedBy,
+							entity_id: e.entityId,
+							site_id: e.siteId,
+							service_id: e.serviceId,
 							billable: e.billable,
 							note: e.note
 						})
-						.where(and(eq(timeEntry.id, params.id), eq(timeEntry.version, entry.version)))
-						.returning({ version: timeEntry.version });
+						.where('id', '=', params.id)
+						.where('version', '=', entry.version)
+						.returning('version')
+						.executeTakeFirst();
 					if (!row) throw new Stale();
 					if (joined.length)
 						await tx
-							.insert(timeEntryCrew)
-							.values(joined.map((userId) => ({ timeEntryId: params.id, userId })));
+							.insertInto('time_entry_crew')
+							.values(joined.map((user_id) => ({ time_entry_id: params.id, user_id })))
+							.execute();
 					return row;
 				},
 				when
@@ -339,7 +335,7 @@ export const DELETE: RequestHandler = async ({ params, url, locals }) => {
 	// asUser so record_history names who removed it, rather than nobody.
 	await asUser(
 		locals.user!.id,
-		(tx) => tx.delete(timeEntry).where(eq(timeEntry.id, params.id)),
+		(tx) => tx.deleteFrom('time_entry').where('id', '=', params.id).execute(),
 		madeAt(url.searchParams.get('made_at') ?? '')
 	);
 	return Response.json({ deleted: params.id });

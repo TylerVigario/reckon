@@ -1,5 +1,4 @@
 import { db } from './db/index.ts';
-import { operator } from './db/schema/index.ts';
 import { currencyPlaces } from '#lib/currency.ts';
 import { TAX_ROUNDING, type TaxRounding, type TaxRuleSet } from './tax-rules.ts';
 
@@ -24,15 +23,11 @@ let kept: BusinessDefaults | null = null;
 
 export async function businessDefaults(): Promise<BusinessDefaults> {
 	if (kept) return kept;
-	const [row] = await db
-		.select({
-			zone: operator.timezone,
-			locale: operator.locale,
-			currency: operator.currency,
-			taxRuleSet: operator.taxRuleSet
-		})
-		.from(operator)
-		.limit(1);
+	const row = await db
+		.selectFrom('operator')
+		.select(['timezone as zone', 'locale', 'currency', 'tax_rule_set as taxRuleSet'])
+		.limit(1)
+		.executeTakeFirst();
 	return (kept = {
 		zone: row?.zone ?? 'UTC',
 		locale: row?.locale ?? 'en-US',

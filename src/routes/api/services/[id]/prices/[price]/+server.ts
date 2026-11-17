@@ -1,7 +1,5 @@
 import { businessToday } from '#lib/server/calendar.ts';
-import { and, eq, gte, sql } from 'drizzle-orm';
 import { asUser } from '#lib/server/db/index.ts';
-import { servicePrice } from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
@@ -17,15 +15,12 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 
 	const gone = await asUser(locals.user!.id, (tx) =>
 		tx
-			.delete(servicePrice)
-			.where(
-				and(
-					eq(servicePrice.id, params.price),
-					eq(servicePrice.serviceId, params.id),
-					gte(servicePrice.effectiveFrom, sql`${businessToday()}::date`)
-				)
-			)
-			.returning({ id: servicePrice.id })
+			.deleteFrom('service_price')
+			.where('id', '=', params.price)
+			.where('service_id', '=', params.id)
+			.where('effective_from', '>=', businessToday())
+			.returning('id')
+			.execute()
 	);
 	if (gone.length === 0)
 		return problem(

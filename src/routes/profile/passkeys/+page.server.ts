@@ -1,12 +1,10 @@
 import { fail } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
-import { and, eq } from 'drizzle-orm';
 import { SITE_URL } from '$app/env/private';
 import { browserName } from '#lib/browser-name.ts';
 import { safeNext } from '#lib/safe-next.ts';
 import { authHeaders, getAuth } from '#lib/server/auth.ts';
 import { db } from '#lib/server/db/index.ts';
-import { passkey } from '#lib/server/db/schema/index.ts';
 import { tell } from '#lib/server/email.ts';
 import { passkeyRemoved } from '#lib/server/notices.js';
 import { listPasskeys, passkeyLabel, passkeyName } from '#lib/server/passkeys.ts';
@@ -49,10 +47,12 @@ const text = (v: FormDataEntryValue | null) => (typeof v === 'string' ? v.trim()
 /** One of their own passkeys, by its id, or null. */
 async function theirs(userId: string, id: string) {
 	if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
-	const [p] = await db
-		.select({ id: passkey.id, name: passkey.name, aaguid: passkey.aaguid })
-		.from(passkey)
-		.where(and(eq(passkey.id, id), eq(passkey.userId, userId)));
+	const p = await db
+		.selectFrom('passkey')
+		.select(['id', 'name', 'aaguid'])
+		.where('id', '=', id)
+		.where('user_id', '=', userId)
+		.executeTakeFirst();
 	return p ?? null;
 }
 
@@ -82,9 +82,10 @@ export const actions: Actions = {
 		if (!p) return fail(404, { id: text(f.get('id')), message: 'That passkey isn’t yours.' });
 		if (me.access === 'full') {
 			const others = await db
-				.select({ id: passkey.id })
-				.from(passkey)
-				.where(eq(passkey.userId, me.id));
+				.selectFrom('passkey')
+				.select('id')
+				.where('user_id', '=', me.id)
+				.execute();
 			if (others.length <= 1)
 				return fail(409, {
 					id: p.id,

@@ -6,12 +6,13 @@
  * question.
  */
 import { percent } from './format.ts';
+import type { PaidAs, PaysFor } from './server/db/database.ts';
 
 export const PAYS_FOR = {
 	time: 'for their time',
 	covered_time: 'for time a retainer covers',
 	vehicle: 'for their vehicle'
-} as const;
+} as const satisfies Record<PaysFor, string>;
 
 /**
  * "$22.00 an hour", "12% of the retainer", "$5.00 a leg", "nothing" -- as a
@@ -80,9 +81,12 @@ export const PAID_AS_WORDS = {
 	wages: { role: 'Employee', people: 'Employees', money: 'wages', heading: 'Wages' },
 	fee: { role: 'Contractor', people: 'Contractors', money: 'fees', heading: 'Fees' },
 	reimbursement: { role: null, people: null, money: 'reimbursed', heading: 'For the vehicle' }
-} as const;
+} as const satisfies Record<
+	PaidAs,
+	{ role: string | null; people: string | null; money: string; heading: string }
+>;
 
-export type PaidAs = keyof typeof PAID_AS_WORDS;
+export type { PaidAs };
 
 /** The order they are listed in: pay first, by role, then what is paid back. */
 export const PAID_AS_ORDER: readonly PaidAs[] = [

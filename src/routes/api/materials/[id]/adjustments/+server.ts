@@ -1,7 +1,5 @@
-import { and, eq } from 'drizzle-orm';
 import { lockMaterials, putRight, ShelfRefused } from '#lib/server/adjust.ts';
 import { asUser, db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { refuse } from '#lib/server/field-errors.ts';
 import { problem } from '#lib/server/problem.ts';
 import { personalToday } from '#lib/server/calendar.ts';
@@ -10,7 +8,7 @@ import { UUID } from '#lib/field-rules.ts';
 import { readBody } from '#lib/json.ts';
 import { madeAt } from '#lib/server/made-at.ts';
 import { pgError } from '#lib/server/field-errors.ts';
-import { readAdjustment } from '#lib/adjust-fields.ts';
+import { readAdjustment, type AdjustReason, type AdjustWay } from '#lib/adjust-fields.ts';
 import type { RequestHandler } from './$types';
 
 /**
@@ -39,17 +37,12 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const had = await madeWith(userId, clientUuid);
 	if (had) return Response.json({ id: had });
 
-	const [m] = await db
-		.select({
-			id: t.material.id,
-			name: t.material.name,
-			places: t.unit.places,
-			short: t.unit.short,
-			unit: t.unit.name
-		})
-		.from(t.material)
-		.innerJoin(t.unit, eq(t.unit.id, t.material.unitId))
-		.where(eq(t.material.id, params.id));
+	const m = await db
+		.selectFrom('material as m')
+		.innerJoin('unit as u', 'u.id', 'm.unit_id')
+		.select(['m.id', 'm.name', 'u.places', 'u.short', 'u.name as unit'])
+		.where('m.id', '=', params.id)
+		.executeTakeFirst();
 	if (!m) return problem('notFound', 404, 'No material with that id.');
 
 	const { values, errors } = readAdjustment(fields as Record<string, unknown>, m.places);
@@ -57,7 +50,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		errors.made_on = 'It cannot be put right before it happens.';
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
-	const [op] = await db.select({ costing: t.operator.stockCosting }).from(t.operator);
+	const op = await db.selectFrom('operator').select('stock_costing').executeTakeFirst();
 	try {
 		const id = await asUser(
 			userId,
@@ -67,11 +60,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				return putRight(tx, {
 					material: { id: m.id, name: m.name, unit: m.short ?? m.unit },
 					shelf,
-					costing: op?.costing ?? 'average',
-					way: values.way as 'off' | 'on',
+					costing: op?.stock_costing ?? 'average',
+					way: values.way as AdjustWay,
 					qty: String(values.qty),
 					madeOn: String(values.made_on),
-					reason: values.reason as 'used',
+					reason: values.reason as AdjustReason,
 					note: values.note === null ? null : String(values.note),
 					costEach: values.cost_each === null ? null : String(values.cost_each),
 					clientUuid,
@@ -94,11 +87,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 /** The adjustment this person made with this uuid, if they made one. */
 async function madeWith(userId: string, clientUuid: string) {
-	const [had] = await db
-		.select({ id: t.stockAdjustment.id })
-		.from(t.stockAdjustment)
-		.where(
-			and(eq(t.stockAdjustment.createdBy, userId), eq(t.stockAdjustment.clientUuid, clientUuid))
-		);
+	const had = await db
+		.selectFrom('stock_adjustment')
+		.select('id')
+		.where('created_by', '=', userId)
+		.where('client_uuid', '=', clientUuid)
+		.executeTakeFirst();
 	return had?.id ?? null;
 }

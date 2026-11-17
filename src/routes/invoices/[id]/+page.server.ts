@@ -1,13 +1,12 @@
 import { personalDay } from '#lib/server/calendar.ts';
 import { error } from '@sveltejs/kit';
-import { alias } from 'drizzle-orm/pg-core';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { expressionBuilder, sql, type Expression, type NumericString, type SqlBool } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
+import type { DB } from '#lib/server/db/database.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
-import { lineTaxSql } from '#lib/server/tax-rules.ts';
+import { lineTax } from '#lib/server/tax-rules.ts';
 import { day, monthName, names } from '#lib/format.ts';
 import { crewNames } from '#lib/server/choices.ts';
 import { clientLink } from '#lib/client-link.ts';
@@ -31,41 +30,32 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 	const owing = balances(rounding, places);
 	if (!UUID.test(params.id)) error(404, 'no such invoice');
 
-	const i = t.invoice;
-	const e = t.entity;
-	const il = t.invoiceLine;
-	const te = t.timeEntry;
-	const u = t.user;
-	const tl = t.tripLeg;
-	const tr = t.trip;
-	const ap = t.agreementPeriod;
-	const si = t.site;
-	const payer = alias(t.user, 'payer');
-
-	const [invoice] = await db
-		.select({
-			id: i.id,
+	const invoice = await db
+		.selectFrom('invoice as i')
+		.innerJoin('entity as e', 'e.id', 'i.entity_id')
+		.select((eb) => [
+			'i.id',
 			// The uuid it was started with on a phone, which lines added there
 			// still name it by until they arrive.
-			client_uuid: i.clientUuid,
-			number: i.number,
-			status: i.status,
-			who: e.name,
-			terms: sql<
-				number | null
-			>`coalesce(${e.termsDays}, (select ${t.operator.defaultTermsDays} from ${t.operator}))`,
-			issued_on: i.issuedOn,
-			due_on: i.dueOn,
-			sent_on: sql<string | null>`${personalDay(i.sentAt)}::text`,
-			token: i.publicToken,
+			'i.client_uuid',
+			'i.number',
+			'i.status',
+			'e.name as who',
+			eb.fn
+				.coalesce('e.terms_days', eb.selectFrom('operator').select('operator.default_terms_days'))
+				.$castTo<number | null>()
+				.as('terms'),
+			'i.issued_on',
+			'i.due_on',
+			eb.cast<string | null>(personalDay(eb.ref('i.sent_at')), 'text').as('sent_on'),
+			'i.public_token as token',
 			// A moment: drawn on the page, in the person's own zone.
-			assembled: i.createdAt,
-			period_start: i.periodStart,
-			period_end: i.periodEnd
-		})
-		.from(i)
-		.innerJoin(e, eq(e.id, i.entityId))
-		.where(eq(i.id, params.id));
+			'i.created_at as assembled',
+			'i.period_start',
+			'i.period_end'
+		])
+		.where('i.id', '=', params.id)
+		.executeTakeFirst();
 	const field = fieldOnly(locals);
 	if (!invoice) error(404, 'no such invoice');
 	if (field && invoice.status !== 'draft') {
@@ -73,160 +63,222 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 		error(404, 'no such invoice');
 	}
 
-	const src = alias(t.invoice, 'src');
-	const dst = alias(t.invoice, 'dst');
-	const [lines, [totals], movedIn, takenOff, movedOut] = await Promise.all([
+	// Whether the business has made the Reg 1701 election (below), as one row.
+	const election = () =>
+		expressionBuilder<DB>()
+			.selectFrom('operator')
+			.select((eb) =>
+				eb.fn
+					.coalesce(
+						eb.fn.agg<boolean | null>('bool_or', ['operator.claims_tax_paid_purchases_resold']),
+						eb.lit(false)
+					)
+					.as('claims')
+			);
+	// What is due on the return: the tax on this invoice's taxed lines, each
+	// less what the election takes off it (below).
+	const ofLine = expressionBuilder<DB, 'invoice_line'>();
+	const dueOnReturn = lineTax(
+		expressionBuilder<DB>()
+			.selectFrom('invoice_line')
+			.where('invoice_line.invoice_id', '=', params.id)
+			.where('invoice_line.taxable', '=', true),
+		// The election read here rather than from o: this is a query of its
+		// own, and o belongs to the totals around it.
+		sql<NumericString>`(${ofLine.ref('invoice_line.amount')} - ${ofLine
+			.case()
+			.when(election().$asScalar())
+			.then(ofLine.fn.coalesce('invoice_line.ex_tax_cost', ofLine.lit(0)))
+			.else(ofLine.lit(0))
+			.end()}) * ${ofLine.ref('invoice_line.tax_rate_pct')} / 100`,
+		rounding,
+		places
+	);
+
+	const [lines, totals, movedIn, takenOff, movedOut] = await Promise.all([
 		db
-			.select({
-				id: il.id,
+			.selectFrom('invoice_line as il')
+			.leftJoin('time_entry as te', 'te.id', 'il.time_entry_id')
+			.leftJoin('user as u', 'u.id', 'te.worked_by')
+			.leftJoin('trip_leg as tl', 'tl.id', 'il.trip_leg_id')
+			.leftJoin('trip as tr', 'tr.id', 'tl.trip_id')
+			.leftJoin('agreement_period as ap', 'ap.id', 'il.agreement_period_id')
+			.leftJoin('site as si', 'si.id', 'il.site_id')
+			.leftJoin('user as payer', 'payer.id', 'il.paid_by')
+			.leftJoin('invoice as src', 'src.id', 'il.moved_from_invoice_id')
+			.select((eb) => [
+				'il.id',
 				// The draft it was added for on a phone, where that one had gone
 				// out by the time it arrived.
-				moved_from: src.number,
-				seq: il.seq,
-				kind: il.kind,
-				description: il.description,
+				'src.number as moved_from',
+				'il.seq',
+				'il.kind',
+				'il.description',
 				// Where the line came from, in the terms of its source: put into
 				// words below.
-				worker: u.name,
+				'u.name as worker',
 				// A team's hours name its crew (0023).
-				team: crewNames(sql`${te.id}`),
-				worked_on: te.workedOn,
-				note: te.note,
-				travelled_on: tr.travelledOn,
+				crewNames(eb.ref('te.id')).as('team'),
+				'te.worked_on',
+				'te.note',
+				'tr.travelled_on',
 				// Who what it drew from stock came from, oldest first.
-				from_stock: sql<boolean>`${il.materialId} is not null`,
-				supplier: sql<string | null>`(
-					select string_agg(s.supplier, ', ' order by s.first)
-					  from (select ${t.stockReceipt.supplier} as supplier,
-					               min(${t.materialLot.receivedOn}) as first
-					          from ${t.stockDraw}
-					          join ${t.materialLot} on ${t.materialLot.id} = ${t.stockDraw.materialLotId}
-					          join ${t.stockReceipt} on ${t.stockReceipt.id} = ${t.materialLot.receiptId}
-					         where ${t.stockDraw.invoiceLineId} = ${il.id}
-					           and ${t.stockReceipt.supplier} is not null
-					         group by 1) s)`,
-				period_start: ap.periodStart,
-				qty: il.qty,
-				unit: il.unit,
-				unit_price: il.unitPrice,
-				amount: il.amount,
-				taxable: il.taxable,
-				tax_rate_pct: il.taxRatePct,
-				trip_leg_id: il.tripLegId,
-				where_from: sql<string>`coalesce(${si.display}, '')`,
-				bought_from: il.boughtFrom,
-				paid_by: payer.name,
-				receipt: sql<boolean>`${il.receipt} is not null`,
-				created_by: il.createdBy
-			})
-			.from(il)
-			.leftJoin(te, eq(te.id, il.timeEntryId))
-			.leftJoin(u, eq(u.id, te.workedBy))
-			.leftJoin(tl, eq(tl.id, il.tripLegId))
-			.leftJoin(tr, eq(tr.id, tl.tripId))
-			.leftJoin(ap, eq(ap.id, il.agreementPeriodId))
-			.leftJoin(si, eq(si.id, il.siteId))
-			.leftJoin(payer, eq(payer.id, il.paidBy))
-			.leftJoin(src, eq(src.id, il.movedFromInvoiceId))
-			.where(eq(il.invoiceId, params.id))
-			.orderBy(asc(il.seq)),
+				eb('il.material_id', 'is not', null).$castTo<boolean>().as('from_stock'),
+				eb
+					.selectFrom(
+						eb
+							.selectFrom('stock_draw as sd')
+							.innerJoin('material_lot as ml', 'ml.id', 'sd.material_lot_id')
+							.innerJoin('stock_receipt as sr', 'sr.id', 'ml.receipt_id')
+							.select((eb) => ['sr.supplier', eb.fn.min('ml.received_on').as('first')])
+							.whereRef('sd.invoice_line_id', '=', 'il.id')
+							.where('sr.supplier', 'is not', null)
+							.groupBy('sr.supplier')
+							.as('s')
+					)
+					.select((eb) =>
+						eb.fn
+							.agg<string | null>('string_agg', ['s.supplier', eb.val(', ')])
+							.orderBy('s.first')
+							.as('supplier')
+					)
+					.as('supplier'),
+				'ap.period_start',
+				'il.qty',
+				'il.unit',
+				'il.unit_price',
+				'il.amount',
+				'il.taxable',
+				'il.tax_rate_pct',
+				'il.trip_leg_id',
+				eb.fn.coalesce('si.display', eb.val('')).as('where_from'),
+				'il.bought_from',
+				'payer.name as paid_by',
+				eb('il.receipt', 'is not', null).$castTo<boolean>().as('receipt'),
+				'il.created_by'
+			])
+			.where('il.invoice_id', '=', params.id)
+			.orderBy('il.seq')
+			.execute(),
 		db
-			.execute<{
-				untaxed: string;
-				taxable_measure: string;
-				tax: string;
-				due: string;
-				owed: string;
-				resold: string;
-				due_on_return: string;
-				district: string | null;
-				rate_pct: string | null;
-				state_rate_pct: string | null;
-				district_rate_pct: string | null;
-				untaxed_kinds: string[];
-				taxed_kinds: string[];
-			}>(
-				sql`
-		select
-		  coalesce(sum(${il.amount}) filter (where not ${il.taxable}), 0)::text as untaxed,
-		  coalesce(sum(${il.amount}) filter (where ${il.taxable}), 0)::text     as taxable_measure,
-		  -- The tax, rounded as the business's tax rule rounds it, and what is due
-		  -- with it: the same figures the invoice list and every balance use.
-		  (select b.tax from ${owing} b where b.invoice_id = ${params.id})::text as tax,
-		  (select b.gross from ${owing} b where b.invoice_id = ${params.id})::text as due,
-		  -- What is still owed on it: less what payments and credit notes took off.
-		  (select b.owed from ${owing} b where b.invoice_id = ${params.id})::text as owed,
-		  -- Reg 1701, where the operator has made that election: goods resold
-		  -- after tax was paid on them come off the measure, at the cost
-		  -- recorded on each line, and the return is taxed line by line on
-		  -- what is left.
-		  coalesce(sum(${il.exTaxCost}) filter (where ${il.taxable} and o.claims), 0)::text as resold,
-		  ${lineTaxSql(
-				// The election read here rather than from o: this is a query of its
-				// own, and o belongs to the totals around it.
-				sql`(${il.amount} - case when (select coalesce(bool_or(${t.operator.claimsTaxPaidPurchasesResold}), false)
-				                                 from ${t.operator})
-				                         then coalesce(${il.exTaxCost}, 0) else 0 end)
-				    * ${il.taxRatePct} / 100`,
-				rounding,
-				places,
-				sql`from ${il} where ${il.invoiceId} = ${params.id} and ${il.taxable}`
-			)}::text as due_on_return,
-		  -- Where it was taxed, as each line kept it when it was priced (0030),
-		  -- not as its site says now.
-		  max(${il.taxJurisdiction}) as district,
-		  max(${il.taxRatePct})::text as rate_pct,
-		  max(${il.stateRatePct})::text as state_rate_pct,
-		  max(${il.districtRatePct})::text as district_rate_pct,
-		  -- What is actually in each half, so the page can name them instead of
-		  -- assuming labour is never taxed and goods always are.
-		  coalesce(array_remove(array_agg(distinct ${il.kind}) filter (where not ${il.taxable}), null), '{}') as untaxed_kinds,
-		  coalesce(array_remove(array_agg(distinct ${il.kind}) filter (where ${il.taxable}), null), '{}') as taxed_kinds
-		  from ${il}
-		  cross join (select coalesce(bool_or(${t.operator.claimsTaxPaidPurchasesResold}), false) as claims
-		                from ${t.operator}) o
-		 where ${il.invoiceId} = ${params.id}`
-			)
-			.then((r) => r.rows),
+			.selectFrom('invoice_line as il')
+			.crossJoin(election().as('o'))
+			.select((eb) => {
+				const untaxed = eb.not(eb.ref('il.taxable'));
+				const taxed = eb.ref('il.taxable');
+				// This invoice's figure from its balance.
+				const balance = (figure: 'b.tax' | 'b.gross' | 'b.owed') =>
+					eb.cast<string>(
+						eb.selectFrom(owing.as('b')).select(figure).where('b.invoice_id', '=', params.id),
+						'text'
+					);
+				// The kinds of line in one half, each once. As text: an enum's array
+				// arrives as the string Postgres writes it.
+				const kinds = (half: Expression<SqlBool>) =>
+					eb.fn.coalesce(
+						eb.fn<string[] | null>('array_remove', [
+							eb.fn
+								.agg<string[] | null>('array_agg', [eb.cast<string>('il.kind', 'text')])
+								.distinct()
+								.filterWhere(half),
+							eb.lit(null)
+						]),
+						sql<string[]>`'{}'`
+					);
+				return [
+					eb
+						.cast<string>(
+							eb.fn.coalesce(eb.fn.sum<NumericString>('il.amount').filterWhere(untaxed), eb.lit(0)),
+							'text'
+						)
+						.as('untaxed'),
+					eb
+						.cast<string>(
+							eb.fn.coalesce(eb.fn.sum<NumericString>('il.amount').filterWhere(taxed), eb.lit(0)),
+							'text'
+						)
+						.as('taxable_measure'),
+					// The tax, rounded as the business's tax rule rounds it, and what is due
+					// with it: the same figures the invoice list and every balance use.
+					balance('b.tax').as('tax'),
+					balance('b.gross').as('due'),
+					// What is still owed on it: less what payments and credit notes took off.
+					balance('b.owed').as('owed'),
+					// Reg 1701, where the operator has made that election: goods resold
+					// after tax was paid on them come off the measure, at the cost
+					// recorded on each line, and the return is taxed line by line on
+					// what is left.
+					eb
+						.cast<string>(
+							eb.fn.coalesce(
+								eb.fn
+									.sum<NumericString>('il.ex_tax_cost')
+									.filterWhere(eb.and([taxed, eb.ref('o.claims')])),
+								eb.lit(0)
+							),
+							'text'
+						)
+						.as('resold'),
+					eb.cast<string>(dueOnReturn, 'text').as('due_on_return'),
+					// Where it was taxed, as each line kept it when it was priced (0030),
+					// not as its site says now.
+					eb.fn.max<string | null>('il.tax_jurisdiction').as('district'),
+					eb.cast<string | null>(eb.fn.max('il.tax_rate_pct'), 'text').as('rate_pct'),
+					eb.cast<string | null>(eb.fn.max('il.state_rate_pct'), 'text').as('state_rate_pct'),
+					eb.cast<string | null>(eb.fn.max('il.district_rate_pct'), 'text').as('district_rate_pct'),
+					// What is actually in each half, so the page can name them instead of
+					// assuming labour is never taxed and goods always are.
+					kinds(untaxed).as('untaxed_kinds'),
+					kinds(taxed).as('taxed_kinds')
+				];
+			})
+			.where('il.invoice_id', '=', params.id)
+			// An aggregate: always one row.
+			.executeTakeFirstOrThrow(),
 		// Lines that came here because the draft they were added for on a phone
 		// had gone out: which draft, when it went, and how many.
 		db
-			.select({
-				number: src.number,
-				sent_at: src.sentAt,
-				lines: sql<number>`count(*)::int`
-			})
-			.from(il)
-			.innerJoin(src, eq(src.id, il.movedFromInvoiceId))
-			.where(eq(il.invoiceId, params.id))
-			.groupBy(src.id, src.number, src.sentAt),
+			.selectFrom('invoice_line as il')
+			.innerJoin('invoice as src', 'src.id', 'il.moved_from_invoice_id')
+			.select((eb) => [
+				'src.number',
+				'src.sent_at',
+				eb.cast<number>(eb.fn.countAll(), 'integer').as('lines')
+			])
+			.where('il.invoice_id', '=', params.id)
+			.groupBy(['src.id', 'src.number', 'src.sent_at'])
+			.execute(),
 		// Lines taken off it: what each was, who took it off and when. Their
 		// history stays in record_history (0021).
 		db
-			.select({
-				id: t.recordHistory.rowId,
-				description: sql<string>`${t.recordHistory.oldValue}::jsonb ->> 'description'`,
-				who: u.name,
-				at: t.recordHistory.changedAt
-			})
-			.from(t.recordHistory)
-			.leftJoin(u, eq(u.id, t.recordHistory.changedBy))
-			.where(
-				and(
-					eq(t.recordHistory.tableName, 'invoice_line'),
-					eq(t.recordHistory.field, '(deleted)'),
-					sql`${t.recordHistory.oldValue}::jsonb ->> 'invoice_id' = ${params.id}`
-				)
+			.selectFrom('record_history as h')
+			.leftJoin('user as u', 'u.id', 'h.changed_by')
+			.select((eb) => [
+				'h.row_id as id',
+				sql<string>`${eb.ref('h.old_value')}::jsonb ->> 'description'`.as('description'),
+				'u.name as who',
+				'h.changed_at as at'
+			])
+			.where('h.table_name', '=', 'invoice_line')
+			.where('h.field', '=', '(deleted)')
+			.where((eb) =>
+				eb(sql<string>`${eb.ref('h.old_value')}::jsonb ->> 'invoice_id'`, '=', params.id)
 			)
-			.orderBy(asc(t.recordHistory.changedAt)),
+			.orderBy('h.changed_at')
+			.execute(),
 		// And the other way: lines added to this one on a phone after it went
 		// out, and the draft they started instead.
 		db
-			.select({ id: dst.id, number: dst.number, lines: sql<number>`count(*)::int` })
-			.from(il)
-			.innerJoin(dst, eq(dst.id, il.invoiceId))
-			.where(eq(il.movedFromInvoiceId, params.id))
-			.groupBy(dst.id, dst.number)
+			.selectFrom('invoice_line as il')
+			.innerJoin('invoice as dst', 'dst.id', 'il.invoice_id')
+			.select((eb) => [
+				'dst.id',
+				'dst.number',
+				eb.cast<number>(eb.fn.countAll(), 'integer').as('lines')
+			])
+			.where('il.moved_from_invoice_id', '=', params.id)
+			.groupBy(['dst.id', 'dst.number'])
+			.execute()
 	]);
 
 	const { token, ...shown } = invoice;

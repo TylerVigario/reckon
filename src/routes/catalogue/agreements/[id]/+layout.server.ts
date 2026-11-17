@@ -1,8 +1,6 @@
 import { error } from '@sveltejs/kit';
-import { and, count, eq, gte, lte, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
 import type { LayoutServerLoad } from './$types';
 
@@ -16,44 +14,46 @@ export const load: LayoutServerLoad = async ({ params }) => {
 	if (!UUID.test(params.id)) error(404, 'no such agreement');
 	const today = businessToday();
 
-	const [agreement] = await db
-		.select({
-			id: t.agreement.id,
-			entity_id: t.agreement.entityId,
-			client: t.entity.name,
-			client_slug: t.entity.slug,
-			site: t.site.display,
-			price: t.agreement.price,
-			billing_interval: t.agreement.billingInterval,
-			billing_anchor_day: t.agreement.billingAnchorDay,
-			starts_on: t.agreement.startsOn,
-			ends_on: t.agreement.endsOn,
-			final_period_proration: t.agreement.finalPeriodProration,
-			contact_id: t.agreement.contactId,
-			ended: sql<boolean>`coalesce(${t.agreement.endsOn} < ${today}::date, false)`
-		})
-		.from(t.agreement)
-		.innerJoin(t.entity, eq(t.entity.id, t.agreement.entityId))
-		.leftJoin(t.site, eq(t.site.id, t.agreement.siteId))
-		.where(eq(t.agreement.id, params.id));
+	const agreement = await db
+		.selectFrom('agreement as a')
+		.innerJoin('entity as e', 'e.id', 'a.entity_id')
+		.leftJoin('site as s', 's.id', 'a.site_id')
+		.select((eb) => [
+			'a.id',
+			'a.entity_id',
+			'e.name as client',
+			'e.slug as client_slug',
+			's.display as site',
+			'a.price',
+			'a.billing_interval',
+			'a.billing_anchor_day',
+			'a.starts_on',
+			'a.ends_on',
+			'a.final_period_proration',
+			'a.contact_id',
+			eb.fn
+				.coalesce(eb('a.ends_on', '<', today), eb.lit(false))
+				.$castTo<boolean>()
+				.as('ended')
+		])
+		.where('a.id', '=', params.id)
+		.executeTakeFirst();
 	if (!agreement) error(404, 'no such agreement');
 
-	const [[charged], [now]] = await Promise.all([
+	const [charged, now] = await Promise.all([
 		db
-			.select({ n: count() })
-			.from(t.agreementPeriod)
-			.where(eq(t.agreementPeriod.agreementId, agreement.id)),
+			.selectFrom('agreement_period')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+			.where('agreement_id', '=', agreement.id)
+			.executeTakeFirstOrThrow(),
 		// This period, if it has been charged: what it came to, or given freely.
 		db
-			.select({ amount: t.agreementPeriod.amount, given: t.agreementPeriod.given })
-			.from(t.agreementPeriod)
-			.where(
-				and(
-					eq(t.agreementPeriod.agreementId, agreement.id),
-					lte(t.agreementPeriod.periodStart, sql`${today}::date`),
-					gte(t.agreementPeriod.periodEnd, sql`${today}::date`)
-				)
-			)
+			.selectFrom('agreement_period')
+			.select(['amount', 'given'])
+			.where('agreement_id', '=', agreement.id)
+			.where('period_start', '<=', today)
+			.where('period_end', '>=', today)
+			.executeTakeFirst()
 	]);
 	return { agreement, charged: charged.n, now: now ?? null, today };
 };

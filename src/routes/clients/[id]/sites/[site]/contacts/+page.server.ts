@@ -1,6 +1,4 @@
-import { and, asc, desc, eq, notExists, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { findClient, findSite } from '#lib/server/find.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
@@ -16,43 +14,36 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 	const [people, elsewhere] = await Promise.all([
 		db
-			.select({
-				id: t.contact.id,
-				name: t.contact.name,
-				email: t.contact.email,
-				phone: t.contact.phone,
-				is_primary: t.siteContact.isPrimary
-			})
-			.from(t.siteContact)
-			.innerJoin(t.contact, eq(t.contact.id, t.siteContact.contactId))
-			.where(eq(t.siteContact.siteId, found.id))
-			.orderBy(desc(t.siteContact.isPrimary), asc(t.contact.name)),
+			.selectFrom('site_contact as sc')
+			.innerJoin('contact as c', 'c.id', 'sc.contact_id')
+			.select(['c.id', 'c.name', 'c.email', 'c.phone', 'sc.is_primary'])
+			.where('sc.site_id', '=', found.id)
+			.orderBy('sc.is_primary', 'desc')
+			.orderBy('c.name')
+			.execute(),
 		// The client's other people, offered before a new one is typed: creating a
 		// second Dana Whitfield because nobody looked first is what a name match
 		// cannot undo afterwards.
 		fieldOnly(locals)
 			? []
 			: db
-					.select({ id: t.contact.id, name: t.contact.name })
-					.from(t.entityContact)
-					.innerJoin(t.contact, eq(t.contact.id, t.entityContact.contactId))
-					.where(
-						and(
-							eq(t.entityContact.entityId, client.id),
-							notExists(
-								db
-									.select({ x: sql`1` })
-									.from(t.siteContact)
-									.where(
-										and(
-											eq(t.siteContact.siteId, found.id),
-											eq(t.siteContact.contactId, t.contact.id)
-										)
-									)
+					.selectFrom('entity_contact as ec')
+					.innerJoin('contact as c', 'c.id', 'ec.contact_id')
+					.select(['c.id', 'c.name'])
+					.where('ec.entity_id', '=', client.id)
+					.where((eb) =>
+						eb.not(
+							eb.exists(
+								eb
+									.selectFrom('site_contact as sc')
+									.select(eb.lit(1).as('x'))
+									.where('sc.site_id', '=', found.id)
+									.whereRef('sc.contact_id', '=', 'c.id')
 							)
 						)
 					)
-					.orderBy(asc(t.contact.name))
+					.orderBy('c.name')
+					.execute()
 	]);
 
 	return { contacts: people, elsewhere };

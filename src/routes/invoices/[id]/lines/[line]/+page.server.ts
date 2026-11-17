@@ -1,8 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { and, asc, eq, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { formFieldsOf } from '#lib/server/lines.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
@@ -19,46 +16,45 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ params, locals, route, request }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.line)) error(404, 'no such line');
-	const il = t.invoiceLine;
-	const payer = alias(t.user, 'payer');
-	const src = alias(t.invoice, 'src');
-	const [line] = await db
-		.select({
-			id: il.id,
-			version: il.version,
-			kind: il.kind,
-			material_id: il.materialId,
-			site_id: il.siteId,
-			paid_by_id: il.paidBy,
-			description: il.description,
-			qty: il.qty,
-			unit: il.unit,
-			unit_price: il.unitPrice,
-			amount: il.amount,
-			taxable: il.taxable,
-			tax_rate_pct: il.taxRatePct,
-			ex_tax_cost: il.exTaxCost,
-			tax_paid: il.taxPaid,
-			bought_from: il.boughtFrom,
-			paid_by: payer.name,
-			where: t.site.display,
-			item: t.material.name,
-			receipt_type: il.receiptType,
-			moved_from: src.number,
-			invoice_id: t.invoice.id,
-			number: t.invoice.number,
-			status: t.invoice.status,
-			who: t.entity.name,
-			created_by: il.createdBy
-		})
-		.from(il)
-		.innerJoin(t.invoice, eq(t.invoice.id, il.invoiceId))
-		.innerJoin(t.entity, eq(t.entity.id, t.invoice.entityId))
-		.leftJoin(t.site, eq(t.site.id, il.siteId))
-		.leftJoin(payer, eq(payer.id, il.paidBy))
-		.leftJoin(t.material, eq(t.material.id, il.materialId))
-		.leftJoin(src, eq(src.id, il.movedFromInvoiceId))
-		.where(and(eq(il.id, params.line), eq(il.invoiceId, params.id)));
+	const line = await db
+		.selectFrom('invoice_line as il')
+		.innerJoin('invoice as i', 'i.id', 'il.invoice_id')
+		.innerJoin('entity as e', 'e.id', 'i.entity_id')
+		.leftJoin('site as si', 'si.id', 'il.site_id')
+		.leftJoin('user as payer', 'payer.id', 'il.paid_by')
+		.leftJoin('material as m', 'm.id', 'il.material_id')
+		.leftJoin('invoice as src', 'src.id', 'il.moved_from_invoice_id')
+		.select([
+			'il.id',
+			'il.version',
+			'il.kind',
+			'il.material_id',
+			'il.site_id',
+			'il.paid_by as paid_by_id',
+			'il.description',
+			'il.qty',
+			'il.unit',
+			'il.unit_price',
+			'il.amount',
+			'il.taxable',
+			'il.tax_rate_pct',
+			'il.ex_tax_cost',
+			'il.tax_paid',
+			'il.bought_from',
+			'payer.name as paid_by',
+			'si.display as where',
+			'm.name as item',
+			'il.receipt_type',
+			'src.number as moved_from',
+			'i.id as invoice_id',
+			'i.number',
+			'i.status',
+			'e.name as who',
+			'il.created_by'
+		])
+		.where('il.id', '=', params.line)
+		.where('il.invoice_id', '=', params.id)
+		.executeTakeFirst();
 	const field = fieldOnly(locals);
 	if (!line) error(404, 'no such line');
 	if (field && line.status !== 'draft') {
@@ -68,30 +64,37 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 	// Whether this person can change it: with Field, only a line they added.
 	const changeable = !field || line.created_by === locals.user!.id;
 
-	const h = t.recordHistory;
-	const [added, saves, [op], sites, people, places] = await Promise.all([
+	const [added, saves, op, sites, people, places] = await Promise.all([
 		db
-			.select({ who: t.user.name, at: h.changedAt })
-			.from(h)
-			.leftJoin(t.user, eq(t.user.id, h.changedBy))
-			.where(and(eq(h.tableName, 'invoice_line'), eq(h.rowId, line.id), eq(h.field, '(added)')))
-			.orderBy(asc(h.changedAt))
-			.limit(1),
+			.selectFrom('record_history as h')
+			.leftJoin('user as u', 'u.id', 'h.changed_by')
+			.select(['u.name as who', 'h.changed_at as at'])
+			.where('h.table_name', '=', 'invoice_line')
+			.where('h.row_id', '=', line.id)
+			.where('h.field', '=', '(added)')
+			.orderBy('h.changed_at')
+			.limit(1)
+			.executeTakeFirst(),
 		// Each save that changed it is one moment.
 		db
-			.select({ n: sql<number>`count(distinct ${h.changedAt})::int` })
-			.from(h)
-			.where(
-				and(eq(h.tableName, 'invoice_line'), eq(h.rowId, line.id), sql`${h.field} not like '(%'`)
-			),
-		db.select({ claims: t.operator.claimsTaxPaidPurchasesResold }).from(t.operator),
+			.selectFrom('record_history as h')
+			.select((eb) => eb.cast<number>(eb.fn.count('h.changed_at').distinct(), 'integer').as('n'))
+			.where('h.table_name', '=', 'invoice_line')
+			.where('h.row_id', '=', line.id)
+			.where('h.field', 'not like', '(%')
+			.executeTakeFirst(),
+		db
+			.selectFrom('operator')
+			.select('claims_tax_paid_purchases_resold as claims')
+			.executeTakeFirst(),
 		// The places and people a change's values name, by their names.
 		db
-			.select({ id: t.site.id, name: t.site.display })
-			.from(t.site)
-			.innerJoin(t.invoice, eq(t.invoice.entityId, t.site.entityId))
-			.where(eq(t.invoice.id, line.invoice_id)),
-		db.select({ id: t.user.id, name: t.user.name }).from(t.user),
+			.selectFrom('site as si')
+			.innerJoin('invoice as i', 'i.entity_id', 'si.entity_id')
+			.select(['si.id', 'si.display as name'])
+			.where('i.id', '=', line.invoice_id)
+			.execute(),
+		db.selectFrom('user').select(['id', 'name']).execute(),
 		moneyPlaces()
 	]);
 	return {
@@ -99,8 +102,8 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 		changeable,
 		// As the form puts them: what a change made here begins from.
 		fields: formFieldsOf({ ...line, paid_by: line.paid_by_id }, places),
-		added: added[0] ?? null,
-		changes: saves[0]?.n ?? 0,
+		added: added ?? null,
+		changes: saves?.n ?? 0,
 		claims: op?.claims ?? false,
 		sites: Object.fromEntries(sites.map((x) => [x.id, x.name ?? ''])),
 		people: Object.fromEntries(people.map((x) => [x.id, x.name])),

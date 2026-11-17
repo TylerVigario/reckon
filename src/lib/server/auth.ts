@@ -1,5 +1,4 @@
-import { betterAuth } from 'better-auth/minimal';
-import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { betterAuth } from 'better-auth';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { passkey } from '@better-auth/passkey';
 import { building } from '$app/env';
@@ -11,7 +10,7 @@ import {
 } from '$app/env/private';
 import { getRequestEvent } from '$app/server';
 import type { RequestEvent } from '@sveltejs/kit';
-import { db, schema } from './db/index.ts';
+import { db } from './db/index.ts';
 import { eitherOf } from './secret-file.ts';
 import { CLOSED_AUTH_PATHS } from './auth-paths.ts';
 import { createAuthMiddleware, isAPIError } from 'better-auth/api';
@@ -79,7 +78,12 @@ function createAuth() {
 	const secret = authSecret();
 	return betterAuth({
 		secret,
-		database: drizzleAdapter(db, { provider: 'pg', schema }),
+		// Its Kysely adapter, over reckon's own Kysely and tables. Its fields are
+		// camelCase and the columns are not, so each field it reads or writes is
+		// named as its column is, here and in the plugins' schema: Better Auth's
+		// own way to name a column, and Kysely passes the names through as they
+		// are.
+		database: { db, type: 'postgres' },
 		// Where reckon is reached, and so what its own routes and origin checks
 		// take as this origin (see above).
 		baseURL: SITE_URL || undefined,
@@ -87,7 +91,12 @@ function createAuth() {
 		disabledPaths: [...CLOSED_AUTH_PATHS],
 		// Counted in the database, so a restart forgives nothing, and in every
 		// environment, not only where NODE_ENV is production.
-		rateLimit: { enabled: true, storage: 'database' },
+		rateLimit: {
+			enabled: true,
+			storage: 'database',
+			modelName: 'rate_limit',
+			fields: { lastRequest: 'last_request' }
+		},
 		// Every message passes through but one: without SITE_URL Better Auth warns
 		// that it has no base URL. Its routes are not mounted then, a direct call
 		// needs none, and the email sender already says what SITE_URL is missing
@@ -117,16 +126,42 @@ function createAuth() {
 		// No passwords: a passkey is the only way in.
 		emailAndPassword: { enabled: false },
 		session: {
+			fields: {
+				expiresAt: 'expires_at',
+				createdAt: 'created_at',
+				updatedAt: 'updated_at',
+				ipAddress: 'ip_address',
+				userAgent: 'user_agent',
+				userId: 'user_id'
+			},
 			expiresIn: SESSION_UNUSED_DAYS * 86400,
 			// Slid forward at the first use in each hour: two weeks from the last
 			// use, give or take that hour, for one row written an hour at most.
 			updateAge: 3600
 		},
+		account: {
+			fields: {
+				accountId: 'account_id',
+				providerId: 'provider_id',
+				userId: 'user_id',
+				accessToken: 'access_token',
+				refreshToken: 'refresh_token',
+				idToken: 'id_token',
+				accessTokenExpiresAt: 'access_token_expires_at',
+				refreshTokenExpiresAt: 'refresh_token_expires_at',
+				createdAt: 'created_at',
+				updatedAt: 'updated_at'
+			}
+		},
+		verification: {
+			fields: { expiresAt: 'expires_at', createdAt: 'created_at', updatedAt: 'updated_at' }
+		},
 		user: {
+			fields: { emailVerified: 'email_verified', createdAt: 'created_at', updatedAt: 'updated_at' },
 			// Set when a person is added or their role changes, never by the
 			// person signing in.
 			additionalFields: {
-				roleId: { type: 'string', required: false, input: false },
+				roleId: { type: 'string', required: false, input: false, fieldName: 'role_id' },
 				active: { type: 'boolean', required: false, defaultValue: true, input: false },
 				// Set on Team, by someone with Full (#lib/access).
 				access: { type: 'string', required: false, defaultValue: 'field', input: false },
@@ -134,8 +169,8 @@ function createAuth() {
 				// Postgres's zones, the locale against Intl's.
 				timezone: { type: 'string', required: false, input: false },
 				locale: { type: 'string', required: false, input: false },
-				hourCycle: { type: 'string', required: false, input: false },
-				weekStart: { type: 'number', required: false, input: false }
+				hourCycle: { type: 'string', required: false, input: false, fieldName: 'hour_cycle' },
+				weekStart: { type: 'number', required: false, input: false, fieldName: 'week_start' }
 			}
 		},
 		// Every session opens for someone still active, and each that opens is a
@@ -171,6 +206,18 @@ function createAuth() {
 			...(SITE_URL
 				? [
 						passkey({
+							schema: {
+								passkey: {
+									fields: {
+										publicKey: 'public_key',
+										userId: 'user_id',
+										credentialID: 'credential_id',
+										deviceType: 'device_type',
+										backedUp: 'backed_up',
+										createdAt: 'created_at'
+									}
+								}
+							},
 							rpID: new URL(SITE_URL).hostname,
 							rpName: 'reckon',
 							origin: SITE_URL,

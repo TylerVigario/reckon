@@ -1,6 +1,4 @@
-import { asc, count, eq, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import { material, unit } from '#lib/server/db/schema/index.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -9,14 +7,21 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async () => {
 	const units = await db
-		.select({
-			id: unit.id,
-			name: unit.name,
-			short: unit.short,
-			places: unit.places,
-			materials: sql<number>`(${db.select({ n: count() }).from(material).where(eq(material.unitId, unit.id))})::int`
-		})
-		.from(unit)
-		.orderBy(asc(unit.name));
+		.selectFrom('unit as u')
+		.select((eb) => [
+			'u.id',
+			'u.name',
+			'u.short',
+			'u.places',
+			eb
+				.selectFrom('material as m')
+				.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+				.whereRef('m.unit_id', '=', 'u.id')
+				.$asScalar()
+				.$notNull()
+				.as('materials')
+		])
+		.orderBy('u.name')
+		.execute();
 	return { units };
 };

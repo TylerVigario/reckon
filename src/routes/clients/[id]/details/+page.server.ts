@@ -1,7 +1,6 @@
 import { error } from '@sveltejs/kit';
-import { sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
+import { VERSION } from '#lib/server/concurrent.ts';
 import { findClient } from '#lib/server/find.ts';
 import type { PageServerLoad } from './$types';
 
@@ -18,26 +17,21 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ params }) => {
 	const { id } = await findClient(params.id);
-	const e = t.entity;
-	const {
-		rows: [client]
-	} = await db.execute<{
-		id: string;
-		slug: string;
-		version: string;
-		terms: number | null;
-		default_terms: number;
-		payment_method: string | null;
-		tax_exempt: boolean;
-		certificate: string | null;
-	}>(sql`
-		select ${e.id} as id, ${e.slug} as slug, ${e}.xmin::text as version,
-		       ${e.termsDays} as terms,
-		       (select ${t.operator.defaultTermsDays} from ${t.operator}) as default_terms,
-		       ${e.paymentMethod} as payment_method, ${e.taxExempt} as tax_exempt,
-		       ${e.exemptionCertificate} as certificate
-		  from ${e}
-		 where ${e.id} = ${id}`);
+	const client = await db
+		.selectFrom('entity as e')
+		.select((eb) => [
+			'e.id',
+			'e.slug',
+			// The entity's xmin: the operator's is inside its own subquery.
+			VERSION.as('version'),
+			'e.terms_days as terms',
+			eb.selectFrom('operator').select('default_terms_days').$asScalar().as('default_terms'),
+			'e.payment_method',
+			'e.tax_exempt',
+			'e.exemption_certificate as certificate'
+		])
+		.where('e.id', '=', id)
+		.executeTakeFirst();
 	if (!client) error(404, 'no such client');
 	return { details: client };
 };

@@ -1,6 +1,5 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import type { NumericString } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
-import { user, vehicle } from '#lib/server/db/schema/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import type { PageServerLoad } from './$types';
 
@@ -14,19 +13,36 @@ export const load: PageServerLoad = async () => {
 	// this year's, and whether there are any at all, which decides whether it
 	// can be removed or only retired.
 	const vehicles = await db
-		.select({
-			id: vehicle.id,
-			name: vehicle.name,
-			owner: user.name,
-			retired_on: vehicle.retiredOn,
-			trips: sql<number>`(select count(*)::int from trip where trip.vehicle_id = ${vehicle.id})`,
-			miles: sql<string>`(select coalesce(sum(l.miles), 0)::text from trip_leg l
-				                     join trip tr on tr.id = l.trip_id
-				                    where tr.vehicle_id = ${vehicle.id}
-				                      and tr.travelled_on >= ${yearStart}::date)`
-		})
-		.from(vehicle)
-		.leftJoin(user, eq(user.id, vehicle.ownerId))
-		.orderBy(sql`${vehicle.retiredOn} is not null`, asc(vehicle.name));
+		.selectFrom('vehicle')
+		.leftJoin('user', 'user.id', 'vehicle.owner_id')
+		.select((eb) => [
+			'vehicle.id',
+			'vehicle.name',
+			'user.name as owner',
+			'vehicle.retired_on',
+			eb
+				.selectFrom('trip')
+				.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+				.whereRef('trip.vehicle_id', '=', 'vehicle.id')
+				.$asScalar()
+				.$notNull()
+				.as('trips'),
+			eb
+				.selectFrom('trip_leg as l')
+				.innerJoin('trip as tr', 'tr.id', 'l.trip_id')
+				.select((eb) =>
+					eb
+						.cast<string>(eb.fn.coalesce(eb.fn.sum<NumericString>('l.miles'), eb.lit(0)), 'text')
+						.as('miles')
+				)
+				.whereRef('tr.vehicle_id', '=', 'vehicle.id')
+				.where('tr.travelled_on', '>=', yearStart)
+				.$asScalar()
+				.$notNull()
+				.as('miles')
+		])
+		.orderBy((eb) => eb('vehicle.retired_on', 'is not', null))
+		.orderBy('vehicle.name')
+		.execute();
 	return { vehicles };
 };

@@ -3,9 +3,7 @@ import { readTrip } from '#lib/server/trip-input.ts';
 import { mileServiceFor, tripWorth } from '#lib/server/trip-worth.ts';
 import { legsOf } from '#lib/trip-legs.ts';
 import { readBody } from '#lib/json.ts';
-import { eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { RequestHandler } from './$types';
 
@@ -30,12 +28,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		legs
 	});
 	if (!fieldOnly(locals)) return Response.json({ ...worth, withheld: false });
-	const [vehicle] = trip.vehicleId
+	const vehicle = trip.vehicleId
 		? await db
-				.select({ ownerId: t.vehicle.ownerId })
-				.from(t.vehicle)
-				.where(eq(t.vehicle.id, trip.vehicleId))
-		: [];
+				.selectFrom('vehicle')
+				.select('owner_id as ownerId')
+				.where('id', '=', trip.vehicleId)
+				.executeTakeFirst()
+		: undefined;
 	const withheld = !!vehicle?.ownerId && vehicle.ownerId !== locals.user!.id;
 	return Response.json({
 		...worth,

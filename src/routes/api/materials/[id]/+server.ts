@@ -1,6 +1,6 @@
-import { and, desc, eq, notLike } from 'drizzle-orm';
+import type { Updateable } from 'kysely';
 import { asUser, db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
+import type { Material } from '#lib/server/db/database.ts';
 import { refuse } from '#lib/server/field-errors.ts';
 import { pgError } from '#lib/server/field-errors.ts';
 import { problem } from '#lib/server/problem.ts';
@@ -11,34 +11,25 @@ import { MATERIAL_WORDS, parseMaterialField } from '#lib/material-fields.ts';
 import type { RequestHandler } from './$types';
 
 const MOST_AT_ONCE = 4;
+/** A field, by its column's own name. */
 type Field = keyof typeof MATERIAL_WORDS;
-const COLUMN: Record<Field, keyof typeof t.material.$inferSelect> = {
-	name: 'name',
-	brand: 'brand',
-	sku: 'sku',
-	taxable: 'taxable',
-	unit_id: 'unitId',
-	active: 'active'
-};
 /** A value as the form holds it: text, empty for nothing. */
 const asText = (v: unknown) =>
 	typeof v === 'string' ? v : typeof v === 'number' || typeof v === 'boolean' ? String(v) : '';
 
 /** Who last changed a material, and when. */
 async function lastChanged(id: string) {
-	const [last] = await db
-		.select({ by: t.user.name, at: t.recordHistory.changedAt })
-		.from(t.recordHistory)
-		.leftJoin(t.user, eq(t.user.id, t.recordHistory.changedBy))
-		.where(
-			and(
-				eq(t.recordHistory.tableName, 'material'),
-				eq(t.recordHistory.rowId, id),
-				notLike(t.recordHistory.field, '(%')
-			)
-		)
-		.orderBy(desc(t.recordHistory.changedAt), desc(t.recordHistory.id))
-		.limit(1);
+	const last = await db
+		.selectFrom('record_history as h')
+		.leftJoin('user as u', 'u.id', 'h.changed_by')
+		.select(['u.name as by', 'h.changed_at as at'])
+		.where('h.table_name', '=', 'material')
+		.where('h.row_id', '=', id)
+		.where('h.field', 'not like', '(%')
+		.orderBy('h.changed_at', 'desc')
+		.orderBy('h.id', 'desc')
+		.limit(1)
+		.executeTakeFirst();
 	return { by: last?.by ?? null, at: last?.at.toISOString() ?? null };
 }
 
@@ -75,7 +66,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	if (names.length === 0) return problem('malformed', 400, 'No fields given.');
 	if (names.length > MOST_AT_ONCE)
 		return problem('malformed', 400, `At most ${MOST_AT_ONCE} fields at once.`);
-	const row: Partial<typeof t.material.$inferInsert> = {};
+	const row: Updateable<Material> = {};
 	const sent: Partial<Record<Field, string>> = {};
 	const errors: Record<string, string> = {};
 	for (const name of names) {
@@ -87,20 +78,24 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		const parsed = parseMaterialField(name, asText(raw));
 		if (!parsed.ok) errors[name] = parsed.why;
 		else {
-			Object.assign(row, { [COLUMN[name as Field]]: parsed.value });
+			Object.assign(row, { [name]: parsed.value });
 			sent[name as Field] = asText(parsed.value);
 		}
 	}
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
-	const [m] = await db.select().from(t.material).where(eq(t.material.id, params.id));
+	const m = await db
+		.selectFrom('material')
+		.selectAll()
+		.where('id', '=', params.id)
+		.executeTakeFirst();
 	if (!m) return problem('notFound', 404, 'No material with that id.');
 
 	// Saved meanwhile: a field changed since to something other than this one
 	// is a choice for a person, not this save's to overwrite.
 	if (m.version !== began)
 		for (const name of Object.keys(sent) as Field[]) {
-			const now = asText(m[COLUMN[name]]);
+			const now = asText(m[name]);
 			const was = asText((base as Record<string, unknown>)[name]);
 			if (now !== was && now !== sent[name]) {
 				const last = await lastChanged(m.id);
@@ -114,14 +109,15 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		}
 
 	try {
-		const [saved] = await asUser(
+		const saved = await asUser(
 			locals.user!.id,
 			(tx) =>
 				tx
-					.update(t.material)
+					.updateTable('material')
 					.set(row)
-					.where(eq(t.material.id, m.id))
-					.returning({ version: t.material.version }),
+					.where('id', '=', m.id)
+					.returning('version')
+					.executeTakeFirstOrThrow(),
 			// Made on a phone with no signal, its history says when (#lib/queue).
 			madeAt(typeof body.made_at === 'string' ? body.made_at : '')
 		);

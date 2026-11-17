@@ -1,4 +1,6 @@
 import { Decimal, Ratio } from './decimal.ts';
+import { everyWord } from './every-word.ts';
+import type { StockCosting } from './server/db/database.ts';
 
 /**
  * HOW STOCK IS COSTED, as the operator chooses it: at the average of what is on
@@ -8,8 +10,8 @@ import { Decimal, Ratio } from './decimal.ts';
  * leave a shelf, so what is left of each lot is what is left of that receipt.
  * The method decides only what the draw cost.
  */
-export const COSTINGS = ['average', 'oldest_first'] as const;
-export type Costing = (typeof COSTINGS)[number];
+export type Costing = StockCosting;
+export const COSTINGS = everyWord<Costing>()(['average', 'oldest_first']);
 
 /**
  * A lot on the shelf: how much arrived and how much is left, and what all of it

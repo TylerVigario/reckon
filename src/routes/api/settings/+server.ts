@@ -1,15 +1,13 @@
+import { sql, type Updateable } from 'kysely';
 import { businessToday } from '#lib/server/calendar.ts';
-import { sql } from 'drizzle-orm';
+import type { Operator } from '#lib/server/db/database.ts';
 import { asUser, db } from '#lib/server/db/index.ts';
-import { invoice, operator } from '#lib/server/db/schema/index.ts';
-import { camel } from '#lib/server/db/rows.ts';
 import { type Errors, refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { parseField } from '#lib/settings-fields.ts';
 import { confirmPlace } from '#lib/server/verify-place.ts';
 import { measureEverySite } from '#lib/server/site-drive.ts';
 import { knownZone } from '#lib/server/zones.ts';
 import { rememberBusiness } from '#lib/server/business.ts';
-import type { TaxRuleSet } from '#lib/server/tax-rules.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
 import { readFields } from '#lib/json.ts';
@@ -80,11 +78,14 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 	// a client would be the one to notice. Only this side knows which numbers
 	// are taken.
 	if (typeof row.next_invoice_number === 'number') {
-		const [issued] = await db
-			.select({
-				high: sql<string>`coalesce(max(nullif(regexp_replace(${invoice.number}, '[^0-9]', '', 'g'), '')::bigint), 0)::text`
-			})
-			.from(invoice);
+		const issued = await db
+			.selectFrom('invoice')
+			.select((eb) =>
+				sql<string>`coalesce(max(nullif(regexp_replace(${eb.ref('number')}, '[^0-9]', '', 'g'), '')::bigint), 0)::text`.as(
+					'high'
+				)
+			)
+			.executeTakeFirst();
 		const high = Number(issued?.high ?? 0);
 		if (row.next_invoice_number <= high)
 			return refuse({
@@ -115,29 +116,32 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 		row.timezone = known;
 	}
 
-	const [exists] = await db
-		.select({ id: operator.id, address: operator.address, placeId: operator.googlePlaceId })
-		.from(operator)
-		.limit(1);
+	const exists = await db
+		.selectFrom('operator')
+		.select(['id', 'address', 'google_place_id'])
+		.limit(1)
+		.executeTakeFirst();
 	const moved =
 		'address' in row &&
 		((row.address || null) !== (exists?.address || null) ||
-			(row.google_place_id || null) !== (exists?.placeId || null));
-	// The registry's keys are the columns' own names; the schema's are camelCase.
-	const values = camel(row) as Partial<typeof operator.$inferInsert>;
+			(row.google_place_id || null) !== (exists?.google_place_id || null));
+	// The registry's keys are the columns' own names, and each one's rule
+	// (#lib/settings-fields) makes the value its column holds.
+	const values = row as Updateable<Operator>;
 
 	try {
 		if (exists) {
 			// asUser so the h_operator trigger records who changed the rate a
 			// client is billed at, rather than recording that somebody did.
 			await asUser(locals.user!.id, async (tx) => {
-				await tx.update(operator).set(values);
+				await tx.updateTable('operator').set(values).execute();
 				if ('google_place_id' in row)
 					// Stamped here, on the business's clock; a request does not get
 					// to say when the check happened.
 					await tx
-						.update(operator)
-						.set({ addressVerifiedOn: verified ? sql`${businessToday()}::date` : null });
+						.updateTable('operator')
+						.set({ address_verified_on: verified ? businessToday() : null })
+						.execute();
 			});
 		} else {
 			// Nothing to update yet. Every other column has a default, so the
@@ -149,8 +153,9 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 					409
 				);
 			await db
-				.insert(operator)
-				.values({ ...values, tradingName: String(row.trading_name), singleton: true });
+				.insertInto('operator')
+				.values({ ...values, trading_name: String(row.trading_name), singleton: true })
+				.execute();
 		}
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, names, 'operator');
@@ -161,11 +166,11 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 	const sites = moved ? await measureEverySite(locals.user!.id) : null;
 
 	// The business's clock, locale and currency move the moment they are saved.
-	if (typeof row.timezone === 'string') await rememberBusiness({ zone: row.timezone });
-	if (typeof row.locale === 'string') await rememberBusiness({ locale: row.locale });
-	if (typeof row.currency === 'string') await rememberBusiness({ currency: row.currency });
-	if (typeof row.tax_rule_set === 'string')
-		await rememberBusiness({ taxRuleSet: row.tax_rule_set as TaxRuleSet });
+	if (typeof values.timezone === 'string') await rememberBusiness({ zone: values.timezone });
+	if (typeof values.locale === 'string') await rememberBusiness({ locale: values.locale });
+	if (typeof values.currency === 'string') await rememberBusiness({ currency: values.currency });
+	if (typeof values.tax_rule_set === 'string')
+		await rememberBusiness({ taxRuleSet: values.tax_rule_set });
 
 	// The stored values go back, not the submitted ones: "usd" is saved as USD
 	// and #4F6D8A as #4f6d8a, and the field should show what is actually there.

@@ -1,6 +1,4 @@
-import { asc } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.ts';
-import { role } from '#lib/server/db/schema/index.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -10,8 +8,5 @@ import type { PageServerLoad } from './$types';
  * else. What they are owed is the pay report's, and is a link from here.
  */
 export const load: PageServerLoad = async () => ({
-	roles: await db
-		.select({ id: role.id, name: role.name, pays_as: role.paysAs })
-		.from(role)
-		.orderBy(asc(role.name))
+	roles: await db.selectFrom('role').select(['id', 'name', 'pays_as']).orderBy('name').execute()
 });

@@ -1,6 +1,5 @@
 import nodemailer, { type Transporter } from 'nodemailer';
-import { and, eq, isNull, lt, sql } from 'drizzle-orm';
-import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
+import { sql, type UpdateObject } from 'kysely';
 import {
 	SMTP_CA_FILE,
 	SMTP_FROM,
@@ -14,8 +13,8 @@ import {
 	SITE_URL
 } from '$app/env/private';
 import type { PoolClient } from 'pg';
+import type { DB } from './db/database.ts';
 import { db, pool, type Reader } from './db/index.ts';
-import { emailMessage, integration, operator, user } from './db/schema/index.ts';
 import {
 	EMAIL_CHANNEL,
 	NOTICE_SENDS_FOR,
@@ -158,30 +157,27 @@ export function mailer() {
 
 /** The person and the business, as a notice speaks of them. */
 async function whoAndWhose(tx: Reader, userId: string) {
-	const [[person], [business]] = await Promise.all([
+	const [person, business] = await Promise.all([
 		tx
-			.select({
-				name: user.name,
-				email: user.email,
-				timezone: user.timezone,
-				locale: user.locale
-			})
-			.from(user)
-			.where(eq(user.id, userId)),
+			.selectFrom('user')
+			.select(['name', 'email', 'timezone', 'locale'])
+			.where('id', '=', userId)
+			.executeTakeFirst(),
 		tx
-			.select({
-				tradingName: operator.tradingName,
-				shortName: operator.shortName,
-				email: operator.email,
-				phone: operator.phone,
-				timezone: operator.timezone,
-				locale: operator.locale,
-				accentColour: operator.accentColour,
-				logo: operator.logo,
-				logoMediaType: operator.logoMediaType
-			})
-			.from(operator)
+			.selectFrom('operator')
+			.select([
+				'trading_name as tradingName',
+				'short_name as shortName',
+				'email',
+				'phone',
+				'timezone',
+				'locale',
+				'accent_colour as accentColour',
+				'logo',
+				'logo_media_type as logoMediaType'
+			])
 			.limit(1)
+			.executeTakeFirst()
 	]);
 	const { logo, logoMediaType, ...rest } = business ?? {};
 	return {
@@ -204,17 +200,20 @@ export async function tell(
 	const { person, business } = await whoAndWhose(tx, userId);
 	if (!person) return;
 	const { kind, to, subject, body, html } = notice(person, business);
-	await tx.insert(emailMessage).values({
-		kind,
-		userId,
-		toAddress: to,
-		subject,
-		body,
-		html,
-		sendBy: sendBy ?? sql`now() + ${NOTICE_SENDS_FOR}::interval`
-	});
+	await tx
+		.insertInto('email_message')
+		.values({
+			kind,
+			user_id: userId,
+			to_address: to,
+			subject,
+			body,
+			html,
+			send_by: sendBy ?? sql<Date>`now() + ${NOTICE_SENDS_FOR}::interval`
+		})
+		.execute();
 	// Delivered when the transaction commits, and not at all if it does not.
-	await tx.execute(sql`select pg_notify(${EMAIL_CHANNEL}, '')`);
+	await sql`select pg_notify(${EMAIL_CHANNEL}, '')`.execute(tx);
 }
 
 /** The Message-ID a message goes with, the same on every try. */
@@ -233,52 +232,59 @@ export async function sendDue(): Promise<void> {
 	try {
 		do {
 			again = false;
-			await db.delete(emailMessage).where(lt(emailMessage.createdAt, sql`now() - ${KEPT}`));
 			await db
-				.update(emailMessage)
-				.set({
-					gaveUpAt: sql`now()`,
+				.deleteFrom('email_message')
+				.where('created_at', '<', sql<Date>`now() - ${KEPT}`)
+				.execute();
+			await db
+				.updateTable('email_message')
+				.set((eb) => ({
+					gave_up_at: sql<Date>`now()`,
 					body: null,
 					html: null,
-					claimedUntil: null,
-					lastError: sql`coalesce(${emailMessage.lastError}, 'never sent: no relay was set')`
-				})
-				.where(
-					and(
-						isNull(emailMessage.sentAt),
-						isNull(emailMessage.gaveUpAt),
-						lt(emailMessage.sendBy, sql`now()`)
-					)
-				);
+					claimed_until: null,
+					last_error: eb.fn.coalesce('last_error', eb.val('never sent: no relay was set'))
+				}))
+				.where('sent_at', 'is', null)
+				.where('gave_up_at', 'is', null)
+				.where('send_by', '<', sql<Date>`now()`)
+				.execute();
 			const relay = mailer();
 			if (!relay) return;
 			// Held while it is sent, so a second server on the same database --
 			// there may be one -- never sends it too.
-			const due = await db.execute<{
-				id: string;
-				to_address: string;
-				subject: string;
-				body: string;
-				html: string | null;
-				tries: number;
-			}>(sql`
-				update ${emailMessage} set claimed_until = now() + ${HELD}, tries = tries + 1
-				 where id in (select id from ${emailMessage}
-				               where sent_at is null and gave_up_at is null and next_try_at <= now()
-				                 and (claimed_until is null or claimed_until < now())
-				               order by next_try_at limit 10 for update skip locked)
-				returning id, to_address, subject, body, html, tries`);
-			if (!due.rows.length) return;
-			const [business] = await db
-				.select({
-					name: operator.tradingName,
-					email: operator.email,
-					logo: operator.logo,
-					logoMediaType: operator.logoMediaType
-				})
-				.from(operator)
-				.limit(1);
-			for (const m of due.rows) await sendOne(relay, m, business);
+			const due = await db
+				.updateTable('email_message')
+				.set((eb) => ({
+					claimed_until: sql<Date>`now() + ${HELD}`,
+					tries: eb('tries', '+', 1)
+				}))
+				.where('id', 'in', (eb) =>
+					eb
+						.selectFrom('email_message')
+						.select('id')
+						.where('sent_at', 'is', null)
+						.where('gave_up_at', 'is', null)
+						.where('next_try_at', '<=', sql<Date>`now()`)
+						.where((eb) =>
+							eb.or([eb('claimed_until', 'is', null), eb('claimed_until', '<', sql<Date>`now()`)])
+						)
+						.orderBy('next_try_at')
+						.limit(10)
+						.forUpdate()
+						.skipLocked()
+				)
+				.returning(['id', 'to_address', 'subject', 'body', 'html', 'tries'])
+				// Neither sent nor given up, so what it says is still kept.
+				.$narrowType<{ body: string }>()
+				.execute();
+			if (!due.length) return;
+			const business = await db
+				.selectFrom('operator')
+				.select(['trading_name as name', 'email', 'logo', 'logo_media_type as logoMediaType'])
+				.limit(1)
+				.executeTakeFirst();
+			for (const m of due) await sendOne(relay, m, business);
 			again = true;
 		} while (again);
 	} finally {
@@ -337,12 +343,14 @@ const saidBy = (e: unknown) => {
 /** The relay took something: Settings says when it last did. */
 const proven = (relay: Relay) =>
 	db
-		.insert(integration)
-		.values({ name: 'email', connected: true, detail: relay.from, checkedAt: sql`now()` })
-		.onConflictDoUpdate({
-			target: integration.name,
-			set: { connected: true, detail: relay.from, checkedAt: sql`now()` }
-		});
+		.insertInto('integration')
+		.values({ name: 'email', connected: true, detail: relay.from, checked_at: sql<Date>`now()` })
+		.onConflict((oc) =>
+			oc
+				.column('name')
+				.doUpdateSet({ connected: true, detail: relay.from, checked_at: sql<Date>`now()` })
+		)
+		.execute();
 
 async function sendOne(
 	relay: Relay,
@@ -356,11 +364,12 @@ async function sendOne(
 	},
 	business: Sender
 ) {
-	const done = (set: PgUpdateSetSource<typeof emailMessage>) =>
+	const done = (set: UpdateObject<DB, 'email_message'>) =>
 		db
-			.update(emailMessage)
-			.set({ claimedUntil: null, ...set })
-			.where(eq(emailMessage.id, m.id));
+			.updateTable('email_message')
+			.set({ claimed_until: null, ...set })
+			.where('id', '=', m.id)
+			.execute();
 	try {
 		await sent(relay, business, {
 			id: m.id,
@@ -369,16 +378,17 @@ async function sendOne(
 			text: m.body,
 			html: m.html
 		});
-		await done({ sentAt: sql`now()`, body: null, html: null, lastError: null });
+		await done({ sent_at: sql<Date>`now()`, body: null, html: null, last_error: null });
 		await proven(relay);
 	} catch (e) {
 		const permanent = (e as { permanent?: boolean }).permanent === true;
 		const said = saidBy(e);
-		if (permanent) await done({ gaveUpAt: sql`now()`, body: null, html: null, lastError: said });
+		if (permanent)
+			await done({ gave_up_at: sql<Date>`now()`, body: null, html: null, last_error: said });
 		else
 			await done({
-				nextTryAt: sql`now() + ${sql.raw(`interval '${againAfter(m.tries)} seconds'`)}`,
-				lastError: said
+				next_try_at: sql<Date>`now() + ${sql.raw(`interval '${againAfter(m.tries)} seconds'`)}`,
+				last_error: said
 			});
 		log.warn(
 			{ 'email.id': m.id, reason: said },
@@ -395,19 +405,20 @@ export async function sendTest(to: { name: string; email: string }) {
 	const relay = mailer();
 	if (!relay)
 		return { sent: false as const, said: 'SMTP_HOST is unset, so reckon sends no email.' };
-	const [business] = await db
-		.select({
-			name: operator.tradingName,
-			tradingName: operator.tradingName,
-			shortName: operator.shortName,
-			email: operator.email,
-			phone: operator.phone,
-			accentColour: operator.accentColour,
-			logo: operator.logo,
-			logoMediaType: operator.logoMediaType
-		})
-		.from(operator)
-		.limit(1);
+	const business = await db
+		.selectFrom('operator')
+		.select([
+			'trading_name as name',
+			'trading_name as tradingName',
+			'short_name as shortName',
+			'email',
+			'phone',
+			'accent_colour as accentColour',
+			'logo',
+			'logo_media_type as logoMediaType'
+		])
+		.limit(1)
+		.executeTakeFirst();
 	const subject = `${business?.shortName?.trim() || business?.name || 'reckon'}: a test of email`;
 	const { text, html } = laidOut({
 		subject,

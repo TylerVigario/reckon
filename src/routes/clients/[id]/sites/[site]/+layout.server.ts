@@ -1,8 +1,8 @@
 import { businessToday } from '#lib/server/calendar.ts';
 import { error } from '@sveltejs/kit';
-import { and, count, eq, sql } from 'drizzle-orm';
+import { sql } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
+import { versionOf } from '#lib/server/concurrent.ts';
 import { rateIsStale, STALE_AFTER_DAYS } from '#lib/server/stale.ts';
 import { findClient, findSite } from '#lib/server/find.ts';
 import type { LayoutServerLoad } from './$types';
@@ -23,55 +23,66 @@ export const load: LayoutServerLoad = async ({ params }) => {
 	const client = await findClient(params.id);
 	const found = await findSite(client.id, params.site);
 
-	const s = t.site;
-	const e = t.entity;
-	const [site] = await db
-		.select({
-			id: s.id,
-			entity_id: s.entityId,
-			version: sql<string>`${s}.xmin::text`,
-			client_slug: e.slug,
-			slug: s.slug,
-			client: e.name,
-			label: s.label,
-			display: sql<string>`${s.display}`,
-			street: s.street,
-			city: s.city,
-			region: s.region,
-			postcode: s.postcode,
-			google_place_id: s.googlePlaceId,
-			typed_round_trip_miles: s.typedRoundTripMiles,
-			typed_drive_minutes: s.typedDriveMinutes,
-			google_round_trip_miles: s.googleRoundTripMiles,
-			google_drive_minutes: s.googleDriveMinutes,
-			active: s.active,
-			rate_pct: s.taxRatePct,
-			state_rate_pct: s.stateRatePct,
-			district_rate_pct: s.districtRatePct,
-			jurisdiction: s.taxJurisdiction,
-			tax_area_code: s.taxAreaCode,
-			verified_on: s.areaVerifiedOn,
-			stale: rateIsStale(s.areaVerifiedOn, businessToday()),
-			asked: sql<number>`(${db
-				.select({ n: count() })
-				.from(t.siteTaxCheck)
-				.where(eq(t.siteTaxCheck.siteId, s.id))})::int`
-		})
-		.from(s)
-		.innerJoin(e, eq(e.id, s.entityId))
-		.where(and(eq(s.id, found.id), eq(s.entityId, client.id)));
+	const site = await db
+		.selectFrom('site as s')
+		.innerJoin('entity as e', 'e.id', 's.entity_id')
+		.select((eb) => [
+			's.id',
+			's.entity_id',
+			versionOf('s').as('version'),
+			'e.slug as client_slug',
+			's.slug',
+			'e.name as client',
+			's.label',
+			eb.ref('s.display').$notNull().as('display'),
+			's.street',
+			's.city',
+			's.region',
+			's.postcode',
+			's.google_place_id',
+			's.typed_round_trip_miles',
+			's.typed_drive_minutes',
+			's.google_round_trip_miles',
+			's.google_drive_minutes',
+			's.active',
+			's.tax_rate_pct as rate_pct',
+			's.state_rate_pct',
+			's.district_rate_pct',
+			's.tax_jurisdiction as jurisdiction',
+			's.tax_area_code',
+			's.area_verified_on as verified_on',
+			rateIsStale(eb.ref('s.area_verified_on'), businessToday()).as('stale'),
+			eb
+				.cast<number>(
+					eb
+						.selectFrom('site_tax_check as k')
+						.select((eb) => eb.fn.countAll().as('n'))
+						.whereRef('k.site_id', '=', 's.id')
+						.$asScalar(),
+					'integer'
+				)
+				.as('asked')
+		])
+		.where('s.id', '=', found.id)
+		.where('s.entity_id', '=', client.id)
+		.executeTakeFirst();
 	if (!site) error(404, 'no such site');
 
-	const [[people], [worked]] = await Promise.all([
-		db.select({ n: count() }).from(t.siteContact).where(eq(t.siteContact.siteId, found.id)),
+	const [people, worked] = await Promise.all([
 		db
-			.select({
-				entries: sql<string>`count(*)::text`,
-				hours: sql<string>`coalesce(sum(${t.timeEntry.seconds}) / 3600.0, 0)::numeric(10,2)::text`,
-				last: sql<string | null>`max(${t.timeEntry.workedOn})::text`
-			})
-			.from(t.timeEntry)
-			.where(eq(t.timeEntry.siteId, found.id))
+			.selectFrom('site_contact')
+			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+			.where('site_id', '=', found.id)
+			.executeTakeFirstOrThrow(),
+		db
+			.selectFrom('time_entry')
+			.select((eb) => [
+				eb.cast<string>(eb.fn.countAll(), 'text').as('entries'),
+				sql<string>`coalesce(${eb.fn.sum('seconds')} / 3600.0, 0)::numeric(10,2)::text`.as('hours'),
+				eb.cast<string | null>(eb.fn.max('worked_on'), 'text').as('last')
+			])
+			.where('site_id', '=', found.id)
+			.executeTakeFirstOrThrow()
 	]);
 
 	return { site, people: people.n, worked, staleAfter: STALE_AFTER_DAYS };

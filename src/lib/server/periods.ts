@@ -1,11 +1,9 @@
 import { businessToday } from './calendar.ts';
-import { sql } from 'drizzle-orm';
+import { sql } from 'kysely';
 import { fiscalYear as fiscalYearName, monthOf, span } from '#lib/format.ts';
 import { db } from './db/index.ts';
-import { operator } from './db/schema/index.ts';
 
 export type Period = { start: string; end: string; label: string; spans: string };
-type Bounds = { start: string; end: string };
 
 /**
  * The windows every report is cut to.
@@ -26,29 +24,51 @@ type Bounds = { start: string; end: string };
  * in progress, the retainer meter, says "so far" in its label.
  */
 export async function fiscalYear(): Promise<Period | null> {
-	const { rows } = await db.execute<Bounds>(sql`
-		with o as (select ${operator.fiscalYearEndMonth} as m from ${operator}),
-		bounds as (
-			select (date_trunc('month', make_date(
-			          extract(year from ${businessToday()}::date)::int
-			            + case when extract(month from ${businessToday()}::date)::int <= o.m then 0 else 1 end,
-			          o.m, 1)) + interval '1 month - 1 day')::date as ends_on
-			  from o where o.m is not null
+	const today = sql<string>`${businessToday()}::date`;
+	const b = await db
+		.with('bounds', (qc) =>
+			qc
+				.selectFrom('operator')
+				.where('fiscal_year_end_month', 'is not', null)
+				.select((eb) => {
+					const m = eb.ref('fiscal_year_end_month');
+					const year = sql<number>`extract(year from ${today})::int + ${eb
+						.case()
+						.when(sql<number>`extract(month from ${today})::int`, '<=', m)
+						.then(eb.lit(0))
+						.else(eb.lit(1))
+						.end()}`;
+					return sql<string>`(date_trunc('month', make_date(${year}, ${m}, 1)) + interval '1 month - 1 day')::date`.as(
+						'ends_on'
+					);
+				})
 		)
-		select (ends_on - interval '1 year' + interval '1 day')::date::text as start,
-		       ends_on::text as end
-		  from bounds`);
-	const b = rows[0];
+		.selectFrom('bounds')
+		.select((eb) => [
+			sql<string>`(${eb.ref('ends_on')} - interval '1 year' + interval '1 day')::date::text`.as(
+				'start'
+			),
+			eb.cast<string>('ends_on', 'text').as('end')
+		])
+		.executeTakeFirst();
 	return b ? { ...b, label: fiscalYearName(b.start, b.end), spans: span(b.start, b.end) } : null;
 }
 
 export async function lastFullMonth(): Promise<Period> {
-	const { rows } = await db.execute<Bounds>(sql`
-		with m as (select (date_trunc('month', ${businessToday()}::date) - interval '1 month')::date as first_day)
-		select first_day::text as start,
-		       (first_day + interval '1 month - 1 day')::date::text as end
-		  from m`);
-	const b = rows[0];
+	const b = await db
+		.with('m', (qc) =>
+			qc.selectNoFrom(
+				sql<string>`(date_trunc('month', ${businessToday()}::date) - interval '1 month')::date`.as(
+					'first_day'
+				)
+			)
+		)
+		.selectFrom('m')
+		.select((eb) => [
+			eb.cast<string>('first_day', 'text').as('start'),
+			sql<string>`(${eb.ref('first_day')} + interval '1 month - 1 day')::date::text`.as('end')
+		])
+		.executeTakeFirstOrThrow();
 	return { ...b, label: monthOf(b.start), spans: span(b.start, b.end) };
 }
 
@@ -60,9 +80,12 @@ export async function lastFullMonth(): Promise<Period> {
  * close to show that usage hides the only month that is still happening.
  */
 export async function thisMonth(): Promise<Period> {
-	const { rows } = await db.execute<Bounds>(sql`
-		select date_trunc('month', ${businessToday()}::date)::date::text as start,
-		       ${businessToday()}::date::text as end`);
-	const b = rows[0];
+	const today = sql<string>`${businessToday()}::date`;
+	const b = await db
+		.selectNoFrom((eb) => [
+			sql<string>`date_trunc('month', ${today})::date::text`.as('start'),
+			eb.cast<string>(today, 'text').as('end')
+		])
+		.executeTakeFirstOrThrow();
 	return { ...b, label: `${monthOf(b.start)} so far`, spans: span(b.start, b.end) };
 }

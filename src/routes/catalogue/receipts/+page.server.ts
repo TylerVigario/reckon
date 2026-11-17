@@ -1,7 +1,5 @@
-import { desc, eq, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { sql } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -10,19 +8,29 @@ import type { PageServerLoad } from './$types';
  * to with its tax.
  */
 export const load: PageServerLoad = async () => {
-	const payer = alias(t.user, 'payer');
 	const receipts = await db
-		.select({
-			id: t.stockReceipt.id,
-			received_on: t.stockReceipt.receivedOn,
-			supplier: t.stockReceipt.supplier,
-			reference: t.stockReceipt.reference,
-			paid_by: payer.name,
-			items: sql<number>`(select count(*) from ${t.materialLot} l where l.receipt_id = ${t.stockReceipt.id})::int`,
-			total: sql<string>`(${t.stockReceipt.taxPaid} + coalesce((select sum(l.ex_tax_cost) from ${t.materialLot} l where l.receipt_id = ${t.stockReceipt.id}), 0))::text`
-		})
-		.from(t.stockReceipt)
-		.leftJoin(payer, eq(payer.id, t.stockReceipt.paidBy))
-		.orderBy(desc(t.stockReceipt.receivedOn), desc(t.stockReceipt.createdAt));
+		.selectFrom('stock_receipt as sr')
+		.leftJoin('user as payer', 'payer.id', 'sr.paid_by')
+		.select((eb) => [
+			'sr.id',
+			'sr.received_on',
+			'sr.supplier',
+			'sr.reference',
+			'payer.name as paid_by',
+			eb
+				.selectFrom('material_lot as l')
+				.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
+				.whereRef('l.receipt_id', '=', 'sr.id')
+				.$asScalar()
+				.$notNull()
+				.as('items'),
+			sql<string>`(${eb.ref('sr.tax_paid')} + coalesce(${eb
+				.selectFrom('material_lot as l')
+				.select((eb) => eb.fn.sum('l.ex_tax_cost').as('cost'))
+				.whereRef('l.receipt_id', '=', 'sr.id')}, 0))::text`.as('total')
+		])
+		.orderBy('sr.received_on', 'desc')
+		.orderBy('sr.created_at', 'desc')
+		.execute();
 	return { receipts };
 };

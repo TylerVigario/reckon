@@ -1,6 +1,5 @@
-import { and, eq } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
-import { agreement, entity, INTERVALS } from '#lib/server/db/schema/index.ts';
+import type { BillingInterval } from '#lib/server/db/database.ts';
 import { pgError, refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { NEW_AGREEMENT_FIELDS, readNewAgreement } from '#lib/agreement-fields.ts';
 import type { RequestHandler } from './$types';
@@ -22,26 +21,29 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const { values, errors } = readNewAgreement(fields);
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
-	const [client] = await db
-		.select({ id: entity.id })
-		.from(entity)
-		.where(and(eq(entity.id, String(values.entity_id)), eq(entity.active, true)));
+	const client = await db
+		.selectFrom('entity')
+		.select('id')
+		.where('id', '=', String(values.entity_id))
+		.where('active', '=', true)
+		.executeTakeFirst();
 	if (!client) return refuse({ entity_id: 'No such client.' });
 
 	try {
 		const startsOn = String(values.starts_on);
-		const [made] = await asUser(locals.user!.id, (tx) =>
+		const made = await asUser(locals.user!.id, (tx) =>
 			tx
-				.insert(agreement)
+				.insertInto('agreement')
 				.values({
-					entityId: client.id,
-					siteId: values.site_id === null ? null : String(values.site_id),
+					entity_id: client.id,
+					site_id: values.site_id === null ? null : String(values.site_id),
 					price: String(values.price),
-					billingInterval: String(values.billing_interval) as (typeof INTERVALS)[number],
-					startsOn,
-					billingAnchorDay: Number(startsOn.slice(8, 10))
+					billing_interval: String(values.billing_interval) as BillingInterval,
+					starts_on: startsOn,
+					billing_anchor_day: Number(startsOn.slice(8, 10))
 				})
-				.returning({ id: agreement.id })
+				.returning('id')
+				.executeTakeFirstOrThrow()
 		);
 		return Response.json({ id: made.id }, { status: 201 });
 	} catch (e) {

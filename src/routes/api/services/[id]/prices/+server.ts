@@ -1,7 +1,5 @@
 import { businessToday } from '#lib/server/calendar.ts';
-import { and, eq, sql } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
-import { service, servicePrice } from '#lib/server/db/schema/index.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { PRICE_FIELDS, readPrice } from '#lib/service-fields.ts';
@@ -31,27 +29,22 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const { values, errors } = readPrice(fields);
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
-	const [found] = await db
-		.select({ id: service.id })
-		.from(service)
-		.where(eq(service.id, params.id));
+	const found = await db
+		.selectFrom('service')
+		.select('id')
+		.where('id', '=', params.id)
+		.executeTakeFirst();
 	if (!found) return problem('notFound', 404, 'No service with that id.');
 
 	const entityId = values.entity_id === null ? null : String(values.entity_id);
 	const effectiveFrom = String(values.effective_from);
-	const [same] = await db
-		.select({
-			id: servicePrice.id,
-			started: sql<boolean>`${servicePrice.effectiveFrom} < ${businessToday()}::date`
-		})
-		.from(servicePrice)
-		.where(
-			and(
-				eq(servicePrice.serviceId, params.id),
-				sql`${servicePrice.entityId} is not distinct from ${entityId}::uuid`,
-				eq(servicePrice.effectiveFrom, effectiveFrom)
-			)
-		);
+	const same = await db
+		.selectFrom('service_price')
+		.select((eb) => ['id', eb('effective_from', '<', businessToday()).as('started')])
+		.where('service_id', '=', params.id)
+		.where('entity_id', 'is not distinct from', entityId)
+		.where('effective_from', '=', effectiveFrom)
+		.executeTakeFirst();
 	if (same?.started)
 		return refuse({
 			effective_from:
@@ -59,18 +52,25 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		});
 
 	try {
-		const price = { rate: String(values.rate), additionalRate: String(values.additional_rate) };
-		const [row] = await asUser(locals.user!.id, (tx) =>
+		const price = { rate: String(values.rate), additional_rate: String(values.additional_rate) };
+		const row = await asUser(locals.user!.id, (tx) =>
 			same
 				? tx
-						.update(servicePrice)
+						.updateTable('service_price')
 						.set(price)
-						.where(eq(servicePrice.id, same.id))
-						.returning({ id: servicePrice.id })
+						.where('id', '=', same.id)
+						.returning('id')
+						.executeTakeFirstOrThrow()
 				: tx
-						.insert(servicePrice)
-						.values({ serviceId: params.id, entityId, effectiveFrom, ...price })
-						.returning({ id: servicePrice.id })
+						.insertInto('service_price')
+						.values({
+							service_id: params.id,
+							entity_id: entityId,
+							effective_from: effectiveFrom,
+							...price
+						})
+						.returning('id')
+						.executeTakeFirstOrThrow()
 		);
 		return Response.json({ id: row.id, replaced: Boolean(same) }, { status: same ? 200 : 201 });
 	} catch (e) {

@@ -1,6 +1,5 @@
-import { eq, sql } from 'drizzle-orm';
+import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { findClient } from '#lib/server/find.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { rateIsStale } from '#lib/server/stale.ts';
@@ -20,59 +19,62 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ params }) => {
 	const found = await findClient(params.id);
 
-	const [client] = await db
-		.select({ id: t.entity.id, slug: t.entity.slug, name: t.entity.name })
-		.from(t.entity)
-		.where(eq(t.entity.id, found.id));
+	const client = await db
+		.selectFrom('entity')
+		.select(['id', 'slug', 'name'])
+		.where('id', '=', found.id)
+		.executeTakeFirstOrThrow();
 
-	const si = t.site;
-	const sc = t.siteContact;
-	const ec = t.entityContact;
-	const c = t.contact;
-
-	const { rows: sites } = await db.execute<{
-		id: string;
-		slug: string;
-		label: string;
-		address: string | null;
-		rate_pct: string;
-		state_rate_pct: string;
-		district_rate_pct: string;
-		jurisdiction: string;
-		tax_area_code: string;
-		stale: boolean;
-		miles: string | null;
-		minutes: number | null;
-		verified_on: string | null;
-		people: { name: string; is_primary: boolean }[];
-		fallback: string | null;
-		active: boolean;
-	}>(sql`
-		select ${si.id} as id, ${si.slug} as slug, ${si.display} as label,
-		       nullif(concat_ws(', ', ${si.street}, ${si.city}, ${si.region}, ${si.postcode}), '') as address,
-		       ${si.taxRatePct}::text as rate_pct,
-		       ${si.stateRatePct}::text as state_rate_pct,
-		       ${si.districtRatePct}::text as district_rate_pct,
-		       ${si.taxJurisdiction} as jurisdiction,
-		       ${si.taxAreaCode} as tax_area_code,
-		       ${rateIsStale(si.areaVerifiedOn, businessToday())} as stale,
-		       ${si.roundTripMiles}::text as miles,
-		       ${si.driveMinutes} as minutes,
-		       ${si.areaVerifiedOn}::text as verified_on,
-		       coalesce(people.list, '[]'::jsonb) as people,
-		       fallback.name as fallback,
-		       ${si.active} as active
-		  from ${si}
-		  left join lateral (
-		         select jsonb_agg(jsonb_build_object('name', ${c.name}, 'is_primary', ${sc.isPrimary})
-		                          order by ${sc.isPrimary} desc, ${c.name}) as list
-		           from ${sc} join ${c} on ${c.id} = ${sc.contactId}
-		          where ${sc.siteId} = ${si.id}) people on true
-		  left join lateral (
-		         select ${c.name} as name from ${ec} join ${c} on ${c.id} = ${ec.contactId}
-		          where ${ec.entityId} = ${si.entityId} and ${ec.isPrimary} limit 1) fallback on true
-		 where ${si.entityId} = ${found.id}
-		 order by ${si.active} desc, ${si.display}`);
+	const sites = await db
+		.selectFrom('site as si')
+		.select((eb) => [
+			'si.id',
+			'si.slug',
+			'si.display as label',
+			eb
+				.fn<string | null>('nullif', [
+					eb.fn<string>('concat_ws', [
+						eb.val(', '),
+						'si.street',
+						'si.city',
+						'si.region',
+						'si.postcode'
+					]),
+					eb.val('')
+				])
+				.as('address'),
+			eb.cast<string>('si.tax_rate_pct', 'text').as('rate_pct'),
+			eb.cast<string>('si.state_rate_pct', 'text').as('state_rate_pct'),
+			eb.cast<string>('si.district_rate_pct', 'text').as('district_rate_pct'),
+			'si.tax_jurisdiction as jurisdiction',
+			'si.tax_area_code',
+			rateIsStale(eb.ref('si.area_verified_on'), businessToday()).as('stale'),
+			eb.cast<string | null>('si.round_trip_miles', 'text').as('miles'),
+			'si.drive_minutes as minutes',
+			eb.cast<string>('si.area_verified_on', 'text').as('verified_on'),
+			jsonArrayFrom(
+				eb
+					.selectFrom('site_contact as sc')
+					.innerJoin('contact as c', 'c.id', 'sc.contact_id')
+					.select(['c.name', 'sc.is_primary'])
+					.whereRef('sc.site_id', '=', 'si.id')
+					.orderBy('sc.is_primary', 'desc')
+					.orderBy('c.name')
+			).as('people'),
+			eb
+				.selectFrom('entity_contact as ec')
+				.innerJoin('contact as c', 'c.id', 'ec.contact_id')
+				.select('c.name')
+				.whereRef('ec.entity_id', '=', 'si.entity_id')
+				.where('ec.is_primary', '=', true)
+				.limit(1)
+				.as('fallback'),
+			'si.active'
+		])
+		.where('si.entity_id', '=', found.id)
+		.orderBy('si.active', 'desc')
+		.orderBy('si.display')
+		.execute();
 
 	return { client, sites };
 };

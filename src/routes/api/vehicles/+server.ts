@@ -1,5 +1,4 @@
 import { asUser } from '#lib/server/db/index.ts';
-import { vehicle } from '#lib/server/db/schema/index.ts';
 import { pgError, refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { parseAll } from '#lib/field-rules.ts';
 import { VEHICLE_FIELDS } from '#lib/vehicle-fields.ts';
@@ -14,14 +13,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const { values, errors } = parseAll(VEHICLE_FIELDS, fields);
 	if (Object.keys(errors).length > 0) return refuse(errors);
 	try {
-		const [made] = await asUser(locals.user!.id, (tx) =>
+		const made = await asUser(locals.user!.id, (tx) =>
 			tx
-				.insert(vehicle)
+				.insertInto('vehicle')
 				.values({
 					name: String(values.name),
-					ownerId: values.owner_id === null ? null : String(values.owner_id)
+					owner_id: values.owner_id === null ? null : String(values.owner_id)
 				})
-				.returning({ id: vehicle.id })
+				.returning('id')
+				.executeTakeFirstOrThrow()
 		);
 		return Response.json({ id: made.id }, { status: 201 });
 	} catch (e) {

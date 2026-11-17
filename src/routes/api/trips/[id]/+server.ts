@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
 import { asUser, db } from '#lib/server/db/index.ts';
-import * as t from '#lib/server/db/schema/index.ts';
 import { refuse, stillReferenced } from '#lib/server/field-errors.ts';
 import { readTrip } from '#lib/server/trip-input.ts';
 import {
@@ -39,18 +37,19 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	try {
 		const outcome = await asUser(locals.user!.id, async (tx) => {
 			// Held while it changes, so a line drawn from it cannot slip in between.
-			const [held] = await tx
-				.select({ id: t.trip.id, drivenBy: t.trip.drivenBy, createdBy: t.trip.createdBy })
-				.from(t.trip)
-				.where(eq(t.trip.id, params.id))
-				.for('update');
+			const held = await tx
+				.selectFrom('trip')
+				.select(['id', 'driven_by as drivenBy', 'created_by as createdBy'])
+				.where('id', '=', params.id)
+				.forUpdate()
+				.executeTakeFirst();
 			if (!held || (field && held.drivenBy !== me)) return 'gone' as const;
 			if (field && held.createdBy !== me) return 'notYours' as const;
 			const done = await settled(tx, params.id);
 			if (done) return done;
-			await tx.update(t.trip).set(tripColumns(trip)).where(eq(t.trip.id, params.id));
-			await tx.delete(t.tripLeg).where(eq(t.tripLeg.tripId, params.id));
-			await tx.delete(t.tripStop).where(eq(t.tripStop.tripId, params.id));
+			await tx.updateTable('trip').set(tripColumns(trip)).where('id', '=', params.id).execute();
+			await tx.deleteFrom('trip_leg').where('trip_id', '=', params.id).execute();
+			await tx.deleteFrom('trip_stop').where('trip_id', '=', params.id).execute();
 			await writeStops(tx, params.id, trip, worked.legs, worked.serviceId);
 			return 'changed' as const;
 		});
@@ -74,10 +73,11 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (!UUID.test(params.id)) return problem('notFound', 404, 'No trip with that id.');
 	if (fieldOnly(locals)) {
-		const [had] = await db
-			.select({ drivenBy: t.trip.drivenBy, createdBy: t.trip.createdBy })
-			.from(t.trip)
-			.where(eq(t.trip.id, params.id));
+		const had = await db
+			.selectFrom('trip')
+			.select(['driven_by as drivenBy', 'created_by as createdBy'])
+			.where('id', '=', params.id)
+			.executeTakeFirst();
 		if (!had || had.drivenBy !== locals.user!.id)
 			return problem('notFound', 404, 'No trip with that id.');
 		if (had.createdBy !== locals.user!.id)
@@ -87,7 +87,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (done) return problem('conflict', 409, SETTLED[done]);
 	try {
 		const gone = await asUser(locals.user!.id, (tx) =>
-			tx.delete(t.trip).where(eq(t.trip.id, params.id)).returning({ id: t.trip.id })
+			tx.deleteFrom('trip').where('id', '=', params.id).returning('id').execute()
 		);
 		if (gone.length === 0) return problem('notFound', 404, 'No trip with that id.');
 	} catch (e) {
