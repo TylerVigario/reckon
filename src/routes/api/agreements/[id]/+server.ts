@@ -1,6 +1,7 @@
 import type { Updateable } from 'kysely';
 import { asUser, db } from '#lib/server/db/index.ts';
 import type { Agreement } from '#lib/server/db/database.ts';
+import { isTie, placeOf, tiedWith } from '#lib/server/agreement-tie.ts';
 import { refuse, refuseIfTheDatabaseSaidSo, stillReferenced } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { parseAgreementField } from '#lib/agreement-fields.ts';
@@ -73,6 +74,16 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 				.execute()
 		);
 	} catch (e) {
+		// Moved onto the day another of the client's agreements, for the same
+		// place, starts, while both cover a service: named, as covering one is.
+		if (isTie(e)) {
+			const tie = await tiedWith(params.id, starts);
+			return refuse({
+				starts_on: tie
+					? `This client’s other agreement for ${placeOf(tie)} starts that day and covers ${tie.service} too. Start this one on another day, or stop covering ${tie.service} on one of them.`
+					: 'Another of this client’s agreements, for the same place, starts that day and covers a service this one does.'
+			});
+		}
 		const refused = refuseIfTheDatabaseSaidSo(e, names, 'agreement');
 		if (refused) return refused;
 		throw e;

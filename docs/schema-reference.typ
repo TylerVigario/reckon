@@ -107,6 +107,7 @@
   [Changing what a sent invoice drew from stock], [it is settled with its lines],
   [A payout whose net ignores the fee], [`net = gross - fees`],
   [Two prices for one service, client and day], [one price per day],
+  [Two agreements covering a service for one client and place from the same day], [nothing would choose which covers an hour],
 )
 
 #v(12pt)

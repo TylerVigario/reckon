@@ -13,7 +13,9 @@
 // scripts/migrate.mjs's carry them: nothing is looked for on disk at runtime.
 import type { Migration } from 'kysely/migration';
 import * as theSchemaAsItStands from './20261117T1405Z_the_schema_as_it_stands/index.ts';
+import * as agreementsNeverTie from './20261117T2356Z_agreements_never_tie.ts';
 
 export const MIGRATIONS: Readonly<Record<string, Migration>> = {
-	'20261117T1405Z_the_schema_as_it_stands': theSchemaAsItStands
+	'20261117T1405Z_the_schema_as_it_stands': theSchemaAsItStands,
+	'20261117T2356Z_agreements_never_tie': agreementsNeverTie
 };

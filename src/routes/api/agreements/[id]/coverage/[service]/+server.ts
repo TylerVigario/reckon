@@ -1,5 +1,6 @@
 import { asUser, db } from '#lib/server/db/index.ts';
 import type { Allotment, Overage } from '#lib/server/db/database.ts';
+import { isTie, placeOf, tiedWith } from '#lib/server/agreement-tie.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { COVERAGE_FIELDS, readCoverage } from '#lib/agreement-fields.ts';
@@ -25,7 +26,11 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
 	const [isAgreement, isService] = await Promise.all([
-		db.selectFrom('agreement').select('id').where('id', '=', params.id).executeTakeFirst(),
+		db
+			.selectFrom('agreement')
+			.select(['id', 'starts_on'])
+			.where('id', '=', params.id)
+			.executeTakeFirst(),
 		db.selectFrom('service').select('id').where('id', '=', params.service).executeTakeFirst()
 	]);
 	if (!isAgreement || !isService) return problem('notFound', 404, 'No such agreement or service.');
@@ -50,6 +55,16 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 				.execute()
 		);
 	} catch (e) {
+		// Another of the client's agreements, for the same place and from the
+		// same day, covers it: named, so it can be found and one of them put right.
+		if (isTie(e)) {
+			const tie = await tiedWith(params.id, isAgreement.starts_on, params.service);
+			return refuse({
+				service: tie
+					? `${tie.service} is covered already, from the same day, by this client’s other agreement for ${placeOf(tie)}. Cover it on one of them, or start this one on another day.`
+					: 'Another of this client’s agreements, for the same place and from the same day, covers it already.'
+			});
+		}
 		const refused = refuseIfTheDatabaseSaidSo(e, Object.keys(COVERAGE_FIELDS), 'agreement_service');
 		if (refused) return refused;
 		throw e;

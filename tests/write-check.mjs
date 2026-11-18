@@ -1140,6 +1140,44 @@ if (aid) {
 			{ fields: { allotment: 'capped', included_hours: '6', overage: 'no_charge' } },
 			200
 		);
+		// Another for the whole client, from the same day, would leave nothing to
+		// choose between them for an hour of it, so it cannot cover it too.
+		const twin = (await call('POST', '/api/agreements', { fields: terms })).body?.id;
+		if (twin) {
+			const other = `/api/agreements/${twin}`;
+			await check(
+				'a second agreement for the whole client, from the same day, cannot cover it too, and says which does',
+				'PUT',
+				`${other}/coverage/${service}`,
+				{ fields: { allotment: 'unlimited' } },
+				(r) =>
+					r.status === 400 &&
+					/other agreement for the whole client/.test(r.body?.errors?.service ?? '')
+			);
+			await check(
+				'from the next day it can',
+				'PATCH',
+				other,
+				{ fields: { starts_on: dayFrom(401) } },
+				200
+			);
+			await check(
+				'and covers it',
+				'PUT',
+				`${other}/coverage/${service}`,
+				{ fields: { allotment: 'unlimited' } },
+				200
+			);
+			await check(
+				'but its start cannot move onto the day the other starts',
+				'PATCH',
+				other,
+				{ fields: { starts_on: yearOut } },
+				(r) =>
+					r.status === 400 && /starts that day and covers/.test(r.body?.errors?.starts_on ?? '')
+			);
+			await check('the second is removed', 'DELETE', other, undefined, 200);
+		}
 		await check('and no longer covered', 'DELETE', cover, undefined, 200);
 		await check('which cannot happen twice', 'DELETE', cover, undefined, 404);
 	}
