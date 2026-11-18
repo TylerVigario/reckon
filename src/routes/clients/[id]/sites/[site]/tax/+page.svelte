@@ -106,10 +106,10 @@
 		<span class="kv-l">Last asked</span>
 		<span class="kv-v">
 			<span>{dated(s.verified_on)}</span>
+			<span class="kv-s">Its area’s rate confirmed {dated(s.confirmed_on)}</span>
 			{#if s.stale}
 				<span class="im warn"
-					><Octicon name="alert" />Over {data.staleAfter} days ago. A district can start or end in that
-					time.</span
+					><Octicon name="alert" />Not since this quarter began, when a district can start or end.</span
 				>
 			{/if}
 		</span>

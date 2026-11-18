@@ -3,7 +3,7 @@ import { db } from '#lib/server/db/index.ts';
 import { businessToday, personalDay, businessDay, personalToday } from '#lib/server/calendar.ts';
 import { sum } from '#lib/decimal.ts';
 import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
-import { rateIsStale } from '#lib/server/stale.ts';
+import { lastConfirmed, rateIsStale } from '#lib/server/stale.ts';
 import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { count, dated } from '#lib/format.ts';
@@ -236,13 +236,21 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const staleRates = db
 		.selectFrom('site as s')
 		.innerJoin('entity as e', 'e.id', 's.entity_id')
+		.innerJoin('tax_area as ta', 'ta.id', 's.tax_area_id')
 		.select((eb) => [
 			sql.lit<'invoice' | 'district'>('district').as('kind'),
 			'e.name as client',
 			's.display as ref',
-			eb.cast<string>('s.area_verified_on', 'text').as('dated_on'),
+			eb
+				.cast<string>(
+					lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on')),
+					'text'
+				)
+				.as('dated_on'),
 			sql.lit<string | null>(null).as('amount'),
-			sql<number>`${today}::date - ${eb.ref('s.area_verified_on')}`.as('days'),
+			sql<number>`${today}::date - ${lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on'))}`.as(
+				'days'
+			),
 			sql<string>`${eb.ref('e.name')} || ' · ' || ${eb.ref('s.display')} || ' · rate is old'`.as(
 				'sort'
 			),
@@ -251,7 +259,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			sql.lit<string | null>(null).as('invoice_id')
 		])
 		.where('s.active', '=', true)
-		.where((eb) => rateIsStale(eb.ref('s.area_verified_on'), today))
+		.where((eb) =>
+			rateIsStale(lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on')), today)
+		)
 		.$narrowType<{ ref: NotNull }>();
 	const found = await db
 		.selectFrom(overdueInvoices.unionAll(staleRates).as('d'))
@@ -278,10 +288,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 					kind: d.kind,
 					title: `${d.client} · ${d.ref} · rate is old`,
 					detail:
-						`CDTFA last priced this address on ${dated(d.dated_on)}. A district can be ` +
-						'added or ended in between, and every invoice since would be wrong.',
+						`CDTFA last confirmed this rate on ${dated(d.dated_on)}. A quarter has begun ` +
+						'since, when a district can start or end, and every invoice since could be wrong.',
 					amount: d.amount,
-					chip: `${count(d.days, 'day')} since CDTFA was asked`,
+					chip: `${count(d.days, 'day')} since CDTFA confirmed it`,
 					site: { id: d.client_slug!, site: d.site_slug! },
 					invoice: null
 				}

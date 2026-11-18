@@ -79,11 +79,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	let priced;
 	try {
-		priced = await priceAddress({
-			street: String(row.street),
-			city: String(row.city),
-			postcode: String(row.postcode)
-		});
+		priced = await priceAddress(
+			{ street: String(row.street), city: String(row.city), postcode: String(row.postcode) },
+			businessToday()
+		);
 	} catch (e) {
 		// Against the postcode, because that is the field most often wrong and
 		// the one the reader can act on. The message is CDTFA's own.

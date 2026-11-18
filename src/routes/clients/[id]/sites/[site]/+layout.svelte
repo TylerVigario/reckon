@@ -52,7 +52,7 @@
 	<RecordHead label="{s.label}’s record" {tabs}>
 		{#snippet state()}
 			{#if !s.active}<span class="lab">Closed</span>{/if}
-			{#if s.stale}<span class="lab warn">Rate over {data.staleAfter} days old</span>{/if}
+			{#if s.stale}<span class="lab warn">Rate not confirmed this quarter</span>{/if}
 			<span class="muted">
 				{pct(s.rate_pct)} tax ·
 				{#if entries}

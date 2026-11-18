@@ -3,7 +3,7 @@ import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import type { DB, TaxLevel } from './db/database.ts';
 import type { TaxPiece } from './db/tax-pieces.ts';
 import { Decimal } from '../decimal.ts';
-import type { Priced } from './cdtfa.ts';
+import type { Priced, PublishedRate } from './cdtfa.ts';
 
 /**
  * A RATE BELONGS TO A PLACE. A tax area is one place with one combination of
@@ -90,58 +90,33 @@ export async function placeSite(
 		.execute();
 }
 
-/**
- * Writes down CDTFA's answer about an address (#lib/server/cdtfa priceAddress)
- * as its area's, and gives back the area. The area is found by its code, or made; its pieces are the state's
- * share and the districts' together, as CDTFA-105 lists districts and makes no
- * other kind. A set that differs from the one in force today is added, dated
- * today, and one already added today is replaced: CDTFA said something new
- * since. The same answer again only confirms it.
- */
-export async function recordCdtfaArea(
-	db: Kysely<DB>,
-	answer: Pick<Priced, 'tac' | 'jurisdiction' | 'state' | 'district'>,
-	day: string
-): Promise<string> {
-	const { id } = await db
-		.insertInto('tax_area')
-		.values({
-			state: 'CA',
-			code: answer.tac,
-			name: answer.jurisdiction,
-			source: 'cdtfa',
-			confirmed_on: day
-		})
-		.onConflict((oc) =>
-			oc
-				.columns(['state', 'code'])
-				.where('code', 'is not', null)
-				.doUpdateSet((eb) => ({
-					name: eb.ref('excluded.name'),
-					confirmed_on: eb.ref('excluded.confirmed_on')
-				}))
-		)
-		.returning('id')
-		.executeTakeFirstOrThrow();
+/** One piece of a set, as it is written. */
+type Piece = { level: TaxLevel; jurisdiction: string; code: string | null; rate_pct: string };
 
-	const pieces = [
-		{ level: 'state' as const, jurisdiction: 'CALIFORNIA', code: null, rate_pct: answer.state },
-		...(Decimal.from(answer.district).isZero()
-			? []
-			: [
-					{
-						level: 'local' as const,
-						jurisdiction: answer.jurisdiction,
-						code: answer.tac,
-						rate_pct: answer.district
-					}
-				])
-	];
+/**
+ * Makes `pieces` the area's rate on every day from `from` until `until`: a set
+ * that took effect in between is not what the authority says was in force
+ * then, and goes, and the set in force on `from` is made `pieces` unless it
+ * already is. Says whether anything was written.
+ */
+async function confirmSet(
+	db: Kysely<DB>,
+	area: string,
+	pieces: Piece[],
+	from: string,
+	until: Expression<string>
+): Promise<boolean> {
+	const between = await db
+		.deleteFrom('tax_piece')
+		.where('area_id', '=', area)
+		.where('effective_from', '>', from)
+		.where('effective_from', '<', until)
+		.executeTakeFirst();
 	const now = await db
 		.selectFrom('tax_piece')
 		.select(['level', 'jurisdiction', 'code', 'rate_pct'])
-		.where('area_id', '=', id)
-		.where('effective_from', '=', setInForce(sql.val(id), day))
+		.where('area_id', '=', area)
+		.where('effective_from', '=', setInForce(sql.val(area), from))
 		.execute();
 	const same =
 		now.length === pieces.length &&
@@ -154,16 +129,111 @@ export async function recordCdtfaArea(
 					Decimal.from(n.rate_pct).eq(p.rate_pct)
 			)
 		);
-	if (same) return id;
-
+	if (same) return between.numDeletedRows > 0n;
 	await db
 		.deleteFrom('tax_piece')
-		.where('area_id', '=', id)
-		.where('effective_from', '=', day)
+		.where('area_id', '=', area)
+		.where('effective_from', '=', from)
 		.execute();
 	await db
 		.insertInto('tax_piece')
-		.values(pieces.map((p) => ({ ...p, area_id: id, effective_from: day })))
+		.values(pieces.map((p) => ({ ...p, area_id: area, effective_from: from })))
 		.execute();
+	return true;
+}
+
+/** A set the same as the one before it changed nothing, and goes. */
+async function dropRepeats(db: Kysely<DB>, area: string) {
+	await sql`
+		with sets as (
+		  select effective_from,
+		         string_agg(level || ' ' || jurisdiction || ' ' || coalesce(code, '') || ' ' ||
+		                    rate_pct::text, ', ' order by level, jurisdiction) as said
+		    from tax_piece where area_id = ${area} group by effective_from
+		), repeated as (
+		  select effective_from from (
+		    select s.*, lag(said) over (order by effective_from) as before from sets s
+		  ) x where x.said = x.before
+		)
+		delete from tax_piece p using repeated r
+		 where p.area_id = ${area} and p.effective_from = r.effective_from`.execute(db);
+}
+
+/**
+ * Writes down every rate CDTFA publishes for an area, and the area as
+ * confirmed today. Each holds from the day it took effect to the end of the
+ * quarter its record describes -- the coming quarter's among them, so it comes
+ * in on its day -- and CDTFA's word for those days replaces whatever was kept
+ * for them. Its pieces are the state's share and the districts' together, as
+ * CDTFA-105 lists districts and makes no other kind. Says whether any rate
+ * changed.
+ */
+export async function confirmCdtfaArea(
+	db: Kysely<DB>,
+	area: { id: string; name: string; code: string },
+	rates: readonly PublishedRate[],
+	today: string
+): Promise<boolean> {
+	let changed = false;
+	for (const r of rates) {
+		const wrote = await confirmSet(
+			db,
+			area.id,
+			[
+				{ level: 'state', jurisdiction: 'CALIFORNIA', code: null, rate_pct: r.state },
+				...(Decimal.from(r.district).isZero()
+					? []
+					: [
+							{
+								level: 'local' as const,
+								jurisdiction: area.name,
+								code: area.code,
+								rate_pct: r.district
+							}
+						])
+			],
+			r.start,
+			sql<string>`(${r.quarter}::date + interval '3 months')::date`
+		);
+		changed = changed || wrote;
+	}
+	await dropRepeats(db, area.id);
+	await db.updateTable('tax_area').set({ confirmed_on: today }).where('id', '=', area.id).execute();
+	return changed;
+}
+
+/**
+ * Writes down CDTFA's answer about an address (#lib/server/cdtfa priceAddress)
+ * as its area's, and gives back the area: found by its code, or made, and its
+ * rates confirmed (confirmCdtfaArea).
+ */
+export async function recordCdtfaArea(
+	db: Kysely<DB>,
+	answer: Pick<Priced, 'tac' | 'jurisdiction' | 'rates'>,
+	today: string
+): Promise<string> {
+	const { id } = await db
+		.insertInto('tax_area')
+		.values({
+			state: 'CA',
+			code: answer.tac,
+			name: answer.jurisdiction,
+			source: 'cdtfa',
+			confirmed_on: today
+		})
+		.onConflict((oc) =>
+			oc
+				.columns(['state', 'code'])
+				.where('code', 'is not', null)
+				.doUpdateSet((eb) => ({ name: eb.ref('excluded.name') }))
+		)
+		.returning('id')
+		.executeTakeFirstOrThrow();
+	await confirmCdtfaArea(
+		db,
+		{ id, name: answer.jurisdiction, code: answer.tac },
+		answer.rates,
+		today
+	);
 	return id;
 }

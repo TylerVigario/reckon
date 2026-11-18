@@ -15,7 +15,7 @@ import {
 } from './valuation/load.ts';
 import { billedAmount, jobRate, priceOn } from './valuation/pricing.ts';
 import { ruleOn, timePay } from './valuation/pay.ts';
-import { rateIsStale } from './stale.ts';
+import { lastConfirmed, rateIsStale } from './stale.ts';
 import type { TaxLevel } from './db/database.ts';
 import type { TaxPiece } from './db/tax-pieces.ts';
 import { inLevelOrder } from './valuation/tax.ts';
@@ -141,18 +141,30 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 	const stale = await db
 		.selectFrom('site')
 		.innerJoin('entity', 'entity.id', 'site.entity_id')
-		.select((eb) => [
-			'site.display as site',
-			'entity.name as client',
-			'entity.slug as client_slug',
-			'site.slug as site_slug',
-			eb.cast<string>('site.area_verified_on', 'text').as('priced_on'),
-			sql<number>`${today}::date - ${eb.ref('site.area_verified_on')}`.as('days')
-		])
+		.innerJoin('tax_area', 'tax_area.id', 'site.tax_area_id')
+		.select((eb) => {
+			const confirmed = lastConfirmed(
+				eb.ref('site.area_verified_on'),
+				eb.ref('tax_area.confirmed_on')
+			);
+			return [
+				'site.display as site',
+				'entity.name as client',
+				'entity.slug as client_slug',
+				'site.slug as site_slug',
+				eb.cast<string>(confirmed, 'text').as('priced_on'),
+				sql<number>`${today}::date - ${confirmed}`.as('days')
+			];
+		})
 		.where('site.active', '=', true)
-		.where((eb) => rateIsStale(eb.ref('site.area_verified_on'), today))
+		.where((eb) =>
+			rateIsStale(
+				lastConfirmed(eb.ref('site.area_verified_on'), eb.ref('tax_area.confirmed_on')),
+				today
+			)
+		)
 		.$narrowType<{ site: NotNull }>()
-		.orderBy('site.area_verified_on')
+		.orderBy('priced_on')
 		.orderBy('entity.name')
 		.orderBy('site.display')
 		.execute();
@@ -185,7 +197,7 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 		unchecked: stale.map(({ site, client, priced_on, days, client_slug, site_slug }) => ({
 			site,
 			client,
-			why: `Last priced ${dated(priced_on)}, ${daysAgo(days)}`,
+			why: `Last confirmed ${dated(priced_on)}, ${daysAgo(days)}`,
 			at: { id: client_slug, site: site_slug }
 		})),
 		overrides

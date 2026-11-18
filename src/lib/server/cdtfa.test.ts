@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NoAnswer, priceAddress } from './cdtfa.ts';
+import { inForce, NoAnswer, priceAddress, type PublishedRate } from './cdtfa.ts';
 
 /**
  * The contract with CDTFA, tested against a fetcher that answers the way CDTFA
@@ -29,23 +29,38 @@ const fakeCdtfa = (rateApi: unknown, rateLayer: unknown, ok = true): typeof fetc
 			json: () => Promise.resolve(url.includes('arcgis') ? rateLayer : rateApi)
 		})) as unknown as typeof fetch;
 
-const layer = (state: number, county: number, city: number) => ({
-	features: [
-		{
-			attributes: {
-				RATE: state + county + city,
-				StateRate: state,
-				CountyRate: county,
-				CityRate: city
-			}
-		}
-	]
+/** The business's day the tests are asked on: the quarter that began 1 October 2026. */
+const TODAY = '2026-11-18';
+
+/** A record of the rate layer: its rates, the day it took effect, and its quarter. */
+const record = (
+	state: number,
+	county: number,
+	city: number,
+	start = '2014-10-01',
+	quarter = '2026-10-01'
+) => ({
+	attributes: {
+		RATE: state + county + city,
+		StateRate: state,
+		CountyRate: county,
+		CityRate: city,
+		START_DATE: Date.parse(`${start}T00:00:00Z`),
+		DateStamp: Date.parse(`${quarter}T00:00:00Z`)
+	}
 });
+const layer = (state: number, county: number, city: number) => ({
+	features: [record(state, county, city)]
+});
+
+/** The rate in force today, of those an answer published. */
+const now = (answer: { rates: PublishedRate[] }) => inForce(answer.rates, TODAY);
 
 describe('priceAddress', () => {
 	it('splits a rate into the state share and the districts', async () => {
 		const answer = await priceAddress(
 			HERE,
+			TODAY,
 			fakeCdtfa(
 				{
 					taxRateInfo: [{ rate: 0.0775, jurisdiction: 'SACRAMENTO COUNTY', tac: 'T01' }],
@@ -54,13 +69,8 @@ describe('priceAddress', () => {
 				layer(0.06, 0.0175, 0)
 			)
 		);
-		expect(answer).toMatchObject({
-			rate: '7.7500',
-			state: '6.0000',
-			district: '1.7500',
-			jurisdiction: 'SACRAMENTO COUNTY',
-			tac: 'T01'
-		});
+		expect(answer).toMatchObject({ rate: '7.7500', jurisdiction: 'SACRAMENTO COUNTY', tac: 'T01' });
+		expect(now(answer)).toMatchObject({ state: '6.0000', district: '1.7500', total: '7.7500' });
 	});
 
 	// Percentages stay strings the whole way: a rate that round-trips through a
@@ -68,6 +78,7 @@ describe('priceAddress', () => {
 	it('answers in strings, never numbers', async () => {
 		const answer = await priceAddress(
 			HERE,
+			TODAY,
 			fakeCdtfa(
 				{
 					taxRateInfo: [{ rate: 0.0725, jurisdiction: 'TUOLUMNE COUNTY', tac: 'T02' }],
@@ -76,7 +87,7 @@ describe('priceAddress', () => {
 				layer(0.06, 0.0125, 0)
 			)
 		);
-		for (const part of [answer.rate, answer.state, answer.district])
+		for (const part of [answer.rate, now(answer).state, now(answer).district])
 			expect(typeof part).toBe('string');
 	});
 
@@ -85,6 +96,7 @@ describe('priceAddress', () => {
 	it('adds the county and the city into one district figure', async () => {
 		const answer = await priceAddress(
 			HERE,
+			TODAY,
 			fakeCdtfa(
 				{
 					taxRateInfo: [{ rate: 0.0875, jurisdiction: 'SONORA', tac: 'T03' }],
@@ -93,7 +105,7 @@ describe('priceAddress', () => {
 				layer(0.06, 0.0175, 0.01)
 			)
 		);
-		expect(answer.district).toBe('2.7500');
+		expect(now(answer).district).toBe('2.7500');
 	});
 
 	// THE ONE THAT MATTERS. Asked about "zzzz, zzzz 00000" the API does not
@@ -104,6 +116,7 @@ describe('priceAddress', () => {
 		await expect(
 			priceAddress(
 				{ street: 'zzzz', city: 'zzzz', postcode: '00000' },
+				TODAY,
 				fakeCdtfa(
 					{
 						taxRateInfo: [{ rate: 0.1, jurisdiction: 'SAN JOSE', tac: 'T04' }],
@@ -125,6 +138,7 @@ describe('priceAddress', () => {
 		await expect(
 			priceAddress(
 				HERE,
+				TODAY,
 				fakeCdtfa(
 					{
 						taxRateInfo: [{ rate: 0.1, jurisdiction: 'SAN JOSE', tac: 'T05' }],
@@ -163,6 +177,7 @@ describe('priceAddress', () => {
 		await expect(
 			priceAddress(
 				HERE,
+				TODAY,
 				fakeCdtfa(
 					{
 						taxRateInfo: [
@@ -180,6 +195,7 @@ describe('priceAddress', () => {
 		await expect(
 			priceAddress(
 				HERE,
+				TODAY,
 				fakeCdtfa(
 					{
 						taxRateInfo: [{ rate: 0.0775, jurisdiction: 'SACRAMENTO COUNTY', tac: 'T06' }],
@@ -201,6 +217,7 @@ describe('priceAddress', () => {
 		await expect(
 			priceAddress(
 				HERE,
+				TODAY,
 				fakeCdtfa(
 					{
 						taxRateInfo: [
@@ -221,6 +238,7 @@ describe('priceAddress', () => {
 		await expect(
 			priceAddress(
 				HERE,
+				TODAY,
 				fakeCdtfa(
 					{
 						taxRateInfo: [{ rate: 0.0775, jurisdiction: 'SACRAMENTO COUNTY', tac: 'T09' }],
@@ -242,19 +260,23 @@ describe('priceAddress', () => {
 		}) as unknown as typeof fetch;
 
 		await expect(
-			priceAddress({ street: '8556 Gibson Ranch Park Rd', city: 'Elverta' }, never)
+			priceAddress({ street: '8556 Gibson Ranch Park Rd', city: 'Elverta' }, TODAY, never)
 		).rejects.toThrow(/postcode/);
 		expect(called).toBe(false);
 	});
 
 	it('says so when CDTFA does not recognise the address at all', async () => {
 		await expect(
-			priceAddress(HERE, fakeCdtfa({ taxRateInfo: [], geocodeInfo: CONFIDENT }, layer(0.06, 0, 0)))
+			priceAddress(
+				HERE,
+				TODAY,
+				fakeCdtfa({ taxRateInfo: [], geocodeInfo: CONFIDENT }, layer(0.06, 0, 0))
+			)
 		).rejects.toThrow(/did not recognise/);
 	});
 
 	it('reports an HTTP failure as a refusal rather than a rate', async () => {
-		await expect(priceAddress(HERE, fakeCdtfa({}, {}, false))).rejects.toThrow(NoAnswer);
+		await expect(priceAddress(HERE, TODAY, fakeCdtfa({}, {}, false))).rejects.toThrow(NoAnswer);
 	});
 });
 
@@ -270,28 +292,62 @@ describe('a tax area asked about again', () => {
 	});
 
 	it("is asked again, so a new quarter's rate is taken without a restart", async () => {
-		await priceAddress(HERE, fakeCdtfa(sacramento(0.0775), layer(0.06, 0.0175, 0)));
-		const after = await priceAddress(HERE, fakeCdtfa(sacramento(0.08), layer(0.06, 0.02, 0)));
-		expect(after).toMatchObject({ rate: '8.0000', district: '2.0000' });
+		await priceAddress(HERE, TODAY, fakeCdtfa(sacramento(0.0775), layer(0.06, 0.0175, 0)));
+		const after = await priceAddress(
+			HERE,
+			TODAY,
+			fakeCdtfa(sacramento(0.08), layer(0.06, 0.02, 0))
+		);
+		expect(after.rate).toBe('8.0000');
+		expect(now(after).district).toBe('2.0000');
 	});
 
 	it('is asked again, so a split that moved under the same total is taken', async () => {
-		await priceAddress(HERE, fakeCdtfa(sacramento(0.0775), layer(0.06, 0.0175, 0)));
-		const after = await priceAddress(HERE, fakeCdtfa(sacramento(0.0775), layer(0.0625, 0.015, 0)));
-		expect(after).toMatchObject({ state: '6.2500', district: '1.5000' });
+		await priceAddress(HERE, TODAY, fakeCdtfa(sacramento(0.0775), layer(0.06, 0.0175, 0)));
+		const after = await priceAddress(
+			HERE,
+			TODAY,
+			fakeCdtfa(sacramento(0.0775), layer(0.0625, 0.015, 0))
+		);
+		expect(now(after)).toMatchObject({ state: '6.2500', district: '1.5000' });
 	});
 
-	it('is asked once within a run that shares what it learns', async () => {
-		let asked = 0;
-		const fake = fakeCdtfa(sacramento(0.0775), layer(0.06, 0.0175, 0));
-		const counting = ((url: string) => {
-			if (url.includes('arcgis')) asked++;
-			return fake(url);
-		}) as typeof fetch;
-		const run = new Map();
-		await priceAddress(HERE, counting, run);
-		await priceAddress(HERE, counting, run);
-		expect(asked).toBe(1);
+	// The layer is published ahead of a quarter: for a while an area has the
+	// quarter in force and the coming one, and today's is the one in force.
+	it("takes the quarter in force when the coming one is out, and keeps the coming one's day", async () => {
+		const both = {
+			features: [
+				record(0.06, 0.0175, 0, '2014-10-01', '2026-10-01'),
+				record(0.06, 0.02, 0, '2027-01-01', '2027-01-01')
+			]
+		};
+		const answer = await priceAddress(HERE, TODAY, fakeCdtfa(sacramento(0.0775), both));
+		expect(now(answer)).toMatchObject({ total: '7.7500', start: '2014-10-01' });
+		expect(answer.rates.map((r) => [r.start, r.total])).toEqual([
+			['2014-10-01', '7.7500'],
+			['2027-01-01', '8.0000']
+		]);
+		expect(inForce(answer.rates, '2027-01-01').total).toBe('8.0000');
+	});
+
+	// The code is written into the layer's query, so only a code is asked about.
+	it('refuses a tax area code that is not one', async () => {
+		const asked = {
+			taxRateInfo: [{ rate: 0.0775, jurisdiction: 'SACRAMENTO COUNTY', tac: "T20' OR '1'='1" }],
+			geocodeInfo: CONFIDENT
+		};
+		await expect(
+			priceAddress(HERE, TODAY, fakeCdtfa(asked, layer(0.06, 0.0175, 0)))
+		).rejects.toThrow('is not a tax area code');
+	});
+
+	it('refuses a date that is not one', async () => {
+		const bad = {
+			features: [{ attributes: { ...record(0.06, 0.0175, 0).attributes, START_DATE: null } }]
+		};
+		await expect(priceAddress(HERE, TODAY, fakeCdtfa(sacramento(0.0775), bad))).rejects.toThrow(
+			NoAnswer
+		);
 	});
 });
 
@@ -312,7 +368,7 @@ describe('when CDTFA does not answer', () => {
 			signals.push(init?.signal);
 			return fake(url);
 		}) as typeof fetch;
-		await priceAddress(HERE, watching);
+		await priceAddress(HERE, TODAY, watching);
 		expect(signals).toHaveLength(2);
 		for (const s of signals) expect(s).toBeInstanceOf(AbortSignal);
 	});
@@ -322,7 +378,7 @@ describe('when CDTFA does not answer', () => {
 			Promise.reject(
 				new DOMException('The operation was aborted due to timeout', 'TimeoutError')
 			)) as unknown as typeof fetch;
-		await expect(priceAddress(HERE, timedOut)).rejects.toThrow(
+		await expect(priceAddress(HERE, TODAY, timedOut)).rejects.toThrow(
 			new NoAnswer('CDTFA did not answer within 10 seconds.')
 		);
 	});
@@ -333,7 +389,7 @@ describe('when CDTFA does not answer', () => {
 			url.includes('arcgis')
 				? Promise.reject(new TypeError('fetch failed'))
 				: fake(url)) as typeof fetch;
-		await expect(priceAddress(HERE, noLayer)).rejects.toThrow(NoAnswer);
+		await expect(priceAddress(HERE, TODAY, noLayer)).rejects.toThrow(NoAnswer);
 	});
 
 	it('refuses when the rate layer answers with something that is not JSON', async () => {
@@ -346,6 +402,6 @@ describe('when CDTFA does not answer', () => {
 						json: () => Promise.reject(new SyntaxError('<html>'))
 					})
 				: fake(url)) as unknown as typeof fetch;
-		await expect(priceAddress(HERE, garbled)).rejects.toThrow(NoAnswer);
+		await expect(priceAddress(HERE, TODAY, garbled)).rejects.toThrow(NoAnswer);
 	});
 });

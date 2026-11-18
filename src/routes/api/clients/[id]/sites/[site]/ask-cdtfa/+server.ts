@@ -9,9 +9,9 @@ import { VERSION } from '#lib/server/concurrent.ts';
 import type { RequestHandler } from './$types';
 
 /**
- * Asks CDTFA again what a site pays (7 November 2026): the site is the rate's
- * one home, and its page asks, as the refresh script does for every rate over
- * STALE_AFTER_DAYS old (#lib/server/stale).
+ * Asks CDTFA again what a site pays (7 November 2026), now rather than when the
+ * server next does on its own (#lib/server/tax-sync): where its address is,
+ * and every rate its area has.
  *
  * The answer is written down whether or not the rate moved, and the site is
  * dated as asked today, on the business's clock: "confirmed today" is what the
@@ -43,7 +43,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 
 	let answer;
 	try {
-		answer = await priceAddress(was);
+		answer = await priceAddress(was, businessToday());
 	} catch (e) {
 		return problem(
 			'upstream',

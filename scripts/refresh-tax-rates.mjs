@@ -1,177 +1,51 @@
 #!/usr/bin/env node
 /**
- * Ask CDTFA what each site pays, and write down the answer.
- *
- * Every rate in the system is CDTFA's answer for an address -- this script
- * re-asks for every site, and creating or moving a site asks for that one, as
- * does Ask CDTFA again on its page.
- * Nothing can author a rate by hand, which is the point: a locally held rate
- * goes stale without telling anybody, and is then charged at addresses it was
- * never true for.
+ * Keep every tax rate in sync now, rather than when the server next does.
  *
  *   node scripts/refresh-tax-rates.mjs [--all] [--dry-run]
  *
- * Two questions, because CDTFA answers them in two places. The rate API turns
- * an address into a rate and a tax area code; the published rate layer turns
- * that code into the state, county and city shares that make the total up. The
- * second is what lets a ledger post tax to the right obligation.
+ * The server does this on its own, as it starts and every hour after
+ * (#lib/server/tax-sync): each tax area is asked about once a day, by its
+ * code, and each site's address once a quarter. This runs one pass of the same
+ * job: the areas not confirmed today and the sites not placed since this
+ * quarter began. --all asks about every one; --dry-run says how many are due
+ * and asks nothing.
  *
- * By default it asks about sites whose rate is stale -- last checked over
- * STALE_AFTER_DAYS ago, the same rule the screens use. --all re-asks about
- * everything.
- *
- * It imports the app's own CDTFA client and decimals, which are TypeScript.
- * Node strips the types itself, and every import names its file, so they run
- * as they are.
- *
- * Scheduling belongs to the host, not here. Run it daily; the API is free and
- * needs no key. It makes one rate request per site and one rate-layer request
- * per tax area code.
+ * It imports the app's own modules, which are TypeScript. Node strips the
+ * types itself, and every import names its file, so they run as they are.
  */
 // First, so .env is read before anything reads what it sets.
 import { database } from './env.mjs';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
-import { priceAddress, NoAnswer } from '../src/lib/server/cdtfa.ts';
-import { areaRate, placeSite, recordCdtfaArea } from '../src/lib/server/tax-areas.ts';
-import { Decimal } from '../src/lib/decimal.ts';
-import { rateIsStale } from '../src/lib/server/stale.ts';
-
-const PAUSE_MS = 250;
+import { syncTax } from '../src/lib/server/tax-sync.ts';
 
 const all = process.argv.includes('--all');
 const dry = process.argv.includes('--dry-run');
 
 // The database the server uses, found the way the server finds it
-// (#lib/server/db/defaults).
+// (#lib/server/db/defaults), in UTC like the server.
 const pool = new pg.Pool({ ...database(), max: 1, options: '-c TimeZone=UTC' });
-/** The same rows through Kysely, for what the app's own modules write. */
 /** @type {Kysely<import('../src/lib/server/db/database.ts').DB>} */
 const db = new Kysely({ dialect: new PostgresDialect({ pool }) });
-const q = (/** @type {string} */ text, /** @type {unknown[]} */ values = []) =>
-	pool.query(text, values).then((r) => r.rows);
 
-// In UTC, like the app. This runs with nobody looking, so the day it stamps
-// and judges staleness by is the business's own: the operator's zone, said
-// outright, rather than whatever zone the host happens to keep.
-const [{ today }] = await q(
+// The business's day, as the server's (#lib/server/calendar): the operator's
+// zone, said outright, rather than whatever zone the host keeps.
+const { rows } = await pool.query(
 	`select (now() at time zone coalesce((select timezone from operator limit 1), 'UTC'))::date::text
 	          as today`
 );
+const today = /** @type {string} */ (rows[0].today);
 
-// The API wants street, city AND zip -- any one of them missing is a 400, not
-// a best guess. The schema already requires all three; this checks anyway, and
-// names a site it cannot ask about rather than skipping it quietly.
-const answerable = `coalesce(s.street, '') <> '' and coalesce(s.city, '') <> ''
-	and coalesce(s.postcode, '') <> ''`;
-
-// Each with its area's code and rate today (#lib/server/tax-areas).
-const sites = await db
-	.selectFrom('site as s')
-	.innerJoin('tax_area as ta', 'ta.id', 's.tax_area_id')
-	.select((eb) => [
-		's.id',
-		's.display',
-		's.street',
-		's.city',
-		's.region',
-		's.postcode',
-		's.tax_area_id',
-		'ta.code as tax_area_code',
-		areaRate(eb.ref('ta.id'), today).as('tax_rate_pct')
-	])
-	.where('s.active', '=', true)
-	.where((eb) =>
-		eb.and(
-			/** @type {const} */ (['s.street', 's.city', 's.postcode']).map((c) =>
-				eb(eb.fn.coalesce(c, eb.val('')), '<>', '')
-			)
-		)
-	)
-	// Stale by the screens' own rule (#lib/server/stale).
-	.$if(!all, (qb) => qb.where((eb) => rateIsStale(eb.ref('s.area_verified_on'), today)))
-	.orderBy('s.display')
-	.execute();
-
-const unanswerable = await q(
-	`select s.display, e.name as client,
-	        concat_ws(' and ',
-	          nullif(case when coalesce(s.street, '') = '' then 'a street' end, ''),
-	          nullif(case when coalesce(s.city, '') = '' then 'a city' end, ''),
-	          nullif(case when coalesce(s.postcode, '') = '' then 'a postcode' end, '')
-	        ) as missing
-	   from site s join entity e on e.id = s.entity_id
-	  where s.active and not (${answerable})
-	  order by e.name, s.display`
-);
-
-if (sites.length === 0 && unanswerable.length === 0) {
-	console.log('Nothing to check.');
-	await pool.end();
-	process.exit(0);
-}
-
-let changed = 0;
-let failed = 0;
-const pct = (/** @type {string} */ x) => Decimal.from(x).toFixed(3);
-// What this run learns about each tax area, so it asks once per area. Made per
-// run and gone with it: a split kept longer could outlive the quarter it was
-// true for.
-/** @type {import('../src/lib/server/cdtfa.ts').Splits} */
-const splits = new Map();
-
-for (const s of sites) {
-	let answer;
-	try {
-		answer = await priceAddress(s, fetch, splits);
-	} catch (e) {
-		console.error(`  ✗ ${s.display}: ${e instanceof NoAnswer ? e.message : String(e)}`);
-		failed++;
-		continue;
-	}
-
-	const moved = !Decimal.from(s.tax_rate_pct).eq(answer.rate) || s.tax_area_code !== answer.tac;
-	if (moved) changed++;
-
-	const mark = moved ? '→   ' : '=   ';
-	const was = moved ? ` (was ${pct(s.tax_rate_pct)}%)` : '';
-	const parts =
-		`state ${pct(answer.state)}` +
-		(Decimal.from(answer.district).isZero() ? '' : ` + district ${pct(answer.district)}`);
-	console.log(
-		`  ${mark}${s.display}: ${pct(answer.rate)}% ${answer.jurisdiction}${was}\n` + `      ${parts}`
-	);
-
-	if (!dry)
-		await db.transaction().execute(async (tx) => {
-			// The answer is its area's, and the site is placed in that area
-			// (#lib/server/tax-areas). The date moves whether or not the rate
-			// did: "confirmed today" is the fact the screens need, and it is not
-			// the same as "unchanged since somebody looked in March".
-			const area = await recordCdtfaArea(tx, answer, today);
-			await tx
-				.updateTable('site')
-				.set({ tax_area_id: area, area_verified_on: today })
-				.where('id', '=', s.id)
-				.execute();
-			await placeSite(tx, { id: s.id, was: s.tax_area_id }, area, 'asked on a refresh');
-		});
-
-	await new Promise((r) => setTimeout(r, PAUSE_MS));
-}
-
-if (unanswerable.length) {
-	console.log('\nCannot be looked up at all:');
-	for (const u of unanswerable) {
-		console.log(`  ✗ ${u.client} · ${u.display}: needs ${u.missing}`);
-	}
-}
-
+const done = await syncTax(db, today, { all, dry });
+for (const f of done.failed) console.error(`  ✗ ${f.what}: ${f.why}`);
 console.log(
-	`\n${sites.length} asked · ${changed} moved · ${failed} could not be answered` +
-		(unanswerable.length ? ` · ${unanswerable.length} missing an address` : '') +
-		(dry ? ' · dry run, nothing written' : '')
+	dry
+		? `areas due ${done.areas} · sites due ${done.sites} · dry run, nothing asked`
+		: `areas confirmed ${done.areas}, changed ${done.changed} · ` +
+				`sites placed ${done.sites}, moved ${done.moved} · ` +
+				`could not be answered ${done.failed.length}`
 );
 
-await pool.end();
-process.exit(failed > 0 || unanswerable.length > 0 ? 1 : 0);
+await db.destroy();
+process.exit(done.failed.length > 0 ? 1 : 0);

@@ -44,7 +44,7 @@
 				{#if !s.active}
 					<span class="lab">Closed</span>
 				{:else if s.stale}
-					<span class="lab warn">Priced {day(s.verified_on)}, over 90 days ago</span>
+					<span class="lab warn">Rate last confirmed {day(s.confirmed_on)}</span>
 				{/if}
 			</span>
 			<span class="fig">

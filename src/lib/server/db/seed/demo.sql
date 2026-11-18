@@ -118,8 +118,9 @@ INSERT INTO entity (id, name, slug) VALUES
 
 -- The tax areas the sites are in, as CDTFA names them, and what each levies:
 -- the state's share, and the district taxes where there are any. Auburn has
--- none of its own. Each from the day CDTFA first gave it, and confirmed on the
--- day it was last asked about a site in it.
+-- none of its own. Woodland was last confirmed before this quarter, as was the
+-- Woodland office's placement, so its rate shows stale until the server next
+-- reaches CDTFA, which it tries as it starts (#lib/server/tax-sync).
 INSERT INTO tax_area (id, state, code, name, source, confirmed_on) VALUES
   ('019a0003-0000-7000-8000-000000000001','CA','349980230000','UNINCORPORATED AREA-SACRAMENTO','cdtfa', current_date - 4),
   ('019a0003-0000-7000-8000-000000000002','CA','310110000000','AUBURN','cdtfa', current_date - 40),

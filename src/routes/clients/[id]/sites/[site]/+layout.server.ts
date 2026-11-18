@@ -3,7 +3,7 @@ import { error } from '@sveltejs/kit';
 import { sql } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
 import { versionOf } from '#lib/server/concurrent.ts';
-import { rateIsStale, STALE_AFTER_DAYS } from '#lib/server/stale.ts';
+import { lastConfirmed, rateIsStale } from '#lib/server/stale.ts';
 import { findClient, findSite } from '#lib/server/find.ts';
 import { areaPieces, areaRate } from '#lib/server/tax-areas.ts';
 import type { LayoutServerLoad } from './$types';
@@ -54,7 +54,11 @@ export const load: LayoutServerLoad = async ({ params }) => {
 			'ta.name as area',
 			'ta.code as area_code',
 			's.area_verified_on as verified_on',
-			rateIsStale(eb.ref('s.area_verified_on'), businessToday()).as('stale'),
+			eb.cast<string>('ta.confirmed_on', 'text').as('confirmed_on'),
+			rateIsStale(
+				lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on')),
+				businessToday()
+			).as('stale'),
 			eb
 				.cast<number>(
 					eb
@@ -88,5 +92,5 @@ export const load: LayoutServerLoad = async ({ params }) => {
 			.executeTakeFirstOrThrow()
 	]);
 
-	return { site, people: people.n, worked, staleAfter: STALE_AFTER_DAYS };
+	return { site, people: people.n, worked };
 };

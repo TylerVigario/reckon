@@ -1,20 +1,29 @@
 import { sql, type Expression } from 'kysely';
 
 /**
- * scripts/refresh-tax-rates.mjs imports this file under plain Node, to judge
- * staleness by the same rule as the screens. So nothing here may reach a $app
- * module, which exists only inside SvelteKit -- #lib/server/calendar does --
- * and the day to judge by is handed in.
+ * WHEN A SITE'S RATE IS STALE: not known to be right since this quarter began.
+ * California's rates and district boundaries change on the first day of a
+ * quarter, so an answer from before then may be last quarter's.
+ *
+ * A site's rate rests on two answers: that its address is in its area
+ * (site.area_verified_on, when it was last placed), and what the area levies
+ * (tax_area.confirmed_on). The server asks for both on its own -- every area
+ * each day and every site each quarter (#lib/server/tax-sync) -- so a stale
+ * rate is the server not having reached the authority.
+ *
+ * Imports nothing of SvelteKit's, so scripts/refresh-tax-rates.mjs runs it
+ * under plain Node, and the day to judge by is handed in: the business's
+ * (#lib/server/calendar's businessToday).
  */
 
-/** An answer nobody has re-asked about in this many days is stale: not wrong, but not known to be right. */
-export const STALE_AFTER_DAYS = 90;
+/** The last day a site's rate was known right on both counts. */
+export const lastConfirmed = (placedOn: Expression<string>, confirmedOn: Expression<string>) =>
+	sql<string>`least(${placedOn}, ${confirmedOn})`;
 
-/**
- * Whether a site's rate is stale: CDTFA was last asked more than
- * STALE_AFTER_DAYS before `today`, which is the business's
- * (#lib/server/calendar's businessToday). Every site has a rate -- stale says
- * the answer is old, not that there is none.
- */
-export const rateIsStale = (areaVerifiedOn: Expression<string>, today: string) =>
-	sql<boolean>`(${areaVerifiedOn} < ${today}::date - ${STALE_AFTER_DAYS}::int)`;
+/** The day this quarter began, as `today` (the business's) falls. */
+export const quarterBegan = (today: string) =>
+	sql<string>`date_trunc('quarter', ${today}::date)::date`;
+
+/** Whether a rate last confirmed on `lastConfirmed` is stale on `today`. */
+export const rateIsStale = (confirmed: Expression<string>, today: string) =>
+	sql<boolean>`(${confirmed} < ${quarterBegan(today)})`;
