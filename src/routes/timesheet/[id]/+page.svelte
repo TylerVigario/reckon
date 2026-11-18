@@ -293,7 +293,7 @@
 			: []
 	);
 
-	const changeable = $derived(data.mayChange && !data.used && !data.paidTo);
+	const changeable = $derived(data.mayChange && !data.used && !data.paidTo.length);
 	const PARTS = Object.keys(PART) as EntryPart[];
 	/** One part of an entry as it stands, in a box beside its name. */
 	const stands = (part: EntryPart, f: EntryFields) =>
@@ -353,10 +353,10 @@
 			</div>
 		</div>
 		{@render entry()}
-	{:else if data.paidTo}
+	{:else if data.paidTo.length}
 		{@render note(
 			'info',
-			`This hour is in a payment to ${data.paidTo}, so it stays as it was paid. A correction goes on their next payment.`
+			`This hour is in ${data.paidTo.length === 1 ? 'a payment' : 'payments'} to ${names(data.paidTo)}, so it stays as it was paid. A correction goes on their next payment.`
 		)}
 		{@render entry()}
 	{:else if !data.mayChange}

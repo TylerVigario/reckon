@@ -105,6 +105,7 @@ export const load: PageServerLoad = async ({ params, locals, route, request, url
 						.whereRef('c.trip_stop_id', '=', 'ts.id')
 						.orderBy('c.asked_there')
 						.orderBy('ce.name')
+						.orderBy('ce.id')
 				).as('clients')
 			])
 			.where('ts.trip_id', '=', params.id)

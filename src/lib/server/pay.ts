@@ -155,6 +155,8 @@ export async function owed(who?: readonly string[], r: Reader = db): Promise<Map
 		.where('vehicle.owner_id', 'is not', null)
 		.$narrowType<{ ownerId: NotNull }>()
 		.orderBy('trip.travelled_on')
+		.orderBy('trip.created_at')
+		.orderBy('trip.id')
 		.execute();
 	const mine = trips.filter((x) => wanted(x.ownerId) && !paid.has(`${x.ownerId}:${x.id}`));
 	if (mine.length) {
@@ -324,6 +326,8 @@ export async function paymentOf(id: string, r: Reader = db) {
 		])
 		.where('person_payment_item.payment_id', '=', id)
 		.orderBy('day')
+		.orderBy('place')
+		.orderBy('person_payment_item.id')
 		.execute();
 	const places = await moneyPlaces();
 	return {

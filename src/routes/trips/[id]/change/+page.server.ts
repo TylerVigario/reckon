@@ -45,6 +45,7 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 		db
 			.selectFrom('trip_stop_client')
 			.innerJoin('trip_stop', 'trip_stop.id', 'trip_stop_client.trip_stop_id')
+			.innerJoin('entity', 'entity.id', 'trip_stop_client.entity_id')
 			.select([
 				'trip_stop_client.trip_stop_id as stop',
 				'trip_stop_client.entity_id as entityId',
@@ -52,6 +53,10 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 				'trip_stop_client.asked_there as askedThere'
 			])
 			.where('trip_stop.trip_id', '=', params.id)
+			// As the trip's own page lists them, so the second is the same one.
+			.orderBy('trip_stop_client.asked_there')
+			.orderBy('entity.name')
+			.orderBy('entity.id')
 			.execute(),
 		db
 			.selectFrom('trip_leg')

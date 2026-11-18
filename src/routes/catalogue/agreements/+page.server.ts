@@ -63,6 +63,9 @@ export const load: PageServerLoad = async () => {
 						.whereRef('p.agreement_id', '=', 'a.id')
 				).as('periods')
 			])
+			// A client's renewals at one place, newest first, as the list keeps them.
+			.orderBy('a.starts_on', 'desc')
+			.orderBy('a.id')
 			.execute(),
 		db
 			.selectFrom('agreement')
