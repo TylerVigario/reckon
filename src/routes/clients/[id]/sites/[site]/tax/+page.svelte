@@ -141,6 +141,15 @@
 						? `${stateName(s.region)} has no sales tax.`
 						: `The business doesn’t collect tax in ${stateName(s.region)}.`}</span
 				>
+				<!-- Whether it should is the business's to know -- it is registered
+				     there or not -- so the switch is pointed to from where it is
+				     noticed, for whoever can turn it on. -->
+				{#if !NO_SALES_TAX.includes(s.region as State) && !field}
+					<span class="kv-s"
+						>If it is registered there, add {stateName(s.region)} in
+						<a href={resolve('/settings/tax')}>Settings → Tax</a>.</span
+					>
+				{/if}
 			</span>
 		</div>
 	</section>
