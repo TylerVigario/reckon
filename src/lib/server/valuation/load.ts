@@ -144,6 +144,8 @@ export async function loadAgreements(
 			).as('periods')
 		])
 		.where('agreement.entity_id', '=', (eb) => eb.fn.any(eb.val(entityIds)))
+		.orderBy('agreement.starts_on')
+		.orderBy('agreement.id')
 		.execute();
 }
 

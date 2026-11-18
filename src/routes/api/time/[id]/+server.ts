@@ -1,4 +1,5 @@
 import { crewChange } from '#lib/crew-change.ts';
+import { names } from '#lib/format.ts';
 import { asUser, db } from '#lib/server/db/index.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
@@ -45,13 +46,15 @@ async function found(id: string) {
 		.executeTakeFirst();
 	if (!entry) return null;
 	const [paidTo, crew] = await Promise.all([
+		// Everyone it was paid to: a team's hour is paid to each of its crew.
 		db
 			.selectFrom('person_payment_item')
 			.innerJoin('user', 'user.id', 'person_payment_item.user_id')
 			.select('user.name')
 			.where('person_payment_item.time_entry_id', '=', id)
-			.limit(1)
-			.executeTakeFirst(),
+			.orderBy('user.name')
+			.orderBy('user.id')
+			.execute(),
 		db
 			.selectFrom('time_entry_crew')
 			.select('user_id as id')
@@ -66,7 +69,7 @@ async function found(id: string) {
 			ended_at: entry.ended_at?.toISOString() ?? null,
 			crew_ids: crew.map((c) => c.id)
 		}),
-		paidTo: paidTo?.name ?? null
+		paidTo: paidTo.map((p) => p.name)
 	};
 }
 type Found = NonNullable<Awaited<ReturnType<typeof found>>>;
@@ -81,11 +84,11 @@ function inUse(entry: Found, what: string) {
 				? `That hour is on ${entry.number ? `draft ${entry.number}` : 'a draft'}. Take it off the draft to ${what} it.`
 				: `That hour is on invoice ${entry.number}. Credit the invoice instead.`
 		);
-	if (entry.paidTo)
+	if (entry.paidTo.length)
 		return problem(
 			'conflict',
 			409,
-			`That hour is in a payment to ${entry.paidTo}. A correction goes on their next payment.`
+			`That hour is in ${entry.paidTo.length === 1 ? 'a payment' : 'payments'} to ${names(entry.paidTo)}. A correction goes on their next payment.`
 		);
 	return null;
 }

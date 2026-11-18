@@ -236,7 +236,8 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 			// An aggregate: always one row.
 			.executeTakeFirstOrThrow(),
 		// Lines that came here because the draft they were added for on a phone
-		// had gone out: which draft, when it went, and how many.
+		// had gone out: which draft, when it went, and how many -- in the order
+		// they went.
 		db
 			.selectFrom('invoice_line as il')
 			.innerJoin('invoice as src', 'src.id', 'il.moved_from_invoice_id')
@@ -247,6 +248,8 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 			])
 			.where('il.invoice_id', '=', params.id)
 			.groupBy(['src.id', 'src.number', 'src.sent_at'])
+			.orderBy('src.sent_at')
+			.orderBy('src.id')
 			.execute(),
 		// Lines taken off it: what each was, who took it off and when. Their
 		// history stays in record_history (0021).
@@ -267,7 +270,8 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 			.orderBy('h.changed_at')
 			.execute(),
 		// And the other way: lines added to this one on a phone after it went
-		// out, and the draft they started instead.
+		// out, and the draft they started instead -- in the order those were
+		// started.
 		db
 			.selectFrom('invoice_line as il')
 			.innerJoin('invoice as dst', 'dst.id', 'il.invoice_id')
@@ -277,7 +281,9 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 				eb.cast<number>(eb.fn.countAll(), 'integer').as('lines')
 			])
 			.where('il.moved_from_invoice_id', '=', params.id)
-			.groupBy(['dst.id', 'dst.number'])
+			.groupBy(['dst.id', 'dst.number', 'dst.created_at'])
+			.orderBy('dst.created_at')
+			.orderBy('dst.id')
 			.execute()
 	]);
 

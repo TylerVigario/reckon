@@ -359,6 +359,11 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 		])
 		.where('time_entry.billable', '=', true)
 		.where((eb) => eb.between('time_entry.worked_on', p.start, p.end))
+		// In the order the work was done, so jobs of one day and place keep it.
+		.orderBy('time_entry.worked_on')
+		.orderBy('time_entry.started_at')
+		.orderBy('time_entry.created_at')
+		.orderBy('time_entry.id')
 		.execute();
 	const worth = await valueEntries(db, entries);
 	// What payments recorded for this work: paid at that figure, whatever the
@@ -819,6 +824,9 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 		.where((eb) =>
 			eb.or([eb('agreement.ends_on', 'is', null), eb('agreement.ends_on', '>=', p.start)])
 		)
+		// A client's renewals at one place, newest first, as the rows keep them.
+		.orderBy('agreement.starts_on', 'desc')
+		.orderBy('agreement.id')
 		.execute();
 	if (!running.length) return { rows: [], charged: '0.00', paid: '0.00', kept: '0.00' };
 
@@ -968,7 +976,7 @@ export async function nonBillable(p: Period) {
 		groups.set(e.service, g);
 	}
 	const rows: GivenRow[] = [...groups.entries()]
-		.sort(([, a], [, b]) => b.seconds - a.seconds)
+		.sort(([sa, a], [sb, b]) => b.seconds - a.seconds || sa.localeCompare(sb))
 		.map(([service, g]) => ({
 			service,
 			hours: Ratio.of(g.seconds).div(3600).round(4).toString(),

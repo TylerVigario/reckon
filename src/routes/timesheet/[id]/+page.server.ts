@@ -72,13 +72,15 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 		error(404, 'No entry with that id.');
 	}
 
+	// Everyone it was paid to: a team's hour is paid to each of its crew.
 	const paid = await db
 		.selectFrom('person_payment_item')
 		.innerJoin('user', 'user.id', 'person_payment_item.user_id')
-		.select('user.name as to')
+		.select('user.name')
 		.where('person_payment_item.time_entry_id', '=', found.id)
-		.limit(1)
-		.executeTakeFirst();
+		.orderBy('user.name')
+		.orderBy('user.id')
+		.execute();
 
 	const [people, entities, services, prices] = await Promise.all([
 		theTeam(),
@@ -103,7 +105,7 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 					draft: found.invoice_status === 'draft'
 				}
 			: null,
-		paidTo: paid?.to ?? null,
+		paidTo: paid.map((p) => p.name),
 		/** Whether the person signed in may change it: whoever entered it, or Full. */
 		mayChange: !fieldOnly(locals) || found.created_by === me,
 		today: personalToday(),
