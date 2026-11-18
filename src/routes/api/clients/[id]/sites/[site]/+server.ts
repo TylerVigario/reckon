@@ -7,6 +7,7 @@ import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
 import { ADDRESS_FIELDS, parseSiteField } from '#lib/site-fields.ts';
 import { priceAddress, NoAnswer, type Priced } from '#lib/server/cdtfa.ts';
+import { areaRate, recordCdtfaArea } from '#lib/server/tax-areas.ts';
 import { confirmPlace } from '#lib/server/verify-place.ts';
 import { measureDrive } from '#lib/server/site-drive.ts';
 import type { RequestHandler } from './$types';
@@ -84,7 +85,15 @@ export const PATCH: RequestHandler = async (event) => {
 
 	const site = await db
 		.selectFrom('site')
-		.select(['street', 'city', 'region', 'postcode', 'google_place_id', 'tax_rate_pct'])
+		.select((eb) => [
+			'street',
+			'city',
+			'region',
+			'postcode',
+			'google_place_id',
+			// Its area's rate today, to tell a move that changed it (#lib/server/tax-areas).
+			areaRate(eb.ref('site.tax_area_id'), businessToday()).as('tax_rate_pct')
+		])
 		.where('id', '=', id)
 		.executeTakeFirstOrThrow();
 
@@ -122,14 +131,7 @@ export const PATCH: RequestHandler = async (event) => {
 				Object.fromEntries(ADDRESS_FIELDS.filter((f) => f in row).map((f) => [f, why]))
 			);
 		}
-		Object.assign(row, {
-			tax_rate_pct: priced.rate,
-			state_rate_pct: priced.state,
-			district_rate_pct: priced.district,
-			tax_jurisdiction: priced.jurisdiction,
-			tax_area_code: priced.tac,
-			area_verified_on: businessToday()
-		});
+		row.area_verified_on = businessToday();
 	}
 	const answer = priced;
 
@@ -155,6 +157,8 @@ export const PATCH: RequestHandler = async (event) => {
 		// Checked in the update rather than before it, so there is no window
 		// between reading the version and writing over it.
 		after = await asUser(locals.user!.id, async (tx) => {
+			// CDTFA's answer is its new area's (#lib/server/tax-areas).
+			if (answer) row.tax_area_id = await recordCdtfaArea(tx, answer, businessToday());
 			const saved = await tx
 				.updateTable('site')
 				.set(row as Updateable<Site>)

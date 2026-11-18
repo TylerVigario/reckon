@@ -5,6 +5,7 @@ import { db } from '#lib/server/db/index.ts';
 import { versionOf } from '#lib/server/concurrent.ts';
 import { rateIsStale, STALE_AFTER_DAYS } from '#lib/server/stale.ts';
 import { findClient, findSite } from '#lib/server/find.ts';
+import { areaRate } from '#lib/server/tax-areas.ts';
 import type { LayoutServerLoad } from './$types';
 
 /**
@@ -26,6 +27,7 @@ export const load: LayoutServerLoad = async ({ params }) => {
 	const site = await db
 		.selectFrom('site as s')
 		.innerJoin('entity as e', 'e.id', 's.entity_id')
+		.innerJoin('tax_area as ta', 'ta.id', 's.tax_area_id')
 		.select((eb) => [
 			's.id',
 			's.entity_id',
@@ -45,11 +47,12 @@ export const load: LayoutServerLoad = async ({ params }) => {
 			's.google_round_trip_miles',
 			's.google_drive_minutes',
 			's.active',
-			's.tax_rate_pct as rate_pct',
-			's.state_rate_pct',
-			's.district_rate_pct',
-			's.tax_jurisdiction as jurisdiction',
-			's.tax_area_code',
+			// Its area's rate today, and its shares (#lib/server/tax-areas).
+			areaRate(eb.ref('ta.id'), businessToday()).as('rate_pct'),
+			areaRate(eb.ref('ta.id'), businessToday(), 'state').as('state_rate_pct'),
+			areaRate(eb.ref('ta.id'), businessToday(), 'local').as('district_rate_pct'),
+			'ta.name as jurisdiction',
+			'ta.code as tax_area_code',
 			's.area_verified_on as verified_on',
 			rateIsStale(eb.ref('s.area_verified_on'), businessToday()).as('stale'),
 			eb

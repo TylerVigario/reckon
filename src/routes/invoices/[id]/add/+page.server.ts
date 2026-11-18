@@ -1,5 +1,7 @@
 import { error, redirect } from '@sveltejs/kit';
 import { db } from '#lib/server/db/index.ts';
+import { businessToday } from '#lib/server/calendar.ts';
+import { areaRate } from '#lib/server/tax-areas.ts';
 import { formTerms } from '#lib/server/lines.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
@@ -39,7 +41,12 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 	const [sites, terms] = await Promise.all([
 		db
 			.selectFrom('site')
-			.select(['id', 'display as label', 'tax_rate_pct as rate_pct'])
+			.select((eb) => [
+				'id',
+				'display as label',
+				// Its area's rate today (#lib/server/tax-areas).
+				areaRate(eb.ref('site.tax_area_id'), businessToday()).as('rate_pct')
+			])
 			.where('entity_id', '=', draft.entity_id)
 			.where('active', '=', true)
 			.orderBy('display')

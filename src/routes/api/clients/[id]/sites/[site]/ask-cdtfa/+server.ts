@@ -3,6 +3,7 @@ import { asUser, db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
 import { priceAddress, NoAnswer } from '#lib/server/cdtfa.ts';
+import { areaRate, recordCdtfaArea } from '#lib/server/tax-areas.ts';
 import { problem } from '#lib/server/problem.ts';
 import { VERSION } from '#lib/server/concurrent.ts';
 import type { RequestHandler } from './$types';
@@ -29,7 +30,13 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 
 	const was = await db
 		.selectFrom('site')
-		.select(['street', 'city', 'postcode', 'tax_rate_pct as rate'])
+		.select((eb) => [
+			'street',
+			'city',
+			'postcode',
+			// Its area's rate today (#lib/server/tax-areas).
+			areaRate(eb.ref('site.tax_area_id'), businessToday()).as('rate')
+		])
 		.where('id', '=', found.id)
 		.executeTakeFirstOrThrow();
 
@@ -47,16 +54,12 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 	const today = businessToday();
 
 	const saved = await asUser(locals.user!.id, async (tx) => {
+		// The answer is true of its area whatever this site did meanwhile; the
+		// site takes it only if it is still where it was asked about.
+		const area = await recordCdtfaArea(tx, answer, today);
 		const row = await tx
 			.updateTable('site')
-			.set({
-				tax_rate_pct: answer.rate,
-				state_rate_pct: answer.state,
-				district_rate_pct: answer.district,
-				tax_jurisdiction: answer.jurisdiction,
-				tax_area_code: answer.tac,
-				area_verified_on: today
-			})
+			.set({ tax_area_id: area, area_verified_on: today })
 			.where('id', '=', found.id)
 			.where('street', '=', was.street)
 			.where('city', '=', was.city)

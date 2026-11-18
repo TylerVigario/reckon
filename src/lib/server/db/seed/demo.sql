@@ -116,25 +116,37 @@ INSERT INTO entity (id, name, slug) VALUES
   ('426f8d3b-fc9a-4cf9-a82f-6caf96c90a8f','Marisol Vega','marisol-vega'),
   ('46b1aaa1-0ade-4002-bfb5-9a80b547c2ed','Valley Oak Veterinary','valley-oak-veterinary');
 
+-- The tax areas the sites are in, as CDTFA names them, and what each levies:
+-- the state's share, and the district taxes where there are any. Auburn has
+-- none of its own. Each as of the day CDTFA was last asked about a site in it.
+INSERT INTO tax_area (id, state, code, name, source, confirmed_on) VALUES
+  ('019a0003-0000-7000-8000-000000000001','CA','349980230000','UNINCORPORATED AREA-SACRAMENTO','cdtfa', current_date - 4),
+  ('019a0003-0000-7000-8000-000000000002','CA','310110000000','AUBURN','cdtfa', current_date - 40),
+  ('019a0003-0000-7000-8000-000000000003','CA','570282360000','WOODLAND','cdtfa', current_date - 230);
+INSERT INTO tax_piece (area_id, level, jurisdiction, code, rate_pct, effective_from) VALUES
+  ('019a0003-0000-7000-8000-000000000001','state','CALIFORNIA', NULL, 7.2500, current_date - 4),
+  ('019a0003-0000-7000-8000-000000000001','local','UNINCORPORATED AREA-SACRAMENTO','349980230000', 0.5000, current_date - 4),
+  ('019a0003-0000-7000-8000-000000000002','state','CALIFORNIA', NULL, 7.2500, current_date - 40),
+  ('019a0003-0000-7000-8000-000000000003','state','CALIFORNIA', NULL, 7.2500, current_date - 230),
+  ('019a0003-0000-7000-8000-000000000003','local','WOODLAND','570282360000', 0.7500, current_date - 230);
+
 -- Harbor Light's Main Street office and Pinecrest's Suite 210 are both at 101
--- Maple St. The Woodland office's rate is 230 days old.
+-- Maple St, in one area. The Woodland office's rate is 230 days old.
 INSERT INTO site (id, entity_id, label, slug, street, city, region, postcode,
-                  google_round_trip_miles, google_drive_minutes, tax_jurisdiction, tax_rate_pct,
-                  state_rate_pct, district_rate_pct, tax_area_code,
+                  google_round_trip_miles, google_drive_minutes, tax_area_id,
                   area_verified_on) VALUES
   ('75aea465-ad04-43e1-b6b4-d7132872a870','46b1aaa1-0ade-4002-bfb5-9a80b547c2ed',
    'Clinic','clinic','8556 Gibson Ranch Park Rd','Elverta','CA','95626', 28, 36,
-   'UNINCORPORATED AREA-SACRAMENTO', 7.7500, 7.2500, 0.5000, '349980230000',
-   current_date - 4),
+   '019a0003-0000-7000-8000-000000000001', current_date - 4),
   ('4c42978a-ace1-4a79-a7f0-0d9e7efed2da','adaf8510-48a7-4ce1-a78f-6f7eab7ea29e',
    'Main Street office','main-street-office','101 Maple St','Auburn','CA','95603', 64, 70,
-   'AUBURN', 7.2500, 7.2500, 0.0000, '310110000000', current_date - 40),
+   '019a0003-0000-7000-8000-000000000002', current_date - 40),
   ('0ab3a11c-d59e-4526-a132-402a4bc9d9ca','b652b696-5037-4fe8-822c-9caed8f21c68',
    'Suite 210','suite-210','101 Maple St','Auburn','CA','95603', 64, 70,
-   'AUBURN', 7.2500, 7.2500, 0.0000, '310110000000', current_date - 40),
+   '019a0003-0000-7000-8000-000000000002', current_date - 40),
   ('52e62dcd-9dd8-4ddb-a985-a1ad40c24109','adaf8510-48a7-4ce1-a78f-6f7eab7ea29e',
    'Woodland office','woodland-office','1000 Main St','Woodland','CA','95695', 42, 48,
-   'WOODLAND', 8.0000, 7.2500, 0.7500, '570282360000', current_date - 230);
+   '019a0003-0000-7000-8000-000000000003', current_date - 230);
 
 -- Every time CDTFA was asked, and what it said, in the morning of the day each
 -- site says it was asked. The clinic was asked twice four days ago and gave the

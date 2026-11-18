@@ -30,10 +30,12 @@
  */
 // First, so .env is read before anything reads what it sets.
 import { database } from './env.mjs';
+import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
 import { priceAddress, NoAnswer } from '../src/lib/server/cdtfa.ts';
+import { areaRate, recordCdtfaArea } from '../src/lib/server/tax-areas.ts';
 import { Decimal } from '../src/lib/decimal.ts';
-import { STALE_AFTER_DAYS } from '../src/lib/server/stale.ts';
+import { rateIsStale } from '../src/lib/server/stale.ts';
 
 const PAUSE_MS = 250;
 
@@ -43,6 +45,9 @@ const dry = process.argv.includes('--dry-run');
 // The database the server uses, found the way the server finds it
 // (#lib/server/db/defaults).
 const pool = new pg.Pool({ ...database(), max: 1, options: '-c TimeZone=UTC' });
+/** The same rows through Kysely, for what the app's own modules write. */
+/** @type {Kysely<import('../src/lib/server/db/database.ts').DB>} */
+const db = new Kysely({ dialect: new PostgresDialect({ pool }) });
 const q = (/** @type {string} */ text, /** @type {unknown[]} */ values = []) =>
 	pool.query(text, values).then((r) => r.rows);
 
@@ -60,16 +65,32 @@ const [{ today }] = await q(
 const answerable = `coalesce(s.street, '') <> '' and coalesce(s.city, '') <> ''
 	and coalesce(s.postcode, '') <> ''`;
 
-const sites = await q(
-	`select s.id, s.display, s.street, s.city, s.region, s.postcode,
-	        s.tax_area_code, s.tax_jurisdiction, s.tax_rate_pct, s.area_verified_on::text
-	   from site s
-	  where s.active
-	    and ${answerable}
-	    and ($1 or s.area_verified_on < $3::date - $2::int)
-	  order by s.display`,
-	[all, STALE_AFTER_DAYS, today]
-);
+// Each with its area's code and rate today (#lib/server/tax-areas).
+const sites = await db
+	.selectFrom('site as s')
+	.innerJoin('tax_area as ta', 'ta.id', 's.tax_area_id')
+	.select((eb) => [
+		's.id',
+		's.display',
+		's.street',
+		's.city',
+		's.region',
+		's.postcode',
+		'ta.code as tax_area_code',
+		areaRate(eb.ref('ta.id'), today).as('tax_rate_pct')
+	])
+	.where('s.active', '=', true)
+	.where((eb) =>
+		eb.and(
+			/** @type {const} */ (['s.street', 's.city', 's.postcode']).map((c) =>
+				eb(eb.fn.coalesce(c, eb.val('')), '<>', '')
+			)
+		)
+	)
+	// Stale by the screens' own rule (#lib/server/stale).
+	.$if(!all, (qb) => qb.where((eb) => rateIsStale(eb.ref('s.area_verified_on'), today)))
+	.orderBy('s.display')
+	.execute();
 
 const unanswerable = await q(
 	`select s.display, e.name as client,
@@ -120,34 +141,32 @@ for (const s of sites) {
 		`  ${mark}${s.display}: ${pct(answer.rate)}% ${answer.jurisdiction}${was}\n` + `      ${parts}`
 	);
 
-	if (!dry) {
-		const client = await pool.connect();
-		try {
-			await client.query('begin');
-			await client.query(
-				`insert into site_tax_check (site_id, tax_area_code, tax_jurisdiction, rate_pct,
-				                             state_rate_pct, district_rate_pct, changed, note)
-				 values ($1, $2, $3, $4, $5, $6, $7, 'asked on a refresh')`,
-				[s.id, answer.tac, answer.jurisdiction, answer.rate, answer.state, answer.district, moved]
-			);
-			// The date moves whether or not the rate did: "confirmed today" is
-			// the fact the screens need, and it is not the same as "unchanged
-			// since somebody looked in March".
-			await client.query(
-				`update site
-				    set tax_rate_pct = $2, state_rate_pct = $3, district_rate_pct = $4,
-				        tax_jurisdiction = $5, tax_area_code = $6, area_verified_on = $7::date
-				  where id = $1`,
-				[s.id, answer.rate, answer.state, answer.district, answer.jurisdiction, answer.tac, today]
-			);
-			await client.query('commit');
-		} catch (e) {
-			await client.query('rollback');
-			throw e;
-		} finally {
-			client.release();
-		}
-	}
+	if (!dry)
+		await db.transaction().execute(async (tx) => {
+			await tx
+				.insertInto('site_tax_check')
+				.values({
+					site_id: s.id,
+					tax_area_code: answer.tac,
+					tax_jurisdiction: answer.jurisdiction,
+					rate_pct: answer.rate,
+					state_rate_pct: answer.state,
+					district_rate_pct: answer.district,
+					changed: moved,
+					note: 'asked on a refresh'
+				})
+				.execute();
+			// The answer is its area's (#lib/server/tax-areas). The date moves
+			// whether or not the rate did: "confirmed today" is the fact the
+			// screens need, and it is not the same as "unchanged since somebody
+			// looked in March".
+			const area = await recordCdtfaArea(tx, answer, today);
+			await tx
+				.updateTable('site')
+				.set({ tax_area_id: area, area_verified_on: today })
+				.where('id', '=', s.id)
+				.execute();
+		});
 
 	await new Promise((r) => setTimeout(r, PAUSE_MS));
 }

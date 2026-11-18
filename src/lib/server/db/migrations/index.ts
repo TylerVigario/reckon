@@ -14,8 +14,10 @@
 import type { Migration } from 'kysely/migration';
 import * as theSchemaAsItStands from './20261117T1405Z_the_schema_as_it_stands/index.ts';
 import * as agreementsNeverTie from './20261117T2356Z_agreements_never_tie.ts';
+import * as placesAndPieces from './20261118T0438Z_places_and_pieces.ts';
 
 export const MIGRATIONS: Readonly<Record<string, Migration>> = {
 	'20261117T1405Z_the_schema_as_it_stands': theSchemaAsItStands,
-	'20261117T2356Z_agreements_never_tie': agreementsNeverTie
+	'20261117T2356Z_agreements_never_tie': agreementsNeverTie,
+	'20261118T0438Z_places_and_pieces': placesAndPieces
 };

@@ -1,4 +1,6 @@
 import { db } from '#lib/server/db/index.ts';
+import { businessToday } from '#lib/server/calendar.ts';
+import { areaRate } from '#lib/server/tax-areas.ts';
 import { formTerms } from '#lib/server/lines.ts';
 import type { PageServerLoad } from './$types';
 
@@ -12,7 +14,13 @@ export const load: PageServerLoad = async () => {
 	const [sites, terms] = await Promise.all([
 		db
 			.selectFrom('site')
-			.select(['id', 'entity_id', 'display as label', 'tax_rate_pct as rate_pct'])
+			.select((eb) => [
+				'id',
+				'entity_id',
+				'display as label',
+				// Its area's rate today (#lib/server/tax-areas).
+				areaRate(eb.ref('site.tax_area_id'), businessToday()).as('rate_pct')
+			])
 			.where('active', '=', true)
 			.orderBy('display')
 			.execute(),

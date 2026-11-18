@@ -159,12 +159,8 @@ T["site"] = [("PK","id","uuid"),("FK","entity_id","uuid · one client"),
     ("","label","text · this client's name for it"),("","display","text · generated"),
     ("","street","text"),("","city","text"),("","region","text"),("","postcode","text"),
     ("","google_place_id","text · the place chosen"),("","address_verified_on","date"),
+    ("FK","tax_area_id","uuid · the place it is in"),
     ("","area_verified_on","date · last asked, NOT NULL"),
-    ("","tax_area_code","text · CDTFA TAC, NOT NULL"),
-    ("","tax_jurisdiction","text · CDTFA's name, NOT NULL"),
-    ("","tax_rate_pct","numeric · CDTFA's rate, NOT NULL"),
-    ("","state_rate_pct","numeric · the state's share"),
-    ("","district_rate_pct","numeric · the districts on top"),
     ("","google_round_trip_miles","numeric · Google's route"),
     ("","google_drive_minutes","int · Google's, one way"),
     ("","typed_round_trip_miles","numeric · typed over it"),
@@ -179,6 +175,14 @@ T["entity_contact"] = [("FK","entity_id","uuid"),("FK","contact_id","uuid"),
     ("","is_primary","bool")]
 T["site_contact"] = [("FK","site_id","uuid"),("FK","entity_id","uuid · carried"),
     ("FK","contact_id","uuid"),("","is_primary","bool")]
+T["tax_area"] = [("PK","id","uuid"),("UK","state","text · two letters, with code"),
+    ("UK","code","text · its authority's, e.g. a TAC"),
+    ("","name","text · as its authority names it"),("","source","tax_area_source"),
+    ("","confirmed_on","date · last confirmed"),("","created_at","timestamptz")]
+T["tax_piece"] = [("PK","id","uuid"),("FK","area_id","uuid"),
+    ("","level","federal|state|local"),("","jurisdiction","text · who levies it"),
+    ("","code","text · its authority's"),("","rate_pct","numeric"),
+    ("","effective_from","date · a set's, newest in force")]
 T["site_tax_check"] = [("PK","id","uuid"),("FK","site_id","uuid"),
     ("","checked_at","timestamptz"),("","tax_area_code","text · CDTFA TAC"),
     ("","tax_jurisdiction","text"),("","rate_pct","numeric"),
@@ -476,19 +480,29 @@ files.append(write("01-overview.drawio", "Overview", c, 1100, 580))
 c = at("entity",40,60) + at("site",800,60) \
   + at("contact",800,650) + at("entity_contact",440,240) \
   + at("site_contact",440,460) \
-  + at("site_tax_check",1200,60) + at("tax_remittance",1200,340)
+  + at("site_tax_check",1200,60) + at("tax_remittance",1200,340) \
+  + at("tax_area",1200,640) + at("tax_piece",1200,860)
 c += [edge("e22","entity","entity_contact","is reached via"),
       edge("e23","contact","entity_contact","acts for",
            S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1")),
       edge("e26","entity_contact","site_contact","is named at"),
       edge("e27","site","site_contact","asks for",
            S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1")),
-      edge("e24","site","site_tax_check","was priced by CDTFA")]
+      edge("e24","site","site_tax_check","was priced by CDTFA"),
+      edge("e28","tax_area","site","holds",
+           S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1")),
+      edge("e29","tax_area","tax_piece","levies",
+           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=1")
+                 .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=0"))]
 c += [note("n2", "One building can host two businesses and one person can act for "
                  "several clients, so both joins are many-to-many.\n\n"
-                 "A site carries the rate CDTFA’s API returned for its address, their "
-                 "name for the area and their TAC, and the day it was asked; nothing in "
-                 "the application can author a rate. site_tax_check keeps every answer, "
+                 "A rate belongs to a place, not to a site: a tax_area is one place with "
+                 "one combination of jurisdictions, named as its authority names it -- "
+                 "CDTFA’s area and TAC -- never by a postal city, and its rate is its "
+                 "pieces, who levies what, federal, state and local, in dated sets, the "
+                 "newest on or before a day in force then. A site is in the area CDTFA’s "
+                 "API placed its address in, on the day it was asked; nothing in the "
+                 "application can author a rate. site_tax_check keeps every answer, "
                  "so a rate that moved can be explained against the invoices billed at "
                  "the old one. A second copy of a published rate goes stale without "
                  "telling anyone, and is then charged at addresses it was never true "
@@ -514,7 +528,7 @@ c += [note("n2", "One building can host two businesses and one person can act fo
                  "actually handed over, because no invoice knows that. County and city "
                  "fold into one district share, because CDTFA-105 is a list of districts"
                  " and names no other kind.\n\n"
-                 "Every site has a rate from the API, so the address and the answer are "
+                 "Every site is in an area from the API, so the address and the area are "
                  "NOT NULL together: the lookup takes street, city and postcode or "
                  "answers nothing, and a place with no rate cannot be billed from — so "
                  "it is not a site. Creating one is a lookup, not a form"
@@ -528,8 +542,8 @@ c += [note("n2", "One building can host two businesses and one person can act fo
                  "site is that client’s and the person is that client’s contact.\n\n"
                  "A site belongs to exactly one client; two clients at one address are "
                  "two sites.",
-           40, 810, 1480, 280)]
-files.append(write("02-who-and-where.drawio", "Who and where", c, 1560, 1130))
+           40, 1080, 1480, 300)]
+files.append(write("02-who-and-where.drawio", "Who and where", c, 1560, 1420))
 
 # 03 -- catalogue
 c = at("service",40,60) + at("service_price",440,60) + at("pay_rule",440,280) \

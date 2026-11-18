@@ -3,6 +3,8 @@ import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { Decimal } from '#lib/decimal.ts';
 import type { DB } from './db/database.ts';
 import { db } from './db/index.ts';
+import { businessToday } from './calendar.ts';
+import { areaRate } from './tax-areas.ts';
 
 /**
  * What an entry can be written against: who can work it, who pays and where,
@@ -57,7 +59,10 @@ export async function clientsAndSites() {
 					.select((eb) => [
 						'site.id',
 						'site.display',
-						eb.cast<string>('site.tax_rate_pct', 'text').as('rate')
+						// Its area's rate today (#lib/server/tax-areas).
+						eb
+							.cast<string>(areaRate(eb.ref('site.tax_area_id'), businessToday()), 'text')
+							.as('rate')
 					])
 					.whereRef('site.entity_id', '=', 'entity.id')
 					.where('site.active', '=', true)
