@@ -21,7 +21,6 @@ const COLUMNS = [
 	'phone',
 	'currency',
 	'timezone',
-	'tax_rule_set',
 	'invoice_number_format',
 	'next_invoice_number',
 	'default_terms_days',
@@ -36,11 +35,7 @@ const COLUMNS = [
 	'email_attaches_pdf',
 	'email_includes_payment_link',
 	'auto_send',
-	'tax_registration',
-	'tax_agency',
-	'filing_basis',
 	'fiscal_year_end_month',
-	'claims_tax_paid_purchases_resold',
 	'locale',
 	'mileage_assignment'
 ] as const satisfies readonly Exclude<keyof Operator, 'logo'>[];

@@ -44,7 +44,7 @@
 			href: '/settings',
 			title: 'Settings',
 			ic: 'gear',
-			sub: 'The mark, the rates, the tax rules — everything you supply'
+			sub: 'The mark, the rates, where tax is collected — everything you supply'
 		},
 		{
 			href: '/profile',

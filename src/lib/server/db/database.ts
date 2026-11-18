@@ -83,8 +83,6 @@ export type TaxAreaSource = "cdtfa";
 
 export type TaxLevel = "federal" | "local" | "state";
 
-export type TaxRuleSet = "flat_per_site" | "none" | "us_ca";
-
 export type TaxSource = "exempt" | "none" | "override" | "site";
 
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
@@ -270,6 +268,7 @@ export interface InvoiceLine {
   tax_pieces: TaxPiecesColumn;
   tax_rate_pct: Generated<NumericColumn>;
   tax_source: Generated<TaxSource>;
+  tax_state: string | null;
   taxable: Generated<boolean>;
   time_entry_id: string | null;
   trip_leg_id: string | null;
@@ -334,14 +333,12 @@ export interface Operator {
   address_verified_on: string | null;
   ageing_alert_days: Generated<number>;
   auto_send: Generated<boolean>;
-  claims_tax_paid_purchases_resold: Generated<boolean>;
   currency: Generated<string>;
   default_markup_pct: Generated<NumericColumn>;
   default_terms_days: Generated<number>;
   email: string | null;
   email_attaches_pdf: Generated<boolean>;
   email_includes_payment_link: Generated<boolean>;
-  filing_basis: FilingBasis | null;
   fiscal_year_end_month: number | null;
   google_place_id: string | null;
   id: Generated<string>;
@@ -357,11 +354,8 @@ export interface Operator {
   short_name: string | null;
   singleton: Generated<boolean>;
   stock_costing: Generated<StockCosting>;
-  tax_agency: string | null;
   tax_number: string | null;
   tax_number_label: Generated<string>;
-  tax_registration: string | null;
-  tax_rule_set: Generated<TaxRuleSet>;
   timezone: Generated<string>;
   trading_name: string;
 }
@@ -528,7 +522,7 @@ export interface Session {
 export interface Site {
   active: Generated<boolean>;
   address_verified_on: string | null;
-  area_verified_on: string;
+  area_verified_on: string | null;
   city: string;
   created_at: Generated<Timestamp>;
   display: Generated<string | null>;
@@ -540,11 +534,11 @@ export interface Site {
   id: Generated<string>;
   label: string;
   postcode: string;
-  region: string | null;
+  region: string;
   round_trip_miles: Generated<NumericColumn | null>;
   slug: string;
   street: string;
-  tax_area_id: string;
+  tax_area_id: string | null;
   typed_drive_minutes: number | null;
   typed_round_trip_miles: NumericColumn | null;
 }
@@ -649,6 +643,16 @@ export interface TaxPiece {
   rate_pct: NumericColumn;
 }
 
+export interface TaxRegistration {
+  agency: string | null;
+  claims_tax_paid_purchases_resold: Generated<boolean>;
+  created_at: Generated<Timestamp>;
+  filing_basis: FilingBasis | null;
+  held: string | null;
+  id: Generated<string>;
+  state: string;
+}
+
 export interface TaxRemittance {
   amount: NumericColumn;
   created_at: Generated<Timestamp>;
@@ -660,6 +664,7 @@ export interface TaxRemittance {
   period_end: string;
   period_start: string;
   reference: string | null;
+  state: string;
 }
 
 export interface TimeEntry {
@@ -822,6 +827,7 @@ export interface DB {
   stock_take: StockTake;
   tax_area: TaxArea;
   tax_piece: TaxPiece;
+  tax_registration: TaxRegistration;
   tax_remittance: TaxRemittance;
   time_entry: TimeEntry;
   time_entry_crew: TimeEntryCrew;

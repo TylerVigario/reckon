@@ -12,8 +12,9 @@
 	 * A site, as Primer draws a record: what it is called, under it the tax
 	 * charged there and how long has been worked there, then its tabs, each its
 	 * own address -- Details, where it is and how far; Contacts, who to ask for;
-	 * Tax, what CDTFA has said of it. A rate CDTFA was last asked about long ago
-	 * is said on every tab.
+	 * Tax, the area it is in and what is levied there. A rate not confirmed this
+	 * quarter, or a site in no area where the business collects, is said on
+	 * every tab.
 	 */
 	let { data, children }: LayoutProps = $props();
 	const s = $derived(data.site);
@@ -53,8 +54,9 @@
 		{#snippet state()}
 			{#if !s.active}<span class="lab">Closed</span>{/if}
 			{#if s.stale}<span class="lab warn">Rate not confirmed this quarter</span>{/if}
+			{#if s.collected && s.rate_pct === null}<span class="lab warn">In no tax area yet</span>{/if}
 			<span class="muted">
-				{pct(s.rate_pct)} tax ·
+				{s.rate_pct !== null ? `${pct(s.rate_pct)} tax` : s.collected ? 'No rate' : 'Not taxed'} ·
 				{#if entries}
 					{hours(data.worked.hours, 'glance')} worked{#if data.worked.last}, last <Day
 							iso={data.worked.last}

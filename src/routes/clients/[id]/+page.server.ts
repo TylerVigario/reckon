@@ -5,7 +5,8 @@ import { sql, type NumericString } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday, personalDay } from '#lib/server/calendar.ts';
 import { balances } from '#lib/server/balances.ts';
-import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
+import { TAX_ROUNDING } from '#lib/server/tax-rules.ts';
 import { findClient } from '#lib/server/find.ts';
 import { loadAgreements, usedThisMonth } from '#lib/server/valuation/load.ts';
 import { hoursOf } from '#lib/server/valuation/misc.ts';
@@ -24,8 +25,8 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ params, locals }) => {
 	if (fieldOnly(locals)) redirect(307, resolve('/clients/[id]/sites', { id: params.id }));
-	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
-	const owing = balances(rounding, places);
+	const places = await moneyPlaces();
+	const owing = balances(TAX_ROUNDING, places);
 	const { id } = await findClient(params.id);
 
 	const client = await db

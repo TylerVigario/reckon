@@ -76,7 +76,7 @@
 <Top title="Reports" back={resolve('/more')} backLabel="More" />
 
 <div class="pad">
-	<UnderlineNav label="Reports" items={reportTabs('schedule-a')} />
+	<UnderlineNav label="Reports" items={reportTabs('schedule-a', data.scheduleA)} />
 
 	{#if !data.fy}
 		<div class="banner warn" role="status">

@@ -5,20 +5,22 @@ import { db } from '#lib/server/db/index.ts';
 import { versionOf } from '#lib/server/concurrent.ts';
 import { lastConfirmed, rateIsStale } from '#lib/server/stale.ts';
 import { findClient, findSite } from '#lib/server/find.ts';
-import { areaPieces, areaRate } from '#lib/server/tax-areas.ts';
+import { areaPieces } from '#lib/server/tax-areas.ts';
+import { collecting, collectsIn, siteRate } from '#lib/server/tax-registrations.ts';
 import type { LayoutServerLoad } from './$types';
 
 /**
  * One site, as each of its tabs heads it (+layout): what it is called, what is
  * charged there and how much has been worked there, and how many people to ask
- * for. Details is where it is and how far; Contacts, who to ask for; Tax, what
- * CDTFA has said of it.
+ * for. Details is where it is and how far; Contacts, who to ask for; Tax, the
+ * area it is in and what is levied there.
  *
  * A site is the thing a jobsite rate, a mileage figure and a contact all hang
  * off, and every one of those is changed under it -- except the rate, which is
- * CDTFA's and has no field. It is the rate's one home, where CDTFA is asked
- * again. Someone with Field reads it, to work at, and changes nothing
- * (#lib/access).
+ * its area's and has no field: in California, CDTFA's, where the business
+ * collects there (#lib/server/tax-registrations). It is the rate's one home,
+ * where CDTFA is asked again. Someone with Field reads it, to work at, and
+ * changes nothing (#lib/access).
  */
 export const load: LayoutServerLoad = async ({ params }) => {
 	const client = await findClient(params.id);
@@ -27,7 +29,7 @@ export const load: LayoutServerLoad = async ({ params }) => {
 	const site = await db
 		.selectFrom('site as s')
 		.innerJoin('entity as e', 'e.id', 's.entity_id')
-		.innerJoin('tax_area as ta', 'ta.id', 's.tax_area_id')
+		.leftJoin('tax_area as ta', 'ta.id', 's.tax_area_id')
 		.select((eb) => [
 			's.id',
 			's.entity_id',
@@ -47,18 +49,29 @@ export const load: LayoutServerLoad = async ({ params }) => {
 			's.google_round_trip_miles',
 			's.google_drive_minutes',
 			's.active',
-			// Its area, and the area's rate today and who levies it
+			// Whether the business collects in its state; and its area, the
+			// area's rate today where it does, and who levies it
 			// (#lib/server/tax-areas).
-			areaRate(eb.ref('ta.id'), businessToday()).as('rate_pct'),
-			areaPieces(eb.ref('ta.id'), businessToday()).as('pieces'),
+			collectsIn(eb.ref('s.region')).as('collected'),
+			siteRate({ region: eb.ref('s.region'), area: eb.ref('ta.id') }, businessToday()).as(
+				'rate_pct'
+			),
+			areaPieces(eb.ref('ta.id').$castTo<string>(), businessToday()).as('pieces'),
 			'ta.name as area',
 			'ta.code as area_code',
 			's.area_verified_on as verified_on',
-			eb.cast<string>('ta.confirmed_on', 'text').as('confirmed_on'),
-			rateIsStale(
-				lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on')),
-				businessToday()
-			).as('stale'),
+			eb.cast<string | null>('ta.confirmed_on', 'text').as('confirmed_on'),
+			eb
+				.and([
+					collectsIn(eb.ref('s.region')),
+					eb('ta.id', 'is not', null),
+					rateIsStale(
+						lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on')),
+						businessToday()
+					)
+				])
+				.$castTo<boolean>()
+				.as('stale'),
 			eb
 				.cast<number>(
 					eb
@@ -75,7 +88,7 @@ export const load: LayoutServerLoad = async ({ params }) => {
 		.executeTakeFirst();
 	if (!site) error(404, 'no such site');
 
-	const [people, worked] = await Promise.all([
+	const [people, worked, collects] = await Promise.all([
 		db
 			.selectFrom('site_contact')
 			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
@@ -89,8 +102,11 @@ export const load: LayoutServerLoad = async ({ params }) => {
 				eb.cast<string | null>(eb.fn.max('worked_on'), 'text').as('last')
 			])
 			.where('site_id', '=', found.id)
-			.executeTakeFirstOrThrow()
+			.executeTakeFirstOrThrow(),
+		// Where the business collects tax: whether CDTFA is asked about the
+		// place a site moves to.
+		collecting(db)
 	]);
 
-	return { site, people: people.n, worked };
+	return { site, people: people.n, worked, collects };
 };

@@ -3,7 +3,8 @@ import { asUser, db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
 import { priceAddress, NoAnswer } from '#lib/server/cdtfa.ts';
-import { areaRate, placeSite, recordCdtfaArea } from '#lib/server/tax-areas.ts';
+import { placeSite, recordCdtfaArea } from '#lib/server/tax-areas.ts';
+import { asksCdtfa, siteRate } from '#lib/server/tax-registrations.ts';
 import { problem } from '#lib/server/problem.ts';
 import { VERSION } from '#lib/server/concurrent.ts';
 import type { RequestHandler } from './$types';
@@ -21,6 +22,8 @@ import type { RequestHandler } from './$types';
  *
  * CDTFA not answering writes nothing, and says why. Nor does a site that moved
  * while CDTFA was being asked take the answer: it was about where the site was.
+ * And CDTFA is asked only about a California site, where the business collects
+ * tax there (#lib/server/tax-registrations).
  */
 export const POST: RequestHandler = async ({ params, locals }) => {
 	const client = await lookUpClient(params.id);
@@ -33,13 +36,25 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 		.select((eb) => [
 			'street',
 			'city',
+			'region',
 			'postcode',
 			'tax_area_id',
-			// Its area's rate today (#lib/server/tax-areas).
-			areaRate(eb.ref('site.tax_area_id'), businessToday()).as('rate')
+			// Its area's rate today, where it is in one.
+			siteRate(
+				{ region: eb.ref('site.region'), area: eb.ref('site.tax_area_id') },
+				businessToday()
+			).as('rate')
 		])
 		.where('id', '=', found.id)
 		.executeTakeFirstOrThrow();
+	if (!(await asksCdtfa(db, was.region)))
+		return problem(
+			'conflict',
+			409,
+			was.region === 'CA'
+				? 'The business does not collect tax in California, so CDTFA is not asked.'
+				: 'CDTFA answers for California, and this site is not there.'
+		);
 
 	let answer;
 	try {
@@ -51,7 +66,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 			e instanceof NoAnswer ? e.message : 'CDTFA could not be reached.'
 		);
 	}
-	const changed = !Decimal.from(answer.rate).eq(was.rate);
+	const changed = was.rate === null || !Decimal.from(answer.rate).eq(was.rate);
 	const today = businessToday();
 
 	const saved = await asUser(locals.user!.id, async (tx) => {

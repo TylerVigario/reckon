@@ -3,7 +3,8 @@ import { sql } from 'kysely';
 import { Decimal, sumMoney } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import { balances } from '#lib/server/balances.ts';
-import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
+import { TAX_ROUNDING } from '#lib/server/tax-rules.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import { isOfflineCopy } from '#lib/offline-copy.ts';
 import type { PageServerLoad } from './$types';
@@ -21,7 +22,7 @@ import type { PageServerLoad } from './$types';
  * it comes to, need a connection.
  */
 export const load: PageServerLoad = async ({ locals, url }) => {
-	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
+	const places = await moneyPlaces();
 	const today = businessToday();
 
 	const rows = await db
@@ -48,7 +49,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		)
 		.selectFrom('invoice as i')
 		.innerJoin('entity as e', 'e.id', 'i.entity_id')
-		.innerJoin(balances(rounding, places).as('b'), 'b.invoice_id', 'i.id')
+		.innerJoin(balances(TAX_ROUNDING, places).as('b'), 'b.invoice_id', 'i.id')
 		.leftJoin('kinds as k', 'k.invoice_id', 'i.id')
 		.leftJoin('settled as s', 's.invoice_id', 'i.id')
 		.select((eb) => [

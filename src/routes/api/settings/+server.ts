@@ -169,8 +169,6 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 	if (typeof values.timezone === 'string') await rememberBusiness({ zone: values.timezone });
 	if (typeof values.locale === 'string') await rememberBusiness({ locale: values.locale });
 	if (typeof values.currency === 'string') await rememberBusiness({ currency: values.currency });
-	if (typeof values.tax_rule_set === 'string')
-		await rememberBusiness({ taxRuleSet: values.tax_rule_set });
 
 	// The stored values go back, not the submitted ones: "usd" is saved as USD
 	// and #4F6D8A as #4f6d8a, and the field should show what is actually there.

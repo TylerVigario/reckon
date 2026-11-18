@@ -3,6 +3,7 @@ import type { DB } from './db/database.ts';
 import { NoAnswer, priceAddress, ratesFor } from './cdtfa.ts';
 import { quarterBegan } from './stale.ts';
 import { confirmCdtfaArea, placeSite, recordCdtfaArea } from './tax-areas.ts';
+import { collecting } from './tax-registrations.ts';
 import { log } from './log.ts';
 
 /**
@@ -20,9 +21,14 @@ import { log } from './log.ts';
  *           that day rather than on the day somebody notices. One request per
  *           area a day.
  *
- *   SITES   each not placed since this quarter began, of its authority by its
- *           address, which moves a site whose area's boundary moved. California's
- *           boundaries change when its rates do, on a quarter's first day.
+ *   SITES   each not placed since this quarter began, or not placed at all,
+ *           of its authority by its address, which moves a site whose area's
+ *           boundary moved. California's boundaries change when its rates do,
+ *           on a quarter's first day.
+ *
+ * Only where the business collects tax (#lib/server/tax-registrations): an
+ * area nobody is taxed in, or a site nothing billed at is taxed, is not asked
+ * about.
  *
  * Whatever cannot be reached waits for the next hour. A rate is stale only when
  * it has not been confirmed since this quarter began (#lib/server/stale): the
@@ -64,6 +70,10 @@ export async function syncTax(
 		fetcher = fetch
 	}: { all?: boolean; dry?: boolean; fetcher?: typeof fetch } = {}
 ): Promise<Synced> {
+	const out: Synced = { areas: 0, changed: 0, sites: 0, moved: 0, failed: [] };
+	// CDTFA answers for California, so there is nothing to ask it unless the
+	// business collects there.
+	if (!(await collecting(db)).includes('CA')) return out;
 	const areas = await db
 		.selectFrom('tax_area')
 		.select(['id', 'name', 'code'])
@@ -74,18 +84,23 @@ export async function syncTax(
 		.orderBy('name')
 		.orderBy('id')
 		.execute();
-	// Each in an area CDTFA placed it in; it is CDTFA that places it again.
+	// Each California site: it is CDTFA that places it.
 	const sites = await db
 		.selectFrom('site as s')
-		.innerJoin('tax_area as ta', 'ta.id', 's.tax_area_id')
 		.select(['s.id', 's.display', 's.street', 's.city', 's.postcode', 's.tax_area_id'])
 		.where('s.active', '=', true)
-		.where('ta.source', '=', 'cdtfa')
-		.$if(!all, (qb) => qb.where('s.area_verified_on', '<', quarterBegan(today)))
+		.where('s.region', '=', 'CA')
+		.$if(!all, (qb) =>
+			qb.where((eb) =>
+				eb.or([
+					eb('s.area_verified_on', 'is', null),
+					eb('s.area_verified_on', '<', quarterBegan(today))
+				])
+			)
+		)
 		.orderBy('s.display')
 		.orderBy('s.id')
 		.execute();
-	const out: Synced = { areas: 0, changed: 0, sites: 0, moved: 0, failed: [] };
 	if (dry) return { ...out, areas: areas.length, sites: sites.length };
 
 	for (const area of areas) {
@@ -134,6 +149,18 @@ export async function syncTax(
 
 const HOUR = 60 * 60 * 1000;
 
+/** The pass that is kept running, once the server has started it. */
+let nudge: (() => void) | null = null;
+
+/**
+ * A pass now rather than on the hour, where the server is keeping rates in
+ * sync: when the business begins collecting somewhere, its sites there are
+ * placed at once. One already running is left to finish.
+ */
+export function syncTaxNow() {
+	nudge?.();
+}
+
 /**
  * Keeps every rate in sync as the server starts and every hour after, one
  * pass at a time, on the business's day (`today`). The timer holds nothing
@@ -161,6 +188,7 @@ export function startSyncingTax(db: Kysely<DB>, today: () => Promise<string>) {
 			running = false;
 		}
 	};
+	nudge = () => void run();
 	void run();
 	const timer = setInterval(() => void run(), HOUR);
 	timer.unref();

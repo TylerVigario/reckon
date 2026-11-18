@@ -42,7 +42,7 @@ export const inLevelOrder = <T extends { level: TaxLevel; jurisdiction: string }
 
 /**
  * The tax of each invoice that has a taxable line, and who levied it. The tax
- * is rounded as `rounding` says, the business's tax rule
+ * is rounded as `rounding` says, sales tax's rule
  * (#lib/server/tax-rules), as every balance rounds it, and every figure to the
  * currency's `places` (#lib/currency).
  */

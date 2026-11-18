@@ -208,6 +208,7 @@ export const REACH = {
 	'/settings/vehicles/new': 'full',
 	'/settings/units': 'full',
 	'/api/settings': 'full',
+	'/api/settings/tax/[state]': 'full',
 	'/api/people': 'full',
 	'/api/people/[id]/link': 'full',
 	'/api/people/[id]/passkeys': 'full',

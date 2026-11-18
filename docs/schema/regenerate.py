@@ -157,10 +157,11 @@ T["entity"] = [("PK","id","uuid"),("UK","slug","text · in the URL"),("","name",
 T["site"] = [("PK","id","uuid"),("FK","entity_id","uuid · one client"),
     ("UK","slug","text · in the URL, per client"),
     ("","label","text · this client's name for it"),("","display","text · generated"),
-    ("","street","text"),("","city","text"),("","region","text"),("","postcode","text"),
+    ("","street","text"),("","city","text"),("","region","text · its state, two letters"),
+    ("","postcode","text"),
     ("","google_place_id","text · the place chosen"),("","address_verified_on","date"),
-    ("FK","tax_area_id","uuid · the place it is in"),
-    ("","area_verified_on","date · last asked, NOT NULL"),
+    ("FK","tax_area_id","uuid · where the business collects"),
+    ("","area_verified_on","date · last placed, with it"),
     ("","google_round_trip_miles","numeric · Google's route"),
     ("","google_drive_minutes","int · Google's, one way"),
     ("","typed_round_trip_miles","numeric · typed over it"),
@@ -186,7 +187,12 @@ T["tax_piece"] = [("PK","id","uuid"),("FK","area_id","uuid"),
 T["site_placement"] = [("PK","id","uuid"),("FK","site_id","uuid"),
     ("","placed_at","timestamptz"),("FK","area_id","uuid · the area it was in"),
     ("","moved","bool · another area than before"),("","note","text · why it was asked")]
-T["tax_remittance"] = [("PK","id","uuid"),("","period_start","date"),
+T["tax_registration"] = [("PK","id","uuid"),("UK","state","text · two letters"),
+    ("","held","text · Seller's permit"),("","agency","text · CDTFA"),
+    ("","filing_basis","annual|quarterly|monthly"),
+    ("","claims_tax_paid_purchases_resold","bool · California's alone"),
+    ("","created_at","timestamptz")]
+T["tax_remittance"] = [("PK","id","uuid"),("","state","text · to whom"),("","period_start","date"),
     ("","period_end","date"),("","filed_on","date"),("","paid_on","date"),
     ("","amount","numeric"),("","reference","text"),("FK","created_by","uuid"),
     ("","note","text"),("","created_at","timestamptz")]
@@ -310,6 +316,7 @@ T["invoice_line"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the ph
     ("FK","site_id","uuid"),("","taxable","bool"),
     ("","tax_rate_pct","numeric · as applied"),("","tax_source","none|site|override|exempt"),
     ("","tax_jurisdiction","text · its area, as taxed"),
+    ("","tax_state","text · its state, as taxed"),
     ("","tax_pieces","jsonb · who levied what"),
     ("","tax_override_reason","text"),("","ex_tax_cost","numeric · snapshot"),
     ("","tax_paid","numeric · snapshot"),("","amount","numeric"),
@@ -351,17 +358,14 @@ T["operator"] = [("PK","id","uuid"),("","singleton","bool · one row only"),("",
     ("","tax_number","text"),("","tax_number_label","text · EIN, VAT, ABN…"),
     ("","email","text"),("","phone","text"),
     ("","currency","text"),("","timezone","text"),("","locale","text · BCP 47"),
-    ("","tax_rule_set","us_ca|flat_per_site|none"),("","invoice_number_format","text"),
+    ("","invoice_number_format","text"),
     ("","next_invoice_number","int"),
     ("","default_terms_days","int"),("","ageing_alert_days","int"),
     ("","default_markup_pct","numeric · 25"),("","purchase_markup_pct","numeric · 0"),
     ("","stock_costing","average|oldest_first"),
     ("","invoice_footer","text"),("","auto_send","bool"),
     ("","email_attaches_pdf","bool"),("","email_includes_payment_link","bool"),
-    ("","tax_registration","text"),("","tax_agency","text"),
-    ("","filing_basis","annual|quarterly|monthly"),
     ("","fiscal_year_end_month","1–12"),
-    ("","claims_tax_paid_purchases_resold","bool"),
     ("","mileage_assignment","actual|round_trip_per_client")]
 T["person_payment"] = [("PK","id","uuid"),("FK","user_id","uuid · who was paid"),
     ("","paid_on","date"),("","how","text · bank transfer, cash…"),("","note","text"),
@@ -497,9 +501,10 @@ c += [note("n2", "One building can host two businesses and one person can act fo
                  "one combination of jurisdictions, named as its authority names it -- "
                  "CDTFA’s area and TAC -- never by a postal city, and its rate is its "
                  "pieces, who levies what, federal, state and local, in dated sets, the "
-                 "newest on or before a day in force then. A site is in the area CDTFA’s "
-                 "API placed its address in, on the day it was asked; nothing in the "
-                 "application can author a rate. site_placement keeps every time a site "
+                 "newest on or before a day in force then. A site is in a state, region, "
+                 "and in an area of it only where the business collects there; in "
+                 "California, the area CDTFA’s API placed its address in, on the day it "
+                 "was asked. Nothing in the application can author CDTFA’s rate. site_placement keeps every time a site "
                  "was placed, and an area every rate it has had, so a rate that moved can "
                  "be explained against the invoices billed at the old one. A second copy "
                  "of a published rate goes stale without "
@@ -911,11 +916,14 @@ files.append(write("10-people-and-signing-in.drawio", "People, and signing in", 
 
 # 11 -- the operator and the record
 c = at("operator",40,60) + at("account_map",440,60) + at("ledger_export",440,180) \
-  + at("integration",440,400) + at("record_history",440,560)
+  + at("integration",440,400) + at("record_history",440,560) + at("tax_registration",840,520)
 c += [edge("e110","operator","account_map","maps")]
 c += [note("n11", "Everything that identifies the business is the operator's to supply: "
                   "logo is nullable and the interface renders trading_name in its "
                   "place.\n\n"
+                  "It collects tax in each state it is registered in, tax_registration: "
+                  "what it holds there and from whom, and how often it files. Collecting "
+                  "nowhere is having none. Its fiscal year is its own, not a state's.\n\n"
                   "An included-hours figure is a client's, on their agreement, "
                   "and what is paid to whoever answers is a dated pay_rule.\n\n"
                   "record_history is append-only and exists to explain a figure,"

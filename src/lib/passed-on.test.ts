@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { fromStock, passedOn, type FromStock, type Terms } from './passed-on.ts';
 
-const CA: Terms = { purchaseMarkupPct: '0', ruleSet: 'us_ca', siteRatePct: '8.0000', places: 2 };
+const CA: Terms = {
+	purchaseMarkupPct: '0',
+	collects: true,
+	site: { collected: true, ratePct: '8.0000' },
+	places: 2
+};
 
 describe('goods bought for a job, passed on', () => {
 	it('as they cost, taxed at the site, with the cost and tax paid kept', () => {
@@ -16,7 +21,8 @@ describe('goods bought for a job, passed on', () => {
 			taxSource: 'site',
 			exTaxCost: '33.33',
 			taxPaid: '2.67',
-			needsASite: false
+			needsASite: false,
+			needsPlacing: false
 		});
 	});
 
@@ -29,21 +35,45 @@ describe('goods bought for a job, passed on', () => {
 		expect([l.unitPrice, l.amount]).toEqual(['38.3295', '38.33']);
 	});
 
-	it('untaxed where no rule taxes them', () => {
-		const l = passedOn({ kind: 'bought', cost: '10.00', taxPaid: '0' }, { ...CA, ruleSet: 'none' });
-		expect([l.taxable, l.taxRatePct, l.taxSource, l.needsASite]).toEqual([
+	it('untaxed, needing no site, where the business collects nowhere', () => {
+		const l = passedOn(
+			{ kind: 'bought', cost: '10.00', taxPaid: '0' },
+			{ ...CA, collects: false, site: null }
+		);
+		expect([l.taxable, l.taxRatePct, l.taxSource, l.needsASite, l.needsPlacing]).toEqual([
 			false,
 			'0',
 			'none',
+			false,
 			false
 		]);
 	});
 
-	it('needs a site, for its rate, where the rule taxes them', () => {
+	it("untaxed at a site in a state the business doesn't collect in", () => {
+		const l = passedOn(
+			{ kind: 'bought', cost: '10.00', taxPaid: '0' },
+			{ ...CA, site: { collected: false, ratePct: null } }
+		);
+		expect([l.taxable, l.taxSource, l.needsASite, l.needsPlacing]).toEqual([
+			false,
+			'none',
+			false,
+			false
+		]);
+	});
+
+	it('needs a site, for its rate, where the business collects', () => {
 		expect(
-			passedOn({ kind: 'bought', cost: '10.00', taxPaid: '0' }, { ...CA, siteRatePct: null })
-				.needsASite
+			passedOn({ kind: 'bought', cost: '10.00', taxPaid: '0' }, { ...CA, site: null }).needsASite
 		).toBe(true);
+	});
+
+	it('needs the site placed in an area, where the business collects in its state', () => {
+		const l = passedOn(
+			{ kind: 'bought', cost: '10.00', taxPaid: '0' },
+			{ ...CA, site: { collected: true, ratePct: null } }
+		);
+		expect([l.taxable, l.needsASite, l.needsPlacing]).toEqual([false, false, true]);
 	});
 });
 
@@ -95,11 +125,11 @@ describe('goods drawn from stock', () => {
 	});
 
 	it('untaxed when it is not goods the business taxes, and needing no site', () => {
-		const l = fromStock({ ...cable, taxable: false }, { ...CA, siteRatePct: null });
+		const l = fromStock({ ...cable, taxable: false }, { ...CA, site: null });
 		expect([l.taxable, l.needsASite]).toEqual([false, false]);
 	});
 
 	it('needs a site, for its rate, where it is taxed', () => {
-		expect(fromStock(cable, { ...CA, siteRatePct: null }).needsASite).toBe(true);
+		expect(fromStock(cable, { ...CA, site: null }).needsASite).toBe(true);
 	});
 });

@@ -17,7 +17,8 @@ import {
 import type { ServiceTerms } from './pricing.ts';
 import type { Decimal } from '#lib/decimal.ts';
 import { legVehiclePay, legWorth } from './misc.ts';
-import { moneyPlaces, taxRounding } from '../business.ts';
+import { moneyPlaces } from '../business.ts';
+import { TAX_ROUNDING } from '../tax-rules.ts';
 import { invoiceTax, type InvoiceTax } from './tax.ts';
 
 const te = expressionBuilder<DB, 'time_entry'>();
@@ -272,10 +273,14 @@ export async function valueLegs(
 	);
 }
 
-/** The tax on each of these invoices, split by the pieces each line kept. */
+/**
+ * The tax on each of these invoices, split by the pieces each line kept -- or,
+ * given a `state`, on the lines taxed there alone, as its return counts them.
+ */
 export async function taxOfInvoices(
 	r: Reader,
-	invoiceIds: readonly string[]
+	invoiceIds: readonly string[],
+	state?: string
 ): Promise<Map<string, InvoiceTax>> {
 	if (!invoiceIds.length) return new Map();
 	const lines = await r
@@ -289,6 +294,7 @@ export async function taxOfInvoices(
 			'tax_pieces as pieces'
 		])
 		.where('invoice_id', '=', (eb) => eb.fn.any(eb.val([...invoiceIds])))
+		.$if(state !== undefined, (qb) => qb.where('tax_state', '=', state!))
 		.execute();
-	return invoiceTax(lines, await taxRounding(), await moneyPlaces());
+	return invoiceTax(lines, TAX_ROUNDING, await moneyPlaces());
 }

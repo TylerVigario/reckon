@@ -3,7 +3,8 @@ import { sql } from 'kysely';
 import { sumMoney } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import { balances } from '#lib/server/balances.ts';
-import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
+import { TAX_ROUNDING } from '#lib/server/tax-rules.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -24,7 +25,7 @@ import type { PageServerLoad } from './$types';
  * total sit on the same screen, where one cent out would show.
  */
 export const load: PageServerLoad = async () => {
-	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
+	const places = await moneyPlaces();
 	const today = businessToday();
 
 	const [operator, drafts] = await Promise.all([
@@ -136,7 +137,7 @@ export const load: PageServerLoad = async () => {
 			.selectFrom('invoice as i')
 			.crossJoin('alert as a')
 			.innerJoin('entity as e', 'e.id', 'i.entity_id')
-			.innerJoin(balances(rounding, places).as('b'), 'b.invoice_id', 'i.id')
+			.innerJoin(balances(TAX_ROUNDING, places).as('b'), 'b.invoice_id', 'i.id')
 			.leftJoin('entity_contact as ec', (join) =>
 				join.onRef('ec.entity_id', '=', 'e.id').on('ec.is_primary', '=', true)
 			)

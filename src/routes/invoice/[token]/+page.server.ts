@@ -1,7 +1,8 @@
 import { error } from '@sveltejs/kit';
 import { db } from '#lib/server/db/index.ts';
 import { balances } from '#lib/server/balances.ts';
-import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
+import { TAX_ROUNDING } from '#lib/server/tax-rules.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import type { PageServerLoad } from './$types';
 
@@ -58,7 +59,7 @@ export const load: PageServerLoad = async ({ params, setHeaders }) => {
 	};
 	if (inv.status === 'void') return { from, invoice, voided: true as const };
 
-	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
+	const places = await moneyPlaces();
 	const [lines, totals] = await Promise.all([
 		db
 			.selectFrom('invoice_line as il')
@@ -78,7 +79,7 @@ export const load: PageServerLoad = async ({ params, setHeaders }) => {
 			.orderBy('il.seq')
 			.execute(),
 		db
-			.selectFrom(balances(rounding, places).as('b'))
+			.selectFrom(balances(TAX_ROUNDING, places).as('b'))
 			.select((eb) => {
 				// Its taxed lines.
 				const taxed = () =>

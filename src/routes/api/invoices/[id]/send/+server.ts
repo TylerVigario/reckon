@@ -2,7 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { sql } from 'kysely';
 import { asUser } from '#lib/server/db/index.ts';
 import { balances } from '#lib/server/balances.ts';
-import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
+import { TAX_ROUNDING } from '#lib/server/tax-rules.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { refuse } from '#lib/server/field-errors.ts';
 import { problem } from '#lib/server/problem.ts';
@@ -22,7 +23,7 @@ import type { RequestHandler } from './$types';
  */
 export const POST: RequestHandler = async ({ params, locals, url }) => {
 	if (!UUID.test(params.id)) return problem('notFound', 404, 'No invoice with that id.');
-	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
+	const places = await moneyPlaces();
 	const today = businessToday();
 
 	const done = await asUser(locals.user!.id, async (tx) => {
@@ -64,7 +65,7 @@ export const POST: RequestHandler = async ({ params, locals, url }) => {
 				eb
 					.cast<string>(
 						eb
-							.selectFrom(balances(rounding, places).as('b'))
+							.selectFrom(balances(TAX_ROUNDING, places).as('b'))
 							.select('b.gross')
 							.where('b.invoice_id', '=', params.id),
 						'text'

@@ -15,15 +15,18 @@
 
 -- ------------------------------------------------------------ the business --
 
--- Kestrel files with CDTFA once a year, keeps its books to the calendar year,
--- numbers its invoices INV-0000 with 213 next, and flags work left unbilled
--- for four weeks.
-INSERT INTO operator (trading_name, short_name, singleton, timezone, tax_rule_set,
-                      ageing_alert_days, next_invoice_number, tax_agency,
-                      tax_registration, tax_number, filing_basis, fiscal_year_end_month,
-                      claims_tax_paid_purchases_resold)
-VALUES ('Kestrel Field Services','KFS', true, 'America/Los_Angeles', 'us_ca',
-        28, 213, 'CDTFA', 'Seller''s permit', 'SR-ZZ-000-0000', 'annual', 12, true);
+-- Kestrel keeps its books to the calendar year, numbers its invoices INV-0000
+-- with 213 next, and flags work left unbilled for four weeks.
+INSERT INTO operator (trading_name, short_name, singleton, timezone,
+                      ageing_alert_days, next_invoice_number, tax_number,
+                      fiscal_year_end_month)
+VALUES ('Kestrel Field Services','KFS', true, 'America/Los_Angeles',
+        28, 213, 'SR-ZZ-000-0000', 12);
+
+-- It collects tax in California, on a seller's permit, files with CDTFA once a
+-- year, and claims the tax it paid on goods it resold (Reg 1701).
+INSERT INTO tax_registration (state, held, agency, filing_basis, claims_tax_paid_purchases_resold)
+VALUES ('CA', 'Seller''s permit', 'CDTFA', 'annual', true);
 
 -- Avery owns it and works in it. Sam is employed, and Jordan is a contractor
 -- who takes some of the field work. One person in each of the three roles the
@@ -394,19 +397,19 @@ INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_pr
   ('6f444d02-b482-4506-98fe-ee23f45d26c5',2,'service','Travel',18.0,'mile',0.66,11.88,false,0,NULL,NULL);
 
 -- Goods lines name the site whose rate taxes them, with where that rate is
--- levied and the pieces it is made of, and the material each is, with what it cost
+-- levied, in which state, and the pieces it is made of, and the material each is, with what it cost
 -- before tax and the tax already paid on it, and who added it. What each took
 -- off its lot is a draw, which takes it off the shelf.
 INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
                           taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction,
-                          tax_pieces, material_id,
+                          tax_state, tax_pieces, material_id,
                           ex_tax_cost, tax_paid, created_by) VALUES
   ('a0ca5d14-192f-43eb-9652-48e6fe145e67','2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a',1,'material','Access point · Wi-Fi 6 · Ceiling',
-   2,'each',132.16,264.32,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','AUBURN',
+   2,'each',132.16,264.32,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','AUBURN','CA',
    '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"}]',
    '427ec8a1-9038-4fca-9323-ca62625622a3', 224.00, 16.24, 'c41b2fab-5b71-4954-bb86-1bc803daf7ee'),
   ('46c02ef2-14c7-4043-9321-34a0ecd99100','2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a',2,'material','Raceway · Surface · 3/4 in',
-   40,'foot',1.06,42.40,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','AUBURN',
+   40,'foot',1.06,42.40,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','AUBURN','CA',
    '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"}]',
    'b144a78b-750a-4bd2-a84e-7d1551328565', 34.00, 2.464, 'c41b2fab-5b71-4954-bb86-1bc803daf7ee');
 

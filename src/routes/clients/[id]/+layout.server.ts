@@ -1,7 +1,8 @@
 import { sql, type NumericString } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
 import { balances } from '#lib/server/balances.ts';
-import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
+import { TAX_ROUNDING } from '#lib/server/tax-rules.ts';
 import { findClient } from '#lib/server/find.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { LayoutServerLoad } from './$types';
@@ -15,8 +16,8 @@ import type { LayoutServerLoad } from './$types';
 export const load: LayoutServerLoad = async ({ params, locals }) => {
 	const { id } = await findClient(params.id);
 	const field = fieldOnly(locals);
-	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
-	const owing = balances(rounding, places).as('b');
+	const places = await moneyPlaces();
+	const owing = balances(TAX_ROUNDING, places).as('b');
 
 	const [client, sites, contacts] = await Promise.all([
 		db
