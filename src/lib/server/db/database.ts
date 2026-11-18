@@ -78,6 +78,10 @@ export type StockAdjustmentWay = "off" | "on";
 
 export type StockCosting = "average" | "oldest_first";
 
+export type TaxAreaSource = "cdtfa";
+
+export type TaxLevel = "federal" | "local" | "state";
+
 export type TaxRuleSet = "flat_per_site" | "none" | "us_ca";
 
 export type TaxSource = "exempt" | "none" | "override" | "site";
@@ -528,7 +532,6 @@ export interface Site {
   city: string;
   created_at: Generated<Timestamp>;
   display: Generated<string | null>;
-  district_rate_pct: NumericColumn;
   drive_minutes: Generated<number | null>;
   entity_id: string;
   google_drive_minutes: number | null;
@@ -540,11 +543,8 @@ export interface Site {
   region: string | null;
   round_trip_miles: Generated<NumericColumn | null>;
   slug: string;
-  state_rate_pct: NumericColumn;
   street: string;
-  tax_area_code: string;
-  tax_jurisdiction: string;
-  tax_rate_pct: NumericColumn;
+  tax_area_id: string;
   typed_drive_minutes: number | null;
   typed_round_trip_miles: NumericColumn | null;
 }
@@ -631,6 +631,26 @@ export interface StockTake {
   material_id: string;
   material_lot_id: string;
   qty: NumericColumn;
+}
+
+export interface TaxArea {
+  code: string | null;
+  confirmed_on: string;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  name: string;
+  source: TaxAreaSource;
+  state: string;
+}
+
+export interface TaxPiece {
+  area_id: string;
+  code: string | null;
+  effective_from: string;
+  id: Generated<string>;
+  jurisdiction: string;
+  level: TaxLevel;
+  rate_pct: NumericColumn;
 }
 
 export interface TaxRemittance {
@@ -804,6 +824,8 @@ export interface DB {
   stock_draw: StockDraw;
   stock_receipt: StockReceipt;
   stock_take: StockTake;
+  tax_area: TaxArea;
+  tax_piece: TaxPiece;
   tax_remittance: TaxRemittance;
   time_entry: TimeEntry;
   time_entry_crew: TimeEntryCrew;

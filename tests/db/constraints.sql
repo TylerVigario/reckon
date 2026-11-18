@@ -32,6 +32,27 @@ EXCEPTION WHEN others THEN
   RAISE EXCEPTION 'OVER-TIGHT: % was refused (%)', label, SQLERRM;
 END $$;
 
+-- A California tax area for the fixtures below, as CDTFA names it, made the
+-- first time it is named: the state's share and, where there are any, the
+-- district taxes.
+CREATE FUNCTION ca_area(tac text, jurisdiction text, state_pct numeric, district_pct numeric)
+RETURNS uuid LANGUAGE plpgsql AS $$
+DECLARE a uuid;
+BEGIN
+  SELECT id INTO a FROM tax_area WHERE state = 'CA' AND code = tac;
+  IF a IS NULL THEN
+    INSERT INTO tax_area (state, code, name, source, confirmed_on)
+    VALUES ('CA', tac, jurisdiction, 'cdtfa', current_date) RETURNING id INTO a;
+    INSERT INTO tax_piece (area_id, level, jurisdiction, rate_pct, effective_from)
+    VALUES (a, 'state', 'CALIFORNIA', state_pct, current_date);
+    IF district_pct > 0 THEN
+      INSERT INTO tax_piece (area_id, level, jurisdiction, code, rate_pct, effective_from)
+      VALUES (a, 'local', jurisdiction, tac, district_pct, current_date);
+    END IF;
+  END IF;
+  RETURN a;
+END $$;
+
 -- ------------------------------------------------------------- fixtures --
 
 INSERT INTO "user" (id, name, email, access) VALUES
@@ -68,24 +89,24 @@ INSERT INTO invoice (id, number, entity_id, created_by) VALUES
    '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1');
 
 INSERT INTO site (id, entity_id, label, slug, street, city, region, postcode,
-                  tax_jurisdiction, tax_rate_pct, state_rate_pct, district_rate_pct,
-                  tax_area_code, area_verified_on,
+                  tax_area_id,
+                  area_verified_on,
                   google_round_trip_miles, google_drive_minutes) VALUES
   ('c5000000-0000-4000-8000-000000000001','44444444-4444-4444-4444-444444444444',
    'Front office','front-office','101 Maple St','Auburn','CA','95603',
-   'AUBURN', 7.2500, 7.2500, 0.0000, '310110000000', current_date, 60, 66),
+   ca_area('310110000000', 'AUBURN', 7.2500, 0.0000), current_date, 60, 66),
   ('33333333-3333-3333-3333-333333333333','44444444-4444-4444-4444-444444444444',
    'Yuba','yuba','1201 Civic Center Blvd','Yuba City','CA','95993',
-   'YUBA CITY', 7.2500, 7.2500, 0.0000, '510510000000', current_date, 58, 62),
+   ca_area('510510000000', 'YUBA CITY', 7.2500, 0.0000), current_date, 58, 62),
   ('c5000000-0000-4000-8000-00000000000c','44444444-4444-4444-4444-444444444444',
    'Woodland lab','woodland-lab','1000 Main St','Woodland','CA','95695',
-   'WOODLAND', 8.0000, 7.2500, 0.7500, '570282360000', current_date, 40, 45),
+   ca_area('570282360000', 'WOODLAND', 7.2500, 0.7500), current_date, 40, 45),
   ('c5000000-0000-4000-8000-00000000000b','44444444-0000-4000-8000-000000000002',
    'Suite 4','suite-4','101 Maple St','Auburn','CA','95603',
-   'AUBURN', 7.2500, 7.2500, 0.0000, '310110000000', current_date, 60, 66),
+   ca_area('310110000000', 'AUBURN', 7.2500, 0.0000), current_date, 60, 66),
   ('c5000000-0000-4000-8000-00000000000a','44444444-0000-4000-8000-000000000003',
    'Coloma','coloma','310 Back St','Coloma','CA','95613',
-   'UNINCORPORATED AREA-EL DORADO', 7.2500, 7.2500, 0.0000, '099980000000', current_date, 44, 58);
+   ca_area('099980000000', 'UNINCORPORATED AREA-EL DORADO', 7.2500, 0.0000), current_date, 44, 58);
 
 \echo ''
 \echo '=== 1. an entry cannot arrive twice from a retry ==='
@@ -323,11 +344,11 @@ $$, 'a lot that came on no receipt');
 \echo ''
 \echo '=== 8. a rate is CDTFA''s answer, not ours ==='
 
--- A negative rate is not an answer CDTFA can give -- even one whose parts
--- add up.
+-- A negative rate is not an answer CDTFA can give, nor a piece of any rate.
 SELECT must_fail($$
-  UPDATE site SET tax_rate_pct = -1, state_rate_pct = -1, district_rate_pct = 0
-   WHERE id = '33333333-3333-3333-3333-333333333333'
+  UPDATE tax_piece SET rate_pct = -1
+   WHERE area_id = (SELECT tax_area_id FROM site WHERE id = '33333333-3333-3333-3333-333333333333')
+     AND level = 'state'
 $$, 'a rate below zero');
 
 \echo '=== 9. two "any entity" prices cannot both be true ==='
@@ -404,14 +425,14 @@ VALUES ('b5000000-0000-4000-8000-000000000056',(SELECT id FROM role WHERE name =
 INSERT INTO entity (id, name, slug) VALUES
   ('bbbbbbbb-0000-4000-8000-000000000003','A client with two sites','a-client-with-two-sites');
 INSERT INTO site (id, entity_id, label, slug, street, city, region, postcode,
-                  tax_jurisdiction, tax_rate_pct, state_rate_pct, district_rate_pct,
-                  tax_area_code, area_verified_on) VALUES
+                  tax_area_id,
+                  area_verified_on) VALUES
   ('c5000000-0000-4000-8000-000000000002','bbbbbbbb-0000-4000-8000-000000000003','Site one','site-one',
    '11255 Jackson St','Columbia','CA','95310',
-   'UNINCORPORATED AREA-TUOLUMNE', 7.2500, 7.2500, 0.0000, '559980000000', current_date),
+   ca_area('559980000000', 'UNINCORPORATED AREA-TUOLUMNE', 7.2500, 0.0000), current_date),
   ('c5000000-0000-4000-8000-000000000003','bbbbbbbb-0000-4000-8000-000000000003','Site two','site-two',
    '526 C St','Marysville','CA','95901',
-   'MARYSVILLE', 8.2500, 7.2500, 1.0000, '580604470000', current_date);
+   ca_area('580604470000', 'MARYSVILLE', 7.2500, 1.0000), current_date);
 INSERT INTO agreement (id, entity_id, site_id, price, starts_on, billing_anchor_day) VALUES
   ('bbbbbbbb-0000-4000-8000-000000000004','bbbbbbbb-0000-4000-8000-000000000003', NULL,
    260.00, '2026-09-01', 1),
@@ -822,38 +843,39 @@ END $$;
 
 -- THERE IS NO SUCH THING AS AN UNPRICED SITE. A site is a place work is
 -- billed from, and a place that cannot be priced cannot be billed from -- so
--- the schema refuses one rather than leaving every screen a branch describing
--- the gap.
+-- the schema refuses one in no tax area rather than leaving every screen a
+-- branch describing the gap.
 SELECT must_fail($$
-  INSERT INTO site (id, entity_id, label, slug, street, city, region, postcode)
+  INSERT INTO site (id, entity_id, label, slug, street, city, region, postcode,
+                    area_verified_on)
   VALUES (gen_random_uuid(),'44444444-4444-4444-4444-444444444444','No rate','no-rate',
-          '9 Somewhere Rd','Columbia','CA','95310')
-$$, 'a site with no CDTFA rate');
+          '9 Somewhere Rd','Columbia','CA','95310', current_date)
+$$, 'a site in no tax area');
 
 SELECT must_fail($$
   INSERT INTO site (id, entity_id, label, slug, city, region, postcode,
-                    tax_jurisdiction, tax_rate_pct, state_rate_pct, district_rate_pct,
-                  tax_area_code, area_verified_on)
+                    tax_area_id,
+                  area_verified_on)
   VALUES (gen_random_uuid(),'44444444-4444-4444-4444-444444444444','No street','no-street',
           'Columbia','CA','95310',
-          'UNINCORPORATED AREA-TUOLUMNE', 7.2500, 7.2500, 0.0000, '559980000000', current_date)
+          ca_area('559980000000', 'UNINCORPORATED AREA-TUOLUMNE', 7.2500, 0.0000), current_date)
 $$, 'a site with no street to look up');
 
 SELECT must_fail($$
   INSERT INTO site (id, entity_id, label, slug, street, city, region, postcode,
-                    tax_jurisdiction, tax_rate_pct, state_rate_pct, district_rate_pct,
-                  tax_area_code, area_verified_on)
+                    tax_area_id,
+                  area_verified_on)
   VALUES (gen_random_uuid(),'44444444-4444-4444-4444-444444444444','Blank postcode','blank-postcode',
           '11255 Jackson St','Columbia','CA','',
-          'UNINCORPORATED AREA-TUOLUMNE', 7.2500, 7.2500, 0.0000, '559980000000', current_date)
+          ca_area('559980000000', 'UNINCORPORATED AREA-TUOLUMNE', 7.2500, 0.0000), current_date)
 $$, 'a postcode that is present but empty');
 
 -- What the API said, written down against the address it was said about.
 INSERT INTO site_tax_check (site_id, tax_area_code, tax_jurisdiction, rate_pct, changed)
 VALUES ('33333333-3333-3333-3333-333333333333','510510000000','YUBA CITY',
         7.2500, true);
-UPDATE site SET tax_rate_pct = 7.2500, tax_jurisdiction = 'YUBA CITY',
-                tax_area_code = '510510000000', area_verified_on = current_date
+UPDATE site SET tax_area_id = ca_area('510510000000', 'YUBA CITY', 7.2500, 0.0000),
+                area_verified_on = current_date
  WHERE id = '33333333-3333-3333-3333-333333333333';
 
 -- Every answer is kept, so a rate that moved can be explained against the
@@ -882,11 +904,11 @@ DO $$
 DECLARE n int;
 BEGIN
   INSERT INTO site (id, entity_id, label, slug, street, city, region, postcode,
-                  tax_jurisdiction, tax_rate_pct, state_rate_pct, district_rate_pct,
-                  tax_area_code, area_verified_on)
+                  tax_area_id,
+                  area_verified_on)
 VALUES ('c5000000-0000-4000-8000-0000000000fe','44444444-0000-4000-8000-000000000002','Gone','gone',
         '11255 Jackson St','Columbia','CA','95310',
-        'UNINCORPORATED AREA-TUOLUMNE', 7.2500, 7.2500, 0.0000, '559980000000', current_date);
+        ca_area('559980000000', 'UNINCORPORATED AREA-TUOLUMNE', 7.2500, 0.0000), current_date);
   INSERT INTO site_tax_check (site_id, rate_pct) VALUES
     ('c5000000-0000-4000-8000-0000000000fe', 7.2500);
   DELETE FROM site WHERE id = 'c5000000-0000-4000-8000-0000000000fe';
@@ -898,20 +920,45 @@ VALUES ('c5000000-0000-4000-8000-0000000000fe','44444444-0000-4000-8000-00000000
   RAISE NOTICE '  follows   answers go with the address they describe';
 END $$;
 
--- The rate comes apart the way CDTFA publishes it, and the parts ARE the
--- total: in its rate layer State + County + City = RATE for every
--- jurisdiction, so this is arithmetic rather than an apportionment, and the
--- schema can insist on it.
+-- A RATE IS A PLACE'S. A tax area is named by its authority's code, once in
+-- its state, and its rate is its pieces: who levies what, each once in a set.
 SELECT must_fail($$
-  UPDATE site SET district_rate_pct = 1.0000
-   WHERE id = 'c5000000-0000-4000-8000-00000000000c'
-$$, 'parts that do not add up to the rate charged');
+  INSERT INTO tax_area (state, code, name, source, confirmed_on)
+  VALUES ('CA', '570282360000', 'WOODLAND AGAIN', 'cdtfa', current_date)
+$$, 'a second area under a code in use');
 
 SELECT must_pass($$
-  UPDATE site SET tax_rate_pct = 8.0000,
-                  state_rate_pct = 7.2500, district_rate_pct = 0.7500
-   WHERE id = 'c5000000-0000-4000-8000-00000000000c'
-$$, 'parts that do add up');
+  INSERT INTO tax_area (state, code, name, source, confirmed_on)
+  VALUES ('WA', '570282360000', 'ANOTHER STATE', 'cdtfa', current_date)
+$$, 'the same code in another state');
+
+SELECT must_fail($$
+  INSERT INTO tax_area (state, name, source, confirmed_on)
+  VALUES ('California', 'NOWHERE', 'cdtfa', current_date)
+$$, 'a state that is not its two letters');
+
+SELECT must_fail($$
+  INSERT INTO tax_area (state, name, source, confirmed_on)
+  VALUES ('CA', '  ', 'cdtfa', current_date)
+$$, 'an area with no name');
+
+SELECT must_fail($$
+  INSERT INTO tax_piece (area_id, level, jurisdiction, rate_pct, effective_from)
+  SELECT tax_area_id, 'local', 'WOODLAND', 0.2500, current_date
+    FROM site WHERE id = 'c5000000-0000-4000-8000-00000000000c'
+$$, 'a jurisdiction twice in one set');
+
+SELECT must_pass($$
+  INSERT INTO tax_piece (area_id, level, jurisdiction, rate_pct, effective_from)
+  SELECT tax_area_id, 'local', 'WOODLAND', 0.2500, current_date + 90
+    FROM site WHERE id = 'c5000000-0000-4000-8000-00000000000c'
+$$, 'the same jurisdiction in a later set');
+DELETE FROM tax_piece WHERE effective_from = current_date + 90;
+
+SELECT must_fail($$
+  DELETE FROM tax_area WHERE id =
+    (SELECT tax_area_id FROM site WHERE id = 'c5000000-0000-4000-8000-00000000000c')
+$$, 'removing an area a site is in');
 
 -- WHAT WAS HANDED OVER IS RECORDED, NOT DERIVED. Nothing in the invoices can
 -- say whether a return was actually paid.
@@ -969,11 +1016,11 @@ DO $$
 DECLARE n int;
 BEGIN
   INSERT INTO site (entity_id, label, slug, street, city, region, postcode,
-                    tax_jurisdiction, tax_rate_pct, state_rate_pct, district_rate_pct,
-                    tax_area_code, area_verified_on)
+                    tax_area_id,
+                    area_verified_on)
   VALUES ('44444444-0000-4000-8000-000000000002','Yuba','yuba','1201 Civic Center Blvd',
           'Yuba City','CA','95993',
-          'YUBA CITY', 7.2500, 7.2500, 0.0000, '510510000000', current_date);
+          ca_area('510510000000', 'YUBA CITY', 7.2500, 0.0000), current_date);
   SELECT count(DISTINCT entity_id) INTO n FROM site WHERE slug = 'yuba';
   IF n < 2 THEN
     RAISE EXCEPTION 'GUARD MISSING: only % client(s) have a site called yuba', n;
@@ -983,11 +1030,11 @@ END $$;
 
 SELECT must_fail($$
   INSERT INTO site (entity_id, label, slug, street, city, region, postcode,
-                    tax_jurisdiction, tax_rate_pct, state_rate_pct, district_rate_pct,
-                    tax_area_code, area_verified_on)
+                    tax_area_id,
+                    area_verified_on)
   VALUES ('44444444-4444-4444-4444-444444444444','Another Yuba','yuba',
           '1201 Civic Center Blvd','Yuba City','CA','95993',
-          'YUBA CITY', 7.2500, 7.2500, 0.0000, '510510000000', current_date)
+          ca_area('510510000000', 'YUBA CITY', 7.2500, 0.0000), current_date)
 $$, 'two sites of one client sharing a URL');
 
 SELECT must_fail($$

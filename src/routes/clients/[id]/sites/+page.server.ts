@@ -3,6 +3,7 @@ import { db } from '#lib/server/db/index.ts';
 import { findClient } from '#lib/server/find.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { rateIsStale } from '#lib/server/stale.ts';
+import { areaRate } from '#lib/server/tax-areas.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -27,6 +28,7 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	const sites = await db
 		.selectFrom('site as si')
+		.innerJoin('tax_area as ta', 'ta.id', 'si.tax_area_id')
 		.select((eb) => [
 			'si.id',
 			'si.slug',
@@ -43,11 +45,16 @@ export const load: PageServerLoad = async ({ params }) => {
 					eb.val('')
 				])
 				.as('address'),
-			eb.cast<string>('si.tax_rate_pct', 'text').as('rate_pct'),
-			eb.cast<string>('si.state_rate_pct', 'text').as('state_rate_pct'),
-			eb.cast<string>('si.district_rate_pct', 'text').as('district_rate_pct'),
-			'si.tax_jurisdiction as jurisdiction',
-			'si.tax_area_code',
+			// Its area's rate today, and its shares (#lib/server/tax-areas).
+			eb.cast<string>(areaRate(eb.ref('ta.id'), businessToday()), 'text').as('rate_pct'),
+			eb
+				.cast<string>(areaRate(eb.ref('ta.id'), businessToday(), 'state'), 'text')
+				.as('state_rate_pct'),
+			eb
+				.cast<string>(areaRate(eb.ref('ta.id'), businessToday(), 'local'), 'text')
+				.as('district_rate_pct'),
+			'ta.name as jurisdiction',
+			'ta.code as tax_area_code',
 			rateIsStale(eb.ref('si.area_verified_on'), businessToday()).as('stale'),
 			eb.cast<string | null>('si.round_trip_miles', 'text').as('miles'),
 			'si.drive_minutes as minutes',

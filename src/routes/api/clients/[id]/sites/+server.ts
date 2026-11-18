@@ -5,6 +5,7 @@ import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { lookUpClient } from '#lib/server/find.ts';
 import { SITE_FIELDS, parseSiteField } from '#lib/site-fields.ts';
 import { priceAddress, NoAnswer } from '#lib/server/cdtfa.ts';
+import { recordCdtfaArea } from '#lib/server/tax-areas.ts';
 import { confirmPlace } from '#lib/server/verify-place.ts';
 import { measureDrive } from '#lib/server/site-drive.ts';
 import type { RequestHandler } from './$types';
@@ -96,6 +97,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			v === null || v === undefined ? null : as(v);
 		const site = await asUser(locals.user!.id, async (tx) => {
 			const areaVerifiedOn = businessToday();
+			// CDTFA's answer is its area's (#lib/server/tax-areas).
+			const area = await recordCdtfaArea(tx, priced, areaVerifiedOn);
 			const made = await insertNamed(
 				{ given: optional(row.slug, String), from: String(row.label), fallback: 'site' },
 				(slug, madeHere) =>
@@ -116,11 +119,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 							typed_drive_minutes: optional(row.typed_drive_minutes, Number),
 							entity_id,
 							active: true,
-							tax_rate_pct: priced.rate,
-							state_rate_pct: priced.state,
-							district_rate_pct: priced.district,
-							tax_jurisdiction: priced.jurisdiction,
-							tax_area_code: priced.tac,
+							tax_area_id: area,
 							area_verified_on: areaVerifiedOn
 						})
 						.$if(madeHere, (qb) =>

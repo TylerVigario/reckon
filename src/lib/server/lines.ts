@@ -17,6 +17,7 @@ import { merge, MERGED_FIELDS, same, type Merge } from '../line-merge.ts';
 import type { Conflict, Held } from '../line-conflict.ts';
 import { startIn } from './drafts.ts';
 import { isReceiptType, MAX_RECEIPT } from './receipt-file.ts';
+import { areaRate } from './tax-areas.ts';
 
 /**
  * A LINE ADDED TO A DRAFT BY HAND: goods drawn from stock (#lib/stock-draw),
@@ -361,16 +362,19 @@ async function refused(
  */
 async function siteOf(draft: { entity_id: string; who: string }, siteId: string | null) {
 	if (!siteId) return { site: null, why: null };
+	// Its area's rate today, and who levies it (#lib/server/tax-areas).
+	const day = businessToday();
 	const site = await db
 		.selectFrom('site')
-		.select([
-			'tax_rate_pct as rate',
-			'tax_jurisdiction as jurisdiction',
-			'state_rate_pct as state',
-			'district_rate_pct as district'
+		.innerJoin('tax_area', 'tax_area.id', 'site.tax_area_id')
+		.select((eb) => [
+			areaRate(eb.ref('tax_area.id'), day).as('rate'),
+			'tax_area.name as jurisdiction',
+			areaRate(eb.ref('tax_area.id'), day, 'state').as('state'),
+			areaRate(eb.ref('tax_area.id'), day, 'local').as('district')
 		])
-		.where('id', '=', siteId)
-		.where('entity_id', '=', draft.entity_id)
+		.where('site.id', '=', siteId)
+		.where('site.entity_id', '=', draft.entity_id)
 		.executeTakeFirst();
 	return site ? { site, why: null } : { site: null, why: `Not one of ${draft.who}'s sites.` };
 }

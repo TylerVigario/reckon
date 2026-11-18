@@ -6,11 +6,11 @@
  * value is safe, and the keys are the allowlist -- a request names a field and
  * the column written is this object's own key, which is source text.
  *
- * WHAT IS NOT HERE IS THE POINT. tax_rate_pct, state_rate_pct,
- * district_rate_pct, tax_jurisdiction, tax_area_code and area_verified_on are
- * absent, and no request can name them. They are CDTFA's answer about an
- * address; the only way they change is by asking again. Letting a form write
- * a rate is how a rate goes stale.
+ * WHAT IS NOT HERE IS THE POINT. tax_area_id and area_verified_on are absent,
+ * and no request can name them: which tax area an address is in, and so its
+ * rate, is CDTFA's answer about it (#lib/server/tax-areas), and the only way
+ * it changes is by asking again. Letting a form write a rate is how a rate
+ * goes stale.
  */
 import {
 	cap,
