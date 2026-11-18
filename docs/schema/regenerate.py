@@ -709,7 +709,10 @@ c += [edge("e50","entity","agreement","signed"),
                  .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=1"))]
 c += [note("n6", "With site_id empty the agreement is the client's; with it set, it is "
                  "that site's and comes first for work there. A client may hold one of "
-                 "its own, one per site, or both.\n\n"
+                 "its own, one per site, or both. Of two for the same place, the one "
+                 "that started later covers an hour, so a renewal takes over from its "
+                 "first day; two starting the same day may not cover the same service, "
+                 "which would leave nothing to choose between them.\n\n"
                  "No allotment is assumed: each agreement states its own, and the hours "
                  "are shared by every site the agreement reaches, so the meter belongs "
                  "to the agreement.\n\n"

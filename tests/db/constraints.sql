@@ -3279,4 +3279,72 @@ BEGIN
   RAISE NOTICE '  stamps    a session carried forward';
 END $$;
 
+\echo '=== 58. two agreements never tie for an hour ==='
+-- An hour goes to the client's agreement for its site before the one for the
+-- whole client, and the later start of those. Two of a client's agreements for
+-- the same place, starting the same day, covering the same service, would leave
+-- nothing to choose; the second is refused. A different day, place or service
+-- is a different agreement, and stands.
+CREATE FUNCTION must_tie(stmt text, label text) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE c text;
+BEGIN
+  BEGIN
+    EXECUTE stmt;
+  EXCEPTION WHEN unique_violation THEN
+    GET STACKED DIAGNOSTICS c = CONSTRAINT_NAME;
+    IF c = 'agreements_never_tie' THEN
+      RAISE NOTICE '  refused   %', label;
+      RETURN;
+    END IF;
+    RAISE EXCEPTION 'GUARD WRONG: % was refused by %, not agreements_never_tie', label, c;
+  END;
+  RAISE EXCEPTION 'GUARD MISSING: % was allowed', label;
+END $$;
+
+-- Beside the client's own agreement, from 1 September, covering help desk.
+INSERT INTO agreement (id, entity_id, site_id, price, starts_on, billing_anchor_day) VALUES
+  ('bbbbbbbb-0000-4000-8000-000000000a01','bbbbbbbb-0000-4000-8000-000000000003', NULL,
+   100.00, '2026-09-01', 1),
+  ('bbbbbbbb-0000-4000-8000-000000000a02','bbbbbbbb-0000-4000-8000-000000000003',
+   'c5000000-0000-4000-8000-000000000002', 100.00, '2026-09-01', 1),
+  ('bbbbbbbb-0000-4000-8000-000000000a03','bbbbbbbb-0000-4000-8000-000000000003', NULL,
+   100.00, '2026-09-02', 2),
+  ('bbbbbbbb-0000-4000-8000-000000000a04','44444444-0000-4000-8000-000000000003', NULL,
+   100.00, '2026-08-01', 1);
+SELECT must_tie(
+  $q$INSERT INTO agreement_service (agreement_id, service_id, allotment)
+     VALUES ('bbbbbbbb-0000-4000-8000-000000000a01','b5000000-0000-4000-8000-000000000056','unlimited')$q$,
+  'a second agreement for the whole client, from the same day, covering the same service');
+SELECT must_pass(
+  $q$INSERT INTO agreement_service (agreement_id, service_id, allotment)
+     VALUES ('bbbbbbbb-0000-4000-8000-000000000a01','b5000000-0000-4000-8000-000000000055','unlimited')$q$,
+  'the same day and place, covering another service');
+SELECT must_tie(
+  $q$UPDATE agreement_service SET service_id = 'b5000000-0000-4000-8000-000000000056'
+      WHERE agreement_id = 'bbbbbbbb-0000-4000-8000-000000000a01'$q$,
+  'the service it covers changed to one the other covers');
+SELECT must_pass(
+  $q$INSERT INTO agreement_service (agreement_id, service_id, allotment)
+     VALUES ('bbbbbbbb-0000-4000-8000-000000000a02','b5000000-0000-4000-8000-000000000056','unlimited')$q$,
+  'one of its sites, from the same day, covering the same service');
+SELECT must_pass(
+  $q$INSERT INTO agreement_service (agreement_id, service_id, allotment)
+     VALUES ('bbbbbbbb-0000-4000-8000-000000000a03','b5000000-0000-4000-8000-000000000056','unlimited')$q$,
+  'the whole client again from the next day, covering the same service');
+SELECT must_tie(
+  $q$UPDATE agreement SET starts_on = '2026-09-01', billing_anchor_day = 1
+      WHERE id = 'bbbbbbbb-0000-4000-8000-000000000a03'$q$,
+  'its start moved onto the day the other starts');
+SELECT must_pass(
+  $q$INSERT INTO agreement_service (agreement_id, service_id, allotment)
+     VALUES ('bbbbbbbb-0000-4000-8000-000000000a04','b5000000-0000-4000-8000-000000000055','unlimited')$q$,
+  'another client, from the same day as its own, covering another service');
+SELECT must_tie(
+  $q$INSERT INTO agreement_service (agreement_id, service_id, allotment)
+     VALUES ('bbbbbbbb-0000-4000-8000-000000000a04','b5000000-0000-4000-8000-000000000056','unlimited')$q$,
+  'and that client''s own tie, too');
+DELETE FROM agreement
+ WHERE id IN ('bbbbbbbb-0000-4000-8000-000000000a01','bbbbbbbb-0000-4000-8000-000000000a02',
+              'bbbbbbbb-0000-4000-8000-000000000a03','bbbbbbbb-0000-4000-8000-000000000a04');
+
 \echo 'All guards hold.'
