@@ -215,9 +215,13 @@
 						{#if d.amount}<span class="fig"><span class="v">{money(d.amount)}</span></span>{/if}
 					{/snippet}
 					<!-- An overdue invoice opens itself; an old rate opens its site, where
-					     CDTFA is asked again. -->
+					     CDTFA is asked again, or its typed area, where it is confirmed. -->
 					{#if d.invoice}
 						<a class="box-row line" href={resolve('/invoices/[id]', { id: d.invoice })}
+							>{@render decision()}</a
+						>
+					{:else if d.area}
+						<a class="box-row line" href={resolve('/settings/tax/[state]/[area]', d.area)}
 							>{@render decision()}</a
 						>
 					{:else if d.site}

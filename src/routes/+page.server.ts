@@ -38,6 +38,9 @@ import type { PageServerLoad } from './$types';
  * add to -- the work done on site. What anyone is owed, and what a draft
  * comes to, need a connection.
  */
+/** What a decision on Today is about. */
+type Kind = 'invoice' | 'district' | 'unplaced' | 'area';
+
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const offline = isOfflineCopy(url);
 	const places = await moneyPlaces();
@@ -209,7 +212,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		.innerJoin('entity as e', 'e.id', 'i.entity_id')
 		.innerJoin(owing.as('b'), 'b.invoice_id', 'i.id')
 		.select((eb) => [
-			sql.lit<'invoice' | 'district' | 'unplaced'>('invoice').as('kind'),
+			sql.lit<Kind>('invoice').as('kind'),
 			'e.name as client',
 			'i.number as ref',
 			eb.cast<string | null>(personalDay(eb.ref('i.sent_at')), 'text').as('dated_on'),
@@ -219,7 +222,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			sql<string>`'Invoice ' || ${eb.ref('i.number')} || ' · ' || ${eb.ref('e.name')}`.as('sort'),
 			sql.lit<string | null>(null).as('client_slug'),
 			sql.lit<string | null>(null).as('site_slug'),
-			eb.cast<string | null>('i.id', 'text').as('invoice_id')
+			eb.cast<string | null>('i.id', 'text').as('invoice_id'),
+			sql.lit<string | null>(null).as('area_id'),
+			// Typed, or the union reads two nulls as text before the count arrives.
+			sql<number | null>`null::integer`.as('sites')
 		])
 		.where('i.status', '=', 'sent')
 		.where('b.owed', '>', '0')
@@ -235,7 +241,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			)
 		);
 	// A site in a state the business collects in whose rate is not known to be
-	// right this quarter, or that is in no area there yet.
+	// right this quarter, or that is in no area there yet. One in a typed area
+	// is its area's to confirm, and the area is the decision (staleAreas).
 	const staleRates = db
 		.selectFrom('site as s')
 		.innerJoin('entity as e', 'e.id', 's.entity_id')
@@ -244,22 +251,26 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			eb
 				.case()
 				.when('ta.id', 'is', null)
-				.then(sql.lit<'invoice' | 'district' | 'unplaced'>('unplaced'))
-				.else(sql.lit<'invoice' | 'district' | 'unplaced'>('district'))
+				.then(sql.lit<Kind>('unplaced'))
+				.else(sql.lit<Kind>('district'))
 				.end()
 				.as('kind'),
 			'e.name as client',
 			's.display as ref',
 			eb
 				.cast<string | null>(
-					lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on')),
+					lastConfirmed(
+						eb.ref('s.area_verified_on'),
+						eb.ref('ta.confirmed_on'),
+						eb.ref('ta.source')
+					),
 					'text'
 				)
 				.as('dated_on'),
 			sql.lit<string | null>(null).as('amount'),
 			sql<
 				number | null
-			>`${today}::date - ${lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on'))}`.as(
+			>`${today}::date - ${lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on'), eb.ref('ta.source'))}`.as(
 				'days'
 			),
 			's.region as state',
@@ -268,19 +279,74 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			),
 			'e.slug as client_slug',
 			's.slug as site_slug',
-			sql.lit<string | null>(null).as('invoice_id')
+			sql.lit<string | null>(null).as('invoice_id'),
+			sql.lit<string | null>(null).as('area_id'),
+			// Typed, or the union reads two nulls as text before the count arrives.
+			sql<number | null>`null::integer`.as('sites')
 		])
 		.where('s.active', '=', true)
 		.where((eb) => collectsIn(eb.ref('s.region')))
 		.where((eb) =>
 			eb.or([
 				eb('ta.id', 'is', null),
-				rateIsStale(lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on')), today)
+				eb.and([
+					eb('ta.source', '<>', 'typed'),
+					rateIsStale(
+						lastConfirmed(
+							eb.ref('s.area_verified_on'),
+							eb.ref('ta.confirmed_on'),
+							eb.ref('ta.source')
+						),
+						today
+					)
+				])
 			])
 		)
 		.$narrowType<{ ref: NotNull }>();
+	// A typed area some site is in, in a state the business collects in, that
+	// nobody has confirmed since this quarter began: one decision, however
+	// many sites are in it, opening the area, where it is confirmed.
+	const staleAreas = db
+		.selectFrom('tax_area as ta')
+		.select((eb) => [
+			sql.lit<Kind>('area').as('kind'),
+			'ta.state as client',
+			'ta.name as ref',
+			eb.cast<string | null>('ta.confirmed_on', 'text').as('dated_on'),
+			sql.lit<string | null>(null).as('amount'),
+			sql<number | null>`${today}::date - ${eb.ref('ta.confirmed_on')}`.as('days'),
+			'ta.state as state',
+			sql<string>`${eb.ref('ta.state')} || ' · ' || ${eb.ref('ta.name')}`.as('sort'),
+			sql.lit<string | null>(null).as('client_slug'),
+			sql.lit<string | null>(null).as('site_slug'),
+			sql.lit<string | null>(null).as('invoice_id'),
+			eb.cast<string | null>('ta.id', 'text').as('area_id'),
+			eb
+				.cast<number | null>(
+					eb
+						.selectFrom('site as s')
+						.select((eb) => eb.fn.countAll().as('n'))
+						.whereRef('s.tax_area_id', '=', 'ta.id')
+						.where('s.active', '=', true)
+						.$asScalar(),
+					'integer'
+				)
+				.as('sites')
+		])
+		.where('ta.source', '=', 'typed')
+		.where((eb) => collectsIn(eb.ref('ta.state')))
+		.where((eb) => rateIsStale(eb.ref('ta.confirmed_on'), today))
+		.where((eb) =>
+			eb.exists(
+				eb
+					.selectFrom('site as s')
+					.select('s.id')
+					.whereRef('s.tax_area_id', '=', 'ta.id')
+					.where('s.active', '=', true)
+			)
+		);
 	const found = await db
-		.selectFrom(overdueInvoices.unionAll(staleRates).as('d'))
+		.selectFrom(overdueInvoices.unionAll(staleRates).unionAll(staleAreas).as('d'))
 		.selectAll('d')
 		// Critical before warning, by severity rather than by how the kind
 		// column happens to sort.
@@ -298,7 +364,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 					amount: d.amount,
 					chip: `Unpaid ${count(d.days!, 'day')}`,
 					site: null,
-					invoice: d.invoice_id
+					invoice: d.invoice_id,
+					area: null
 				}
 			: d.kind === 'unplaced'
 				? {
@@ -310,19 +377,35 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 						amount: d.amount,
 						chip: 'No tax area',
 						site: { id: d.client_slug!, site: d.site_slug! },
-						invoice: null
+						invoice: null,
+						area: null
 					}
-				: {
-						kind: d.kind,
-						title: `${d.client} · ${d.ref} · rate is old`,
-						detail:
-							`CDTFA last confirmed this rate on ${dated(d.dated_on)}. A quarter has begun ` +
-							'since, when a district can start or end, and every invoice since could be wrong.',
-						amount: d.amount,
-						chip: `${count(d.days!, 'day')} since CDTFA confirmed it`,
-						site: { id: d.client_slug!, site: d.site_slug! },
-						invoice: null
-					}
+				: d.kind === 'area'
+					? {
+							kind: d.kind,
+							title: `${stateName(d.state!)} · ${d.ref} · not confirmed`,
+							detail:
+								`Last confirmed ${dated(d.dated_on)}. A quarter has begun since, when rates and ` +
+								'boundaries change, so check it against the state’s own table. ' +
+								(d.sites === 1 ? 'A site is in it.' : `${d.sites} sites are in it.`),
+							amount: d.amount,
+							chip: `${count(d.days!, 'day')} since it was confirmed`,
+							site: null,
+							invoice: null,
+							area: { state: d.state!, area: d.area_id! }
+						}
+					: {
+							kind: d.kind,
+							title: `${d.client} · ${d.ref} · rate is old`,
+							detail:
+								`CDTFA last confirmed this rate on ${dated(d.dated_on)}. A quarter has begun ` +
+								'since, when a district can start or end, and every invoice since could be wrong.',
+							amount: d.amount,
+							chip: `${count(d.days!, 'day')} since CDTFA confirmed it`,
+							site: { id: d.client_slug!, site: d.site_slug! },
+							invoice: null,
+							area: null
+						}
 	);
 
 	const drafts = await recentDrafts();

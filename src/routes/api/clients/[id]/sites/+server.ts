@@ -7,6 +7,8 @@ import { SITE_FIELDS, parseSiteField } from '#lib/site-fields.ts';
 import { priceAddress, NoAnswer } from '#lib/server/cdtfa.ts';
 import { placeSite, recordCdtfaArea } from '#lib/server/tax-areas.ts';
 import { asksCdtfa } from '#lib/server/tax-registrations.ts';
+import { findTypedArea, typesAreasIn } from '#lib/server/typed-areas.ts';
+import { stateName } from '#lib/us-states.ts';
 import { confirmPlace } from '#lib/server/verify-place.ts';
 import { measureDrive } from '#lib/server/site-drive.ts';
 import type { RequestHandler } from './$types';
@@ -23,8 +25,12 @@ import { readFields } from '#lib/json.ts';
  * there. The site's area, and so its rate, is CDTFA's answer about the
  * address, so the address is priced before the row is written, and a place
  * CDTFA cannot answer for is refused with their reason rather than stored as a
- * site nobody can bill from. A site in a state the business does not collect
- * in has no area to find, and is made with none (#lib/server/tax-registrations).
+ * site nobody can bill from. Where the business collects and no authority
+ * answers, a person chooses its area as it is made, from the state's typed
+ * ones -- `tax_area_id`, beside the fields -- or later, from its Tax tab
+ * (#lib/server/typed-areas). A site in a state the business does not collect
+ * in has no area to find, and is made with none
+ * (#lib/server/tax-registrations).
  *
  * THE ADDRESS IS A PLACE GOOGLE CONFIRMS (8 October 2026): chosen from
  * Google's suggestions, its parts arrive with its place id, and Google is asked
@@ -76,6 +82,25 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	}
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
+	// The area a person chose, where one is chosen rather than asked for.
+	const choice = fields.tax_area_id;
+	let chosen: string | null = null;
+	if (choice !== null && choice !== undefined && choice !== '') {
+		const region = String(row.region);
+		const area =
+			typeof choice === 'string' && (await typesAreasIn(db, region))
+				? await findTypedArea(db, region, choice)
+				: null;
+		if (!area)
+			return refuse({
+				tax_area_id:
+					region === 'CA'
+						? 'CDTFA says which area a California site is in.'
+						: `Choose one of ${stateName(region)}'s areas, where the business collects there.`
+			});
+		chosen = area.id;
+	}
+
 	const notAPlace = await confirmPlace(String(row.google_place_id));
 	if (notAPlace) return refuse({ google_place_id: notAPlace });
 
@@ -101,8 +126,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			v === null || v === undefined ? null : as(v);
 		const site = await asUser(locals.user!.id, async (tx) => {
 			const areaVerifiedOn = businessToday();
-			// CDTFA's answer is its area's (#lib/server/tax-areas).
-			const area = priced ? await recordCdtfaArea(tx, priced, areaVerifiedOn) : null;
+			// CDTFA's answer is its area's (#lib/server/tax-areas), or it is
+			// the one chosen.
+			const area = priced ? await recordCdtfaArea(tx, priced, areaVerifiedOn) : chosen;
 			const made = await insertNamed(
 				{ given: optional(row.slug, String), from: String(row.label), fallback: 'site' },
 				(slug, madeHere) =>
@@ -137,7 +163,14 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			// that happened to this site is in the same record as everything
 			// after it.
 			if (area)
-				await placeSite(tx, { id: made.id, was: null }, area, 'asked when the site was created');
+				await placeSite(
+					tx,
+					{ id: made.id, was: null },
+					area,
+					priced
+						? { way: 'asked', by: locals.user!.id, note: 'asked when the site was created' }
+						: { way: 'chosen', by: locals.user!.id, note: 'chosen when the site was created' }
+				);
 			return made;
 		});
 

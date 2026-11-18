@@ -128,6 +128,11 @@ describe('pct', () => {
 		expect(pct('6')).toBe('6.000%');
 	});
 
+	it('keeps a fourth place where a rate has one, as a rate is kept', () => {
+		expect(pct('8.4875')).toBe('8.4875%');
+		expect(pct('7.2500')).toBe('7.250%');
+	});
+
 	it('shows a dash for nothing', () => {
 		expect(pct(null)).toBe(ABSENT);
 	});

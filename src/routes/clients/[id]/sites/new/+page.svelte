@@ -10,6 +10,10 @@
 	import Octicon from '#lib/Octicon.svelte';
 	import type { Resolved } from '#lib/google.ts';
 	import { busy } from '#lib/busy.svelte.ts';
+	import Outside from '#lib/Outside.svelte';
+	import { pct } from '#lib/format.ts';
+	import { AGENCY, whereToLook } from '#lib/state-agencies.ts';
+	import { stateName, type State } from '#lib/us-states.ts';
 
 	let { data }: PageProps = $props();
 
@@ -47,6 +51,16 @@
 	// Whether CDTFA prices the place chosen: in California, where the business
 	// collects there.
 	const asksCdtfa = $derived(chosen?.region === 'CA' && data.collects.includes('CA'));
+	// Or a person chooses its area, from the state's typed ones, where the
+	// business collects there and nothing answers for an address: now, or
+	// later on its Tax tab.
+	const region = $derived(chosen?.region ?? '');
+	const typed = $derived(region ? (data.areas[region] ?? null) : null);
+	const agency = $derived(region ? AGENCY[region as State] : undefined);
+	let area = $state('');
+	$effect(() => {
+		if (typed && !typed.some((a) => a.id === area)) area = '';
+	});
 	let miles = $state('');
 	let minutes = $state('');
 
@@ -112,7 +126,8 @@
 		google_place_id: chosen?.placeId ?? '',
 		typed_round_trip_miles: miles,
 		typed_drive_minutes: minutes,
-		active: 'true'
+		active: 'true',
+		tax_area_id: typed ? area : ''
 	});
 
 	// The same rules the endpoint uses, run here so a mistake costs nothing.
@@ -228,6 +243,42 @@
 				<AddressField label="Address" bind:value={address} onchosen={choose} />
 				{#if addressWhy}<p class="fc-e"><Octicon name="alert" />{addressWhy}</p>{/if}
 			</div>
+			{#if typed}
+				<div class="fc">
+					<label class="fc-l" for="n-area">Tax area</label>
+					{#if typed.length}
+						<select
+							id="n-area"
+							class="ti"
+							bind:value={area}
+							aria-invalid={show('tax_area_id') ? 'true' : undefined}
+							aria-describedby={show('tax_area_id') ? 'n-tax_area_id-e' : 'n-area-c'}
+						>
+							<option value="">Choose it later</option>
+							{#each typed as a (a.id)}
+								<option value={a.id}>{a.name} · {pct(a.rate_pct)}</option>
+							{/each}
+						</select>
+					{/if}
+					{#if show('tax_area_id')}
+						{@render wrong('tax_area_id')}
+					{:else}
+						<p class="fc-c" id="n-area-c">
+							{#if typed.length}
+								{#if agency}Find it with <Outside href={whereToLook(agency)}
+										>{agency.lookup
+											? `${agency.name}’s address lookup`
+											: `${agency.name}’s rates`}</Outside
+									>, or choose it later.{:else}Choose it now, or later.{/if} Nothing billed there is taxed
+								until it is in one.
+							{:else}
+								No area of {stateName(region)} is typed in yet. Type one in under Settings → Tax, then
+								choose it on the site’s Tax tab.
+							{/if}
+						</p>
+					{/if}
+				</div>
+			{/if}
 			<div class="duo">
 				<div class="fc">
 					<label class="fc-l" for="n-miles">Round trip, miles</label>

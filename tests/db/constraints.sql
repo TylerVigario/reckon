@@ -908,8 +908,8 @@ $$, 'a postcode that is present but empty');
 UPDATE site SET tax_area_id = ca_area('510510000000', 'YUBA CITY', 7.2500, 0.0000),
                 area_verified_on = current_date
  WHERE id = '33333333-3333-3333-3333-333333333333';
-INSERT INTO site_placement (site_id, area_id, moved)
-SELECT id, tax_area_id, true FROM site WHERE id = '33333333-3333-3333-3333-333333333333';
+INSERT INTO site_placement (site_id, area_id, moved, way)
+SELECT id, tax_area_id, true, 'asked' FROM site WHERE id = '33333333-3333-3333-3333-333333333333';
 
 -- Every placement is kept, and every rate an area has had, so a rate that
 -- moved can be explained against the invoices billed at the old one.
@@ -921,8 +921,8 @@ BEGIN
   INSERT INTO tax_piece (area_id, level, jurisdiction, rate_pct, effective_from)
   SELECT tax_area_id, 'state', 'CALIFORNIA', 7.5000, '2016-06-01'
     FROM site WHERE id = '33333333-3333-3333-3333-333333333333';
-  INSERT INTO site_placement (site_id, placed_at, area_id, moved)
-  SELECT id, '2016-06-01', tax_area_id, true
+  INSERT INTO site_placement (site_id, placed_at, area_id, moved, way)
+  SELECT id, '2016-06-01', tax_area_id, true, 'asked'
     FROM site WHERE id = '33333333-3333-3333-3333-333333333333';
 
   SELECT count(*) INTO n FROM site_placement
@@ -937,8 +937,8 @@ BEGIN
 END $$;
 
 SELECT must_fail($$
-  INSERT INTO site_placement (site_id, moved)
-  VALUES ('33333333-3333-3333-3333-333333333333', false)
+  INSERT INTO site_placement (site_id, moved, way)
+  VALUES ('33333333-3333-3333-3333-333333333333', false, 'asked')
 $$, 'a placement in no area');
 
 -- Losing a site loses its placements with it; they describe an address that
@@ -952,8 +952,8 @@ BEGIN
 VALUES ('c5000000-0000-4000-8000-0000000000fe','44444444-0000-4000-8000-000000000002','Gone','gone',
         '11255 Jackson St','Columbia','CA','95310',
         ca_area('559980000000', 'UNINCORPORATED AREA-TUOLUMNE', 7.2500, 0.0000), current_date);
-  INSERT INTO site_placement (site_id, area_id, moved)
-  SELECT id, tax_area_id, true FROM site WHERE id = 'c5000000-0000-4000-8000-0000000000fe';
+  INSERT INTO site_placement (site_id, area_id, moved, way)
+  SELECT id, tax_area_id, true, 'asked' FROM site WHERE id = 'c5000000-0000-4000-8000-0000000000fe';
   DELETE FROM site WHERE id = 'c5000000-0000-4000-8000-0000000000fe';
   SELECT count(*) INTO n FROM site_placement
    WHERE site_id = 'c5000000-0000-4000-8000-0000000000fe';
@@ -971,8 +971,9 @@ SELECT must_fail($$
 $$, 'a second area under a code in use');
 
 SELECT must_pass($$
-  INSERT INTO tax_area (state, code, name, source, confirmed_on)
-  VALUES ('WA', '570282360000', 'ANOTHER STATE', 'cdtfa', current_date)
+  INSERT INTO tax_area (state, code, name, source, typed_by, confirmed_by, confirmed_on)
+  VALUES ('WA', '570282360000', 'ANOTHER STATE', 'typed',
+          'a0a0a0a0-0000-4000-8000-0000000000a1', 'a0a0a0a0-0000-4000-8000-0000000000a1', current_date)
 $$, 'the same code in another state');
 
 SELECT must_fail($$
@@ -1010,6 +1011,133 @@ $$, 'an area moved to another state');
 SELECT must_fail($$
   UPDATE site SET region = 'NV' WHERE id = 'c5000000-0000-4000-8000-00000000000c'
 $$, 'a site moved to another state, keeping its area');
+
+-- WHERE NO AUTHORITY ANSWERS, A PERSON TYPES AN AREA, and it says who typed
+-- it and who last confirmed it; an authority's says neither. CDTFA answers
+-- for California alone, an area keeps the source it was made from, and two
+-- typed areas of one name in a state could not be told apart.
+SELECT must_pass($$
+  INSERT INTO tax_area (id, state, code, name, source, typed_by, confirmed_by, confirmed_on)
+  VALUES ('c6000000-0000-4000-8000-000000000001', 'NV', '1600', 'Reno', 'typed',
+          'a0a0a0a0-0000-4000-8000-0000000000a1', 'a0a0a0a0-0000-4000-8000-0000000000a1', current_date)
+$$, 'an area of Nevada, typed and confirmed by Avery');
+
+SELECT must_fail($$
+  INSERT INTO tax_area (state, name, source, confirmed_by, confirmed_on)
+  VALUES ('NV', 'Sparks', 'typed', 'a0a0a0a0-0000-4000-8000-0000000000a1', current_date)
+$$, 'a typed area saying nobody typed it');
+
+SELECT must_fail($$
+  INSERT INTO tax_area (state, name, source, typed_by, confirmed_on)
+  VALUES ('NV', 'Sparks', 'typed', 'a0a0a0a0-0000-4000-8000-0000000000a1', current_date)
+$$, 'a typed area saying nobody confirmed it');
+
+SELECT must_fail($$
+  INSERT INTO tax_area (state, code, name, source, typed_by, confirmed_on)
+  VALUES ('CA', '999999999999', 'TYPED OVER', 'cdtfa', 'a0a0a0a0-0000-4000-8000-0000000000a1', current_date)
+$$, 'one of CDTFA''s areas saying a person typed it');
+
+SELECT must_fail($$
+  INSERT INTO tax_area (state, code, name, source, confirmed_on)
+  VALUES ('NV', '320000000000', 'SPARKS', 'cdtfa', current_date)
+$$, 'CDTFA answering for Nevada');
+
+SELECT must_fail($$
+  INSERT INTO tax_area (state, name, source, typed_by, confirmed_by, confirmed_on)
+  VALUES ('NV', 'RENO', 'typed', 'a0a0a0a0-0000-4000-8000-0000000000a1', 'a0a0a0a0-0000-4000-8000-0000000000a1', current_date)
+$$, 'two typed areas of Nevada called Reno');
+
+SELECT must_fail($$
+  UPDATE tax_area SET source = 'typed', typed_by = 'a0a0a0a0-0000-4000-8000-0000000000a1', confirmed_by = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+   WHERE code = '559980000000'
+$$, 'an area of CDTFA''s made over as typed');
+
+-- A typed area's pieces say who typed them, and an authority's nobody.
+SELECT must_pass($$
+  INSERT INTO tax_piece (area_id, level, jurisdiction, rate_pct, effective_from, typed_by)
+  VALUES ('c6000000-0000-4000-8000-000000000001', 'state', 'Nevada', 6.8500, '2026-10-01', 'a0a0a0a0-0000-4000-8000-0000000000a1'),
+         ('c6000000-0000-4000-8000-000000000001', 'local', 'Washoe County', 1.4150, '2026-10-01', 'a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'Reno''s rate, typed by Avery');
+
+SELECT must_fail($$
+  INSERT INTO tax_piece (area_id, level, jurisdiction, rate_pct, effective_from)
+  VALUES ('c6000000-0000-4000-8000-000000000001', 'local', 'Washoe County', 1.5000, '2027-01-01')
+$$, 'a typed area''s piece saying nobody typed it');
+
+SELECT must_fail($$
+  INSERT INTO tax_piece (area_id, level, jurisdiction, rate_pct, effective_from, typed_by)
+  SELECT id, 'local', 'TUOLUMNE', 0.2500, current_date + 1, 'a0a0a0a0-0000-4000-8000-0000000000a1'
+    FROM tax_area WHERE state = 'CA' AND code = '559980000000'
+$$, 'a piece of CDTFA''s saying a person typed it');
+
+-- A PLACEMENT SAYS HOW ITS AREA WAS FOUND, AND BY WHOM: a site is chosen into
+-- a typed area by somebody, and asked into an authority's.
+INSERT INTO site (id, entity_id, label, slug, street, city, region, postcode,
+                  tax_area_id, area_verified_on)
+VALUES ('c5000000-0000-4000-8000-0000000000fc', '44444444-4444-4444-4444-444444444444',
+        'Reno office', 'reno-office', '1 E 1st St', 'Reno', 'NV', '89501',
+        'c6000000-0000-4000-8000-000000000001', current_date);
+
+SELECT must_pass($$
+  INSERT INTO site_placement (site_id, area_id, moved, way, placed_by, note)
+  VALUES ('c5000000-0000-4000-8000-0000000000fc', 'c6000000-0000-4000-8000-000000000001',
+          true, 'chosen', 'a0a0a0a0-0000-4000-8000-0000000000a1', 'chosen when the site was created')
+$$, 'a site in Reno, chosen by Avery');
+
+SELECT must_fail($$
+  INSERT INTO site_placement (site_id, area_id, moved, way)
+  VALUES ('c5000000-0000-4000-8000-0000000000fc', 'c6000000-0000-4000-8000-000000000001',
+          false, 'chosen')
+$$, 'a placement chosen by nobody');
+
+SELECT must_fail($$
+  INSERT INTO site_placement (site_id, area_id, moved, way, placed_by)
+  VALUES ('c5000000-0000-4000-8000-0000000000fc', 'c6000000-0000-4000-8000-000000000001',
+          false, 'asked', 'a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'a typed area asked of an authority');
+
+SELECT must_fail($$
+  INSERT INTO site_placement (site_id, area_id, moved, way, placed_by)
+  SELECT id, tax_area_id, false, 'chosen', 'a0a0a0a0-0000-4000-8000-0000000000a1'
+    FROM site WHERE id = '33333333-3333-3333-3333-333333333333'
+$$, 'one of CDTFA''s areas chosen by hand');
+
+SELECT must_pass($$
+  INSERT INTO site_placement (site_id, area_id, moved, way, placed_by, note)
+  SELECT id, tax_area_id, false, 'asked', 'a0a0a0a0-0000-4000-8000-0000000000a1', 'asked again'
+    FROM site WHERE id = '33333333-3333-3333-3333-333333333333'
+$$, 'CDTFA asked again about a site, by Avery');
+
+-- Every change to a typed area and its rates is kept, against whoever made
+-- it, and so is one that goes; when it was last confirmed is not a change.
+DO $$
+DECLARE n int;
+BEGIN
+  PERFORM set_config('reckon.user_id', 'a0a0a0a0-0000-4000-8000-0000000000a1', true);
+  UPDATE tax_area SET name = 'Reno city' WHERE id = 'c6000000-0000-4000-8000-000000000001';
+  UPDATE tax_area SET confirmed_on = current_date + 1 WHERE id = 'c6000000-0000-4000-8000-000000000001';
+  INSERT INTO tax_piece (area_id, level, jurisdiction, rate_pct, effective_from, typed_by)
+  VALUES ('c6000000-0000-4000-8000-000000000001', 'local', 'Washoe County', 1.5000, '2027-01-01',
+          'a0a0a0a0-0000-4000-8000-0000000000a1');
+  DELETE FROM tax_piece WHERE area_id = 'c6000000-0000-4000-8000-000000000001'
+                          AND effective_from = '2027-01-01';
+  SELECT count(*) INTO n FROM record_history
+   WHERE table_name IN ('tax_area', 'tax_piece')
+     AND changed_by = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+     AND field IN ('name', '(added)', '(deleted)')
+     AND (row_id = 'c6000000-0000-4000-8000-000000000001'
+          OR new_value LIKE '%c6000000-0000-4000-8000-000000000001%'
+          OR old_value LIKE '%c6000000-0000-4000-8000-000000000001%');
+  -- Its rename, and a piece added and taken away.
+  IF n <> 3 THEN
+    RAISE EXCEPTION 'GUARD MISSING: % of a typed area''s three changes recorded', n;
+  END IF;
+  IF EXISTS (SELECT 1 FROM record_history WHERE table_name = 'tax_area' AND field = 'confirmed_on') THEN
+    RAISE EXCEPTION 'GUARD MISSING: a confirmation was recorded as a change';
+  END IF;
+  RAISE NOTICE '  recorded  a typed area renamed, and a rate typed and taken away, against whoever did it';
+END $$;
+DELETE FROM site WHERE id = 'c5000000-0000-4000-8000-0000000000fc';
 
 -- WHAT WAS HANDED OVER IS RECORDED, NOT DERIVED. Nothing in the invoices can
 -- say whether a return was actually paid.

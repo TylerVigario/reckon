@@ -133,7 +133,11 @@ export async function syncTax(
 					.where('postcode', '=', site.postcode)
 					.executeTakeFirst();
 				if (!still.numUpdatedRows) return null;
-				await placeSite(tx, { id: site.id, was: site.tax_area_id }, area, 'asked on a refresh');
+				await placeSite(tx, { id: site.id, was: site.tax_area_id }, area, {
+					way: 'asked',
+					by: null,
+					note: 'asked on a refresh'
+				});
 				return { moved: area !== site.tax_area_id };
 			});
 			if (placed) out.sites++;

@@ -363,7 +363,11 @@ try {
 				.innerJoin('tax_area as a', 'a.id', 's.tax_area_id')
 				.select((eb) =>
 					rateIsStale(
-						lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('a.confirmed_on')),
+						lastConfirmed(
+							eb.ref('s.area_verified_on'),
+							eb.ref('a.confirmed_on'),
+							eb.ref('a.source')
+						),
 						today
 					).as('stale')
 				)

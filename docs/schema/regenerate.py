@@ -178,15 +178,21 @@ T["site_contact"] = [("FK","site_id","uuid"),("FK","entity_id","uuid · carried"
     ("FK","contact_id","uuid"),("","is_primary","bool")]
 T["tax_area"] = [("PK","id","uuid"),("UK","state","text · two letters, with code"),
     ("UK","code","text · its authority's, e.g. a TAC"),
-    ("","name","text · as its authority names it"),("","source","tax_area_source"),
-    ("","confirmed_on","date · last confirmed"),("","created_at","timestamptz")]
+    ("","name","text · as its authority names it"),("","source","cdtfa|typed"),
+    ("FK","typed_by","uuid · who typed it"),
+    ("","confirmed_on","date · last confirmed"),
+    ("FK","confirmed_by","uuid · who, where a person did"),
+    ("","created_at","timestamptz")]
 T["tax_piece"] = [("PK","id","uuid"),("FK","area_id","uuid"),
     ("","level","federal|state|local"),("","jurisdiction","text · who levies it"),
     ("","code","text · its authority's"),("","rate_pct","numeric"),
-    ("","effective_from","date · a set's, newest in force")]
+    ("","effective_from","date · a set's, newest in force"),
+    ("FK","typed_by","uuid · who typed it")]
 T["site_placement"] = [("PK","id","uuid"),("FK","site_id","uuid"),
     ("","placed_at","timestamptz"),("FK","area_id","uuid · the area it was in"),
-    ("","moved","bool · another area than before"),("","note","text · why it was asked")]
+    ("","moved","bool · another area than before"),
+    ("","way","asked|chosen"),("FK","placed_by","uuid · who, where somebody did"),
+    ("","note","text · why")]
 T["tax_registration"] = [("PK","id","uuid"),("UK","state","text · two letters"),
     ("","held","text · Seller's permit"),("","agency","text · CDTFA"),
     ("","filing_basis","annual|quarterly|monthly"),
@@ -482,7 +488,7 @@ c = at("entity",40,60) + at("site",800,60) \
   + at("contact",800,650) + at("entity_contact",440,240) \
   + at("site_contact",440,460) \
   + at("site_placement",1200,60) + at("tax_remittance",1200,340) \
-  + at("tax_area",1200,640) + at("tax_piece",1200,860)
+  + at("tax_area",1200,640) + at("tax_piece",1200,900)
 c += [edge("e22","entity","entity_contact","is reached via"),
       edge("e23","contact","entity_contact","acts for",
            S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1")),
@@ -504,7 +510,10 @@ c += [note("n2", "One building can host two businesses and one person can act fo
                  "newest on or before a day in force then. A site is in a state, region, "
                  "and in an area of it only where the business collects there; in "
                  "California, the area CDTFA’s API placed its address in, on the day it "
-                 "was asked. Nothing in the application can author CDTFA’s rate. site_placement keeps every time a site "
+                 "was asked. Nothing in the application can author CDTFA’s rate. Where no "
+                 "authority answers for an address, a person types the state’s areas from its "
+                 "own table, typed_by, and confirms them each quarter, confirmed_by; a site "
+                 "there is placed by a person choosing its area. site_placement keeps every time a site "
                  "was placed, and an area every rate it has had, so a rate that moved can "
                  "be explained against the invoices billed at the old one. A second copy "
                  "of a published rate goes stale without "
@@ -545,8 +554,8 @@ c += [note("n2", "One building can host two businesses and one person can act fo
                  "site is that client’s and the person is that client’s contact.\n\n"
                  "A site belongs to exactly one client; two clients at one address are "
                  "two sites.",
-           40, 1080, 1480, 300)]
-files.append(write("02-who-and-where.drawio", "Who and where", c, 1560, 1420))
+           40, 1130, 1480, 300)]
+files.append(write("02-who-and-where.drawio", "Who and where", c, 1560, 1470))
 
 # 03 -- catalogue
 c = at("service",40,60) + at("service_price",440,60) + at("pay_rule",440,280) \

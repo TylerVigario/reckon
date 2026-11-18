@@ -6,7 +6,8 @@
 	import Octicon from '#lib/Octicon.svelte';
 	import { parseField } from '#lib/settings-fields.ts';
 	import { parseRegistrationField } from '#lib/registration-fields.ts';
-	import { AUTHORITY, COLLECTABLE, stateName, type State } from '#lib/us-states.ts';
+	import { AUTHORITY, COLLECTABLE, stateName, typesAreas, type State } from '#lib/us-states.ts';
+	import { AGENCY } from '#lib/state-agencies.ts';
 	import { readProblem } from '#lib/json.ts';
 	import { busy } from '#lib/busy.svelte.ts';
 	import type { PageProps } from './$types';
@@ -14,9 +15,10 @@
 	/**
 	 * WHERE THE BUSINESS COLLECTS TAX: each state it is registered in, as a box
 	 * of its own -- what it holds and from whom, how often it files, and in
-	 * California the Reg 1701 election -- each changed in place (#lib/Detail).
-	 * Then the year a return is cut to, which is the business's own. The rate
-	 * is no setting: a site's is its area's, and the note under them says so.
+	 * California the Reg 1701 election -- each changed in place (#lib/Detail),
+	 * and, where a person types its areas, a way to them. Then the year a
+	 * return is cut to, which is the business's own. The rate is no setting: a
+	 * site's is its area's, and the note under them says so.
 	 */
 	let { data }: PageProps = $props();
 	const o = $derived(data.operator);
@@ -156,6 +158,25 @@
 					{#snippet caption()}An election, so it is recorded rather than worked out.{/snippet}
 				</Detail>
 			{/if}
+			{#if typesAreas(r.state)}
+				<a class="box-row kv" href={resolve('/settings/tax/[state]', { state: r.state })}>
+					<span class="kv-l">Tax areas</span>
+					<span class="kv-v">
+						<span>{r.areas ? `${r.areas} typed` : 'None typed yet'}</span>
+						{#if r.unconfirmed}
+							<span class="im warn"
+								><Octicon name="alert" />{r.unconfirmed === 1
+									? 'One not confirmed this quarter'
+									: `${r.unconfirmed} not confirmed this quarter`}</span
+							>
+						{:else}
+							<span class="kv-s"
+								>As {AGENCY[r.state as State]?.short ?? 'the state'}’s table has them</span
+							>
+						{/if}
+					</span>
+				</a>
+			{/if}
 		</section>
 	{/each}
 
@@ -217,6 +238,13 @@
 			the site is made and kept in sync by the server.
 		</p>
 	{/if}
+	{#if data.registrations.some((r) => typesAreas(r.state))}
+		<p class="note">
+			Anywhere else a site’s rate is its tax area’s, typed in from the state’s own table and
+			confirmed each quarter, when rates and boundaries change. A person chooses which area a site
+			is in, on its Tax tab.
+		</p>
+	{/if}
 </div>
 
 <style>
@@ -238,6 +266,10 @@
 	.pick select {
 		flex: 1 1 12rem;
 		min-width: 0;
+	}
+	/* A detail that opens a page of its own: laid out as the details above it. */
+	a.kv {
+		display: grid;
 	}
 	/* Primer's inline message: an icon and a line, in the colour of what happened. */
 	.im {
