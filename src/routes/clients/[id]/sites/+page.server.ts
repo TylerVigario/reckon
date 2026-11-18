@@ -62,7 +62,11 @@ export const load: PageServerLoad = async ({ params }) => {
 					collectsIn(eb.ref('si.region')),
 					eb('ta.id', 'is not', null),
 					rateIsStale(
-						lastConfirmed(eb.ref('si.area_verified_on'), eb.ref('ta.confirmed_on')),
+						lastConfirmed(
+							eb.ref('si.area_verified_on'),
+							eb.ref('ta.confirmed_on'),
+							eb.ref('ta.source')
+						),
 						businessToday()
 					)
 				])
@@ -72,7 +76,11 @@ export const load: PageServerLoad = async ({ params }) => {
 			'si.drive_minutes as minutes',
 			eb
 				.cast<string | null>(
-					lastConfirmed(eb.ref('si.area_verified_on'), eb.ref('ta.confirmed_on')),
+					lastConfirmed(
+						eb.ref('si.area_verified_on'),
+						eb.ref('ta.confirmed_on'),
+						eb.ref('ta.source')
+					),
 					'text'
 				)
 				.as('confirmed_on'),

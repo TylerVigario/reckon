@@ -156,19 +156,19 @@ INSERT INTO site (id, entity_id, label, slug, street, city, region, postcode,
 -- Every time CDTFA placed a site in its area, in the morning of the day each
 -- site says it was asked. The clinic was asked twice four days ago and was
 -- where it had been both times.
-INSERT INTO site_placement (site_id, placed_at, area_id, moved, note) VALUES
+INSERT INTO site_placement (site_id, placed_at, area_id, moved, way, note) VALUES
   ('52e62dcd-9dd8-4ddb-a985-a1ad40c24109', (current_date - 230 + time '10:00') AT TIME ZONE 'America/Los_Angeles',
-   '019a0003-0000-7000-8000-000000000003', true, 'asked when the site was created'),
+   '019a0003-0000-7000-8000-000000000003', true, 'asked', 'asked when the site was created'),
   ('4c42978a-ace1-4a79-a7f0-0d9e7efed2da', (current_date - 40 + time '10:00') AT TIME ZONE 'America/Los_Angeles',
-   '019a0003-0000-7000-8000-000000000002', true, 'asked when the site was created'),
+   '019a0003-0000-7000-8000-000000000002', true, 'asked', 'asked when the site was created'),
   ('0ab3a11c-d59e-4526-a132-402a4bc9d9ca', (current_date - 40 + time '10:00') AT TIME ZONE 'America/Los_Angeles',
-   '019a0003-0000-7000-8000-000000000002', true, 'asked when the site was created'),
+   '019a0003-0000-7000-8000-000000000002', true, 'asked', 'asked when the site was created'),
   ('75aea465-ad04-43e1-b6b4-d7132872a870', (current_date - 90 + time '10:00') AT TIME ZONE 'America/Los_Angeles',
-   '019a0003-0000-7000-8000-000000000001', true, 'asked when the site was created'),
+   '019a0003-0000-7000-8000-000000000001', true, 'asked', 'asked when the site was created'),
   ('75aea465-ad04-43e1-b6b4-d7132872a870', (current_date - 4 + time '10:00') AT TIME ZONE 'America/Los_Angeles',
-   '019a0003-0000-7000-8000-000000000001', false, 'asked on a refresh'),
+   '019a0003-0000-7000-8000-000000000001', false, 'asked', 'asked on a refresh'),
   ('75aea465-ad04-43e1-b6b4-d7132872a870', (current_date - 4 + time '10:00') AT TIME ZONE 'America/Los_Angeles',
-   '019a0003-0000-7000-8000-000000000001', false, 'asked again');
+   '019a0003-0000-7000-8000-000000000001', false, 'asked', 'asked again');
 
 INSERT INTO contact (id, name, email, phone) VALUES
   ('1696abcc-fc5f-44e2-ac99-a12e08b25f8f','Ellen Park','ellen@example.com','916-555-0127'),

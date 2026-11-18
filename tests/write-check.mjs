@@ -744,7 +744,7 @@ console.log('\n  one save must not erase another');
 		// history whether or not the rate moved, and the site is dated as asked
 		// today, so no warning that it is old is left. Skipped when CDTFA cannot be
 		// reached, as creating a site is.
-		const asked = await call('POST', `${at}/ask-cdtfa`);
+		const asked = await call('POST', `${at}/area`);
 		if (asked.status === 200) {
 			const after = await (
 				await fetch(`${base}/clients/${clientSlug}/sites/${existing}/tax`, { headers: { cookie } })
@@ -2129,6 +2129,123 @@ const detailHeld = (/** @type {string} */ html, /** @type {string} */ name) =>
 		'left to the device, the cookie is taken away',
 		`${back.status} ${sent(back)}`
 	);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n  typed tax areas — collected in, typed, confirmed, and let go');
+{
+	// Where no authority answers for an address, a state's areas are typed in
+	// from its own table (#lib/server/typed-areas), and California's are CDTFA's.
+	const nv = '/api/settings/tax/NV';
+	const iso = (/** @type {Date} */ d) => d.toISOString().slice(0, 10);
+	const quarterOf = (/** @type {Date} */ d) =>
+		new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - (d.getUTCMonth() % 3), 1));
+	// Last quarter's first day, which has begun on any clock, and the next's.
+	const now = new Date();
+	const from = iso(quarterOf(new Date(now.getTime() - 100 * 86400000)));
+	const next = quarterOf(now);
+	next.setUTCMonth(next.getUTCMonth() + 3);
+	const coming = iso(next);
+	const reno = [
+		{ level: 'state', jurisdiction: 'Nevada', rate_pct: '6.85' },
+		{ level: 'local', jurisdiction: 'Washoe County', rate_pct: '1.415' }
+	];
+
+	await check(
+		'California’s areas are not typed in',
+		'POST',
+		'/api/settings/tax/CA/areas',
+		{
+			fields: { name: 'Woodland', from },
+			pieces: reno
+		},
+		404
+	);
+	await check('the business collects in Nevada', 'PUT', nv, undefined, (r) =>
+		[200, 201].includes(r.status)
+	);
+	await check(
+		'an area with no pieces is refused, said where',
+		'POST',
+		`${nv}/areas`,
+		{ fields: { name: `Reno ${stamp}`, from }, pieces: [] },
+		(r) => r.status === 400 && Boolean(r.body?.errors?.pieces)
+	);
+	const area = await check(
+		'an area of Nevada is typed in, its rate from a day',
+		'POST',
+		`${nv}/areas`,
+		{ fields: { name: `Reno ${stamp}`, code: '', from }, pieces: reno },
+		201
+	);
+	const at = `${nv}/areas/${area.body?.id}`;
+	await check(
+		'a second of the same name is refused',
+		'POST',
+		`${nv}/areas`,
+		{ fields: { name: `RENO ${stamp}`, from }, pieces: reno },
+		(r) => r.status === 400 && Boolean(r.body?.errors?.name)
+	);
+	await check(
+		'a coming rate the same as today’s is refused',
+		'PUT',
+		`${at}/rates/${coming}`,
+		{ pieces: reno },
+		(r) => r.status === 400 && Boolean(r.body?.errors?.pieces)
+	);
+	await check(
+		'the coming quarter’s rate is typed',
+		'PUT',
+		`${at}/rates/${coming}`,
+		{
+			pieces: [reno[0], { ...reno[1], rate_pct: '1.525' }]
+		},
+		201
+	);
+	await check(
+		'it is confirmed, one action',
+		'POST',
+		`${at}/confirm`,
+		undefined,
+		(r) => r.status === 200 && typeof r.body?.confirmed_on === 'string'
+	);
+	await check('it is renamed', 'PATCH', at, { fields: { name: `Reno city ${stamp}` } }, 200);
+	const page = await fetch(`${base}/settings/tax/NV/${area.body?.id}`, { headers: { cookie } });
+	const html = await page.text();
+	const shown =
+		page.status === 200 && html.includes(`Reno city ${stamp}`) && html.includes('8.265%');
+	if (shown) passed++;
+	else failures.push(`a typed area's page: ${page.status}`);
+	console.log(`  ${shown ? '✓' : '✗'} its page says its name, and its rate today`);
+	await check(
+		'its only rate in force today stays',
+		'DELETE',
+		`${at}/rates/${from}`,
+		undefined,
+		409
+	);
+	await check('the coming rate is taken away', 'DELETE', `${at}/rates/${coming}`, undefined, 204);
+
+	// A California site's area is CDTFA's to say, never chosen.
+	const db = new pg.Client(database());
+	await db.connect();
+	const ca = (
+		await db.query(
+			`select e.slug as client, s.slug as site from site s join entity e on e.id = s.entity_id
+			  where s.region = 'CA' and s.active order by e.slug, s.slug limit 1`
+		)
+	).rows[0];
+	await db.end();
+	if (ca)
+		await check(
+			'a California site’s area is not chosen by hand',
+			'PUT',
+			`/api/clients/${ca.client}/sites/${ca.site}/area`,
+			{ fields: { area: area.body?.id } },
+			409
+		);
+	await check('an area no site was ever in is taken away', 'DELETE', at, undefined, 204);
+	await check('the business stops collecting in Nevada', 'DELETE', nv, undefined, 204);
 }
 
 console.log('');

@@ -67,6 +67,8 @@ export type PaysAs = "fee" | "guaranteed_payment" | "wages";
 
 export type PaysFor = "covered_time" | "time" | "vehicle";
 
+export type PlacementWay = "asked" | "chosen";
+
 export type ReceiptType = "application/pdf" | "image/jpeg" | "image/png" | "image/webp";
 
 export type SecurityEventName = "authn_link_issued" | "authn_link_refused" | "authn_link_used" | "authn_login_fail" | "authn_login_success" | "authn_passkey_added" | "authn_passkey_removed" | "authz_change" | "authz_fail" | "excess_rate_limit_exceeded" | "session_expired" | "session_logout" | "user_archived" | "user_created" | "user_restored" | "user_updated";
@@ -79,7 +81,7 @@ export type StockAdjustmentWay = "off" | "on";
 
 export type StockCosting = "average" | "oldest_first";
 
-export type TaxAreaSource = "cdtfa";
+export type TaxAreaSource = "cdtfa" | "typed";
 
 export type TaxLevel = "federal" | "local" | "state";
 
@@ -556,7 +558,9 @@ export interface SitePlacement {
   moved: boolean;
   note: string | null;
   placed_at: Generated<Timestamp>;
+  placed_by: string | null;
   site_id: string;
+  way: PlacementWay;
 }
 
 export interface StockAdjustment {
@@ -625,12 +629,14 @@ export interface StockTake {
 
 export interface TaxArea {
   code: string | null;
+  confirmed_by: string | null;
   confirmed_on: string;
   created_at: Generated<Timestamp>;
   id: Generated<string>;
   name: string;
   source: TaxAreaSource;
   state: string;
+  typed_by: string | null;
 }
 
 export interface TaxPiece {
@@ -641,6 +647,7 @@ export interface TaxPiece {
   jurisdiction: string;
   level: TaxLevel;
   rate_pct: NumericColumn;
+  typed_by: string | null;
 }
 
 export interface TaxRegistration {

@@ -1,6 +1,6 @@
 import { expressionBuilder, sql, type Expression, type Kysely, type NumericString } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
-import type { DB, TaxLevel } from './db/database.ts';
+import type { DB, PlacementWay, TaxLevel } from './db/database.ts';
 import type { TaxPiece } from './db/tax-pieces.ts';
 import { Decimal } from '../decimal.ts';
 import type { Priced, PublishedRate } from './cdtfa.ts';
@@ -74,19 +74,28 @@ export function areaPieces(area: Expression<string>, day: string) {
 }
 
 /**
- * Writes down that a site was placed in an area -- asked about when it was
- * made, when it moved, by hand, or on a refresh -- and whether that moved it
+ * Writes down that a site was placed in an area, and whether that moved it
  * from `was`, the area it was in before; a site's first placement moves it.
+ * How: asked of the authority -- when the site was made, when it moved, by
+ * hand, or on a refresh -- or chosen by a person, in a typed area. By whom,
+ * where somebody did it: the server's own refresh is nobody.
  */
 export async function placeSite(
 	db: Kysely<DB>,
 	site: { id: string; was: string | null },
 	area: string,
-	note: string
+	how: { way: PlacementWay; by: string | null; note: string }
 ) {
 	await db
 		.insertInto('site_placement')
-		.values({ site_id: site.id, area_id: area, moved: site.was !== area, note })
+		.values({
+			site_id: site.id,
+			area_id: area,
+			moved: site.was !== area,
+			way: how.way,
+			placed_by: how.by,
+			note: how.note
+		})
 		.execute();
 }
 

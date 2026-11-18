@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { typesAreas } from '#lib/us-states.ts';
 	import { goto, refreshAll } from '$app/navigation';
 	import Detail from '#lib/Detail.svelte';
 	import Octicon from '#lib/Octicon.svelte';
@@ -39,6 +40,9 @@
 	// Where it is moving to, while it is saved.
 	let movingTo = $state<string | null>(null);
 	const cdtfa = $derived(data.collects.includes('CA'));
+	// Whether a state it could move to has its areas chosen by a person, who
+	// chooses again after a move.
+	const chosenAreas = $derived(data.collects.some(typesAreas));
 	let movedWhy = $state('');
 	// Why the drive was not measured, when it was asked for and could not be.
 	let unmeasured = $state('');
@@ -163,9 +167,15 @@
 					<p class="fc-e"><Octicon name="alert" />{movedWhy}</p>
 				{:else}
 					<p class="fc-c">
-						{cdtfa
-							? 'Choosing a place saves it, and in California asks CDTFA what is charged there.'
-							: 'Choosing a place saves it.'}
+						{[
+							'Choosing a place saves it.',
+							cdtfa ? 'In California it asks CDTFA what is charged there.' : null,
+							chosenAreas
+								? 'Anywhere else the business collects, its tax area is chosen again on its Tax tab.'
+								: null
+						]
+							.filter(Boolean)
+							.join(' ')}
 					</p>
 				{/if}
 			</div>

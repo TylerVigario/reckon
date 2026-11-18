@@ -150,7 +150,8 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 		.select((eb) => {
 			const confirmed = lastConfirmed(
 				eb.ref('site.area_verified_on'),
-				eb.ref('tax_area.confirmed_on')
+				eb.ref('tax_area.confirmed_on'),
+				eb.ref('tax_area.source')
 			);
 			return [
 				'site.display as site',
@@ -167,7 +168,11 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 			eb.or([
 				eb('tax_area.id', 'is', null),
 				rateIsStale(
-					lastConfirmed(eb.ref('site.area_verified_on'), eb.ref('tax_area.confirmed_on')),
+					lastConfirmed(
+						eb.ref('site.area_verified_on'),
+						eb.ref('tax_area.confirmed_on'),
+						eb.ref('tax_area.source')
+					),
 					today
 				)
 			])

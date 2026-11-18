@@ -15,9 +15,9 @@ import { readFields } from '#lib/json.ts';
  * as Settings → Tax saves it, and DELETE stops collecting there -- the lines
  * already taxed there and the returns already handed in keep their state.
  *
- * Only a state whose sites' areas reckon can find can be collected in
- * (#lib/us-states COLLECTABLE): a business registered where no site could be
- * placed could tax nothing there.
+ * Only a state with a sales tax can be collected in (#lib/us-states
+ * COLLECTABLE). In California CDTFA places its sites; anywhere else a person
+ * types its areas in and chooses each site's (#lib/server/typed-areas).
  */
 const collectable = (s: string): s is State => (COLLECTABLE as readonly string[]).includes(s);
 

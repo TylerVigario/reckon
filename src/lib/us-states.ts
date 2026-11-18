@@ -75,14 +75,26 @@ export const stateName = (s: string) => (isState(s) ? STATES[s] : s);
 export const NO_SALES_TAX: readonly State[] = ['DE', 'NH', 'OR'];
 
 /**
- * How a site's tax area is found in a state, where reckon can find one: by
- * asking the state's authority about its address. California's is CDTFA, the
- * California Department of Tax and Fee Administration (#lib/server/cdtfa).
- * A business can collect tax only where a site's area can be found.
+ * Where there is no sales tax statewide, only local ones: Alaska's cities and
+ * boroughs, Montana's resort areas. A rate there has no state piece.
+ */
+export const NO_STATE_TAX: readonly State[] = ['AK', 'MT'];
+
+/**
+ * How a site's tax area is found in a state where an authority answers for an
+ * address: by asking it. California's is CDTFA, the California Department of
+ * Tax and Fee Administration (#lib/server/cdtfa). Anywhere else a person types
+ * the state's areas in from its own table, and chooses which a site is in
+ * (#lib/server/typed-areas).
  */
 export const AUTHORITY: Partial<Record<State, { short: string; name: string }>> = {
 	CA: { short: 'CDTFA', name: 'California Department of Tax and Fee Administration' }
 };
 
-/** The states a business can collect tax in: each one whose areas reckon can find. */
-export const COLLECTABLE = (Object.keys(STATES) as State[]).filter((s) => AUTHORITY[s]);
+/** Whether a state's areas are typed by a person: no authority answers there. */
+export const typesAreas = (s: string) => isState(s) && !AUTHORITY[s];
+
+/** The states a business can collect tax in: each one with a sales tax. */
+export const COLLECTABLE = (Object.keys(STATES) as State[]).filter(
+	(s) => !NO_SALES_TAX.includes(s)
+);

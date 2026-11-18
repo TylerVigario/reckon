@@ -128,7 +128,8 @@ export const PATCH: RequestHandler = async (event) => {
 		row.area_verified_on = businessToday();
 	} else if (moved) {
 		// Somewhere CDTFA is not asked about: in no area there yet, since the
-		// one it was in was the old address's.
+		// one it was in was the old address's. Where a person chooses a site's
+		// area, they choose again, on its Tax tab.
 		row.tax_area_id = null;
 		row.area_verified_on = null;
 	}
@@ -166,12 +167,11 @@ export const PATCH: RequestHandler = async (event) => {
 				.returning(VERSION.as('version'))
 				.executeTakeFirst();
 			if (saved && answer)
-				await placeSite(
-					tx,
-					{ id, was: site.tax_area_id },
-					String(row.tax_area_id),
-					'asked because the address changed'
-				);
+				await placeSite(tx, { id, was: site.tax_area_id }, String(row.tax_area_id), {
+					way: 'asked',
+					by: locals.user!.id,
+					note: 'asked because the address changed'
+				});
 			return saved;
 		});
 	} catch (e) {

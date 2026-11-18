@@ -18,9 +18,10 @@ import type { LayoutServerLoad } from './$types';
  * A site is the thing a jobsite rate, a mileage figure and a contact all hang
  * off, and every one of those is changed under it -- except the rate, which is
  * its area's and has no field: in California, CDTFA's, where the business
- * collects there (#lib/server/tax-registrations). It is the rate's one home,
- * where CDTFA is asked again. Someone with Field reads it, to work at, and
- * changes nothing (#lib/access).
+ * collects there (#lib/server/tax-registrations), and elsewhere the typed area
+ * a person chose (#lib/server/typed-areas). It is the rate's one home, where
+ * CDTFA is asked again or the area chosen. Someone with Field reads it, to
+ * work at, and changes nothing (#lib/access).
  */
 export const load: LayoutServerLoad = async ({ params }) => {
 	const client = await findClient(params.id);
@@ -57,6 +58,7 @@ export const load: LayoutServerLoad = async ({ params }) => {
 				'rate_pct'
 			),
 			areaPieces(eb.ref('ta.id').$castTo<string>(), businessToday()).as('pieces'),
+			's.tax_area_id as area_id',
 			'ta.name as area',
 			'ta.code as area_code',
 			's.area_verified_on as verified_on',
@@ -66,7 +68,11 @@ export const load: LayoutServerLoad = async ({ params }) => {
 					collectsIn(eb.ref('s.region')),
 					eb('ta.id', 'is not', null),
 					rateIsStale(
-						lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on')),
+						lastConfirmed(
+							eb.ref('s.area_verified_on'),
+							eb.ref('ta.confirmed_on'),
+							eb.ref('ta.source')
+						),
 						businessToday()
 					)
 				])

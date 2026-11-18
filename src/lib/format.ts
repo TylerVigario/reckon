@@ -124,13 +124,17 @@ export function quantity(v: Figure): string {
 	return numbers({ maximumFractionDigits: 4 }).format(exact(v));
 }
 
-/** A tax rate, to three places, which is how CDTFA publishes them: "7.750%". */
-export function pct(v: Figure, places = 3): string {
+/**
+ * A tax rate, to three places, which is how CDTFA publishes them -- "7.750%" --
+ * or four where it has a fourth, as a rate is kept and some states publish
+ * them: "8.4875%". Never rounded, since a rate shown is a rate charged.
+ */
+export function pct(v: Figure): string {
 	if (absent(v)) return ABSENT;
 	return numbers({
 		style: 'percent',
-		minimumFractionDigits: places,
-		maximumFractionDigits: places
+		minimumFractionDigits: 3,
+		maximumFractionDigits: 4
 	}).format(hundredth(v));
 }
 
