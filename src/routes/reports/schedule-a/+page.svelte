@@ -181,9 +181,9 @@
 				<div class="box-h">
 					<h2 class="box-t" id="rates-h">Rates worth asking again</h2>
 					{#if data.unchecked.length}
-						<span class="lab warn">Over 90 days old</span>
+						<span class="lab warn">Not confirmed this quarter</span>
 					{:else}
-						<span class="lab good">All recent</span>
+						<span class="lab good">All confirmed</span>
 					{/if}
 				</div>
 				{#each data.unchecked as u (u.client + u.site)}
@@ -194,7 +194,7 @@
 						</span>
 					</a>
 				{:else}
-					<p class="box-row muted">Every site’s rate was asked for in the last 90 days.</p>
+					<p class="box-row muted">Every site’s rate is confirmed this quarter.</p>
 				{/each}
 			</section>
 

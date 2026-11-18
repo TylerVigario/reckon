@@ -16,12 +16,13 @@ import { MIGRATE_ON_START, SECURE_COOKIES, SITE_URL } from '$app/env/private';
 import { authHeaders, getAuth } from '#lib/server/auth.ts';
 import { googleKey } from '#lib/server/google-key.ts';
 import { startSending } from '#lib/server/email.ts';
-import { pool } from '#lib/server/db/index.ts';
+import { db, pool } from '#lib/server/db/index.ts';
+import { startSyncingTax } from '#lib/server/tax-sync.ts';
 import { bringUpToDate, mustBeUpToDate } from '#lib/server/db/migrate.ts';
 import { building } from '$app/env';
 import { getRequestEvent } from '$app/server';
 import { businessDefaults } from '#lib/server/business.ts';
-import { readLocaleFrom } from '#lib/format.ts';
+import { readLocaleFrom, todayIn } from '#lib/format.ts';
 import { readCurrencyFrom } from '#lib/currency.ts';
 import { localeTag, weekStartOf, type HourCycle } from '#lib/locales.ts';
 import { REACH, reaches } from '#lib/access.ts';
@@ -61,6 +62,8 @@ export const init: ServerInit = async () => {
 	watchTheProcess();
 	// And a year's security log is all that is kept (#lib/server/events).
 	startPruning();
+	// And every tax rate is kept as its authority says it (#lib/server/tax-sync).
+	startSyncingTax(db, async () => todayIn((await businessDefaults()).zone));
 };
 
 async function startUp() {

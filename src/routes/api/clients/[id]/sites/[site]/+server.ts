@@ -116,7 +116,7 @@ export const PATCH: RequestHandler = async (event) => {
 			postcode: String('postcode' in row ? row.postcode : site.postcode)
 		};
 		try {
-			priced = await priceAddress(after);
+			priced = await priceAddress(after, businessToday());
 		} catch (e) {
 			const why = e instanceof NoAnswer ? e.message : 'CDTFA could not be reached.';
 			return refuse(

@@ -2,7 +2,7 @@ import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { db } from '#lib/server/db/index.ts';
 import { findClient } from '#lib/server/find.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { rateIsStale } from '#lib/server/stale.ts';
+import { lastConfirmed, rateIsStale } from '#lib/server/stale.ts';
 import { areaRate } from '#lib/server/tax-areas.ts';
 import type { PageServerLoad } from './$types';
 
@@ -28,6 +28,7 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	const sites = await db
 		.selectFrom('site as si')
+		.innerJoin('tax_area as ta', 'ta.id', 'si.tax_area_id')
 		.select((eb) => [
 			'si.id',
 			'si.slug',
@@ -46,10 +47,18 @@ export const load: PageServerLoad = async ({ params }) => {
 				.as('address'),
 			// Its area's rate today (#lib/server/tax-areas).
 			eb.cast<string>(areaRate(eb.ref('si.tax_area_id'), businessToday()), 'text').as('rate_pct'),
-			rateIsStale(eb.ref('si.area_verified_on'), businessToday()).as('stale'),
+			rateIsStale(
+				lastConfirmed(eb.ref('si.area_verified_on'), eb.ref('ta.confirmed_on')),
+				businessToday()
+			).as('stale'),
 			eb.cast<string | null>('si.round_trip_miles', 'text').as('miles'),
 			'si.drive_minutes as minutes',
-			eb.cast<string>('si.area_verified_on', 'text').as('verified_on'),
+			eb
+				.cast<string>(
+					lastConfirmed(eb.ref('si.area_verified_on'), eb.ref('ta.confirmed_on')),
+					'text'
+				)
+				.as('confirmed_on'),
 			jsonArrayFrom(
 				eb
 					.selectFrom('site_contact as sc')

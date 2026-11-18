@@ -1,20 +1,22 @@
 /**
  * Ask CDTFA what an address pays.
  *
- * This is the one place that knows the contract with CDTFA, and it has two
- * callers with nothing else in common -- the app, which prices a site the
- * moment somebody saves one or asks again on its page, and
- * scripts/refresh-tax-rates.mjs, which re-asks about everything on a schedule. A second copy of a network contract is a copy
- * that drifts, and the drift shows up as a rate. The script imports this file
- * as it is, under plain Node, so imports here are relative or #lib -- never a
- * $app module, which only exists inside SvelteKit.
+ * This is the one place that knows the contract with CDTFA. The app asks it
+ * the moment somebody saves a site or asks again on its page, and the server
+ * keeps every area and site in sync through it (#lib/server/tax-sync) -- as
+ * does scripts/refresh-tax-rates.mjs, which runs that under plain Node. So
+ * imports here are relative or #lib, never a $app module, which only exists
+ * inside SvelteKit. A second copy of a network contract is a copy that
+ * drifts, and the drift shows up as a rate.
  *
  * TWO QUESTIONS, because CDTFA answers them in two places:
  *
  *   the rate API      an address -> a total rate, their name for the area,
  *                     and the tax area code. Needs street, city AND zip; any
  *                     one missing is a 400 rather than a best guess.
- *   the rate layer    that code -> the state's share and the districts on top.
+ *   the rate layer    that code -> the state's share and the districts on top,
+ *                     the day the rate took effect, and the quarter it is for:
+ *                     the one in force and, once published, the coming one.
  *                     StateRate is one value statewide, so the statewide rate
  *                     is read rather than assumed.
  *
@@ -41,7 +43,16 @@ const RATE_LAYER =
  */
 type RateLayerAnswer = {
 	features?: {
-		attributes?: { RATE: number; StateRate: number; CountyRate: number; CityRate: number };
+		attributes?: {
+			RATE: number;
+			StateRate: number;
+			CountyRate: number;
+			CityRate: number;
+			/** The day this rate took effect, as epoch milliseconds. */
+			START_DATE: number;
+			/** The quarter this record describes, as epoch milliseconds: its first day. */
+			DateStamp: number;
+		};
 	}[];
 };
 
@@ -113,32 +124,46 @@ function percent(...fractions: unknown[]): string {
 	return sum(texts).mul(100).toFixed(4);
 }
 
-export type Split = { state: string; district: string; total: string };
+/**
+ * One rate CDTFA publishes for a tax area: the state's share and the districts',
+ * the total, the day it took effect, and the quarter the record describes. The
+ * layer is published ahead of a quarter (its records for 1 October 2026 were
+ * made on 12 August), and while it is, an area has a record for the quarter in
+ * force and one for the quarter coming.
+ */
+export type PublishedRate = {
+	start: string;
+	quarter: string;
+	state: string;
+	district: string;
+	total: string;
+};
 
 /**
- * What a run has learnt about tax areas, by code.
- *
- * KEPT BY THE CALLER, AND ONLY FOR ONE RUN. California's rates change on the
- * first day of a quarter, and a server runs straight through it: a split it
- * kept from before would be refused against CDTFA's new total, or stored
- * without complaint where only the split moved. So the app keeps none, and
- * every site it prices asks afresh -- one more request, when somebody saves a
- * site. The refresh script keeps one for the length of a run, so it asks about
- * an area once however many sites share it.
+ * A day CDTFA sends as epoch milliseconds, as YYYY-MM-DD. It sends the day's
+ * first moment in California, seven or eight hours into the same day in UTC,
+ * so the UTC date is the day.
  */
-export type Splits = Map<string, Split>;
+const dayOf = (ms: unknown): string => {
+	if (typeof ms !== 'number' || !Number.isFinite(ms))
+		throw new NoAnswer(`CDTFA sent a date that is not one: ${String(ms)}.`);
+	return new Date(ms).toISOString().slice(0, 10);
+};
 
-/** The state/district split for one tax area code, from `known` if this run has asked. */
-export async function splitFor(
+/**
+ * Every rate CDTFA publishes for one tax area code, by the quarter each
+ * describes: the one in force, and the coming quarter's where it is out.
+ */
+export async function ratesFor(
 	tac: string,
-	fetcher: typeof fetch = fetch,
-	known?: Splits
-): Promise<Split> {
-	const kept = known?.get(tac);
-	if (kept) return kept;
+	fetcher: typeof fetch = fetch
+): Promise<PublishedRate[]> {
+	// Written into the layer's query, so it is a code or nothing is asked.
+	if (!/^[0-9A-Z]{1,16}$/.test(tac)) throw new NoAnswer(`${tac} is not a tax area code.`);
 	const q = new URLSearchParams({
 		where: `TAC_txt='${tac}'`,
-		outFields: 'RATE,StateRate,CountyRate,CityRate',
+		outFields: 'RATE,StateRate,CountyRate,CityRate,START_DATE,DateStamp',
+		orderByFields: 'DateStamp',
 		returnGeometry: 'false',
 		f: 'json'
 	});
@@ -147,25 +172,34 @@ export async function splitFor(
 		fetcher,
 		(status) => `CDTFA's rate layer answered ${status}`
 	)) as RateLayerAnswer;
-	const a = layer?.features?.[0]?.attributes;
-	if (!a) throw new NoAnswer(`CDTFA's rate layer knows no area ${tac}`);
-	// County and city both come back separately; both are district taxes, so
-	// they are added. CDTFA-105 is a list of districts and names no other kind.
-	const split = {
-		state: percent(a.StateRate),
-		district: percent(a.CountyRate, a.CityRate),
-		total: percent(a.RATE)
-	};
-	known?.set(tac, split);
-	return split;
+	const rates = (layer?.features ?? [])
+		.map((f) => f.attributes)
+		.filter((a) => a !== undefined)
+		// County and city both come back separately; both are district taxes,
+		// so they are added. CDTFA-105 is a list of districts and names no
+		// other kind.
+		.map((a) => ({
+			start: dayOf(a.START_DATE),
+			quarter: dayOf(a.DateStamp),
+			state: percent(a.StateRate),
+			district: percent(a.CountyRate, a.CityRate),
+			total: percent(a.RATE)
+		}))
+		.sort((x, y) => x.quarter.localeCompare(y.quarter));
+	if (!rates.length) throw new NoAnswer(`CDTFA's rate layer knows no area ${tac}`);
+	return rates;
 }
+
+/** Which of an area's published rates is in force on `day`: its quarter's. */
+export const inForce = (rates: readonly PublishedRate[], day: string) =>
+	rates.findLast((r) => r.quarter <= day) ?? rates[0];
 
 export type Priced = {
 	rate: string;
-	state: string;
-	district: string;
 	jurisdiction: string;
 	tac: string;
+	/** Every rate CDTFA publishes for its area, the coming quarter's among them. */
+	rates: PublishedRate[];
 	confidence: string | null;
 	matched: string | null;
 };
@@ -175,8 +209,9 @@ export type Priced = {
  * string the whole way, because a rate that round-trips through a float is a
  * rate that can be a cent out.
  *
- * `known` is what this run has already learnt about tax areas (Splits). Left
- * out, the rate layer is asked every time.
+ * The rate API answers today's rate; the rate layer answers every rate it
+ * publishes for the area, and the one in force on `today`, the business's day,
+ * has to agree with it.
  */
 export async function priceAddress(
 	{
@@ -184,8 +219,8 @@ export async function priceAddress(
 		city,
 		postcode
 	}: { street?: string | null; city?: string | null; postcode?: string | null },
-	fetcher: typeof fetch = fetch,
-	known?: Splits
+	today: string,
+	fetcher: typeof fetch = fetch
 ): Promise<Priced> {
 	const missing = [
 		street ? null : 'a street',
@@ -248,18 +283,18 @@ export async function priceAddress(
 	}
 
 	const rate = percent(answer.rate);
-	const split = await splitFor(answer.tac, fetcher, known);
-	if (!Decimal.from(split.total).eq(rate)) {
+	const rates = await ratesFor(answer.tac, fetcher);
+	const now = inForce(rates, today);
+	if (!Decimal.from(now.total).eq(rate)) {
 		throw new NoAnswer(
 			`CDTFA's two sources disagree about ${answer.tac}: the rate API says ` +
-				`${rate}% and the rate layer says ${split.total}%.`
+				`${rate}% and the rate layer says ${now.total}%.`
 		);
 	}
 
 	return {
 		rate,
-		state: split.state,
-		district: split.district,
+		rates,
 		jurisdiction: answer.jurisdiction,
 		tac: answer.tac,
 		confidence: body?.geocodeInfo?.confidence ?? null,

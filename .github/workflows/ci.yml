@@ -178,10 +178,10 @@ jobs:
       - run: npm run build
 
       - name: The tax-rate refresh starts, outside SvelteKit
-        # It runs under plain Node and imports the app's own CDTFA client and
-        # staleness rule, so a $app import anywhere beneath them stops it before
-        # it asks about anything. An empty database has no sites, so this needs
-        # no network: it proves the script loads, connects and finds its day.
+        # It runs the server's own tax sync under plain Node, so a $app import
+        # anywhere beneath it stops it before it asks about anything. An empty
+        # database has no areas or sites, so this needs no network: it proves
+        # the script loads, connects and finds its day.
         run: |
           createdb reckon_empty
           PGDATABASE=reckon_empty npm run db:migrate
@@ -191,6 +191,11 @@ jobs:
         # Every scope and method of a tax rule's rounding, in SQL and in
         # TypeScript, over the same made-up lines. Nothing is written.
         run: PGDATABASE=reckon_empty node tests/tax-check.mjs
+
+      - name: The server keeps every tax rate as CDTFA says it
+        # Passes of the sync on successive days against a stand-in for CDTFA,
+        # whose answers change between them. What it makes it removes.
+        run: PGDATABASE=reckon_empty node tests/tax-sync-check.mjs
 
       - name: A mail relay to send to
         # Before the business is set up, so nothing it is to send waits for one.
