@@ -870,36 +870,46 @@ SELECT must_fail($$
           ca_area('559980000000', 'UNINCORPORATED AREA-TUOLUMNE', 7.2500, 0.0000), current_date)
 $$, 'a postcode that is present but empty');
 
--- What the API said, written down against the address it was said about.
-INSERT INTO site_tax_check (site_id, tax_area_code, tax_jurisdiction, rate_pct, changed)
-VALUES ('33333333-3333-3333-3333-333333333333','510510000000','YUBA CITY',
-        7.2500, true);
+-- Where the API placed the address, written down against the site, and the
+-- site in that area.
 UPDATE site SET tax_area_id = ca_area('510510000000', 'YUBA CITY', 7.2500, 0.0000),
                 area_verified_on = current_date
  WHERE id = '33333333-3333-3333-3333-333333333333';
+INSERT INTO site_placement (site_id, area_id, moved)
+SELECT id, tax_area_id, true FROM site WHERE id = '33333333-3333-3333-3333-333333333333';
 
--- Every answer is kept, so a rate that moved can be explained against the
--- invoices billed at the old one.
+-- Every placement is kept, and every rate an area has had, so a rate that
+-- moved can be explained against the invoices billed at the old one.
 DO $$
-DECLARE n bigint; moved bigint;
+DECLARE n bigint; was numeric;
 BEGIN
-  -- Yuba City's answer in 2016, when the statewide rate was 7.50%.
-  INSERT INTO site_tax_check (site_id, checked_at, tax_area_code, tax_jurisdiction,
-                              rate_pct, changed)
-  VALUES ('33333333-3333-3333-3333-333333333333','2016-06-01','510510000000','YUBA CITY',
-          7.5000, true);
+  -- Yuba City's rate in 2016, when the statewide rate was 7.50%, and the site
+  -- placed there then.
+  INSERT INTO tax_piece (area_id, level, jurisdiction, rate_pct, effective_from)
+  SELECT tax_area_id, 'state', 'CALIFORNIA', 7.5000, '2016-06-01'
+    FROM site WHERE id = '33333333-3333-3333-3333-333333333333';
+  INSERT INTO site_placement (site_id, placed_at, area_id, moved)
+  SELECT id, '2016-06-01', tax_area_id, true
+    FROM site WHERE id = '33333333-3333-3333-3333-333333333333';
 
-  SELECT count(*), count(*) FILTER (WHERE changed) INTO n, moved FROM site_tax_check
+  SELECT count(*) INTO n FROM site_placement
    WHERE site_id = '33333333-3333-3333-3333-333333333333';
-
-  IF n <> 2 OR moved <> 2 THEN
-    RAISE EXCEPTION 'GUARD MISSING: % answers kept, % counted as moves', n, moved;
+  SELECT sum(rate_pct) INTO was FROM tax_piece p
+   WHERE area_id = (SELECT tax_area_id FROM site WHERE id = '33333333-3333-3333-3333-333333333333')
+     AND effective_from = '2016-06-01';
+  IF n <> 2 OR was <> 7.5000 THEN
+    RAISE EXCEPTION 'GUARD MISSING: % placements kept, the 2016 rate %', n, was;
   END IF;
-  RAISE NOTICE '  history   every answer is kept, and % of them moved the rate', moved;
+  RAISE NOTICE '  history   every placement is kept, and the rate the area had in 2016';
 END $$;
 
--- Losing a site loses its answers with it; they describe an address that is
--- no longer anybody's.
+SELECT must_fail($$
+  INSERT INTO site_placement (site_id, moved)
+  VALUES ('33333333-3333-3333-3333-333333333333', false)
+$$, 'a placement in no area');
+
+-- Losing a site loses its placements with it; they describe an address that
+-- is no longer anybody's. Its area stays: it is a place, whoever is in it.
 DO $$
 DECLARE n int;
 BEGIN
@@ -909,15 +919,15 @@ BEGIN
 VALUES ('c5000000-0000-4000-8000-0000000000fe','44444444-0000-4000-8000-000000000002','Gone','gone',
         '11255 Jackson St','Columbia','CA','95310',
         ca_area('559980000000', 'UNINCORPORATED AREA-TUOLUMNE', 7.2500, 0.0000), current_date);
-  INSERT INTO site_tax_check (site_id, rate_pct) VALUES
-    ('c5000000-0000-4000-8000-0000000000fe', 7.2500);
+  INSERT INTO site_placement (site_id, area_id, moved)
+  SELECT id, tax_area_id, true FROM site WHERE id = 'c5000000-0000-4000-8000-0000000000fe';
   DELETE FROM site WHERE id = 'c5000000-0000-4000-8000-0000000000fe';
-  SELECT count(*) INTO n FROM site_tax_check
+  SELECT count(*) INTO n FROM site_placement
    WHERE site_id = 'c5000000-0000-4000-8000-0000000000fe';
   IF n <> 0 THEN
-    RAISE EXCEPTION 'GUARD MISSING: % answers outlived the address', n;
+    RAISE EXCEPTION 'GUARD MISSING: % placements outlived the address', n;
   END IF;
-  RAISE NOTICE '  follows   answers go with the address they describe';
+  RAISE NOTICE '  follows   placements go with the address they describe';
 END $$;
 
 -- A RATE IS A PLACE'S. A tax area is named by its authority's code, once in
@@ -2737,27 +2747,46 @@ $$, 'an untaxed line saying where it was taxed');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction,
-                            state_rate_pct, district_rate_pct)
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_pieces)
   VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
-          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 7.2500, 0.5000)
-$$, 'shares that do not make the rate');
+          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY',
+          '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"},
+            {"level": "local", "jurisdiction": "YUBA CITY", "rate": "0.5000"}]')
+$$, 'pieces that do not make the rate');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, state_rate_pct)
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_pieces)
   VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
-          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 7.2500)
-$$, 'the state''s share without the districts''');
+          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY',
+          '[{"level": "county", "jurisdiction": "SUTTER", "rate": "7.2500"}]')
+$$, 'a piece levied by no level there is');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_pieces)
+  VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
+          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY',
+          '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": 7.25}]')
+$$, 'a rate written as a number, which JSON would read as a float');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_pieces)
+  VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
+          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY',
+          '[{"level": "state", "jurisdiction": " ", "rate": "7.2500"}]')
+$$, 'a piece that names nobody');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
                             taxable, tax_rate_pct, tax_source, tax_override_reason, site_id,
-                            tax_jurisdiction, state_rate_pct, district_rate_pct)
+                            tax_jurisdiction, tax_pieces)
   VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
           true, 8.2500, 'override', 'Marysville jobsite, location not yet on file', '33333333-3333-3333-3333-333333333333',
-          'YUBA CITY', 7.2500, 1.0000)
-$$, 'shares of a rate that was not the site''s');
+          'YUBA CITY', '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"},
+                         {"level": "local", "jurisdiction": "MARYSVILLE", "rate": "1.0000"}]')
+$$, 'pieces of a rate that was not the site''s');
 
 SELECT must_pass($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
@@ -2770,26 +2799,35 @@ $$, 'a rate set by hand at a site, saying where');
 
 SELECT must_pass($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction,
-                            state_rate_pct, district_rate_pct)
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_pieces)
   VALUES ('77777777-0000-4000-8000-0000000000f1',2,'material','Patch cable',4,6.25,25.00,
-          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 7.2500, 0.0000)
-$$, 'a line taxed at its site''s rate, saying where and what the rate was made of');
+          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY',
+          '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"}]')
+$$, 'a line taxed at its site''s rate, saying where and who levied it');
 
-SELECT must_pass($$
+SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
                             taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction)
   VALUES ('77777777-0000-4000-8000-0000000000f1',3,'material','Patch cable',4,6.25,25.00,
           true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY')
-$$, 'a line sent before the shares were kept, saying where alone');
+$$, 'a line taxed at its site''s rate, keeping no pieces');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            taxable, tax_rate_pct, tax_source, site_id, tax_pieces)
+  VALUES ('77777777-0000-4000-8000-0000000000f1',3,'service','Labour',2,95,190.00,
+          false, 0, 'none', '33333333-3333-3333-3333-333333333333',
+          '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "0"}]')
+$$, 'an untaxed line keeping pieces');
 
 UPDATE invoice SET status = 'sent', issued_on = '2026-10-08', due_on = '2026-11-07', sent_at = now(),
        public_token = 'the-link-to-inv-0490-sent-today'
  WHERE id = '77777777-0000-4000-8000-0000000000f1';
 
 SELECT must_fail($$
-  UPDATE invoice_line SET tax_jurisdiction = 'SUTTER COUNTY', district_rate_pct = 0.2500,
-                          state_rate_pct = 7.0000
+  UPDATE invoice_line SET tax_jurisdiction = 'SUTTER COUNTY',
+                          tax_pieces = '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.0000"},
+                                         {"level": "local", "jurisdiction": "SUTTER COUNTY", "rate": "0.2500"}]'
    WHERE invoice_id = '77777777-0000-4000-8000-0000000000f1' AND seq = 2
 $$, 'where a sent line was taxed, changed');
 

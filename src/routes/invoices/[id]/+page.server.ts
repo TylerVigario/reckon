@@ -7,6 +7,7 @@ import { UUID } from '#lib/field-rules.ts';
 import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
 import { lineTax } from '#lib/server/tax-rules.ts';
+import type { TaxPiece } from '#lib/server/db/tax-pieces.ts';
 import { day, monthName, names } from '#lib/format.ts';
 import { crewNames } from '#lib/server/choices.ts';
 import { clientLink } from '#lib/client-link.ts';
@@ -222,10 +223,13 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 					eb.cast<string>(dueOnReturn, 'text').as('due_on_return'),
 					// Where it was taxed, as each line kept it when it was priced (0030),
 					// not as its site says now.
-					eb.fn.max<string | null>('il.tax_jurisdiction').as('district'),
+					eb.fn.max<string | null>('il.tax_jurisdiction').as('area'),
 					eb.cast<string | null>(eb.fn.max('il.tax_rate_pct'), 'text').as('rate_pct'),
-					eb.cast<string | null>(eb.fn.max('il.state_rate_pct'), 'text').as('state_rate_pct'),
-					eb.cast<string | null>(eb.fn.max('il.district_rate_pct'), 'text').as('district_rate_pct'),
+					// And who levied it, as a line taxed there kept it.
+					eb.fn
+						.agg<TaxPiece[] | null>('any_value', ['il.tax_pieces'])
+						.filterWhere('il.tax_pieces', 'is not', null)
+						.as('pieces'),
 					// What is actually in each half, so the page can name them instead of
 					// assuming labour is never taxed and goods always are.
 					kinds(untaxed).as('untaxed_kinds'),

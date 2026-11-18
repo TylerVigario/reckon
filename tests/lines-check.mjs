@@ -303,11 +303,12 @@ check(
 );
 // 33.33 and 10.63 taxed at 8% is 3.5168: $3.52.
 check(page.includes('$82.48'), 'the draft comes to $82.48: $10.63, $33.33, $35.00 and $3.52 tax');
-// Where they were taxed, as the lines kept it from the site with its rate.
-const where = 'WOODLAND 8.000% (7.250% state + 0.750% district)';
+// Where they were taxed, and who levied each piece, as the lines kept it from
+// the site with its rate.
+const where = 'WOODLAND 8.000% (CALIFORNIA 7.250% + WOODLAND 0.750%)';
 check(
 	page.includes(where),
-	`the draft says where its goods were taxed, and what the rate is made of${page.includes(where) ? '' : ` (${page.slice(0, 600)})`}`
+	`the draft says where its goods were taxed, and who levied each piece of the rate${page.includes(where) ? '' : ` (${page.slice(0, 600)})`}`
 );
 /** The draft's line that says `name`: its own screen, where its receipt is. */
 const lineOf = (/** @type {string} */ name) =>

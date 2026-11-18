@@ -7,7 +7,13 @@
 		"numeric": "NumericColumn"
 	},
 	"customImports": {
-		"NumericColumn": "./numeric.ts"
+		"NumericColumn": "./numeric.ts",
+		"TaxPiecesColumn": "./tax-pieces.ts"
 	},
-	"outFile": "./src/lib/server/db/database.ts"
+	"outFile": "./src/lib/server/db/database.ts",
+	"overrides": {
+		"columns": {
+			"invoice_line.tax_pieces": "TaxPiecesColumn"
+		}
+	}
 }

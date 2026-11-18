@@ -23,7 +23,7 @@
  * as the locale writes them. A date is always written with its month in words:
  * a date in numbers alone is year-month-day, whatever the locale.
  */
-import { Decimal, Ratio } from './decimal.ts';
+import { Ratio } from './decimal.ts';
 import { currencyPlaces } from './currency.ts';
 
 let localeOf: () => string = () => 'en-US';
@@ -141,15 +141,13 @@ export function percent(v: Figure): string {
 }
 
 /**
- * How a rate splits: "7.250% state + 0.500% district", or "7.250% state, no
- * district". A county with no district tax says so rather than showing a
- * 0.000% that reads like a figure -- Tuolumne really does charge the state's
- * share and nothing else.
+ * Who levies a rate, piece by piece, as its authority names each:
+ * "CALIFORNIA 7.250% + WOODLAND 0.750%". A place where nobody but the state
+ * levies anything says only the state's, rather than a 0.000% that reads like
+ * a figure -- Auburn really does charge the state's share and nothing else.
  */
-export function rateParts(state: Figure, district: Figure): string {
-	return absent(district) || Decimal.from(String(district)).isZero()
-		? `${pct(state)} state, no district`
-		: `${pct(state)} state + ${pct(district)} district`;
+export function levied(pieces: readonly { jurisdiction: string; rate: Figure }[]): string {
+	return pieces.map((p) => `${p.jurisdiction} ${pct(p.rate)}`).join(' + ');
 }
 
 /**

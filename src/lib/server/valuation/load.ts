@@ -6,7 +6,6 @@ import { expressionBuilder, sql } from 'kysely';
 import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import type { DB } from '../db/database.ts';
 import { type Reader } from '../db/index.ts';
-import { businessToday, businessDay } from '../calendar.ts';
 import {
 	agreementFor,
 	worth,
@@ -273,55 +272,23 @@ export async function valueLegs(
 	);
 }
 
-/** The tax on each of these invoices, split by what CDTFA said about each line's site. */
+/** The tax on each of these invoices, split by the pieces each line kept. */
 export async function taxOfInvoices(
 	r: Reader,
 	invoiceIds: readonly string[]
 ): Promise<Map<string, InvoiceTax>> {
 	if (!invoiceIds.length) return new Map();
-	const ids = [...invoiceIds];
-	const day = businessToday();
-	const [lines, issued] = await Promise.all([
-		r
-			.selectFrom('invoice_line')
-			.select([
-				'invoice_id as invoiceId',
-				'amount',
-				'taxable',
-				'tax_rate_pct as taxRatePct',
-				'site_id as siteId'
-			])
-			.where('invoice_id', '=', (eb) => eb.fn.any(eb.val(ids)))
-			.execute(),
-		r
-			.selectFrom('invoice')
-			.select(['id', 'issued_on as issuedOn'])
-			.where('id', '=', (eb) => eb.fn.any(eb.val(ids)))
-			.execute()
-	]);
-	const sites = [...new Set(lines.map((l) => l.siteId).filter((x): x is string => x !== null))];
-	const checks = sites.length
-		? await r
-				.selectFrom('site_tax_check')
-				.select((eb) => [
-					'site_id as siteId',
-					// The day it was asked, by the database's calendar.
-					eb.cast<string>(businessDay(eb.ref('checked_at')), 'text').as('checkedOn'),
-					'checked_at as checkedAt',
-					'rate_pct as ratePct',
-					'state_rate_pct as statePct',
-					'district_rate_pct as districtPct',
-					'tax_jurisdiction as jurisdiction'
-				])
-				.where('site_id', '=', (eb) => eb.fn.any(eb.val(sites)))
-				.execute()
-		: [];
-	return invoiceTax(
-		lines,
-		checks,
-		new Map(issued.map((i) => [i.id, i.issuedOn])),
-		day,
-		await taxRounding(),
-		await moneyPlaces()
-	);
+	const lines = await r
+		.selectFrom('invoice_line')
+		.select([
+			'invoice_id as invoiceId',
+			'amount',
+			'taxable',
+			'tax_rate_pct as taxRatePct',
+			'tax_jurisdiction as jurisdiction',
+			'tax_pieces as pieces'
+		])
+		.where('invoice_id', '=', (eb) => eb.fn.any(eb.val([...invoiceIds])))
+		.execute();
+	return invoiceTax(lines, await taxRounding(), await moneyPlaces());
 }

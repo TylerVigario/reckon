@@ -5,7 +5,7 @@ import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { lookUpClient } from '#lib/server/find.ts';
 import { SITE_FIELDS, parseSiteField } from '#lib/site-fields.ts';
 import { priceAddress, NoAnswer } from '#lib/server/cdtfa.ts';
-import { recordCdtfaArea } from '#lib/server/tax-areas.ts';
+import { placeSite, recordCdtfaArea } from '#lib/server/tax-areas.ts';
 import { confirmPlace } from '#lib/server/verify-place.ts';
 import { measureDrive } from '#lib/server/site-drive.ts';
 import type { RequestHandler } from './$types';
@@ -129,22 +129,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 						.executeTakeFirst()
 			);
 
-			// The answer is logged as an answer, the same as a refresh's, so the
-			// first thing that happened to this site is in the same record as
-			// everything after it.
-			await tx
-				.insertInto('site_tax_check')
-				.values({
-					site_id: made.id,
-					tax_area_code: priced.tac,
-					tax_jurisdiction: priced.jurisdiction,
-					rate_pct: priced.rate,
-					state_rate_pct: priced.state,
-					district_rate_pct: priced.district,
-					changed: true,
-					note: 'asked when the site was created'
-				})
-				.execute();
+			// Its first placement, the same as a refresh's, so the first thing
+			// that happened to this site is in the same record as everything
+			// after it.
+			await placeSite(tx, { id: made.id, was: null }, area, 'asked when the site was created');
 			return made;
 		});
 

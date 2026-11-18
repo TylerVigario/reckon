@@ -5,7 +5,7 @@ import { db } from '#lib/server/db/index.ts';
 import { versionOf } from '#lib/server/concurrent.ts';
 import { rateIsStale, STALE_AFTER_DAYS } from '#lib/server/stale.ts';
 import { findClient, findSite } from '#lib/server/find.ts';
-import { areaRate } from '#lib/server/tax-areas.ts';
+import { areaPieces, areaRate } from '#lib/server/tax-areas.ts';
 import type { LayoutServerLoad } from './$types';
 
 /**
@@ -47,18 +47,18 @@ export const load: LayoutServerLoad = async ({ params }) => {
 			's.google_round_trip_miles',
 			's.google_drive_minutes',
 			's.active',
-			// Its area's rate today, and its shares (#lib/server/tax-areas).
+			// Its area, and the area's rate today and who levies it
+			// (#lib/server/tax-areas).
 			areaRate(eb.ref('ta.id'), businessToday()).as('rate_pct'),
-			areaRate(eb.ref('ta.id'), businessToday(), 'state').as('state_rate_pct'),
-			areaRate(eb.ref('ta.id'), businessToday(), 'local').as('district_rate_pct'),
-			'ta.name as jurisdiction',
-			'ta.code as tax_area_code',
+			areaPieces(eb.ref('ta.id'), businessToday()).as('pieces'),
+			'ta.name as area',
+			'ta.code as area_code',
 			's.area_verified_on as verified_on',
 			rateIsStale(eb.ref('s.area_verified_on'), businessToday()).as('stale'),
 			eb
 				.cast<number>(
 					eb
-						.selectFrom('site_tax_check as k')
+						.selectFrom('site_placement as k')
 						.select((eb) => eb.fn.countAll().as('n'))
 						.whereRef('k.site_id', '=', 's.id')
 						.$asScalar(),

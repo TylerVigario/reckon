@@ -1,5 +1,4 @@
 import type { Updateable } from 'kysely';
-import { Decimal } from '#lib/decimal.ts';
 import { asUser, db } from '#lib/server/db/index.ts';
 import type { Site } from '#lib/server/db/database.ts';
 import { businessToday } from '#lib/server/calendar.ts';
@@ -7,7 +6,7 @@ import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
 import { ADDRESS_FIELDS, parseSiteField } from '#lib/site-fields.ts';
 import { priceAddress, NoAnswer, type Priced } from '#lib/server/cdtfa.ts';
-import { areaRate, recordCdtfaArea } from '#lib/server/tax-areas.ts';
+import { placeSite, recordCdtfaArea } from '#lib/server/tax-areas.ts';
 import { confirmPlace } from '#lib/server/verify-place.ts';
 import { measureDrive } from '#lib/server/site-drive.ts';
 import type { RequestHandler } from './$types';
@@ -85,15 +84,8 @@ export const PATCH: RequestHandler = async (event) => {
 
 	const site = await db
 		.selectFrom('site')
-		.select((eb) => [
-			'street',
-			'city',
-			'region',
-			'postcode',
-			'google_place_id',
-			// Its area's rate today, to tell a move that changed it (#lib/server/tax-areas).
-			areaRate(eb.ref('site.tax_area_id'), businessToday()).as('tax_rate_pct')
-		])
+		// And the area it is in, to tell a move that took it to another.
+		.select(['street', 'city', 'region', 'postcode', 'google_place_id', 'tax_area_id'])
 		.where('id', '=', id)
 		.executeTakeFirstOrThrow();
 
@@ -167,19 +159,12 @@ export const PATCH: RequestHandler = async (event) => {
 				.returning(VERSION.as('version'))
 				.executeTakeFirst();
 			if (saved && answer)
-				await tx
-					.insertInto('site_tax_check')
-					.values({
-						site_id: id,
-						tax_area_code: answer.tac,
-						tax_jurisdiction: answer.jurisdiction,
-						rate_pct: answer.rate,
-						state_rate_pct: answer.state,
-						district_rate_pct: answer.district,
-						changed: !Decimal.from(answer.rate).eq(site.tax_rate_pct),
-						note: 'asked because the address changed'
-					})
-					.execute();
+				await placeSite(
+					tx,
+					{ id, was: site.tax_area_id },
+					String(row.tax_area_id),
+					'asked because the address changed'
+				);
 			return saved;
 		});
 	} catch (e) {

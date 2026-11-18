@@ -3,7 +3,7 @@ import { asUser, db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
 import { priceAddress, NoAnswer } from '#lib/server/cdtfa.ts';
-import { areaRate, recordCdtfaArea } from '#lib/server/tax-areas.ts';
+import { areaRate, placeSite, recordCdtfaArea } from '#lib/server/tax-areas.ts';
 import { problem } from '#lib/server/problem.ts';
 import { VERSION } from '#lib/server/concurrent.ts';
 import type { RequestHandler } from './$types';
@@ -34,6 +34,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 			'street',
 			'city',
 			'postcode',
+			'tax_area_id',
 			// Its area's rate today (#lib/server/tax-areas).
 			areaRate(eb.ref('site.tax_area_id'), businessToday()).as('rate')
 		])
@@ -66,20 +67,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 			.where('postcode', '=', was.postcode)
 			.returning(VERSION.as('version'))
 			.executeTakeFirst();
-		if (row)
-			await tx
-				.insertInto('site_tax_check')
-				.values({
-					site_id: found.id,
-					tax_area_code: answer.tac,
-					tax_jurisdiction: answer.jurisdiction,
-					rate_pct: answer.rate,
-					state_rate_pct: answer.state,
-					district_rate_pct: answer.district,
-					changed,
-					note: 'asked again'
-				})
-				.execute();
+		if (row) await placeSite(tx, { id: found.id, was: was.tax_area_id }, area, 'asked again');
 		return row;
 	});
 	if (!saved)

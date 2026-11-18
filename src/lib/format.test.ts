@@ -26,7 +26,7 @@ import {
 	pct,
 	percent,
 	quantity,
-	rateParts,
+	levied,
 	readLocaleFrom,
 	span,
 	todayIn,
@@ -137,11 +137,15 @@ describe('pct', () => {
 	});
 });
 
-describe('rateParts', () => {
-	it('says both parts with their signs, or that there is no district', () => {
-		expect(rateParts('7.2500', '0.5000')).toBe('7.250% state + 0.500% district');
-		expect(rateParts('7.2500', '0.0000')).toBe('7.250% state, no district');
-		expect(rateParts('7.2500', null)).toBe('7.250% state, no district');
+describe('levied', () => {
+	it('says who levies each piece, and nothing for a piece nobody levies', () => {
+		expect(
+			levied([
+				{ jurisdiction: 'CALIFORNIA', rate: '7.2500' },
+				{ jurisdiction: 'WOODLAND', rate: '0.7500' }
+			])
+		).toBe('CALIFORNIA 7.250% + WOODLAND 0.750%');
+		expect(levied([{ jurisdiction: 'CALIFORNIA', rate: '7.2500' }])).toBe('CALIFORNIA 7.250%');
 	});
 });
 

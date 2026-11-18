@@ -1,21 +1,21 @@
 <script lang="ts">
 	import { refreshAll } from '$app/navigation';
 	import Octicon from '#lib/Octicon.svelte';
-	import { dated, pct, rateParts } from '#lib/format.ts';
+	import { dated, levied, pct } from '#lib/format.ts';
 	import { Decimal } from '#lib/decimal.ts';
 	import { readJson, readProblem } from '#lib/json.ts';
 	import type { PageProps } from './$types';
 	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
-	 * What CDTFA has said of a site: what is charged there and what it is made
-	 * of, the area it is in, and when CDTFA was last asked -- none of it ours to
-	 * set -- then its latest answers.
+	 * What CDTFA has said of a site: what is charged there and who levies it,
+	 * the area it is in, and when CDTFA was last asked -- none of it ours to
+	 * set -- then where it has been placed.
 	 */
 	let { data }: PageProps = $props();
 	const s = $derived(data.site);
 	const field = $derived(data.user?.access === 'field');
-	const made = $derived(rateParts(s.state_rate_pct, s.district_rate_pct));
+	const made = $derived(levied(s.pieces));
 
 	/**
 	 * ASK CDTFA AGAIN (7 November 2026), in the box's header as GitHub puts
@@ -55,12 +55,12 @@
 		await refreshAll();
 	}
 
-	// Why each answer was asked for, and what it said. The first has nothing
-	// before it to have moved from.
-	const why = (c: { note: string | null; changed: boolean; first: boolean }) =>
+	// Why it was asked, and the area its address was in then, said as a move
+	// where that was another than before.
+	const why = (c: { note: string | null; area: string; moved: boolean; first: boolean }) =>
 		[
 			c.note ? c.note[0].toUpperCase() + c.note.slice(1) : null,
-			c.first ? (c.note ? null : 'The first answer') : c.changed ? 'The rate moved' : 'Unchanged'
+			c.moved && !c.first ? `Now in ${c.area}` : c.area
 		]
 			.filter(Boolean)
 			.join(' · ');
@@ -96,8 +96,10 @@
 	<div class="box-row kv">
 		<span class="kv-l">Area</span>
 		<span class="kv-v">
-			<span>{s.jurisdiction}</span>
-			<span class="kv-s">Tax area {s.tax_area_code} · nothing here is ours to set</span>
+			<span>{s.area}</span>
+			<span class="kv-s"
+				>{s.area_code ? `Tax area ${s.area_code} · ` : ''}nothing here is ours to set</span
+			>
 		</span>
 	</div>
 	<div class="box-row kv">
@@ -114,10 +116,10 @@
 	</div>
 </section>
 
-{#if data.checks.length}
+{#if data.placements.length}
 	<section class="box" aria-labelledby="history-h">
 		<div class="box-h"><h2 class="box-t" id="history-h">History</h2></div>
-		{#each data.checks as c (c.id)}
+		{#each data.placements as c (c.id)}
 			<div class="box-row was">
 				<span class="who">
 					<span class="n">{dated(c.on)}</span>
@@ -126,8 +128,8 @@
 				<span class="r">{pct(c.rate_pct)}</span>
 			</div>
 		{/each}
-		{#if s.asked > data.checks.length}
-			<p class="box-row more">The latest {data.checks.length} of {s.asked}.</p>
+		{#if s.asked > data.placements.length}
+			<p class="box-row more">The latest {data.placements.length} of {s.asked}.</p>
 		{/if}
 	</section>
 {/if}

@@ -118,14 +118,15 @@ INSERT INTO entity (id, name, slug) VALUES
 
 -- The tax areas the sites are in, as CDTFA names them, and what each levies:
 -- the state's share, and the district taxes where there are any. Auburn has
--- none of its own. Each as of the day CDTFA was last asked about a site in it.
+-- none of its own. Each from the day CDTFA first gave it, and confirmed on the
+-- day it was last asked about a site in it.
 INSERT INTO tax_area (id, state, code, name, source, confirmed_on) VALUES
   ('019a0003-0000-7000-8000-000000000001','CA','349980230000','UNINCORPORATED AREA-SACRAMENTO','cdtfa', current_date - 4),
   ('019a0003-0000-7000-8000-000000000002','CA','310110000000','AUBURN','cdtfa', current_date - 40),
   ('019a0003-0000-7000-8000-000000000003','CA','570282360000','WOODLAND','cdtfa', current_date - 230);
 INSERT INTO tax_piece (area_id, level, jurisdiction, code, rate_pct, effective_from) VALUES
-  ('019a0003-0000-7000-8000-000000000001','state','CALIFORNIA', NULL, 7.2500, current_date - 4),
-  ('019a0003-0000-7000-8000-000000000001','local','UNINCORPORATED AREA-SACRAMENTO','349980230000', 0.5000, current_date - 4),
+  ('019a0003-0000-7000-8000-000000000001','state','CALIFORNIA', NULL, 7.2500, current_date - 90),
+  ('019a0003-0000-7000-8000-000000000001','local','UNINCORPORATED AREA-SACRAMENTO','349980230000', 0.5000, current_date - 90),
   ('019a0003-0000-7000-8000-000000000002','state','CALIFORNIA', NULL, 7.2500, current_date - 40),
   ('019a0003-0000-7000-8000-000000000003','state','CALIFORNIA', NULL, 7.2500, current_date - 230),
   ('019a0003-0000-7000-8000-000000000003','local','WOODLAND','570282360000', 0.7500, current_date - 230);
@@ -148,23 +149,22 @@ INSERT INTO site (id, entity_id, label, slug, street, city, region, postcode,
    'Woodland office','woodland-office','1000 Main St','Woodland','CA','95695', 42, 48,
    '019a0003-0000-7000-8000-000000000003', current_date - 230);
 
--- Every time CDTFA was asked, and what it said, in the morning of the day each
--- site says it was asked. The clinic was asked twice four days ago and gave the
--- same answer both times.
-INSERT INTO site_tax_check (site_id, checked_at, tax_area_code, tax_jurisdiction,
-                            rate_pct, state_rate_pct, district_rate_pct, changed) VALUES
-  ('52e62dcd-9dd8-4ddb-a985-a1ad40c24109', (current_date - 230 + time '10:00') AT TIME ZONE 'America/Los_Angeles', '570282360000',
-   'WOODLAND', 8.0000, 7.2500, 0.7500, true),
-  ('4c42978a-ace1-4a79-a7f0-0d9e7efed2da', (current_date - 40 + time '10:00') AT TIME ZONE 'America/Los_Angeles', '310110000000',
-   'AUBURN', 7.2500, 7.2500, 0.0000, true),
-  ('0ab3a11c-d59e-4526-a132-402a4bc9d9ca', (current_date - 40 + time '10:00') AT TIME ZONE 'America/Los_Angeles', '310110000000',
-   'AUBURN', 7.2500, 7.2500, 0.0000, true),
-  ('75aea465-ad04-43e1-b6b4-d7132872a870', (current_date - 90 + time '10:00') AT TIME ZONE 'America/Los_Angeles', '349980230000',
-   'UNINCORPORATED AREA-SACRAMENTO', 7.7500, 7.2500, 0.5000, true),
-  ('75aea465-ad04-43e1-b6b4-d7132872a870', (current_date - 4 + time '10:00') AT TIME ZONE 'America/Los_Angeles', '349980230000',
-   'UNINCORPORATED AREA-SACRAMENTO', 7.7500, 7.2500, 0.5000, false),
-  ('75aea465-ad04-43e1-b6b4-d7132872a870', (current_date - 4 + time '10:00') AT TIME ZONE 'America/Los_Angeles', '349980230000',
-   'UNINCORPORATED AREA-SACRAMENTO', 7.7500, 7.2500, 0.5000, false);
+-- Every time CDTFA placed a site in its area, in the morning of the day each
+-- site says it was asked. The clinic was asked twice four days ago and was
+-- where it had been both times.
+INSERT INTO site_placement (site_id, placed_at, area_id, moved, note) VALUES
+  ('52e62dcd-9dd8-4ddb-a985-a1ad40c24109', (current_date - 230 + time '10:00') AT TIME ZONE 'America/Los_Angeles',
+   '019a0003-0000-7000-8000-000000000003', true, 'asked when the site was created'),
+  ('4c42978a-ace1-4a79-a7f0-0d9e7efed2da', (current_date - 40 + time '10:00') AT TIME ZONE 'America/Los_Angeles',
+   '019a0003-0000-7000-8000-000000000002', true, 'asked when the site was created'),
+  ('0ab3a11c-d59e-4526-a132-402a4bc9d9ca', (current_date - 40 + time '10:00') AT TIME ZONE 'America/Los_Angeles',
+   '019a0003-0000-7000-8000-000000000002', true, 'asked when the site was created'),
+  ('75aea465-ad04-43e1-b6b4-d7132872a870', (current_date - 90 + time '10:00') AT TIME ZONE 'America/Los_Angeles',
+   '019a0003-0000-7000-8000-000000000001', true, 'asked when the site was created'),
+  ('75aea465-ad04-43e1-b6b4-d7132872a870', (current_date - 4 + time '10:00') AT TIME ZONE 'America/Los_Angeles',
+   '019a0003-0000-7000-8000-000000000001', false, 'asked on a refresh'),
+  ('75aea465-ad04-43e1-b6b4-d7132872a870', (current_date - 4 + time '10:00') AT TIME ZONE 'America/Los_Angeles',
+   '019a0003-0000-7000-8000-000000000001', false, 'asked again');
 
 INSERT INTO contact (id, name, email, phone) VALUES
   ('1696abcc-fc5f-44e2-ac99-a12e08b25f8f','Ellen Park','ellen@example.com','916-555-0127'),
@@ -393,18 +393,20 @@ INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_pr
   ('6f444d02-b482-4506-98fe-ee23f45d26c5',2,'service','Travel',18.0,'mile',0.66,11.88,false,0,NULL,NULL);
 
 -- Goods lines name the site whose rate taxes them, with where that rate is
--- levied and what it is made of, and the material each is, with what it cost
+-- levied and the pieces it is made of, and the material each is, with what it cost
 -- before tax and the tax already paid on it, and who added it. What each took
 -- off its lot is a draw, which takes it off the shelf.
 INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
                           taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction,
-                          state_rate_pct, district_rate_pct, material_id,
+                          tax_pieces, material_id,
                           ex_tax_cost, tax_paid, created_by) VALUES
   ('a0ca5d14-192f-43eb-9652-48e6fe145e67','2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a',1,'material','Access point · Wi-Fi 6 · Ceiling',
-   2,'each',132.16,264.32,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','AUBURN',7.2500,0.0000,
+   2,'each',132.16,264.32,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','AUBURN',
+   '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"}]',
    '427ec8a1-9038-4fca-9323-ca62625622a3', 224.00, 16.24, 'c41b2fab-5b71-4954-bb86-1bc803daf7ee'),
   ('46c02ef2-14c7-4043-9321-34a0ecd99100','2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a',2,'material','Raceway · Surface · 3/4 in',
-   40,'foot',1.06,42.40,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','AUBURN',7.2500,0.0000,
+   40,'foot',1.06,42.40,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','AUBURN',
+   '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"}]',
    'b144a78b-750a-4bd2-a84e-7d1551328565', 34.00, 2.464, 'c41b2fab-5b71-4954-bb86-1bc803daf7ee');
 
 INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty) VALUES
