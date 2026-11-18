@@ -7,6 +7,7 @@ import { lookUpClient, lookUpSite } from '#lib/server/find.ts';
 import { ADDRESS_FIELDS, parseSiteField } from '#lib/site-fields.ts';
 import { priceAddress, NoAnswer, type Priced } from '#lib/server/cdtfa.ts';
 import { placeSite, recordCdtfaArea } from '#lib/server/tax-areas.ts';
+import { asksCdtfa } from '#lib/server/tax-registrations.ts';
 import { confirmPlace } from '#lib/server/verify-place.ts';
 import { measureDrive } from '#lib/server/site-drive.ts';
 import type { RequestHandler } from './$types';
@@ -106,10 +107,11 @@ export const PATCH: RequestHandler = async (event) => {
 		'google_place_id' in row && String(row.google_place_id) !== (site.google_place_id ?? '');
 
 	let priced: Priced | null = null;
-	if (moved) {
-		// The address as it will END UP, which is the one to price: a PATCH can
-		// carry the city without the street, and pricing what arrived rather
-		// than what results is how a site ends up rated for neither address.
+	// The address as it will END UP, which is the one to price: a PATCH can
+	// carry the city without the street, and pricing what arrived rather than
+	// what results is how a site ends up rated for neither address.
+	const region = String('region' in row ? row.region : site.region);
+	if (moved && (await asksCdtfa(db, region))) {
 		const after = {
 			street: String('street' in row ? row.street : site.street),
 			city: String('city' in row ? row.city : site.city),
@@ -124,6 +126,11 @@ export const PATCH: RequestHandler = async (event) => {
 			);
 		}
 		row.area_verified_on = businessToday();
+	} else if (moved) {
+		// Somewhere CDTFA is not asked about: in no area there yet, since the
+		// one it was in was the old address's.
+		row.tax_area_id = null;
+		row.area_verified_on = null;
 	}
 	const answer = priced;
 

@@ -8,8 +8,8 @@ import { taxes, type TaxRounding } from './tax-rules.ts';
  * or `.with('owing', () => balances(...))`), with the columns invoice_id,
  * entity_id, status, net, tax, gross, paid, credited and owed.
  *
- * net is the lines; tax is what they carry, rounded as the business's tax rule
- * rounds it (#lib/server/tax-rules), to the currency's `places` (#lib/currency);
+ * net is the lines; tax is what they carry, rounded as sales tax is
+ * (#lib/server/tax-rules), to the currency's `places` (#lib/currency);
  * gross is the two together: what the invoice asks for. owed is gross less what
  * payments have been put against it and what credit notes have taken off it,
  * and never below nothing, so a part-paid invoice is still owed its remainder

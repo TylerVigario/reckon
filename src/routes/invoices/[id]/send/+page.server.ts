@@ -2,7 +2,8 @@ import { error, redirect } from '@sveltejs/kit';
 import { sql } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
 import { balances } from '#lib/server/balances.ts';
-import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
+import { TAX_ROUNDING } from '#lib/server/tax-rules.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { UUID } from '#lib/field-rules.ts';
 import type { PageServerLoad } from './$types';
@@ -14,8 +15,8 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ params }) => {
 	if (!UUID.test(params.id)) error(404, 'no such invoice');
-	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
-	const owing = balances(rounding, places);
+	const places = await moneyPlaces();
+	const owing = balances(TAX_ROUNDING, places);
 	const today = businessToday();
 
 	const inv = await db

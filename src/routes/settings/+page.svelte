@@ -6,6 +6,7 @@
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 	import { SETTINGS_GROUPS, type SettingsPage } from '#lib/settings-pages.ts';
+	import { stateName } from '#lib/us-states.ts';
 
 	/**
 	 * Settings on a phone: its screens in their groups, as Primer's NavList
@@ -17,11 +18,6 @@
 	const o = $derived(data.operator);
 
 	const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-	const TAX: Record<string, string> = {
-		us_ca: "California's rules",
-		flat_per_site: 'A flat rate for each site',
-		none: 'No tax charged'
-	};
 	const FILED: Record<string, string> = {
 		annual: 'filed yearly',
 		quarterly: 'filed quarterly',
@@ -47,12 +43,12 @@
 			`${Number(o?.default_markup_pct ?? 25)}% markup`,
 			COSTED[o?.stock_costing ?? 'average']
 		].join(' · '),
-		'/settings/tax': [
-			TAX[o?.tax_rule_set ?? 'none'] ?? o?.tax_rule_set,
-			o?.tax_rule_set === 'us_ca' && o.filing_basis ? FILED[o.filing_basis] : null
-		]
-			.filter(Boolean)
-			.join(' · '),
+		'/settings/tax': data.collects.length
+			? data.collects
+					.map((r) => [stateName(r.state), r.filing_basis ? FILED[r.filing_basis] : null])
+					.map((parts) => parts.filter(Boolean).join(', '))
+					.join(' · ')
+			: 'No tax collected',
 		'/settings/travel': data.counts.mileage
 			? `${unitPrice(data.counts.mileage)} a mile`
 			: 'No mileage rate yet',

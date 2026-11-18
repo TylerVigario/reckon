@@ -1,4 +1,4 @@
-import { asUser } from '#lib/server/db/index.ts';
+import { asUser, db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { insertNamed } from '#lib/server/slugs.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
@@ -6,6 +6,7 @@ import { lookUpClient } from '#lib/server/find.ts';
 import { SITE_FIELDS, parseSiteField } from '#lib/site-fields.ts';
 import { priceAddress, NoAnswer } from '#lib/server/cdtfa.ts';
 import { placeSite, recordCdtfaArea } from '#lib/server/tax-areas.ts';
+import { asksCdtfa } from '#lib/server/tax-registrations.ts';
 import { confirmPlace } from '#lib/server/verify-place.ts';
 import { measureDrive } from '#lib/server/site-drive.ts';
 import type { RequestHandler } from './$types';
@@ -18,11 +19,12 @@ import { readFields } from '#lib/json.ts';
  * POST, not PATCH: this makes a thing that did not exist, and every field it
  * needs has to arrive at once -- there is no half a site to save.
  *
- * CREATING A SITE IS A LOOKUP. The rate, the area and the tax area code are
- * CDTFA's answer about the address, and the schema will not hold a site
- * without them. So the address is priced before the row is written, and a
- * place CDTFA cannot answer for is refused with their reason rather than
- * stored as a site nobody can bill from.
+ * IN CALIFORNIA, CREATING A SITE IS A LOOKUP, where the business collects tax
+ * there. The site's area, and so its rate, is CDTFA's answer about the
+ * address, so the address is priced before the row is written, and a place
+ * CDTFA cannot answer for is refused with their reason rather than stored as a
+ * site nobody can bill from. A site in a state the business does not collect
+ * in has no area to find, and is made with none (#lib/server/tax-registrations).
  *
  * THE ADDRESS IS A PLACE GOOGLE CONFIRMS (8 October 2026): chosen from
  * Google's suggestions, its parts arrive with its place id, and Google is asked
@@ -77,17 +79,20 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const notAPlace = await confirmPlace(String(row.google_place_id));
 	if (notAPlace) return refuse({ google_place_id: notAPlace });
 
-	let priced;
-	try {
-		priced = await priceAddress(
-			{ street: String(row.street), city: String(row.city), postcode: String(row.postcode) },
-			businessToday()
-		);
-	} catch (e) {
-		// Against the postcode, because that is the field most often wrong and
-		// the one the reader can act on. The message is CDTFA's own.
-		return refuse({ postcode: e instanceof NoAnswer ? e.message : 'CDTFA could not be reached.' });
-	}
+	let priced = null;
+	if (await asksCdtfa(db, String(row.region)))
+		try {
+			priced = await priceAddress(
+				{ street: String(row.street), city: String(row.city), postcode: String(row.postcode) },
+				businessToday()
+			);
+		} catch (e) {
+			// Against the postcode, because that is the field most often wrong
+			// and the one the reader can act on. The message is CDTFA's own.
+			return refuse({
+				postcode: e instanceof NoAnswer ? e.message : 'CDTFA could not be reached.'
+			});
+		}
 
 	const { drive } = await measureDrive(String(row.google_place_id));
 
@@ -97,7 +102,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		const site = await asUser(locals.user!.id, async (tx) => {
 			const areaVerifiedOn = businessToday();
 			// CDTFA's answer is its area's (#lib/server/tax-areas).
-			const area = await recordCdtfaArea(tx, priced, areaVerifiedOn);
+			const area = priced ? await recordCdtfaArea(tx, priced, areaVerifiedOn) : null;
 			const made = await insertNamed(
 				{ given: optional(row.slug, String), from: String(row.label), fallback: 'site' },
 				(slug, madeHere) =>
@@ -119,7 +124,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 							entity_id,
 							active: true,
 							tax_area_id: area,
-							area_verified_on: areaVerifiedOn
+							area_verified_on: area ? areaVerifiedOn : null
 						})
 						.$if(madeHere, (qb) =>
 							qb.onConflict((oc) => oc.constraint('site_slug_is_the_clients').doNothing())
@@ -131,7 +136,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			// Its first placement, the same as a refresh's, so the first thing
 			// that happened to this site is in the same record as everything
 			// after it.
-			await placeSite(tx, { id: made.id, was: null }, area, 'asked when the site was created');
+			if (area)
+				await placeSite(tx, { id: made.id, was: null }, area, 'asked when the site was created');
 			return made;
 		});
 

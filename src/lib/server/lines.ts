@@ -18,7 +18,8 @@ import { merge, MERGED_FIELDS, same, type Merge } from '../line-merge.ts';
 import type { Conflict, Held } from '../line-conflict.ts';
 import { startIn } from './drafts.ts';
 import { isReceiptType, MAX_RECEIPT } from './receipt-file.ts';
-import { areaPieces, areaRate } from './tax-areas.ts';
+import { areaPieces } from './tax-areas.ts';
+import { collectsAnywhere, collectsIn, siteRate } from './tax-registrations.ts';
 
 /**
  * A LINE ADDED TO A DRAFT BY HAND: goods drawn from stock (#lib/stock-draw),
@@ -149,8 +150,8 @@ export async function formTerms() {
 			.select([
 				'purchase_markup_pct as markup',
 				'default_markup_pct as stock',
-				'tax_rule_set as rules',
-				'stock_costing as costing'
+				'stock_costing as costing',
+				collectsAnywhere().as('collects')
 			])
 			.executeTakeFirst(),
 		moneyPlaces(),
@@ -163,7 +164,9 @@ export async function formTerms() {
 		// What stock sells at over its cost where a material has no markup of
 		// its own: for a material repriced on the phone (#lib/stock-held).
 		stock_markup: op?.stock ?? '0',
-		rules: op?.rules ?? 'none',
+		// Whether the business collects tax anywhere: each site says whether
+		// it collects in the site's state.
+		collects: op?.collects ?? false,
 		costing: op?.costing ?? 'average',
 		places,
 		stock: all
@@ -358,40 +361,59 @@ async function refused(
 }
 
 /**
- * The client's site a line names, for its rate and where the rate is levied,
- * or why it cannot be named.
+ * Whether the business collects tax anywhere, and the client's site a line
+ * names -- its tax (#lib/passed-on SiteTax), its state, and its area's name and
+ * pieces -- or why it cannot be named.
  */
 async function siteOf(draft: { entity_id: string; who: string }, siteId: string | null) {
-	if (!siteId) return { site: null, why: null };
-	// Its area's rate today, and who levies it (#lib/server/tax-areas).
+	const { collects } = await db
+		.selectNoFrom(collectsAnywhere().as('collects'))
+		.executeTakeFirstOrThrow();
+	if (!siteId) return { collects, site: null, why: null };
+	// Its area's rate today, and who levies it (#lib/server/tax-areas), where
+	// the business collects in its state.
 	const day = businessToday();
-	const site = await db
+	const found = await db
 		.selectFrom('site')
-		.innerJoin('tax_area', 'tax_area.id', 'site.tax_area_id')
+		.leftJoin('tax_area', 'tax_area.id', 'site.tax_area_id')
 		.select((eb) => [
-			areaRate(eb.ref('tax_area.id'), day).as('rate'),
+			collectsIn(eb.ref('site.region')).as('collected'),
+			siteRate({ region: eb.ref('site.region'), area: eb.ref('site.tax_area_id') }, day).as('rate'),
+			'site.region as state',
 			'tax_area.name as jurisdiction',
-			areaPieces(eb.ref('tax_area.id'), day).as('pieces')
+			areaPieces(eb.ref('site.tax_area_id').$castTo<string>(), day).as('pieces')
 		])
 		.where('site.id', '=', siteId)
 		.where('site.entity_id', '=', draft.entity_id)
 		.executeTakeFirst();
-	return site ? { site, why: null } : { site: null, why: `Not one of ${draft.who}'s sites.` };
+	if (!found) return { collects, site: null, why: `Not one of ${draft.who}'s sites.` };
+	const { collected, rate, ...where } = found;
+	return { collects, site: { ...where, tax: { collected, ratePct: rate } }, why: null };
+}
+
+/** What a line taxed where the business collects still needs, if anything. */
+function taxNeeds(line: { needsASite: boolean; needsPlacing: boolean }): Errors | null {
+	if (line.needsASite) return { site_id: 'Where it went, so its tax rate is known.' };
+	if (line.needsPlacing)
+		return { site_id: 'That site is in no tax area yet, so its rate is not known.' };
+	return null;
 }
 
 /**
- * Where a taxed line was taxed, and the pieces its rate was made of where it is
- * the site's -- who levied what -- from the same read of the site as the rate,
- * kept with the line as they were then.
+ * Where a taxed line was taxed -- its area's name and its state -- and the
+ * pieces its rate was made of where it is the site's -- who levied what --
+ * from the same read of the site as the rate, kept with the line as they were
+ * then.
  */
 function taxedWhere(
 	line: { taxable: boolean; taxSource: string },
-	site: { jurisdiction: string; pieces: TaxPiece[] } | null
+	site: { state: string; jurisdiction: string | null; pieces: TaxPiece[] } | null
 ) {
-	const at = line.taxable && site !== null;
+	const at = line.taxable && site !== null && site.jurisdiction !== null;
 	const own = at && line.taxSource === 'site';
 	return {
 		tax_jurisdiction: at ? site.jurisdiction : null,
+		tax_state: at ? site.state : null,
 		tax_pieces: own ? JSON.stringify(site.pieces) : null
 	};
 }
@@ -525,15 +547,12 @@ async function fromTheShelf(
 	if (m && !m.active && !input.id && !errors.material_id)
 		errors.material_id = `${m.name} is retired. Offer it again from its record, or choose another.`;
 	const siteId = typeof values.site_id === 'string' ? values.site_id : null;
-	const { site, why } = await siteOf(draft, siteId);
+	const { collects, site, why } = await siteOf(draft, siteId);
 	if (why) errors.site_id = why;
 	if (Object.keys(errors).length > 0 || !m) return no(errors);
 
 	const [op, places] = await Promise.all([
-		db
-			.selectFrom('operator')
-			.select(['tax_rule_set as rules', 'stock_costing as costing'])
-			.executeTakeFirst(),
+		db.selectFrom('operator').select(['stock_costing as costing']).executeTakeFirst(),
 		moneyPlaces()
 	]);
 	const qty = String(values.qty);
@@ -568,10 +587,10 @@ async function fromTheShelf(
 						markupPct: m.markup,
 						taxable: m.taxable
 					},
-					{ ruleSet: op?.rules ?? 'none', siteRatePct: site?.rate ?? null, places }
+					{ collects, site: site?.tax ?? null, places }
 				);
-				if (line.needsASite)
-					throw new Refused(no({ site_id: 'Where it went, so its tax rate is known.' }));
+				const needs = taxNeeds(line);
+				if (needs) throw new Refused(no(needs));
 
 				const added = await tx
 					.insertInto('invoice_line')
@@ -634,7 +653,7 @@ async function boughtOrPaidFor(
 ): Promise<Added> {
 	const { values, errors } = readPassedOn(input.fields);
 	const siteId = typeof values.site_id === 'string' ? values.site_id : null;
-	const { site, why } = await siteOf(draft, siteId);
+	const { collects, site, why } = await siteOf(draft, siteId);
 	if (why) errors.site_id = why;
 
 	const receipt = (await readReceipt(input.receipt, errors)) ?? input.kept ?? null;
@@ -642,7 +661,7 @@ async function boughtOrPaidFor(
 
 	const op = await db
 		.selectFrom('operator')
-		.select(['purchase_markup_pct as markup', 'tax_rule_set as rules'])
+		.select(['purchase_markup_pct as markup'])
 		.executeTakeFirst();
 	const line = passedOn(
 		{
@@ -652,12 +671,13 @@ async function boughtOrPaidFor(
 		},
 		{
 			purchaseMarkupPct: op?.markup ?? '0',
-			ruleSet: op?.rules ?? 'none',
-			siteRatePct: site?.rate ?? null,
+			collects,
+			site: site?.tax ?? null,
 			places: await moneyPlaces()
 		}
 	);
-	if (line.needsASite) return no({ site_id: 'Where it went, so its tax rate is known.' });
+	const needs = taxNeeds(line);
+	if (needs) return no(needs);
 
 	try {
 		return await asUser(
@@ -817,12 +837,12 @@ export async function changeLine(
 				m?.places ?? null
 			);
 			const siteId = typeof values.site_id === 'string' ? values.site_id : null;
-			const { site, why } = await siteOf(draft, siteId);
+			const { collects, site, why } = await siteOf(draft, siteId);
 			if (why) errors.site_id = why;
 			if (Object.keys(errors).length > 0 || !m) return no(errors);
 			const op = await db
 				.selectFrom('operator')
-				.select(['tax_rule_set as rules', 'stock_costing as costing'])
+				.select(['stock_costing as costing'])
 				.executeTakeFirst();
 			const qty = String(values.qty);
 			return await asUser(
@@ -871,10 +891,10 @@ export async function changeLine(
 							markupPct: m.markup,
 							taxable: m.taxable
 						},
-						{ ruleSet: op?.rules ?? 'none', siteRatePct: site?.rate ?? null, places }
+						{ collects, site: site?.tax ?? null, places }
 					);
-					if (priced.needsASite)
-						throw new Refused(no({ site_id: 'Where it went, so its tax rate is known.' }));
+					const needs = taxNeeds(priced);
+					if (needs) throw new Refused(no(needs));
 
 					// More off the oldest lots, as any draw; what goes back, off the
 					// newest this line drew from first.
@@ -946,13 +966,13 @@ export async function changeLine(
 
 		const { values, errors } = readPassedOn({ ...input.fields, kind: line.kind });
 		const siteId = typeof values.site_id === 'string' ? values.site_id : null;
-		const { site, why } = await siteOf(draft, siteId);
+		const { collects, site, why } = await siteOf(draft, siteId);
 		if (why) errors.site_id = why;
 		const receipt = await readReceipt(input.receipt, errors);
 		if (Object.keys(errors).length > 0) return no(errors);
 		const op = await db
 			.selectFrom('operator')
-			.select(['purchase_markup_pct as markup', 'tax_rule_set as rules'])
+			.select(['purchase_markup_pct as markup'])
 			.executeTakeFirst();
 		const priced = passedOn(
 			{
@@ -962,12 +982,13 @@ export async function changeLine(
 			},
 			{
 				purchaseMarkupPct: op?.markup ?? '0',
-				ruleSet: op?.rules ?? 'none',
-				siteRatePct: site?.rate ?? null,
+				collects,
+				site: site?.tax ?? null,
 				places
 			}
 		);
-		if (priced.needsASite) return no({ site_id: 'Where it went, so its tax rate is known.' });
+		const needs = taxNeeds(priced);
+		if (needs) return no(needs);
 		return await asUser(
 			input.userId,
 			async (tx): Promise<Added> => {

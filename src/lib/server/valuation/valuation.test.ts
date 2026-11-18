@@ -673,7 +673,7 @@ describe('tax collected is split by who levied each piece of it', () => {
 	});
 	const levied = (t: InvoiceTax) => t.levied.map((p) => `${p.jurisdiction} ${money(p.tax)}`);
 	it('100.00 at 8.00% is 7.25 to California and 0.75 to Woodland', () => {
-		const t = invoiceTax([line()], TAX_ROUNDING.us_ca, CENTS).get('i')!;
+		const t = invoiceTax([line()], TAX_ROUNDING, CENTS).get('i')!;
 		expect(money(t.tax)).toBe('8.00');
 		expect(levied(t)).toEqual(['CALIFORNIA 7.25', 'WOODLAND 0.75']);
 		expect(t.jurisdiction).toBe('WOODLAND');
@@ -685,21 +685,19 @@ describe('tax collected is split by who levied each piece of it', () => {
 			jurisdiction: 'AUBURN',
 			pieces: [{ level: 'state', jurisdiction: 'CALIFORNIA', rate: '7.2500' }]
 		});
-		const t = invoiceTax([line(), auburn], TAX_ROUNDING.us_ca, CENTS).get('i')!;
+		const t = invoiceTax([line(), auburn], TAX_ROUNDING, CENTS).get('i')!;
 		expect(levied(t)).toEqual(['CALIFORNIA 14.50', 'WOODLAND 0.75']);
 	});
 	it('the state before a place, whatever order they were kept in', () => {
-		const t = invoiceTax(
-			[line({ pieces: [...woodland].reverse() })],
-			TAX_ROUNDING.us_ca,
-			CENTS
-		).get('i')!;
+		const t = invoiceTax([line({ pieces: [...woodland].reverse() })], TAX_ROUNDING, CENTS).get(
+			'i'
+		)!;
 		expect(t.levied.map((p) => p.level)).toEqual(['state', 'local']);
 	});
 	it("tax at a rate that was not the site's is charged, and levied by nobody it can name", () => {
 		const t = invoiceTax(
 			[line({ amount: '50.00', taxRatePct: '7.2500', jurisdiction: null, pieces: null })],
-			TAX_ROUNDING.us_ca,
+			TAX_ROUNDING,
 			CENTS
 		).get('i')!;
 		expect(money(t.tax)).toBe('3.63');
@@ -726,9 +724,7 @@ describe('tax is rounded by its rule', () => {
 	// 0.005 at one rate and 0.015 at another: 0.02 rounded once, but 0.01 and
 	// 0.02 rounded for each rate, as California and Japan round.
 	it('once per invoice for each rate', () => {
-		expect(taxOf([line('0.10', '5.0000'), line('0.10', '15.0000')], TAX_ROUNDING.us_ca)).toBe(
-			'0.03'
-		);
+		expect(taxOf([line('0.10', '5.0000'), line('0.10', '15.0000')], TAX_ROUNDING)).toBe('0.03');
 	});
 
 	// Two lines of 0.004 at one rate: 0.008, a cent, rounded for the rate; but
@@ -899,7 +895,7 @@ describe("every amount is rounded to its currency's places", () => {
 							pieces: null
 						}
 					],
-					TAX_ROUNDING.us_ca,
+					TAX_ROUNDING,
 					places
 				).get('i')!.tax
 			);

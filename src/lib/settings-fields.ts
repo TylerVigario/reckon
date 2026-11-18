@@ -51,7 +51,7 @@ import {
 import { isCurrency } from './currency.ts';
 import { COSTINGS } from './stock-draw.ts';
 import { everyWord } from './every-word.ts';
-import type { FilingBasis, MileageAssignment, TaxRuleSet } from './server/db/database.ts';
+import type { MileageAssignment } from './server/db/database.ts';
 import { pickLocale } from './locales.ts';
 
 export type { Parsed };
@@ -109,7 +109,6 @@ export const FIELDS: Record<string, Parse> = {
 			}
 		})
 	),
-	tax_rule_set: oneOf(everyWord<TaxRuleSet>()(['none', 'us_ca', 'flat_per_site'])),
 	default_markup_pct: orDefault('25', decimal(7, 4)),
 	// Goods bought for a job and passed on; empty passes them on as they cost.
 	purchase_markup_pct: orDefault('0', decimal(7, 4)),
@@ -141,13 +140,11 @@ export const FIELDS: Record<string, Parse> = {
 	ageing_alert_days: whole(1),
 
 	// --- Tax ----------------------------------------------------------------
-	tax_registration: optional(cap(60)),
-	tax_agency: optional(cap(60)),
-	filing_basis: optional(oneOf(everyWord<FilingBasis>()(['annual', 'quarterly', 'monthly']))),
-	// The month it ends in; the year ends on that month's last day, which is a
-	// rule rather than a second field to get out of step with the first.
+	// The business's own year, which a return is cut to; each state's
+	// registration is its own (#lib/registration-fields). The month it ends
+	// in; the year ends on that month's last day, which is a rule rather than
+	// a second field to get out of step with the first.
 	fiscal_year_end_month: optional(whole(1, 12)),
-	claims_tax_paid_purchases_resold: flag,
 
 	// --- How things are written, and driven ---------------------------------
 	// How the business's figures read, and each person's until they choose:

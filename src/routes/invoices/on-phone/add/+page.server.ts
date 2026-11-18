@@ -1,6 +1,6 @@
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { areaRate } from '#lib/server/tax-areas.ts';
+import { collectsIn, siteRate } from '#lib/server/tax-registrations.ts';
 import { formTerms } from '#lib/server/lines.ts';
 import type { PageServerLoad } from './$types';
 
@@ -18,8 +18,14 @@ export const load: PageServerLoad = async () => {
 				'id',
 				'entity_id',
 				'display as label',
-				// Its area's rate today (#lib/server/tax-areas).
-				areaRate(eb.ref('site.tax_area_id'), businessToday()).as('rate_pct')
+				// Whether the business collects in its state, and its area's rate
+				// today where it does and the site has been placed
+				// (#lib/server/tax-registrations).
+				collectsIn(eb.ref('site.region')).as('collected'),
+				siteRate(
+					{ region: eb.ref('site.region'), area: eb.ref('site.tax_area_id') },
+					businessToday()
+				).as('rate_pct')
 			])
 			.where('active', '=', true)
 			.orderBy('display')

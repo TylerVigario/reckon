@@ -5,8 +5,11 @@ import { sum } from '#lib/decimal.ts';
 import { entryColumns, valueEntries } from '#lib/server/valuation/load.ts';
 import { lastConfirmed, rateIsStale } from '#lib/server/stale.ts';
 import { balances } from '#lib/server/balances.ts';
-import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
+import { TAX_ROUNDING } from '#lib/server/tax-rules.ts';
 import { count, dated } from '#lib/format.ts';
+import { stateName } from '#lib/us-states.ts';
+import { claimsResold, collectsIn } from '#lib/server/tax-registrations.ts';
 import { ageOf, type Age } from '#lib/ageing.ts';
 import { crewNames } from '#lib/server/choices.ts';
 import { fieldOnly, theirWork } from '#lib/server/mine.ts';
@@ -37,8 +40,8 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const offline = isOfflineCopy(url);
-	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
-	const owing = balances(rounding, places);
+	const places = await moneyPlaces();
+	const owing = balances(TAX_ROUNDING, places);
 	const today = businessToday();
 
 	// The newest drafts, for either day.
@@ -167,9 +170,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 				)
 				.where('il.taxable', '=', true)
 				.where('i.status', '=', 'sent')
-				.where((eb) =>
-					eb.selectFrom('operator').select('claims_tax_paid_purchases_resold').$asScalar()
-				)
+				.where((eb) => claimsResold(eb.ref('il.tax_state')))
 				.$asScalar();
 			const remitted = eb
 				.selectFrom('tax_remittance')
@@ -201,20 +202,20 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		.executeTakeFirstOrThrow();
 
 	// Anything that cannot proceed until somebody decides. An invoice out past
-	// the operator's own chase-after figure, which opens the invoice, and an
-	// address CDTFA has not been asked about lately, which opens its site,
-	// where CDTFA is asked again.
+	// the operator's own chase-after figure, which opens the invoice, and a
+	// site whose rate is not known to be right, which opens its site.
 	const overdueInvoices = db
 		.selectFrom('invoice as i')
 		.innerJoin('entity as e', 'e.id', 'i.entity_id')
 		.innerJoin(owing.as('b'), 'b.invoice_id', 'i.id')
 		.select((eb) => [
-			sql.lit<'invoice' | 'district'>('invoice').as('kind'),
+			sql.lit<'invoice' | 'district' | 'unplaced'>('invoice').as('kind'),
 			'e.name as client',
 			'i.number as ref',
-			eb.cast<string>(personalDay(eb.ref('i.sent_at')), 'text').as('dated_on'),
+			eb.cast<string | null>(personalDay(eb.ref('i.sent_at')), 'text').as('dated_on'),
 			eb.cast<string | null>('b.owed', 'text').as('amount'),
-			sql<number>`${today}::date - ${businessDay(eb.ref('i.sent_at'))}`.as('days'),
+			sql<number | null>`${today}::date - ${businessDay(eb.ref('i.sent_at'))}`.as('days'),
+			sql.lit<string | null>(null).as('state'),
 			sql<string>`'Invoice ' || ${eb.ref('i.number')} || ' · ' || ${eb.ref('e.name')}`.as('sort'),
 			sql.lit<string | null>(null).as('client_slug'),
 			sql.lit<string | null>(null).as('site_slug'),
@@ -233,24 +234,35 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 				)
 			)
 		);
+	// A site in a state the business collects in whose rate is not known to be
+	// right this quarter, or that is in no area there yet.
 	const staleRates = db
 		.selectFrom('site as s')
 		.innerJoin('entity as e', 'e.id', 's.entity_id')
-		.innerJoin('tax_area as ta', 'ta.id', 's.tax_area_id')
+		.leftJoin('tax_area as ta', 'ta.id', 's.tax_area_id')
 		.select((eb) => [
-			sql.lit<'invoice' | 'district'>('district').as('kind'),
+			eb
+				.case()
+				.when('ta.id', 'is', null)
+				.then(sql.lit<'invoice' | 'district' | 'unplaced'>('unplaced'))
+				.else(sql.lit<'invoice' | 'district' | 'unplaced'>('district'))
+				.end()
+				.as('kind'),
 			'e.name as client',
 			's.display as ref',
 			eb
-				.cast<string>(
+				.cast<string | null>(
 					lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on')),
 					'text'
 				)
 				.as('dated_on'),
 			sql.lit<string | null>(null).as('amount'),
-			sql<number>`${today}::date - ${lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on'))}`.as(
+			sql<
+				number | null
+			>`${today}::date - ${lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on'))}`.as(
 				'days'
 			),
+			's.region as state',
 			sql<string>`${eb.ref('e.name')} || ' · ' || ${eb.ref('s.display')} || ' · rate is old'`.as(
 				'sort'
 			),
@@ -259,8 +271,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			sql.lit<string | null>(null).as('invoice_id')
 		])
 		.where('s.active', '=', true)
+		.where((eb) => collectsIn(eb.ref('s.region')))
 		.where((eb) =>
-			rateIsStale(lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on')), today)
+			eb.or([
+				eb('ta.id', 'is', null),
+				rateIsStale(lastConfirmed(eb.ref('s.area_verified_on'), eb.ref('ta.confirmed_on')), today)
+			])
 		)
 		.$narrowType<{ ref: NotNull }>();
 	const found = await db
@@ -280,21 +296,33 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 					title: `Invoice ${d.ref} · ${d.client}`,
 					detail: `Sent ${dated(d.dated_on)}, still unpaid.`,
 					amount: d.amount,
-					chip: `Unpaid ${count(d.days, 'day')}`,
+					chip: `Unpaid ${count(d.days!, 'day')}`,
 					site: null,
 					invoice: d.invoice_id
 				}
-			: {
-					kind: d.kind,
-					title: `${d.client} · ${d.ref} · rate is old`,
-					detail:
-						`CDTFA last confirmed this rate on ${dated(d.dated_on)}. A quarter has begun ` +
-						'since, when a district can start or end, and every invoice since could be wrong.',
-					amount: d.amount,
-					chip: `${count(d.days, 'day')} since CDTFA confirmed it`,
-					site: { id: d.client_slug!, site: d.site_slug! },
-					invoice: null
-				}
+			: d.kind === 'unplaced'
+				? {
+						kind: d.kind,
+						title: `${d.client} · ${d.ref} · no tax area`,
+						detail:
+							`The business collects tax in ${stateName(d.state!)}, and nobody has yet ` +
+							`said which area of it this site is in, so nothing billed there can be taxed.`,
+						amount: d.amount,
+						chip: 'No tax area',
+						site: { id: d.client_slug!, site: d.site_slug! },
+						invoice: null
+					}
+				: {
+						kind: d.kind,
+						title: `${d.client} · ${d.ref} · rate is old`,
+						detail:
+							`CDTFA last confirmed this rate on ${dated(d.dated_on)}. A quarter has begun ` +
+							'since, when a district can start or end, and every invoice since could be wrong.',
+						amount: d.amount,
+						chip: `${count(d.days!, 'day')} since CDTFA confirmed it`,
+						site: { id: d.client_slug!, site: d.site_slug! },
+						invoice: null
+					}
 	);
 
 	const drafts = await recentDrafts();

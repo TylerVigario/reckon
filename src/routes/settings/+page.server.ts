@@ -7,12 +7,12 @@ import type { PageServerLoad } from './$types';
 
 /**
  * The settings menu: ten screens, each saying what it is set to now -- the
- * business's name, its terms, its tax rules -- so whether something is set up
+ * business's name, its terms, where it collects tax -- so whether something is set up
  * is answered without opening it.
  */
 export const load: PageServerLoad = async () => {
 	const day = businessToday();
-	const [row, connected, units, mileServices, catalogue, vehicles] = await Promise.all([
+	const [row, connected, units, mileServices, catalogue, vehicles, collects] = await Promise.all([
 		operatorRow(),
 		db
 			.selectFrom('integration')
@@ -31,7 +31,8 @@ export const load: PageServerLoad = async () => {
 			.selectFrom('vehicle')
 			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
 			.where('retired_on', 'is', null)
-			.executeTakeFirstOrThrow()
+			.executeTakeFirstOrThrow(),
+		db.selectFrom('tax_registration').select(['state', 'filing_basis']).orderBy('state').execute()
 	]);
 	// The mileage rate, when there is exactly one service charged by the mile.
 	const mileage =
@@ -41,6 +42,7 @@ export const load: PageServerLoad = async () => {
 
 	return {
 		operator: row,
+		collects,
 		counts: {
 			mileage,
 			vehicles: vehicles.n,

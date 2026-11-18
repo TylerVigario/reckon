@@ -5,13 +5,15 @@
  *
  *   PGDATABASE=reckon_empty node tests/tax-sync-check.mjs
  *
- * One client with two sites in two areas, and passes of the sync on
- * successive days while the stand-in's answers change: an area whose kept
- * rate was dated wrongly, a site whose address CDTFA now places elsewhere, the
- * coming quarter's rate published and then withdrawn, an area CDTFA does not
- * answer about, and a site whose address changed while it was being asked
- * about. What it makes it removes, before and after; it is meant for a
- * database made for checks, never one in use.
+ * One client with two sites in two areas, one California site in none and
+ * one in Oregon, and passes of the sync on successive days while the
+ * stand-in's answers change: nothing asked before the business collects in
+ * California, an area whose kept rate was dated wrongly, a site whose address
+ * CDTFA now places elsewhere, a site in no area placed, the coming quarter's
+ * rate published and then withdrawn, an area CDTFA does not answer about, and
+ * a site whose address changed while it was being asked about. What it makes
+ * it removes, before and after; it is meant for a database made for checks,
+ * never one in use.
  */
 // First, so .env is read before anything reads what it sets.
 import { database } from '../scripts/env.mjs';
@@ -28,13 +30,24 @@ const db = new Kysely({ dialect: new PostgresDialect({ pool }) });
 const CLIENT = '019a0fff-0000-7000-8000-000000000001';
 const ONE = '019a0fff-0000-7000-8000-000000000011';
 const TWO = '019a0fff-0000-7000-8000-000000000012';
+const UNPLACED = '019a0fff-0000-7000-8000-000000000013';
+const OREGON = '019a0fff-0000-7000-8000-000000000014';
 const HERE = '019a0fff-0000-7000-8000-000000000021';
 const CODES = ['TSYNC1', 'TSYNC2'];
+
+// Whether the database collected in California before: if not, the check's
+// registration there is its own, and goes with the rest.
+const hadCalifornia = !!(await db
+	.selectFrom('tax_registration')
+	.select('state')
+	.where('state', '=', 'CA')
+	.executeTakeFirst());
 
 async function clear() {
 	await db.deleteFrom('site').where('entity_id', '=', CLIENT).execute();
 	await db.deleteFrom('entity').where('id', '=', CLIENT).execute();
 	await db.deleteFrom('tax_area').where('code', 'in', CODES).execute();
+	if (!hadCalifornia) await db.deleteFrom('tax_registration').where('state', '=', 'CA').execute();
 }
 
 /** @type {string[]} */
@@ -53,6 +66,9 @@ const layer = new Map();
 const places = new Map();
 /** @type {Set<string>} */
 const down = new Set();
+/** Every street the rate API was asked about. */
+/** @type {Set<string>} */
+const asked = new Set();
 /** Run once, when the rate API is next asked about a street. */
 /** @type {Map<string, () => Promise<void>>} */
 const meanwhile = new Map();
@@ -83,6 +99,7 @@ const fetcher = /** @type {typeof fetch} */ (
 				});
 			}
 			const street = u.searchParams.get('address') ?? '';
+			asked.add(street);
 			await meanwhile.get(street)?.();
 			meanwhile.delete(street);
 			const p = places.get(street);
@@ -182,10 +199,23 @@ try {
 		tax_area_id: HERE,
 		area_verified_on: on
 	});
-	// One last placed before this quarter, one in it.
+	// One last placed before this quarter, one in it; and one in California
+	// made while the business collected nowhere, and one in Oregon, in none.
 	await db
 		.insertInto('site')
-		.values([made(ONE, '1 Sync St', '2026-04-01'), made(TWO, '2 Sync St', '2026-11-01')])
+		.values([
+			made(ONE, '1 Sync St', '2026-04-01'),
+			made(TWO, '2 Sync St', '2026-11-01'),
+			{ ...made(UNPLACED, '4 Sync St', ''), tax_area_id: null, area_verified_on: null },
+			{
+				...made(OREGON, '5 Sync St', ''),
+				city: 'Portland',
+				region: 'OR',
+				postcode: '97204',
+				tax_area_id: null,
+				area_verified_on: null
+			}
+		])
 		.execute();
 
 	layer.set('TSYNC1', [
@@ -196,22 +226,48 @@ try {
 	]);
 	places.set('1 Sync St', { tac: 'TSYNC2', jurisdiction: 'ELSEWHERE', rate: 0.0725 });
 	places.set('2 Sync St', { tac: 'TSYNC1', jurisdiction: 'SYNCVILLE', rate: 0.08 });
+	places.set('4 Sync St', { tac: 'TSYNC1', jurisdiction: 'SYNCVILLE', rate: 0.08 });
+	places.set('5 Sync St', { tac: 'TSYNC1', jurisdiction: 'SYNCVILLE', rate: 0.08 });
+
+	console.log('17 November: before the business collects in California');
+	if (hadCalifornia) await db.deleteFrom('tax_registration').where('state', '=', 'CA').execute();
+	const none = await syncTax(db, '2026-11-17', { fetcher });
+	expect(
+		none.areas === 0 && none.sites === 0 && asked.size === 0,
+		`nothing is asked (${JSON.stringify(none)})`
+	);
+	expect((await area('TSYNC1'))?.confirmed_on === '2026-04-01', 'and nothing is confirmed');
+	await db.insertInto('tax_registration').values({ state: 'CA' }).execute();
 
 	console.log('18 November: the first pass');
 	const dry = await syncTax(db, '2026-11-18', { dry: true, fetcher });
 	expect(
-		dry.areas === 1 && dry.sites === 1,
-		`a dry run says 1 area and 1 site are due (${JSON.stringify(dry)})`
+		dry.areas === 1 && dry.sites === 2,
+		`a dry run says 1 area and 2 sites are due (${JSON.stringify(dry)})`
 	);
 	expect((await area('TSYNC1'))?.confirmed_on === '2026-04-01', 'and asks nothing');
 	const first = await syncTax(db, '2026-11-18', { fetcher });
 	expect(
 		first.areas === 1 &&
 			first.changed === 1 &&
-			first.sites === 1 &&
-			first.moved === 1 &&
+			first.sites === 2 &&
+			first.moved === 2 &&
 			!first.failed.length,
-		`1 area confirmed and changed, 1 site placed and moved (${JSON.stringify(first)})`
+		`1 area confirmed and changed, 2 sites placed and moved (${JSON.stringify(first)})`
+	);
+	const unplaced = await site(UNPLACED);
+	expect(
+		unplaced.code === 'TSYNC1' && unplaced.placed_on === '2026-11-18',
+		`the California site in no area is placed in one (${JSON.stringify(unplaced)})`
+	);
+	const oregon = await db
+		.selectFrom('site')
+		.select('tax_area_id')
+		.where('id', '=', OREGON)
+		.executeTakeFirstOrThrow();
+	expect(
+		oregon.tax_area_id === null && !asked.has('5 Sync St'),
+		'the Oregon site is not asked about, and stays in no area'
 	);
 	const sets = await setsOf('TSYNC1');
 	expect(
@@ -327,8 +383,8 @@ try {
 	const moving = await syncTax(db, '2027-01-02', { fetcher });
 	const [one2, two2] = [await site(ONE), await site(TWO)];
 	expect(
-		moving.sites === 1 && one2.placed_on === '2027-01-02' && two2.placed_on === '2026-11-18',
-		`only the site still at its address is placed (${JSON.stringify(moving)}, ` +
+		moving.sites === 2 && one2.placed_on === '2027-01-02' && two2.placed_on === '2026-11-18',
+		`only the sites still at their addresses are placed (${JSON.stringify(moving)}, ` +
 			`${JSON.stringify(one2)}, ${JSON.stringify(two2)})`
 	);
 } finally {

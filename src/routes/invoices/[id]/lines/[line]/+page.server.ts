@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { db } from '#lib/server/db/index.ts';
+import { claimsResold } from '#lib/server/tax-registrations.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { formFieldsOf } from '#lib/server/lines.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
@@ -24,7 +25,7 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 		.leftJoin('user as payer', 'payer.id', 'il.paid_by')
 		.leftJoin('material as m', 'm.id', 'il.material_id')
 		.leftJoin('invoice as src', 'src.id', 'il.moved_from_invoice_id')
-		.select([
+		.select((eb) => [
 			'il.id',
 			'il.version',
 			'il.kind',
@@ -38,6 +39,8 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 			'il.amount',
 			'il.taxable',
 			'il.tax_rate_pct',
+			// Whether the Reg 1701 election is made where it was taxed.
+			claimsResold(eb.ref('il.tax_state')).as('claims'),
 			'il.ex_tax_cost',
 			'il.tax_paid',
 			'il.bought_from',
@@ -64,7 +67,7 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 	// Whether this person can change it: with Field, only a line they added.
 	const changeable = !field || line.created_by === locals.user!.id;
 
-	const [added, saves, op, sites, people, places] = await Promise.all([
+	const [added, saves, sites, people, places] = await Promise.all([
 		db
 			.selectFrom('record_history as h')
 			.leftJoin('user as u', 'u.id', 'h.changed_by')
@@ -83,10 +86,6 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 			.where('h.row_id', '=', line.id)
 			.where('h.field', 'not like', '(%')
 			.executeTakeFirst(),
-		db
-			.selectFrom('operator')
-			.select('claims_tax_paid_purchases_resold as claims')
-			.executeTakeFirst(),
 		// The places and people a change's values name, by their names.
 		db
 			.selectFrom('site as si')
@@ -104,7 +103,7 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 		fields: formFieldsOf({ ...line, paid_by: line.paid_by_id }, places),
 		added: added ?? null,
 		changes: saves?.n ?? 0,
-		claims: op?.claims ?? false,
+		claims: line.claims,
 		sites: Object.fromEntries(sites.map((x) => [x.id, x.name ?? ''])),
 		people: Object.fromEntries(people.map((x) => [x.id, x.name])),
 		// When this copy was made: shown when it is opened with no signal.

@@ -5,8 +5,9 @@ import { db } from '#lib/server/db/index.ts';
 import type { DB } from '#lib/server/db/database.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { balances } from '#lib/server/balances.ts';
-import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
-import { lineTax } from '#lib/server/tax-rules.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
+import { lineTax, TAX_ROUNDING } from '#lib/server/tax-rules.ts';
+import { claimsResold } from '#lib/server/tax-registrations.ts';
 import type { TaxPiece } from '#lib/server/db/tax-pieces.ts';
 import { day, monthName, names } from '#lib/format.ts';
 import { crewNames } from '#lib/server/choices.ts';
@@ -27,8 +28,8 @@ import type { PageServerLoad } from './$types';
  * is the business's -- and no history of lines taken off.
  */
 export const load: PageServerLoad = async ({ params, url, locals, route, request }) => {
-	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
-	const owing = balances(rounding, places);
+	const places = await moneyPlaces();
+	const owing = balances(TAX_ROUNDING, places);
 	if (!UUID.test(params.id)) error(404, 'no such invoice');
 
 	const invoice = await db
@@ -64,18 +65,6 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 		error(404, 'no such invoice');
 	}
 
-	// Whether the business has made the Reg 1701 election (below), as one row.
-	const election = () =>
-		expressionBuilder<DB>()
-			.selectFrom('operator')
-			.select((eb) =>
-				eb.fn
-					.coalesce(
-						eb.fn.agg<boolean | null>('bool_or', ['operator.claims_tax_paid_purchases_resold']),
-						eb.lit(false)
-					)
-					.as('claims')
-			);
 	// What is due on the return: the tax on this invoice's taxed lines, each
 	// less what the election takes off it (below).
 	const ofLine = expressionBuilder<DB, 'invoice_line'>();
@@ -84,15 +73,15 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 			.selectFrom('invoice_line')
 			.where('invoice_line.invoice_id', '=', params.id)
 			.where('invoice_line.taxable', '=', true),
-		// The election read here rather than from o: this is a query of its
-		// own, and o belongs to the totals around it.
+		// Where the Reg 1701 election is made for the state the line was taxed
+		// in (#lib/server/tax-registrations).
 		sql<NumericString>`(${ofLine.ref('invoice_line.amount')} - ${ofLine
 			.case()
-			.when(election().$asScalar())
+			.when(claimsResold(ofLine.ref('invoice_line.tax_state')))
 			.then(ofLine.fn.coalesce('invoice_line.ex_tax_cost', ofLine.lit(0)))
 			.else(ofLine.lit(0))
 			.end()}) * ${ofLine.ref('invoice_line.tax_rate_pct')} / 100`,
-		rounding,
+		TAX_ROUNDING,
 		places
 	);
 
@@ -163,7 +152,6 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 			.execute(),
 		db
 			.selectFrom('invoice_line as il')
-			.crossJoin(election().as('o'))
 			.select((eb) => {
 				const untaxed = eb.not(eb.ref('il.taxable'));
 				const taxed = eb.ref('il.taxable');
@@ -199,22 +187,22 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 							'text'
 						)
 						.as('taxable_measure'),
-					// The tax, rounded as the business's tax rule rounds it, and what is due
+					// The tax, rounded as sales tax is (#lib/server/tax-rules), and what is due
 					// with it: the same figures the invoice list and every balance use.
 					balance('b.tax').as('tax'),
 					balance('b.gross').as('due'),
 					// What is still owed on it: less what payments and credit notes took off.
 					balance('b.owed').as('owed'),
-					// Reg 1701, where the operator has made that election: goods resold
-					// after tax was paid on them come off the measure, at the cost
-					// recorded on each line, and the return is taxed line by line on
-					// what is left.
+					// Reg 1701, where the operator has made that election for the
+					// state a line was taxed in: goods resold after tax was paid on
+					// them come off the measure, at the cost recorded on each line,
+					// and the return is taxed line by line on what is left.
 					eb
 						.cast<string>(
 							eb.fn.coalesce(
 								eb.fn
 									.sum<NumericString>('il.ex_tax_cost')
-									.filterWhere(eb.and([taxed, eb.ref('o.claims')])),
+									.filterWhere(eb.and([taxed, claimsResold(eb.ref('il.tax_state'))])),
 								eb.lit(0)
 							),
 							'text'
@@ -342,7 +330,7 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 		takenOff: field ? [] : takenOff,
 		// For a draft opened on a phone, whose lines on the phone join the total
 		// by the same rounding the server's own lines had.
-		rounding,
+		rounding: TAX_ROUNDING,
 		places,
 		// When this copy was made: shown when it is opened with no signal.
 		as_of: new Date().toISOString()

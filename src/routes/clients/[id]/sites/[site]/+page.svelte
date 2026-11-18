@@ -27,20 +27,25 @@
 	/**
 	 * THE ADDRESS IS ONE FIELD (8 October 2026). Choosing a place saves it
 	 * whole -- its parts as Google gave them and the place's id -- so CDTFA is
-	 * asked once, and Google's route measures the drive again; the address, the
-	 * round trip and the drive time are drawn afresh from the site as saved.
+	 * asked once, where it is in California and the business collects there,
+	 * and Google's route measures the drive again; the address, the round trip
+	 * and the drive time are drawn afresh from the site as saved.
 	 */
 	const addressLine = $derived(
 		`${s.street}, ${s.city}, ${s.region ?? ''} ${s.postcode}`.replace(/\s+/g, ' ').trim()
 	);
 	let moving = $state(false);
 	let moved = $state<'' | 'saving' | 'bad'>('');
+	// Where it is moving to, while it is saved.
+	let movingTo = $state<string | null>(null);
+	const cdtfa = $derived(data.collects.includes('CA'));
 	let movedWhy = $state('');
 	// Why the drive was not measured, when it was asked for and could not be.
 	let unmeasured = $state('');
 
 	async function moveTo(a: Resolved) {
 		moved = 'saving';
+		movingTo = a.region;
 		const r = await fetch(endpoint, {
 			method: 'PATCH',
 			headers: { 'content-type': 'application/json', 'if-match': `"${s.version}"` },
@@ -149,11 +154,19 @@
 					>
 				</div>
 				{#if moved === 'saving'}
-					<p class="fc-c">Asking CDTFA, and Google how far it is…</p>
+					<p class="fc-c">
+						{cdtfa && movingTo === 'CA'
+							? 'Asking CDTFA, and Google how far it is…'
+							: 'Asking Google how far it is…'}
+					</p>
 				{:else if moved === 'bad'}
 					<p class="fc-e"><Octicon name="alert" />{movedWhy}</p>
 				{:else}
-					<p class="fc-c">Choosing a place saves it, and asks CDTFA what is charged there.</p>
+					<p class="fc-c">
+						{cdtfa
+							? 'Choosing a place saves it, and in California asks CDTFA what is charged there.'
+							: 'Choosing a place saves it.'}
+					</p>
 				{/if}
 			</div>
 		{:else}

@@ -27,7 +27,6 @@
 	import { changeDraw, drawFrom, unitCost } from '#lib/stock-draw.ts';
 	import { Decimal, Ratio } from '#lib/decimal.ts';
 	import { shrink } from '#lib/receipt.ts';
-	import type { RuleSet } from '#lib/passed-on.ts';
 	import type { Costing, Shelf } from '#lib/stock-draw.ts';
 	import type { ResolvedPathname } from '$app/types';
 	import { busy } from './busy.svelte.ts';
@@ -52,12 +51,17 @@
 				/** Where it has gone out, a line added now starts a new draft (#lib/server/lines). */
 				status?: string;
 			};
-			sites: { id: string; label: string | null; rate_pct: string | null }[];
+			/**
+			 * Each with whether the business collects tax in its state, and its
+			 * rate where it does and the site has been placed there.
+			 */
+			sites: { id: string; label: string | null; collected: boolean; rate_pct: string | null }[];
 			people: { id: string; name: string }[];
 			markup: string;
 			/** What stock sells at over its cost, where a material has no markup of its own. */
 			stock_markup?: string;
-			rules: RuleSet;
+			/** Whether the business collects tax anywhere. */
+			collects: boolean;
 			costing: Costing;
 			places: number;
 			stock: {
@@ -171,6 +175,8 @@
 	});
 
 	const site = $derived(data.sites.find((s) => s.id === siteId));
+	// Its tax, as #lib/passed-on reads it.
+	const siteTax = $derived(site ? { collected: site.collected, ratePct: site.rate_pct } : null);
 	const stock = $derived(kind === 'material');
 	const bought = $derived(kind === 'bought');
 	// What each kind is, said under it: Primer's RadioGroup, each choice with its caption.
@@ -229,7 +235,8 @@
 		if ('short' in draw)
 			return {
 				short: (before ? draw.short.add(before.qty) : draw.short).toString(),
-				needsASite: false
+				needsASite: false,
+				needsPlacing: false
 			};
 		const line = fromStock(
 			{
@@ -241,7 +248,7 @@
 				markupPct: item.markup,
 				taxable: item.taxable
 			},
-			{ ruleSet: data.rules, siteRatePct: site?.rate_pct ?? null, places: data.places }
+			{ collects: data.collects, site: siteTax, places: data.places }
 		);
 		return {
 			...line,
@@ -292,8 +299,10 @@
 			? readFromStock(fields, item?.places ?? null).errors
 			: readPassedOn(fields).errors;
 		if (stock && drawn?.short) errors.qty = shortBy(drawn.short);
-		if (stock ? drawn?.needsASite : bills?.needsASite)
-			errors.site_id = 'Where it went, so its tax rate is known.';
+		const priced = stock ? drawn : bills;
+		if (priced?.needsASite) errors.site_id = 'Where it went, so its tax rate is known.';
+		else if (priced?.needsPlacing)
+			errors.site_id = 'That site is in no tax area yet, so its rate is not known.';
 		const line = stock ? drawn : bills;
 		if (Object.keys(errors).length > 0 || !line || line.short !== null) return;
 		saving = true;
@@ -379,8 +388,8 @@
 			{ kind: bought ? 'bought' : 'paid_for', cost, taxPaid: taxPaid || '0' },
 			{
 				purchaseMarkupPct: data.markup,
-				ruleSet: data.rules,
-				siteRatePct: site?.rate_pct ?? null,
+				collects: data.collects,
+				site: siteTax,
 				places: data.places
 			}
 		);
@@ -469,6 +478,8 @@
 					{@render wrong('site_id')}
 				{:else if site?.rate_pct}
 					<p class="fc-c">Taxed there at {pct(site.rate_pct)}.</p>
+				{:else if site?.collected}
+					<p class="fc-c">In no tax area yet, so nothing taxed can be billed there.</p>
 				{/if}
 			</div>
 
@@ -582,7 +593,9 @@
 								? `${money(drawn.tax)} at ${pct(drawn.taxRatePct)}`
 								: drawn.needsASite
 									? 'needs the site it went to'
-									: 'none'}
+									: drawn.needsPlacing
+										? 'needs the site placed in a tax area'
+										: 'none'}
 						</dd>
 						<dt>Cost</dt>
 						<dd>
@@ -658,7 +671,9 @@
 								? `${money(bills.tax)} at ${pct(bills.taxRatePct)}`
 								: bills.needsASite
 									? 'needs the site it went to'
-									: 'none'}
+									: bills.needsPlacing
+										? 'needs the site placed in a tax area'
+										: 'none'}
 						</dd>
 					</dl>
 				{/if}

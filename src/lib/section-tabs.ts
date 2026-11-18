@@ -60,10 +60,14 @@ export const clientOpens = (slug: string, access: Access | null | undefined) =>
 
 /**
  * The reports, by how often each is wanted: pay every pay period, the
- * retainers and the time given away every month, Schedule A once a year. No
- * counts: four labels and a count fill a phone.
+ * retainers and the time given away every month, Schedule A once a year --
+ * where there is one, the business collecting tax in California. No counts:
+ * four labels and a count fill a phone.
  */
-export const reportTabs = (here: 'pay' | 'retainers' | 'non-billable' | 'schedule-a'): Tab[] => [
+export const reportTabs = (
+	here: 'pay' | 'retainers' | 'non-billable' | 'schedule-a',
+	scheduleA: boolean
+): Tab[] => [
 	{ href: resolve('/reports/pay'), label: 'Pay', current: here === 'pay' },
 	{ href: resolve('/reports/retainers'), label: 'Retainers', current: here === 'retainers' },
 	{
@@ -71,7 +75,15 @@ export const reportTabs = (here: 'pay' | 'retainers' | 'non-billable' | 'schedul
 		label: 'Non-billable',
 		current: here === 'non-billable'
 	},
-	{ href: resolve('/reports/schedule-a'), label: 'Schedule A', current: here === 'schedule-a' }
+	...(scheduleA
+		? [
+				{
+					href: resolve('/reports/schedule-a'),
+					label: 'Schedule A',
+					current: here === 'schedule-a'
+				}
+			]
+		: [])
 ];
 
 /** The people who sign in, the roles they are paid as, and everyone's security log. */

@@ -5,10 +5,8 @@ import {
 	type NumericString,
 	type SelectQueryBuilder
 } from 'kysely';
-import type { DB, TaxRuleSet } from './db/database.ts';
+import type { DB } from './db/database.ts';
 import type { TaxRounding } from '../tax-rounding.ts';
-
-export type { TaxRuleSet } from './db/database.ts';
 
 /**
  * HOW A TAX IS ROUNDED is the tax's own rule, not a preference of the business:
@@ -31,18 +29,18 @@ export type { TaxRuleSet } from './db/database.ts';
 export type { TaxRounding } from '../tax-rounding.ts';
 export { roundTax } from '../tax-rounding.ts';
 
-export const TAX_ROUNDING: Record<TaxRuleSet, TaxRounding> = {
-	// California, Regulation 1700(a)(3): "rounded off to the nearest cent by
-	// eliminating any fraction less than one-half cent and increasing any
-	// fraction of one-half cent or over to the next higher cent."
-	us_ca: { scope: 'invoice', method: 'half_up' },
-	// A flat rate per site, for anywhere without a rule of its own: rounded as
-	// California and Canada round, the common case.
-	flat_per_site: { scope: 'invoice', method: 'half_up' },
-	// No tax is charged, so nothing is rounded; the common case, should a line
-	// carry a rate anyway.
-	none: { scope: 'invoice', method: 'half_up' }
-};
+/**
+ * Every state reckon collects in rounds the same way: worked out exactly on
+ * each line, and rounded once per invoice for each rate, a half cent or more
+ * going up. California's Regulation 1700(a)(3): "rounded off to the nearest
+ * cent by eliminating any fraction less than one-half cent and increasing any
+ * fraction of one-half cent or over to the next higher cent." The Streamlined
+ * Sales and Use Tax Agreement's s. 324 has each member state round "up to the
+ * next cent whenever the third decimal place is greater than four", and lets a
+ * seller work it out on each item or on the invoice. A state whose law rounds
+ * otherwise gets a rule of its own when a business can collect there.
+ */
+export const TAX_ROUNDING: TaxRounding = { scope: 'invoice', method: 'half_up' };
 
 /** A value rounded to `places` by `method`, in SQL. */
 export function roundSql(value: Expression<string>, method: TaxRounding['method'], places: number) {

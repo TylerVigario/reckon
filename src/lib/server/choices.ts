@@ -4,7 +4,7 @@ import { Decimal } from '#lib/decimal.ts';
 import type { DB } from './db/database.ts';
 import { db } from './db/index.ts';
 import { businessToday } from './calendar.ts';
-import { areaRate } from './tax-areas.ts';
+import { siteRate } from './tax-registrations.ts';
 
 /**
  * What an entry can be written against: who can work it, who pays and where,
@@ -59,9 +59,16 @@ export async function clientsAndSites() {
 					.select((eb) => [
 						'site.id',
 						'site.display',
-						// Its area's rate today (#lib/server/tax-areas).
+						// Its area's rate today, where the business collects in its
+						// state (#lib/server/tax-registrations).
 						eb
-							.cast<string>(areaRate(eb.ref('site.tax_area_id'), businessToday()), 'text')
+							.cast<string | null>(
+								siteRate(
+									{ region: eb.ref('site.region'), area: eb.ref('site.tax_area_id') },
+									businessToday()
+								),
+								'text'
+							)
 							.as('rate')
 					])
 					.whereRef('site.entity_id', '=', 'entity.id')
@@ -79,7 +86,7 @@ export async function clientsAndSites() {
 		sites: c.sites.map((s) => ({
 			id: s.id,
 			label: s.display ?? '',
-			rate_pct: Decimal.from(s.rate).isZero() ? null : s.rate
+			rate_pct: s.rate === null || Decimal.from(s.rate).isZero() ? null : s.rate
 		}))
 	}));
 }

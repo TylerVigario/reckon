@@ -33,7 +33,7 @@
 <Top title="Reports" back={resolve('/more')} backLabel="More" />
 
 <div class="pad">
-	<UnderlineNav label="Reports" items={reportTabs('retainers')} />
+	<UnderlineNav label="Reports" items={reportTabs('retainers', data.scheduleA)} />
 	<Segmented
 		label="Which month"
 		items={[

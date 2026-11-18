@@ -16,14 +16,19 @@ import { sql, type Expression } from 'kysely';
  * (#lib/server/calendar's businessToday).
  */
 
-/** The last day a site's rate was known right on both counts. */
-export const lastConfirmed = (placedOn: Expression<string>, confirmedOn: Expression<string>) =>
-	sql<string>`least(${placedOn}, ${confirmedOn})`;
+/**
+ * The last day a site's rate was known right on both counts, or null for a
+ * site in no area.
+ */
+export const lastConfirmed = (
+	placedOn: Expression<string | null>,
+	confirmedOn: Expression<string | null>
+) => sql<string | null>`least(${placedOn}, ${confirmedOn})`;
 
 /** The day this quarter began, as `today` (the business's) falls. */
 export const quarterBegan = (today: string) =>
 	sql<string>`date_trunc('quarter', ${today}::date)::date`;
 
 /** Whether a rate last confirmed on `lastConfirmed` is stale on `today`. */
-export const rateIsStale = (confirmed: Expression<string>, today: string) =>
+export const rateIsStale = (confirmed: Expression<string | null>, today: string) =>
 	sql<boolean>`(${confirmed} < ${quarterBegan(today)})`;

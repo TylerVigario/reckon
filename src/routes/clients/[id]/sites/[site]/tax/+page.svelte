@@ -6,16 +6,22 @@
 	import { readJson, readProblem } from '#lib/json.ts';
 	import type { PageProps } from './$types';
 	import { busy } from '#lib/busy.svelte.ts';
+	import { NO_SALES_TAX, stateName, type State } from '#lib/us-states.ts';
 
 	/**
-	 * What CDTFA has said of a site: what is charged there and who levies it,
-	 * the area it is in, and when CDTFA was last asked -- none of it ours to
-	 * set -- then where it has been placed.
+	 * A site's tax. In California, where the business collects there, what
+	 * CDTFA has said of it: what is charged there and who levies it, the area
+	 * it is in, and when CDTFA was last asked -- none of it ours to set. In a
+	 * state the business does not collect in, that nothing is taxed there. Then
+	 * where it has been placed.
 	 */
 	let { data }: PageProps = $props();
 	const s = $derived(data.site);
 	const field = $derived(data.user?.access === 'field');
 	const made = $derived(levied(s.pieces));
+	// CDTFA is asked about a California site, where the business collects there.
+	const asks = $derived(s.collected && s.region === 'CA');
+	const placed = $derived(s.rate_pct !== null);
 
 	/**
 	 * ASK CDTFA AGAIN (7 November 2026), in the box's header as GitHub puts
@@ -45,12 +51,15 @@
 			if (r?.status === 409) await refreshAll();
 			return;
 		}
-		const a = (await readJson(r)) as { rate: string; was: string; changed: boolean };
+		const a = (await readJson(r)) as { rate: string; was: string | null; changed: boolean };
 		answered = {
 			good: true,
-			text: a.changed
-				? `CDTFA now says ${pct(a.rate)}, ${Decimal.from(a.rate).gt(a.was) ? 'up' : 'down'} from ${pct(a.was)}. Lines written here from now on are charged at it.`
-				: `CDTFA still says ${pct(a.rate)}.`
+			text:
+				a.was === null
+					? `CDTFA says ${pct(a.rate)}. Lines written here from now on are charged at it.`
+					: a.changed
+						? `CDTFA now says ${pct(a.rate)}, ${Decimal.from(a.rate).gt(a.was) ? 'up' : 'down'} from ${pct(a.was)}. Lines written here from now on are charged at it.`
+						: `CDTFA still says ${pct(a.rate)}.`
 		};
 		await refreshAll();
 	}
@@ -66,55 +75,98 @@
 			.join(' · ');
 </script>
 
-<section class="box" aria-labelledby="cdtfa-h">
-	<div class="box-h">
-		<h2 class="box-t" id="cdtfa-h">What CDTFA has said</h2>
-		{#if !field}
-			<button
-				type="button"
-				class="btn sm"
-				onclick={askAgain}
-				{@attach busy(asking && 'Asking CDTFA')}>Ask CDTFA again</button
-			>
-		{/if}
-	</div>
-	{#if answered}
-		<p
-			class="box-row im {answered.good ? 'good' : 'crit'}"
-			role={answered.good ? 'status' : 'alert'}
-		>
-			<Octicon name={answered.good ? 'check' : 'alert'} />{answered.text}
-		</p>
-	{/if}
-	<div class="box-row kv">
-		<span class="kv-l">Rate</span>
-		<span class="kv-v">
-			<span class="rt">{pct(s.rate_pct)}</span>
-			<span class="kv-s">{made}</span>
-		</span>
-	</div>
-	<div class="box-row kv">
-		<span class="kv-l">Area</span>
-		<span class="kv-v">
-			<span>{s.area}</span>
-			<span class="kv-s"
-				>{s.area_code ? `Tax area ${s.area_code} · ` : ''}nothing here is ours to set</span
-			>
-		</span>
-	</div>
-	<div class="box-row kv">
-		<span class="kv-l">Last asked</span>
-		<span class="kv-v">
-			<span>{dated(s.verified_on)}</span>
-			<span class="kv-s">Its area’s rate confirmed {dated(s.confirmed_on)}</span>
-			{#if s.stale}
-				<span class="im warn"
-					><Octicon name="alert" />Not since this quarter began, when a district can start or end.</span
+{#if !s.collected}
+	<section class="box" aria-labelledby="tax-h">
+		<div class="box-h"><h2 class="box-t" id="tax-h">Tax</h2></div>
+		<div class="box-row kv">
+			<span class="kv-l">Rate</span>
+			<span class="kv-v">
+				<span>Not taxed</span>
+				<span class="kv-s"
+					>{NO_SALES_TAX.includes(s.region as State)
+						? `${stateName(s.region)} has no sales tax.`
+						: `The business doesn’t collect tax in ${stateName(s.region)}.`}</span
+				>
+			</span>
+		</div>
+	</section>
+{:else if asks}
+	<section class="box" aria-labelledby="cdtfa-h">
+		<div class="box-h">
+			<h2 class="box-t" id="cdtfa-h">What CDTFA has said</h2>
+			{#if !field}
+				<button
+					type="button"
+					class="btn sm"
+					onclick={askAgain}
+					{@attach busy(asking && 'Asking CDTFA')}
+					>{placed ? 'Ask CDTFA again' : 'Ask CDTFA'}</button
 				>
 			{/if}
-		</span>
-	</div>
-</section>
+		</div>
+		{#if answered}
+			<p
+				class="box-row im {answered.good ? 'good' : 'crit'}"
+				role={answered.good ? 'status' : 'alert'}
+			>
+				<Octicon name={answered.good ? 'check' : 'alert'} />{answered.text}
+			</p>
+		{/if}
+		{#if placed}
+			<div class="box-row kv">
+				<span class="kv-l">Rate</span>
+				<span class="kv-v">
+					<span class="rt">{pct(s.rate_pct)}</span>
+					<span class="kv-s">{made}</span>
+				</span>
+			</div>
+			<div class="box-row kv">
+				<span class="kv-l">Area</span>
+				<span class="kv-v">
+					<span>{s.area}</span>
+					<span class="kv-s"
+						>{s.area_code ? `Tax area ${s.area_code} · ` : ''}nothing here is ours to set</span
+					>
+				</span>
+			</div>
+			<div class="box-row kv">
+				<span class="kv-l">Last asked</span>
+				<span class="kv-v">
+					<span>{dated(s.verified_on)}</span>
+					<span class="kv-s">Its area’s rate confirmed {dated(s.confirmed_on)}</span>
+					{#if s.stale}
+						<span class="im warn"
+							><Octicon name="alert" />Not since this quarter began, when a district can start or
+							end.</span
+						>
+					{/if}
+				</span>
+			</div>
+		{:else}
+			<div class="box-row kv">
+				<span class="kv-l">Area</span>
+				<span class="kv-v">
+					<span>Not asked yet</span>
+					<span class="kv-s"
+						>Nothing billed here can be taxed until CDTFA says which area it is in. The server asks
+						as it keeps rates in sync.</span
+					>
+				</span>
+			</div>
+		{/if}
+	</section>
+{:else}
+	<section class="box" aria-labelledby="tax-h">
+		<div class="box-h"><h2 class="box-t" id="tax-h">Tax</h2></div>
+		<div class="box-row kv">
+			<span class="kv-l">Area</span>
+			<span class="kv-v">
+				<span>In no tax area yet</span>
+				<span class="kv-s">Nothing billed here can be taxed until it is in one.</span>
+			</span>
+		</div>
+	</section>
+{/if}
 
 {#if data.placements.length}
 	<section class="box" aria-labelledby="history-h">

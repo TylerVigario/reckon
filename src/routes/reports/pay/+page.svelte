@@ -102,7 +102,7 @@
 <Top title="Reports" back={resolve('/more')} backLabel="More" />
 
 <div class="pad">
-	<UnderlineNav label="Reports" items={reportTabs('pay')} />
+	<UnderlineNav label="Reports" items={reportTabs('pay', data.scheduleA)} />
 	<Segmented
 		label="Pay, seen"
 		items={[

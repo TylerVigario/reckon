@@ -8,9 +8,9 @@
  *
  * WHAT IS NOT HERE IS THE POINT. tax_area_id and area_verified_on are absent,
  * and no request can name them: which tax area an address is in, and so its
- * rate, is CDTFA's answer about it (#lib/server/tax-areas), and the only way
- * it changes is by asking again. Letting a form write a rate is how a rate
- * goes stale.
+ * rate, is its authority's answer about it -- in California, CDTFA's
+ * (#lib/server/tax-areas) -- and the only way it changes is by asking again.
+ * Letting a form write a rate is how a rate goes stale.
  */
 import {
 	cap,
@@ -25,6 +25,7 @@ import {
 	type Parsed
 } from './field-rules.ts';
 import { toSlug } from './slug.ts';
+import { isState } from './us-states.ts';
 
 export type { Parsed };
 
@@ -46,11 +47,14 @@ export const SITE_FIELDS = {
 	// are its parts as Google gave them, with the place they are -- never typed.
 	// Street, city and postcode are all required, here as in the schema: the
 	// CDTFA lookup takes all three or answers nothing, and a site with no rate
-	// cannot be billed from.
+	// cannot be billed from. The state is one of the fifty or the District, as
+	// the post writes it (#lib/us-states), which is how Google names it.
 	street: required('That place has no street: choose a street address.', cap(200)),
 	city: required('That place has no city: choose a street address.', cap(120)),
-	region: required('That place has no state: choose a street address.', cap(60)),
-	postcode: required('That place has no postcode, and CDTFA needs one.', cap(20)),
+	region: required('That place has no state: choose a street address.', (v) =>
+		isState(v) ? ok(v) : no('That place is in no state: choose an address in the United States.')
+	),
+	postcode: required('That place has no postcode: choose a street address.', cap(20)),
 	google_place_id: required("Choose the address from Google's suggestions.", cap(300)),
 
 	// Round trip from the business and back, and the drive there in minutes,

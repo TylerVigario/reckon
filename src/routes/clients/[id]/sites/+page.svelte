@@ -43,12 +43,18 @@
 				<span class="sub">{ask(s)}</span>
 				{#if !s.active}
 					<span class="lab">Closed</span>
+				{:else if s.collected && s.rate_pct === null}
+					<span class="lab warn">In no tax area yet</span>
 				{:else if s.stale}
 					<span class="lab warn">Rate last confirmed {day(s.confirmed_on)}</span>
 				{/if}
 			</span>
 			<span class="fig">
-				<span class="v">{pct(s.rate_pct)}</span>
+				{#if s.rate_pct !== null}
+					<span class="v">{pct(s.rate_pct)}</span>
+				{:else if !s.collected}
+					<span class="sub">Not taxed</span>
+				{/if}
 				{#if s.miles}
 					<span class="sub">
 						{[miles(s.miles, 'distance'), s.minutes ? count(s.minutes, 'minute', 'short') : null]

@@ -64,7 +64,7 @@ export type ScheduleA = {
 
 /**
  * Schedule A: the measure and the deduction, by the CDTFA area the work
- * happened in.
+ * happened in. California's return, so of the lines taxed in California alone.
  *
  * BY JURISDICTION, NOT BY DISTRICT. The rate API answers with one combined
  * rate per address and the area's name -- it does not decompose into the
@@ -83,18 +83,21 @@ export type ScheduleA = {
  * period as it was, and a site no longer in use keeps its sales in it. An area
  * whose rate changed within the period is two rows, one to each rate.
  *
- * An address CDTFA has not been asked about lately is listed by name. The rate
- * on file is not wrong, but it is not known to be right either, and a district
- * added or ended in between would have been charged wrongly ever since.
+ * A California site whose rate has not been confirmed this quarter is listed
+ * by name. The rate on file is not wrong, but it is not known to be right
+ * either, and a district added or ended in between would have been charged
+ * wrongly ever since. So is one in no area yet, where nothing can be taxed.
  */
 export async function scheduleA(p: Period): Promise<ScheduleA> {
-	const [{ claims }, places] = await Promise.all([
+	const [registered, places] = await Promise.all([
 		db
-			.selectFrom('operator')
+			.selectFrom('tax_registration')
 			.select('claims_tax_paid_purchases_resold as claims')
-			.executeTakeFirstOrThrow(),
+			.where('state', '=', 'CA')
+			.executeTakeFirst(),
 		moneyPlaces()
 	]);
+	const claims = registered?.claims ?? false;
 	const today = businessToday();
 
 	const districts: DistrictRow[] = await db
@@ -131,17 +134,19 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 		})
 		.where('i.status', '=', 'sent')
 		.where((eb) => eb.between('i.issued_on', p.start, p.end))
-		.where('il.tax_jurisdiction', 'is not', null)
+		.where('il.tax_state', '=', 'CA')
 		.$narrowType<{ area: NotNull }>()
 		.groupBy(['il.tax_jurisdiction', 'il.tax_rate_pct'])
 		.orderBy('il.tax_jurisdiction')
 		.orderBy('il.tax_rate_pct')
 		.execute();
 
+	// A California site in no area yet, or whose rate is not known to be right
+	// this quarter.
 	const stale = await db
 		.selectFrom('site')
 		.innerJoin('entity', 'entity.id', 'site.entity_id')
-		.innerJoin('tax_area', 'tax_area.id', 'site.tax_area_id')
+		.leftJoin('tax_area', 'tax_area.id', 'site.tax_area_id')
 		.select((eb) => {
 			const confirmed = lastConfirmed(
 				eb.ref('site.area_verified_on'),
@@ -152,16 +157,20 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 				'entity.name as client',
 				'entity.slug as client_slug',
 				'site.slug as site_slug',
-				eb.cast<string>(confirmed, 'text').as('priced_on'),
-				sql<number>`${today}::date - ${confirmed}`.as('days')
+				eb.cast<string | null>(confirmed, 'text').as('priced_on'),
+				sql<number | null>`${today}::date - ${confirmed}`.as('days')
 			];
 		})
 		.where('site.active', '=', true)
+		.where('site.region', '=', 'CA')
 		.where((eb) =>
-			rateIsStale(
-				lastConfirmed(eb.ref('site.area_verified_on'), eb.ref('tax_area.confirmed_on')),
-				today
-			)
+			eb.or([
+				eb('tax_area.id', 'is', null),
+				rateIsStale(
+					lastConfirmed(eb.ref('site.area_verified_on'), eb.ref('tax_area.confirmed_on')),
+					today
+				)
+			])
 		)
 		.$narrowType<{ site: NotNull }>()
 		.orderBy('priced_on')
@@ -183,6 +192,7 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 		.where('i.status', '=', 'sent')
 		.where((eb) => eb.between('i.issued_on', p.start, p.end))
 		.where('il.tax_source', '=', 'override')
+		.where('il.tax_state', '=', 'CA')
 		.orderBy('i.number')
 		.orderBy('il.seq')
 		.execute();
@@ -197,7 +207,10 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 		unchecked: stale.map(({ site, client, priced_on, days, client_slug, site_slug }) => ({
 			site,
 			client,
-			why: `Last confirmed ${dated(priced_on)}, ${daysAgo(days)}`,
+			why:
+				priced_on === null
+					? 'In no tax area yet'
+					: `Last confirmed ${dated(priced_on)}, ${daysAgo(days!)}`,
 			at: { id: client_slug, site: site_slug }
 		})),
 		overrides
@@ -222,8 +235,8 @@ export type Obligation = {
 };
 
 /**
- * What was collected on somebody else's behalf, what has been handed over, and
- * the difference.
+ * What was collected on somebody else's behalf in one state, what has been
+ * handed over to it, and the difference.
  *
  * TAX CHARGED IS NOT INCOME. It is held briefly and then passed on, so the
  * only figure that means anything is what is still held -- and that cannot be
@@ -235,7 +248,7 @@ export type Obligation = {
  * billing a client for tax while claiming not to owe it yet is the position
  * that goes wrong under audit.
  */
-export async function taxObligation(p: Period): Promise<Obligation> {
+export async function taxObligation(p: Period, state: string): Promise<Obligation> {
 	const places = await moneyPlaces();
 	const raised = await db
 		.selectFrom('invoice')
@@ -247,7 +260,8 @@ export async function taxObligation(p: Period): Promise<Obligation> {
 		...(
 			await taxOfInvoices(
 				db,
-				raised.map((r) => r.id)
+				raised.map((r) => r.id),
+				state
 			)
 		).values()
 	];
@@ -255,6 +269,7 @@ export async function taxObligation(p: Period): Promise<Obligation> {
 	const filings = await db
 		.selectFrom('tax_remittance')
 		.select(['id', 'period_start', 'period_end', 'filed_on', 'paid_on', 'amount', 'reference'])
+		.where('state', '=', state)
 		.where('period_start', '<=', p.end)
 		.where('period_end', '>=', p.start)
 		.orderBy('period_start')

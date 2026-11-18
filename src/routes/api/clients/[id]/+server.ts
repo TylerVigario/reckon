@@ -20,7 +20,7 @@ import { readFields } from '#lib/json.ts';
  *
  * EXEMPTION AND ITS CERTIFICATE ARE ONE DECISION, and a PATCH may carry only
  * one of them -- so the pair is judged as it will END UP rather than as it
- * arrived. CDTFA needs the certificate to support an untaxed sale; claiming
+ * arrived. The certificate is what supports an untaxed sale; claiming
  * exemption without one is a claim that cannot be defended at audit, which is
  * a worse outcome than being told no here.
  */
@@ -74,7 +74,7 @@ export const PATCH: RequestHandler = async (event) => {
 	if (exempt && !certificate) {
 		return refuse({
 			[('exemption_certificate' in row ? 'exemption_certificate' : 'tax_exempt') as string]:
-				'CDTFA needs the certificate to support an untaxed sale. Record it, or leave them taxed.'
+				'The certificate is what supports an untaxed sale. Record it, or leave them taxed.'
 		});
 	}
 

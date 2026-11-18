@@ -1,4 +1,5 @@
-import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
+import { TAX_ROUNDING } from '#lib/server/tax-rules.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -8,6 +9,6 @@ import type { PageServerLoad } from './$types';
  * was made, for the screen to be kept for no signal.
  */
 export const load: PageServerLoad = async () => {
-	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
-	return { rounding, places, as_of: new Date().toISOString() };
+	const places = await moneyPlaces();
+	return { rounding: TAX_ROUNDING, places, as_of: new Date().toISOString() };
 };

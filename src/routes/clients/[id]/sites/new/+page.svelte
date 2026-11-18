@@ -17,10 +17,11 @@
 	 * A new site is one form, not details changed one at a time.
 	 *
 	 * A site's Details are changed one at a time, because it already exists
-	 * and each is a correction to it. A site does not exist until CDTFA has
-	 * priced its address, and the address is three fields -- so there is
-	 * nothing to save until all of them are in, and asking CDTFA after each
-	 * keystroke would be asking about addresses nobody means.
+	 * and each is a correction to it. In California, where the business
+	 * collects there, a site does not exist until CDTFA has priced its address,
+	 * and the address is three fields -- so there is nothing to save until all
+	 * of them are in, and asking CDTFA after each keystroke would be asking
+	 * about addresses nobody means.
 	 */
 	let label = $state('');
 
@@ -43,6 +44,9 @@
 	// place's id for the server to confirm, and never typed.
 	let address = $state('');
 	let chosen = $state<Resolved | null>(null);
+	// Whether CDTFA prices the place chosen: in California, where the business
+	// collects there.
+	const asksCdtfa = $derived(chosen?.region === 'CA' && data.collects.includes('CA'));
 	let miles = $state('');
 	let minutes = $state('');
 
@@ -263,11 +267,14 @@
 			</p>
 		</div>
 		<div class="box-row keep">
-			<button type="submit" class="btn pri" {@attach busy(saving && 'Asking CDTFA')}
-				>Create and price it</button
+			<button
+				type="submit"
+				class="btn pri"
+				{@attach busy(saving && (asksCdtfa ? 'Asking CDTFA' : 'Saving'))}
+				>{asksCdtfa ? 'Create and price it' : 'Create it'}</button
 			>
 			<a class="btn" href={resolve('/clients/[id]/sites', { id: data.client.slug })}>Cancel</a>
-			<p class="fc-c">CDTFA prices it as it is made.</p>
+			{#if asksCdtfa}<p class="fc-c">CDTFA prices it as it is made.</p>{/if}
 			{#if saying}<p class="fc-e"><Octicon name="alert" />{saying}</p>{/if}
 		</div>
 	</form>

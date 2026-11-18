@@ -114,6 +114,6 @@
 		validate={parseClientField}
 		onsaved={again}
 	>
-		{#snippet caption()}CDTFA needs this to support an untaxed sale.{/snippet}
+		{#snippet caption()}The certificate is what supports an untaxed sale.{/snippet}
 	</Detail>
 </section>

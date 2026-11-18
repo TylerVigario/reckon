@@ -1,7 +1,8 @@
 import { sql, type NumericString } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
 import { balances } from '#lib/server/balances.ts';
-import { moneyPlaces, taxRounding } from '#lib/server/business.ts';
+import { moneyPlaces } from '#lib/server/business.ts';
+import { TAX_ROUNDING } from '#lib/server/tax-rules.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
@@ -14,13 +15,13 @@ import type { PageServerLoad } from './$types';
  * reads them to work at, without what each owes (#lib/access).
  */
 export const load: PageServerLoad = async ({ locals }) => {
-	const [rounding, places] = await Promise.all([taxRounding(), moneyPlaces()]);
+	const places = await moneyPlaces();
 
 	const [clients, contacts] = await Promise.all([
 		db
 			.with('owing', (qc) =>
 				qc
-					.selectFrom(balances(rounding, places).as('b'))
+					.selectFrom(balances(TAX_ROUNDING, places).as('b'))
 					.where('b.status', '=', 'sent')
 					.groupBy('b.entity_id')
 					.select((eb) => ['b.entity_id', eb.fn.sum<NumericString>('b.owed').as('owed')])
