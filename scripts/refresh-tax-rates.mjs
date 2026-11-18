@@ -33,7 +33,7 @@ import { database } from './env.mjs';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
 import { priceAddress, NoAnswer } from '../src/lib/server/cdtfa.ts';
-import { areaRate, recordCdtfaArea } from '../src/lib/server/tax-areas.ts';
+import { areaRate, placeSite, recordCdtfaArea } from '../src/lib/server/tax-areas.ts';
 import { Decimal } from '../src/lib/decimal.ts';
 import { rateIsStale } from '../src/lib/server/stale.ts';
 
@@ -76,6 +76,7 @@ const sites = await db
 		's.city',
 		's.region',
 		's.postcode',
+		's.tax_area_id',
 		'ta.code as tax_area_code',
 		areaRate(eb.ref('ta.id'), today).as('tax_rate_pct')
 	])
@@ -143,29 +144,17 @@ for (const s of sites) {
 
 	if (!dry)
 		await db.transaction().execute(async (tx) => {
-			await tx
-				.insertInto('site_tax_check')
-				.values({
-					site_id: s.id,
-					tax_area_code: answer.tac,
-					tax_jurisdiction: answer.jurisdiction,
-					rate_pct: answer.rate,
-					state_rate_pct: answer.state,
-					district_rate_pct: answer.district,
-					changed: moved,
-					note: 'asked on a refresh'
-				})
-				.execute();
-			// The answer is its area's (#lib/server/tax-areas). The date moves
-			// whether or not the rate did: "confirmed today" is the fact the
-			// screens need, and it is not the same as "unchanged since somebody
-			// looked in March".
+			// The answer is its area's, and the site is placed in that area
+			// (#lib/server/tax-areas). The date moves whether or not the rate
+			// did: "confirmed today" is the fact the screens need, and it is not
+			// the same as "unchanged since somebody looked in March".
 			const area = await recordCdtfaArea(tx, answer, today);
 			await tx
 				.updateTable('site')
 				.set({ tax_area_id: area, area_verified_on: today })
 				.where('id', '=', s.id)
 				.execute();
+			await placeSite(tx, { id: s.id, was: s.tax_area_id }, area, 'asked on a refresh');
 		});
 
 	await new Promise((r) => setTimeout(r, PAUSE_MS));

@@ -4,6 +4,7 @@
  */
 
 import type { NumericColumn } from "./numeric.ts";
+import type { TaxPiecesColumn } from "./tax-pieces.ts";
 import type { ColumnType } from "kysely";
 
 export type Access = "field" | "full";
@@ -251,7 +252,6 @@ export interface InvoiceLine {
   client_uuid: string | null;
   created_by: string | null;
   description: string;
-  district_rate_pct: NumericColumn | null;
   ex_tax_cost: NumericColumn | null;
   id: Generated<string>;
   invoice_id: string;
@@ -264,10 +264,10 @@ export interface InvoiceLine {
   receipt_type: ReceiptType | null;
   seq: number;
   site_id: string | null;
-  state_rate_pct: NumericColumn | null;
   tax_jurisdiction: string | null;
   tax_override_reason: string | null;
   tax_paid: NumericColumn | null;
+  tax_pieces: TaxPiecesColumn;
   tax_rate_pct: Generated<NumericColumn>;
   tax_source: Generated<TaxSource>;
   taxable: Generated<boolean>;
@@ -556,17 +556,13 @@ export interface SiteContact {
   site_id: string;
 }
 
-export interface SiteTaxCheck {
-  changed: Generated<boolean>;
-  checked_at: Generated<Timestamp>;
-  district_rate_pct: NumericColumn | null;
+export interface SitePlacement {
+  area_id: string;
   id: Generated<string>;
+  moved: boolean;
   note: string | null;
-  rate_pct: NumericColumn | null;
+  placed_at: Generated<Timestamp>;
   site_id: string;
-  state_rate_pct: NumericColumn | null;
-  tax_area_code: string | null;
-  tax_jurisdiction: string | null;
 }
 
 export interface StockAdjustment {
@@ -817,7 +813,7 @@ export interface DB {
   session: Session;
   site: Site;
   site_contact: SiteContact;
-  site_tax_check: SiteTaxCheck;
+  site_placement: SitePlacement;
   stock_adjustment: StockAdjustment;
   stock_count: StockCount;
   stock_count_line: StockCountLine;

@@ -6,7 +6,8 @@
 	import Segmented from '#lib/Segmented.svelte';
 	import { page } from '$app/state';
 	import { reportTabs } from '#lib/section-tabs.ts';
-	import { pct, rateParts } from '#lib/format.ts';
+	import { levied, pct } from '#lib/format.ts';
+	import type { TaxPiece } from '#lib/server/db/tax-pieces.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -50,23 +51,18 @@
 			.filter(Boolean)
 			.join(' · ');
 
-	// Who the money is owed to. Nothing is shown for a share of nothing -- most
-	// of California has no county or city tax, and a row of zeroes reads as a
-	// figure rather than an absence.
-	const shares = (o: { state: string; district: string }) =>
-		[`${money(o.state)} state`, Number(o.district) ? `${money(o.district)} district` : null]
-			.filter(Boolean)
-			.join(' · ');
+	// Who the money is owed to, as each line kept who levied its rate. A place
+	// where nobody but the state levies anything has no piece of its own to
+	// show, rather than a row of zeroes that reads as a figure.
+	const shares = (o: { levied: { jurisdiction: string; amount: string }[] }) =>
+		o.levied.map((p) => `${money(p.amount)} ${p.jurisdiction}`).join(' · ');
 
 	// Built here rather than in the markup: a template that interleaves text
 	// with {#if} blocks loses the space between them.
-	// The rate and what it is made of, because a return allocates by the parts
-	// and not by the total.
-	const rate = (d: {
-		rate_pct: string | null;
-		state_rate_pct: string | null;
-		district_rate_pct: string | null;
-	}) => `${pct(d.rate_pct)} — ${rateParts(d.state_rate_pct, d.district_rate_pct)}`;
+	// The rate and who levied each piece of it, because a return allocates by
+	// the pieces and not by the total.
+	const rate = (d: { rate_pct: string | null; pieces: TaxPiece[] | null }) =>
+		d.pieces ? `${pct(d.rate_pct)} — ${levied(d.pieces)}` : pct(d.rate_pct);
 
 	const basis = (d: { measure: string; deduction: string; sites: number }) =>
 		[
@@ -115,14 +111,6 @@
 					<span class="what">
 						<span class="n">Collected from clients</span>
 						<span class="sub">{shares(data.owed)}</span>
-						{#if data.owed.estimated_lines}
-							<span class="labs"
-								><span class="lab warn"
-									>{data.owed.estimated_lines} line{data.owed.estimated_lines === 1 ? '' : 's'} split
-									by the earliest rate on record</span
-								></span
-							>
-						{/if}
 					</span>
 					<span class="v">{money(data.owed.charged)}</span>
 				</div>
@@ -260,12 +248,6 @@
 	.sub {
 		font-size: 12px;
 		color: var(--fgColor-muted);
-	}
-	.labs {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-		margin-top: 4px;
 	}
 	.lab {
 		flex: 0 0 auto;

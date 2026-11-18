@@ -16,7 +16,7 @@ import {
 	type Entry,
 	type Person
 } from './entries.ts';
-import { invoiceTax } from './tax.ts';
+import { invoiceTax, type InvoiceTax, type TaxLine } from './tax.ts';
 import { TAX_ROUNDING, type TaxRounding } from '../tax-rules.ts';
 import { billingDate, hoursOf, legVehiclePay, legWorth, materialWorth } from './misc.ts';
 
@@ -657,67 +657,53 @@ describe("a site's own agreement comes before the client's", () => {
 	});
 });
 
-describe('tax collected is split by what CDTFA said', () => {
-	const check = {
-		siteId: 's-woodland',
-		ratePct: '8.0000',
-		statePct: '7.2500',
-		districtPct: '0.7500',
-		jurisdiction: 'WOODLAND'
-	};
-	it('100.00 at 8.00% is 7.25 state and 0.75 district', () => {
-		const t = invoiceTax(
-			[
-				{
-					invoiceId: 'i',
-					amount: '100.00',
-					taxable: true,
-					taxRatePct: '8.0000',
-					siteId: 's-woodland'
-				}
-			],
-			[{ ...check, checkedOn: '2026-09-01', checkedAt: new Date('2026-09-01T12:00:00Z') }],
-			new Map([['i', '2026-09-30']]),
-			'2026-09-30',
-			TAX_ROUNDING.us_ca,
-			CENTS
-		).get('i')!;
-		expect([t.tax, t.stateTax, t.districtTax].map(money)).toEqual(['8.00', '7.25', '0.75']);
-		expect(t.estimatedLines).toBe(0);
+describe('tax collected is split by who levied each piece of it', () => {
+	const woodland = [
+		{ level: 'state' as const, jurisdiction: 'CALIFORNIA', rate: '7.2500' },
+		{ level: 'local' as const, jurisdiction: 'WOODLAND', rate: '0.7500' }
+	];
+	const line = (over: Partial<TaxLine> = {}): TaxLine => ({
+		invoiceId: 'i',
+		amount: '100.00',
+		taxable: true,
+		taxRatePct: '8.0000',
+		jurisdiction: 'WOODLAND',
+		pieces: woodland,
+		...over
+	});
+	const levied = (t: InvoiceTax) => t.levied.map((p) => `${p.jurisdiction} ${money(p.tax)}`);
+	it('100.00 at 8.00% is 7.25 to California and 0.75 to Woodland', () => {
+		const t = invoiceTax([line()], TAX_ROUNDING.us_ca, CENTS).get('i')!;
+		expect(money(t.tax)).toBe('8.00');
+		expect(levied(t)).toEqual(['CALIFORNIA 7.25', 'WOODLAND 0.75']);
 		expect(t.jurisdiction).toBe('WOODLAND');
 	});
-	it('an invoice from before the first answer is split by it, as an estimate', () => {
+	it('lines in two places add up by who levied each', () => {
+		const auburn = line({
+			amount: '100.00',
+			taxRatePct: '7.2500',
+			jurisdiction: 'AUBURN',
+			pieces: [{ level: 'state', jurisdiction: 'CALIFORNIA', rate: '7.2500' }]
+		});
+		const t = invoiceTax([line(), auburn], TAX_ROUNDING.us_ca, CENTS).get('i')!;
+		expect(levied(t)).toEqual(['CALIFORNIA 14.50', 'WOODLAND 0.75']);
+	});
+	it('the state before a place, whatever order they were kept in', () => {
 		const t = invoiceTax(
-			[
-				{
-					invoiceId: 'i',
-					amount: '100.00',
-					taxable: true,
-					taxRatePct: '8.0000',
-					siteId: 's-woodland'
-				}
-			],
-			[{ ...check, checkedOn: '2026-09-01', checkedAt: new Date('2026-09-01T12:00:00Z') }],
-			new Map([['i', '2026-08-01']]),
-			'2026-09-30',
+			[line({ pieces: [...woodland].reverse() })],
 			TAX_ROUNDING.us_ca,
 			CENTS
 		).get('i')!;
-		expect(t.estimatedLines).toBe(1);
-		expect(money(t.stateTax)).toBe('7.25');
+		expect(t.levied.map((p) => p.level)).toEqual(['state', 'local']);
 	});
-	it('a line with no answer at all is left unsplit', () => {
+	it("tax at a rate that was not the site's is charged, and levied by nobody it can name", () => {
 		const t = invoiceTax(
-			[{ invoiceId: 'i', amount: '50.00', taxable: true, taxRatePct: '7.2500', siteId: null }],
-			[],
-			new Map([['i', null]]),
-			'2026-09-30',
+			[line({ amount: '50.00', taxRatePct: '7.2500', jurisdiction: null, pieces: null })],
 			TAX_ROUNDING.us_ca,
 			CENTS
 		).get('i')!;
 		expect(money(t.tax)).toBe('3.63');
-		expect(t.stateTax).toBeNull();
-		expect(t.linesWithoutASplit).toBe(1);
+		expect(t.levied).toEqual([]);
 	});
 });
 
@@ -726,17 +712,16 @@ describe('tax collected is split by what CDTFA said', () => {
  * what. A cent either way is the whole difference, so each case is one.
  */
 describe('tax is rounded by its rule', () => {
-	const line = (amount: string, taxRatePct: string) => ({
+	const line = (amount: string, taxRatePct: string): TaxLine => ({
 		invoiceId: 'i',
 		amount,
 		taxable: true,
 		taxRatePct,
-		siteId: null
+		jurisdiction: null,
+		pieces: null
 	});
-	const taxOf = (lines: ReturnType<typeof line>[], rounding: TaxRounding) =>
-		money(
-			invoiceTax(lines, [], new Map([['i', null]]), '2026-09-30', rounding, CENTS).get('i')!.tax
-		);
+	const taxOf = (lines: TaxLine[], rounding: TaxRounding) =>
+		money(invoiceTax(lines, rounding, CENTS).get('i')!.tax);
 
 	// 0.005 at one rate and 0.015 at another: 0.02 rounded once, but 0.01 and
 	// 0.02 rounded for each rate, as California and Japan round.
@@ -904,10 +889,16 @@ describe("every amount is rounded to its currency's places", () => {
 		const tax = (amount: string, places: number) =>
 			money(
 				invoiceTax(
-					[{ invoiceId: 'i', amount, taxable: true, taxRatePct: '8.0000', siteId: null }],
-					[],
-					new Map([['i', null]]),
-					'2026-09-30',
+					[
+						{
+							invoiceId: 'i',
+							amount,
+							taxable: true,
+							taxRatePct: '8.0000',
+							jurisdiction: null,
+							pieces: null
+						}
+					],
 					TAX_ROUNDING.us_ca,
 					places
 				).get('i')!.tax

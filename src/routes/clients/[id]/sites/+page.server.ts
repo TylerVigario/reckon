@@ -28,7 +28,6 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	const sites = await db
 		.selectFrom('site as si')
-		.innerJoin('tax_area as ta', 'ta.id', 'si.tax_area_id')
 		.select((eb) => [
 			'si.id',
 			'si.slug',
@@ -45,16 +44,8 @@ export const load: PageServerLoad = async ({ params }) => {
 					eb.val('')
 				])
 				.as('address'),
-			// Its area's rate today, and its shares (#lib/server/tax-areas).
-			eb.cast<string>(areaRate(eb.ref('ta.id'), businessToday()), 'text').as('rate_pct'),
-			eb
-				.cast<string>(areaRate(eb.ref('ta.id'), businessToday(), 'state'), 'text')
-				.as('state_rate_pct'),
-			eb
-				.cast<string>(areaRate(eb.ref('ta.id'), businessToday(), 'local'), 'text')
-				.as('district_rate_pct'),
-			'ta.name as jurisdiction',
-			'ta.code as tax_area_code',
+			// Its area's rate today (#lib/server/tax-areas).
+			eb.cast<string>(areaRate(eb.ref('si.tax_area_id'), businessToday()), 'text').as('rate_pct'),
 			rateIsStale(eb.ref('si.area_verified_on'), businessToday()).as('stale'),
 			eb.cast<string | null>('si.round_trip_miles', 'text').as('miles'),
 			'si.drive_minutes as minutes',

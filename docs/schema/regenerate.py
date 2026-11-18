@@ -183,11 +183,9 @@ T["tax_piece"] = [("PK","id","uuid"),("FK","area_id","uuid"),
     ("","level","federal|state|local"),("","jurisdiction","text · who levies it"),
     ("","code","text · its authority's"),("","rate_pct","numeric"),
     ("","effective_from","date · a set's, newest in force")]
-T["site_tax_check"] = [("PK","id","uuid"),("FK","site_id","uuid"),
-    ("","checked_at","timestamptz"),("","tax_area_code","text · CDTFA TAC"),
-    ("","tax_jurisdiction","text"),("","rate_pct","numeric"),
-    ("","state_rate_pct","numeric"),("","district_rate_pct","numeric"),
-    ("","changed","bool"),("","note","text")]
+T["site_placement"] = [("PK","id","uuid"),("FK","site_id","uuid"),
+    ("","placed_at","timestamptz"),("FK","area_id","uuid · the area it was in"),
+    ("","moved","bool · another area than before"),("","note","text · why it was asked")]
 T["tax_remittance"] = [("PK","id","uuid"),("","period_start","date"),
     ("","period_end","date"),("","filed_on","date"),("","paid_on","date"),
     ("","amount","numeric"),("","reference","text"),("FK","created_by","uuid"),
@@ -311,9 +309,8 @@ T["invoice_line"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the ph
     ("","unit_price","numeric · as billed"),
     ("FK","site_id","uuid"),("","taxable","bool"),
     ("","tax_rate_pct","numeric · as applied"),("","tax_source","none|site|override|exempt"),
-    ("","tax_jurisdiction","text · CDTFA's area, as taxed"),
-    ("","state_rate_pct","numeric · the state's share"),
-    ("","district_rate_pct","numeric · the districts'"),
+    ("","tax_jurisdiction","text · its area, as taxed"),
+    ("","tax_pieces","jsonb · who levied what"),
     ("","tax_override_reason","text"),("","ex_tax_cost","numeric · snapshot"),
     ("","tax_paid","numeric · snapshot"),("","amount","numeric"),
     ("FK","time_entry_id","uuid"),("FK","trip_leg_id","uuid"),
@@ -480,7 +477,7 @@ files.append(write("01-overview.drawio", "Overview", c, 1100, 580))
 c = at("entity",40,60) + at("site",800,60) \
   + at("contact",800,650) + at("entity_contact",440,240) \
   + at("site_contact",440,460) \
-  + at("site_tax_check",1200,60) + at("tax_remittance",1200,340) \
+  + at("site_placement",1200,60) + at("tax_remittance",1200,340) \
   + at("tax_area",1200,640) + at("tax_piece",1200,860)
 c += [edge("e22","entity","entity_contact","is reached via"),
       edge("e23","contact","entity_contact","acts for",
@@ -488,7 +485,7 @@ c += [edge("e22","entity","entity_contact","is reached via"),
       edge("e26","entity_contact","site_contact","is named at"),
       edge("e27","site","site_contact","asks for",
            S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1")),
-      edge("e24","site","site_tax_check","was priced by CDTFA"),
+      edge("e24","site","site_placement","was placed"),
       edge("e28","tax_area","site","holds",
            S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1")),
       edge("e29","tax_area","tax_piece","levies",
@@ -502,9 +499,10 @@ c += [note("n2", "One building can host two businesses and one person can act fo
                  "pieces, who levies what, federal, state and local, in dated sets, the "
                  "newest on or before a day in force then. A site is in the area CDTFA’s "
                  "API placed its address in, on the day it was asked; nothing in the "
-                 "application can author a rate. site_tax_check keeps every answer, "
-                 "so a rate that moved can be explained against the invoices billed at "
-                 "the old one. A second copy of a published rate goes stale without "
+                 "application can author a rate. site_placement keeps every time a site "
+                 "was placed, and an area every rate it has had, so a rate that moved can "
+                 "be explained against the invoices billed at the old one. A second copy "
+                 "of a published rate goes stale without "
                  "telling anyone, and is then charged at addresses it was never true "
                  "for.\n\n"
                  "A site’s address is chosen from Google’s suggestions, never typed: "
@@ -779,9 +777,10 @@ c += [note("n7", "A tax override is stored per line, so one invoice can carry li
                  "unit is what qty counts, frozen at issue like tax_rate_pct, so a line "
                  "keeps its unit if the service is later changed. Null when "
                  "the quantity counts nothing, as on a flat charge or an adjustment. "
-                 "A taxed line at a site keeps that site’s CDTFA area the same way, and "
-                 "the state’s and districts’ shares where its rate is the site’s, so "
-                 "Schedule A reads a period as it was billed.\n\n"
+                 "A taxed line at a site keeps that site’s area the same way, and where "
+                 "its rate is the site’s, the pieces it was made of -- who levied what, "
+                 "level, jurisdiction and rate, as the area had them -- so a return "
+                 "reads a period as it was billed.\n\n"
                  "What is bought for a job, or paid on the client's behalf, is a line of "
                  "its own kind: from whom, who paid -- a person, who is owed it back, or "
                  "the business -- and its receipt.\n\n"

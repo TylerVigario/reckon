@@ -20,7 +20,8 @@
 	} from '#lib/queue.ts';
 	import { draftTotals } from '#lib/draft-totals.ts';
 	import { warm } from '#lib/warm.ts';
-	import { clock, datedAt, day, monthOf, pct, quantity, rateParts } from '#lib/format.ts';
+	import { clock, datedAt, day, levied, monthOf, pct, quantity } from '#lib/format.ts';
+	import type { TaxPiece } from '#lib/server/db/tax-pieces.ts';
 	import { personalZone } from '#lib/zone.svelte.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
@@ -163,14 +164,10 @@
 	);
 	const dueOnReturn = $derived(r.due_on_return);
 
-	// The rate and the two obligations inside it: a return allocates the
-	// state's share and the district tax separately, so the invoice that
-	// charged them says which is which.
-	const made = (x: {
-		rate_pct: string | null;
-		state_rate_pct: string | null;
-		district_rate_pct: string | null;
-	}) => `${pct(x.rate_pct)} (${rateParts(x.state_rate_pct, x.district_rate_pct)})`;
+	// The rate and who levied each piece of it: a return allocates each
+	// separately, so the invoice that charged them says which is which.
+	const made = (x: { rate_pct: string | null; pieces: TaxPiece[] | null }) =>
+		x.pieces ? `${pct(x.rate_pct)} (${levied(x.pieces)})` : pct(x.rate_pct);
 
 	// The schema's own words for what a line is. A label that says "goods" over
 	// a taxed labour line is the page asserting something the data did not.
@@ -466,7 +463,7 @@
 			<div class="box-row line">
 				<span class="what">
 					<span class="sub">
-						Sales tax{t.district ? ` · ${t.district} ${made(t)}` : ''}{listed(t.taxed_kinds)
+						Sales tax{t.area ? ` · ${t.area} ${made(t)}` : ''}{listed(t.taxed_kinds)
 							? ` on ${listed(t.taxed_kinds)}`
 							: ''}
 					</span>

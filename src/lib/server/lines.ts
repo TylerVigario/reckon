@@ -2,6 +2,7 @@ import { sql } from 'kysely';
 import { materialNamed } from '#lib/server/named.ts';
 import { asUser, db, type Tx } from './db/index.ts';
 import type { ReceiptType } from './db/database.ts';
+import type { TaxPiece } from './db/tax-pieces.ts';
 import { moneyPlaces } from './business.ts';
 import { businessToday } from './calendar.ts';
 import { pgError, type Errors } from './field-errors.ts';
@@ -17,7 +18,7 @@ import { merge, MERGED_FIELDS, same, type Merge } from '../line-merge.ts';
 import type { Conflict, Held } from '../line-conflict.ts';
 import { startIn } from './drafts.ts';
 import { isReceiptType, MAX_RECEIPT } from './receipt-file.ts';
-import { areaRate } from './tax-areas.ts';
+import { areaPieces, areaRate } from './tax-areas.ts';
 
 /**
  * A LINE ADDED TO A DRAFT BY HAND: goods drawn from stock (#lib/stock-draw),
@@ -370,8 +371,7 @@ async function siteOf(draft: { entity_id: string; who: string }, siteId: string 
 		.select((eb) => [
 			areaRate(eb.ref('tax_area.id'), day).as('rate'),
 			'tax_area.name as jurisdiction',
-			areaRate(eb.ref('tax_area.id'), day, 'state').as('state'),
-			areaRate(eb.ref('tax_area.id'), day, 'local').as('district')
+			areaPieces(eb.ref('tax_area.id'), day).as('pieces')
 		])
 		.where('site.id', '=', siteId)
 		.where('site.entity_id', '=', draft.entity_id)
@@ -380,19 +380,19 @@ async function siteOf(draft: { entity_id: string; who: string }, siteId: string 
 }
 
 /**
- * Where a taxed line was taxed, and what the rate was made of where it is the
- * site's, from the same read of the site as the rate (0030).
+ * Where a taxed line was taxed, and the pieces its rate was made of where it is
+ * the site's -- who levied what -- from the same read of the site as the rate,
+ * kept with the line as they were then.
  */
 function taxedWhere(
 	line: { taxable: boolean; taxSource: string },
-	site: { jurisdiction: string; state: string; district: string } | null
+	site: { jurisdiction: string; pieces: TaxPiece[] } | null
 ) {
 	const at = line.taxable && site !== null;
 	const own = at && line.taxSource === 'site';
 	return {
 		tax_jurisdiction: at ? site.jurisdiction : null,
-		state_rate_pct: own ? site.state : null,
-		district_rate_pct: own ? site.district : null
+		tax_pieces: own ? JSON.stringify(site.pieces) : null
 	};
 }
 

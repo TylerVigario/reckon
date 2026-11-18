@@ -16,6 +16,9 @@ import {
 import { billedAmount, jobRate, priceOn } from './valuation/pricing.ts';
 import { ruleOn, timePay } from './valuation/pay.ts';
 import { rateIsStale } from './stale.ts';
+import type { TaxLevel } from './db/database.ts';
+import type { TaxPiece } from './db/tax-pieces.ts';
+import { inLevelOrder } from './valuation/tax.ts';
 import { dated, daysAgo, names } from '#lib/format.ts';
 import { crewNames } from './choices.ts';
 import { townsOf } from './trips.ts';
@@ -40,8 +43,8 @@ import { Ratio } from '#lib/decimal.ts';
 export type DistrictRow = {
 	area: string;
 	rate_pct: string | null;
-	state_rate_pct: string | null;
-	district_rate_pct: string | null;
+	/** Who levied the rate, as a line taxed there kept it. */
+	pieces: TaxPiece[] | null;
 	measure: string;
 	deduction: string;
 	net: string;
@@ -111,8 +114,11 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 			return [
 				'il.tax_jurisdiction as area',
 				eb.cast<string>('il.tax_rate_pct', 'text').as('rate_pct'),
-				eb.cast<string | null>(eb.fn.max('il.state_rate_pct'), 'text').as('state_rate_pct'),
-				eb.cast<string | null>(eb.fn.max('il.district_rate_pct'), 'text').as('district_rate_pct'),
+				// Who levied it, as a line taxed there kept it when it was added.
+				eb.fn
+					.agg<TaxPiece[] | null>('any_value', ['il.tax_pieces'])
+					.filterWhere('il.tax_pieces', 'is not', null)
+					.as('pieces'),
 				sql<string>`round(${measure}, ${places}::int)::text`.as('measure'),
 				sql<string>`round(${deduction}, ${places}::int)::text`.as('deduction'),
 				sql<string>`round(${net}, ${places}::int)::text`.as('net'),
@@ -188,11 +194,10 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 
 export type Obligation = {
 	charged: string;
-	state: string;
-	district: string;
+	/** Who levied what was charged: federal, then state, then local, each by name. */
+	levied: { level: TaxLevel; jurisdiction: string; amount: string }[];
 	remitted: string;
 	outstanding: string;
-	estimated_lines: number;
 	filings: {
 		id: string;
 		period_start: string;
@@ -247,15 +252,18 @@ export async function taxObligation(p: Period): Promise<Obligation> {
 	const remitted = sum(filings.map((f) => f.amount));
 	return {
 		charged: charged.toFixed(places),
-		state: sumMoney(
-			taxes.map((x) => x.stateTax),
-			places
-		),
-		district: sumMoney(
-			taxes.map((x) => x.districtTax),
-			places
-		),
-		estimated_lines: taxes.reduce((n, x) => n + x.estimatedLines, 0),
+		levied: [
+			...Map.groupBy(
+				taxes.flatMap((x) => x.levied),
+				(p) => `${p.level} ${p.jurisdiction}`
+			).values()
+		]
+			.map((ps) => ({
+				level: ps[0].level,
+				jurisdiction: ps[0].jurisdiction,
+				amount: sum(ps.map((p) => p.tax)).toFixed(places)
+			}))
+			.sort(inLevelOrder),
 		remitted: remitted.toFixed(places),
 		outstanding: charged.sub(remitted).toFixed(places),
 		filings

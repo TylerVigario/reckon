@@ -1,5 +1,7 @@
 import { expressionBuilder, sql, type Expression, type Kysely, type NumericString } from 'kysely';
+import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import type { DB, TaxLevel } from './db/database.ts';
+import type { TaxPiece } from './db/tax-pieces.ts';
 import { Decimal } from '../decimal.ts';
 import type { Priced } from './cdtfa.ts';
 
@@ -19,7 +21,7 @@ import type { Priced } from './cdtfa.ts';
  */
 
 /** The day an area's set in force on `day` took effect. */
-function setInForce(area: Expression<string>, day: string) {
+function setInForce(area: Expression<string>, day: string | Expression<string>) {
 	return expressionBuilder<DB>()
 		.selectFrom('tax_piece as q')
 		.select((eb) => eb.fn.max('q.effective_from').as('from'))
@@ -33,7 +35,11 @@ function setInForce(area: Expression<string>, day: string) {
  * force then, added together. A level with no piece is 0.0000, as a share was
  * written before the pieces had a table.
  */
-export function areaRate(area: Expression<string>, day: string, level?: TaxLevel) {
+export function areaRate(
+	area: Expression<string>,
+	day: string | Expression<string>,
+	level?: TaxLevel
+) {
 	return expressionBuilder<DB>()
 		.selectFrom('tax_piece as p')
 		.select((eb) =>
@@ -44,6 +50,44 @@ export function areaRate(area: Expression<string>, day: string, level?: TaxLevel
 		.$if(level !== undefined, (qb) => qb.where('p.level', '=', level!))
 		.$asScalar()
 		.$notNull();
+}
+
+/**
+ * An area's pieces in force on `day`, as a line keeps them
+ * (invoice_line.tax_pieces): who levies what, the state's before the local
+ * ones, each rate as the text Postgres writes.
+ */
+export function areaPieces(area: Expression<string>, day: string) {
+	return jsonArrayFrom(
+		expressionBuilder<DB>()
+			.selectFrom('tax_piece as p')
+			.select((eb) => [
+				'p.level',
+				'p.jurisdiction',
+				eb.cast<string>('p.rate_pct', 'text').as('rate')
+			])
+			.where('p.area_id', '=', area)
+			.where('p.effective_from', '=', setInForce(area, day))
+			.orderBy('p.level')
+			.orderBy('p.jurisdiction')
+	).$castTo<TaxPiece[]>();
+}
+
+/**
+ * Writes down that a site was placed in an area -- asked about when it was
+ * made, when it moved, by hand, or on a refresh -- and whether that moved it
+ * from `was`, the area it was in before; a site's first placement moves it.
+ */
+export async function placeSite(
+	db: Kysely<DB>,
+	site: { id: string; was: string | null },
+	area: string,
+	note: string
+) {
+	await db
+		.insertInto('site_placement')
+		.values({ site_id: site.id, area_id: area, moved: site.was !== area, note })
+		.execute();
 }
 
 /**
