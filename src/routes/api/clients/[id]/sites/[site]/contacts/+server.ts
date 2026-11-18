@@ -63,8 +63,12 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 					contact_id: contactId,
 					is_primary: primary
 				})
+				// Someone already here is changed only to answer first, as at the
+				// client: added again without it, they stay as they were.
 				.onConflict((oc) =>
-					oc.columns(['site_id', 'contact_id']).doUpdateSet({ is_primary: primary })
+					primary
+						? oc.columns(['site_id', 'contact_id']).doUpdateSet({ is_primary: true })
+						: oc.doNothing()
 				)
 				.execute();
 		});

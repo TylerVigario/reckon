@@ -824,6 +824,32 @@ console.log('\n  one save must not erase another');
 				{ fields: { label: 'Should not work' } },
 				404
 			);
+		// Harbor Light's front office, where the demo has Marcus answering first.
+		// Added again without asking, he stays first; and is put back as he was
+		// whatever happened.
+		const office =
+			'clients/harbor-light-dental/sites/4c42978a-ace1-4a79-a7f0-0d9e7efed2da/contacts';
+		const marcus = 'd1bacc15-9d5f-4e64-9358-deac543219c0';
+		await check(
+			'someone at a site, added there again, is still on it',
+			'POST',
+			`/api/${office}`,
+			{ contact_id: marcus },
+			201
+		);
+		const there = await (await fetch(`${base}/${office}`, { headers: { cookie } })).text();
+		const row = there.slice(there.indexOf(`contacts/${marcus}"`));
+		const first = /class="lab acc[^"]*">Answers first/.exec(row)?.index ?? Infinity;
+		const next = row.indexOf('class="box-row', 1);
+		if (first < (next < 0 ? Infinity : next)) passed++;
+		else
+			failures.push(
+				'someone answering first at a site, added again without it, stopped answering first'
+			);
+		console.log(
+			`  ${first < (next < 0 ? Infinity : next) ? '✓' : '✗'} and still answers first, not having been asked otherwise`
+		);
+		await call('POST', `/api/${office}`, { contact_id: marcus, is_primary: true });
 		if (made.status === 201) {
 			await check(
 				'somebody is added at the site',
