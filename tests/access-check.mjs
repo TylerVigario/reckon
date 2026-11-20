@@ -614,6 +614,40 @@ const entry = (/** @type {Record<string, unknown>} */ extra) => ({
 		'but not one someone else added',
 		`${notChanged?.status} ${notOff?.status}`
 	);
+	// A line's tax is set by hand by someone with Full alone (#196): not on a
+	// line Field adds, nor on one they change.
+	const notTaxed = () => {
+		const f = new FormData();
+		f.set('client_uuid', uuid());
+		f.set('invoice_id', draft);
+		f.set('kind', 'bought');
+		f.set('description', 'Anchors, resold');
+		f.set('ex_tax_cost', '4.00');
+		f.set('taxable', 'false');
+		f.set('tax_override_reason', 'Bought for resale');
+		return { method: 'POST', body: f };
+	};
+	const [fieldSets, fullSets] = await Promise.all([
+		asField('/api/lines', notTaxed()),
+		asFull('/api/lines', notTaxed())
+	]);
+	const set = fullSets.ok ? (await fullSets.json()).id : null;
+	check(
+		fieldSets.status === 403 && fullSets.status === 200,
+		'Full sets a line’s tax by hand, and Field does not',
+		`${fieldSets.status} ${fullSets.status}`
+	);
+	const reTaxed = mine
+		? await (() => {
+				const c = change('Parking at the clinic');
+				c.body.set('taxable', 'false');
+				c.body.set('tax_override_reason', 'Not a sale');
+				return asField(`/api/lines/${mine}`, c);
+			})()
+		: null;
+	check(reTaxed?.status === 403, 'nor on a line they added and change', String(reTaxed?.status));
+	if (set) await asFull(`/api/lines/${set}`, { method: 'DELETE' });
+
 	const [mineOff, otherOff] = await Promise.all([
 		mine ? asField(`/api/lines/${mine}`, { method: 'DELETE' }) : null,
 		other ? asFull(`/api/lines/${other}`, { method: 'DELETE' }) : null

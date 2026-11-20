@@ -20,12 +20,15 @@ export const MERGED_FIELDS = [
 	'bought_from',
 	'ex_tax_cost',
 	'tax_paid',
-	'paid_by'
+	'paid_by',
+	'taxable',
+	'tax_rate_pct',
+	'tax_override_reason'
 ] as const;
 export type MergedField = (typeof MERGED_FIELDS)[number];
 
 /** The fields holding figures, which are one value however they are written. */
-const FIGURES: readonly string[] = ['qty', 'ex_tax_cost', 'tax_paid'];
+const FIGURES: readonly string[] = ['qty', 'ex_tax_cost', 'tax_paid', 'tax_rate_pct'];
 
 /** Whether two values of a field are the same: 30 and 30.00 are, "" and nothing are. */
 export function same(field: string, a: string | undefined, b: string | undefined): boolean {

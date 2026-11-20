@@ -148,6 +148,7 @@
 						<span class="sub">{l.detail}{l.taxable ? ' · taxable' : ''}</span>
 						<span class="labs">
 							{#if q.line.receipt}<span class="lab">Receipt</span>{/if}
+							{#if l.tax_by_hand}<span class="lab">Tax set by hand</span>{/if}
 							<span class="lab acc">On this phone</span>
 						</span>
 					</span>

@@ -22,8 +22,16 @@
 	import { withChanged, withReceived } from '#lib/stock-held.ts';
 	import { pct, percent, quantity } from '#lib/format.ts';
 	import { money, unitPrice } from '#lib/money.svelte.ts';
-	import { readFromStock, readPassedOn } from '#lib/line-fields.ts';
-	import { fromStock, passedOn, type Taxes } from '#lib/passed-on.ts';
+	import { readByHand, readFromStock, readPassedOn } from '#lib/line-fields.ts';
+	import {
+		asItsKind,
+		fromStock,
+		passedOn,
+		taxNeeds,
+		type ByHand,
+		type Taxes
+	} from '#lib/passed-on.ts';
+	import { stateName } from '#lib/us-states.ts';
 	import { changeDraw, drawFrom, unitCost } from '#lib/stock-draw.ts';
 	import { Decimal, Ratio } from '#lib/decimal.ts';
 	import { shrink } from '#lib/receipt.ts';
@@ -64,6 +72,8 @@
 			taxes: Taxes;
 			/** reckon's goods, which goods bought for the job are sold as. */
 			goods: string;
+			/** What each kind of sale is called. */
+			kinds: Record<string, string>;
 			costing: Costing;
 			places: number;
 			stock: {
@@ -123,6 +133,22 @@
 	let taxPaid = $state(was.tax_paid ?? '');
 	let paidBy = $state(was.paid_by ?? ''); // empty is the business
 	let boughtFrom = $state(was.bought_from ?? '');
+	// Its tax set by hand, by someone with Full (#lib/line-fields readByHand):
+	// as its kind is taxed, not taxed, at the site's rate, or at another.
+	type TaxChoice = 'kind' | 'none' | 'site' | 'other';
+	const choiceOf = (f: Record<string, string>): TaxChoice =>
+		f.taxable === 'false'
+			? 'none'
+			: f.taxable === 'true'
+				? f.tax_rate_pct
+					? 'other'
+					: 'site'
+				: 'kind';
+	let taxChoice = $state<TaxChoice>(choiceOf(was));
+	let otherRate = $state(was.tax_rate_pct ?? '');
+	let reason = $state(was.tax_override_reason ?? '');
+	// Only someone with Full sets it; anyone else sees it, where it was set.
+	const full = $derived(page.data.user?.access === 'full');
 	let saving = $state(false);
 	let why = $state('');
 	let errors = $state<Record<string, string>>({});
@@ -175,6 +201,9 @@
 				cost = f.ex_tax_cost ?? '';
 				taxPaid = f.tax_paid ?? '';
 				paidBy = f.paid_by ?? '';
+				taxChoice = choiceOf(f);
+				otherRate = f.tax_rate_pct ?? '';
+				reason = f.tax_override_reason ?? '';
 				errors = q.refused?.errors ?? {};
 			},
 			() => {}
@@ -186,6 +215,8 @@
 	const siteTax = $derived(site ? { state: site.state, ratePct: site.rate_pct } : null);
 	const stock = $derived(kind === 'material');
 	const bought = $derived(kind === 'bought');
+	// A cost passed on is no sale, so it has no tax to set.
+	const sale = $derived(kind !== 'paid_for');
 	// What each kind is, said under it: Primer's RadioGroup, each choice with its caption.
 	const KINDS = [
 		{
@@ -208,6 +239,60 @@
 		offered.filter((m) =>
 			`${m.name} ${m.sku ?? ''}`.toLowerCase().includes(find.trim().toLowerCase())
 		)
+	);
+
+	/** Its tax set by hand, as chosen: what the line is priced with, here and on the server. */
+	const typedRate = $derived(/^\d+(\.\d+)?$/.test(otherRate.trim()) ? otherRate.trim() : null);
+	const byHand = $derived.by((): ByHand | null => {
+		if (!sale || taxChoice === 'kind') return null;
+		if (taxChoice === 'none') return { taxed: false };
+		return { taxed: true, ratePct: taxChoice === 'other' ? typedRate : null };
+	});
+	// The kind of sale the line is, and how its kind is taxed where it went.
+	const soldAs = $derived(stock ? (item?.kind ?? null) : bought ? data.goods : null);
+	const kindTax = $derived(
+		soldAs !== null ? asItsKind(soldAs, { taxes: data.taxes, site: siteTax }) : null
+	);
+	// Where it went is somewhere the business collects, in an area with a rate.
+	const collects = $derived(
+		!!site && site.state in data.taxes && site.rate_pct !== null && Number(site.rate_pct) > 0
+	);
+	/** The choices of its tax: Primer's RadioGroup, as its kind is first, then the exceptions. */
+	const taxChoices = $derived(
+		[
+			{
+				v: 'kind' as const,
+				label: `As ${(soldAs && data.kinds[soldAs]) || 'its kind of sale'} is taxed${site ? ` in ${stateName(site.state)}` : ''}`,
+				caption: !kindTax
+					? 'Once it is chosen.'
+					: kindTax.taxable
+						? `${pct(kindTax.taxRatePct)}, the site’s rate.`
+						: kindTax.needsASite
+							? 'Taxed where the business collects, so it needs the site it went to.'
+							: kindTax.needsPlacing
+								? 'It needs the site placed in a tax area.'
+								: 'Not taxed there.',
+				offered: true
+			},
+			{
+				v: 'none' as const,
+				label: 'Not taxed',
+				caption: 'Its kind is taxed there, and this line is the exception.',
+				offered: !!kindTax && (kindTax.taxable || kindTax.needsASite || kindTax.needsPlacing)
+			},
+			{
+				v: 'site' as const,
+				label: 'Taxed at the site’s rate',
+				caption: site?.rate_pct ? `${pct(site.rate_pct)}, though its kind is not taxed there.` : '',
+				offered: collects && !!kindTax && !kindTax.taxable
+			},
+			{
+				v: 'other' as const,
+				label: 'Taxed at another rate',
+				caption: 'A rate of its own, such as for a partial exemption.',
+				offered: collects
+			}
+		].filter((c) => c.offered || c.v === taxChoice)
 	);
 
 	/** What one more sells at: its listed price, or what it costs marked up. */
@@ -253,7 +338,8 @@
 				taxPaid: draw.taxPaid.toString(),
 				listed: item.listed,
 				markupPct: item.markup,
-				kind: item.kind
+				kind: item.kind,
+				byHand
 			},
 			{ taxes: data.taxes, site: siteTax, places: data.places }
 		);
@@ -299,17 +385,21 @@
 	async function save(e: SubmitEvent) {
 		e.preventDefault();
 		const formData = new FormData(e.currentTarget as HTMLFormElement);
+		// The tax choice's radios say which of its fields are sent, and are no field.
+		formData.delete('tax_choice');
 		const fields = Object.fromEntries(
 			[...formData.entries()].filter((x): x is [string, string] => typeof x[1] === 'string')
 		);
-		errors = stock
-			? readFromStock(fields, item?.places ?? null).errors
-			: readPassedOn(fields).errors;
+		errors = {
+			...(stock ? readFromStock(fields, item?.places ?? null).errors : readPassedOn(fields).errors),
+			...readByHand(fields).errors
+		};
 		if (stock && drawn?.short) errors.qty = shortBy(drawn.short);
+		if (sale && taxChoice === 'other' && !otherRate.trim())
+			errors.tax_rate_pct = 'Its rate, as a percentage: 3.3125 for 3.3125%.';
 		const priced = stock ? drawn : bills;
-		if (priced?.needsASite) errors.site_id = 'Where it went, so its tax rate is known.';
-		else if (priced?.needsPlacing)
-			errors.site_id = 'That site is in no tax area yet, so its rate is not known.';
+		if (priced && 'refused' in priced)
+			for (const [k, v] of Object.entries(taxNeeds(priced) ?? {})) errors[k] ??= v;
 		const line = stock ? drawn : bills;
 		if (Object.keys(errors).length > 0 || !line || line.short !== null) return;
 		saving = true;
@@ -334,7 +424,8 @@
 					unit_price: line.unitPrice,
 					amount: line.amount,
 					taxable: line.taxable,
-					tax_rate_pct: line.taxRatePct
+					tax_rate_pct: line.taxRatePct,
+					tax_by_hand: line.byHand
 				}
 			});
 		} catch {
@@ -376,7 +467,8 @@
 					unit_price: line.unitPrice,
 					amount: line.amount,
 					taxable: line.taxable,
-					tax_rate_pct: line.taxRatePct
+					tax_rate_pct: line.taxRatePct,
+					tax_by_hand: line.byHand
 				}
 			});
 		} catch (e) {
@@ -392,7 +484,7 @@
 	const bills = $derived.by(() => {
 		if (!/^\d+(\.\d+)?$/.test(cost) || stock) return null;
 		const line = passedOn(
-			{ kind: bought ? 'bought' : 'paid_for', cost, taxPaid: taxPaid || '0' },
+			{ kind: bought ? 'bought' : 'paid_for', cost, taxPaid: taxPaid || '0', byHand },
 			{
 				purchaseMarkupPct: data.markup,
 				taxes: data.taxes,
@@ -413,6 +505,88 @@
 
 {#snippet wrong(key: string)}
 	{#if errors[key]}<p class="fc-e" id="l-{key}-e"><Octicon name="alert" />{errors[key]}</p>{/if}
+{/snippet}
+
+<!-- Its tax: as its kind is taxed where it went, or -- by someone with Full --
+     set by hand, with why. A cost passed on is no sale, and has none. -->
+{#snippet taxBox()}
+	{#if sale && full}
+		<fieldset class="fc">
+			<legend class="fc-l">Tax</legend>
+			<!-- All three of its fields go, empty where they say nothing, so a change
+			     merged on its way says each (#lib/line-merge). -->
+			<input
+				type="hidden"
+				name="taxable"
+				value={taxChoice === 'kind' ? '' : taxChoice === 'none' ? 'false' : 'true'}
+			/>
+			{#if taxChoice !== 'other'}<input type="hidden" name="tax_rate_pct" value="" />{/if}
+			{#if taxChoice === 'kind'}<input type="hidden" name="tax_override_reason" value="" />{/if}
+			{#each taxChoices as c (c.v)}
+				<label class="rad">
+					<input type="radio" name="tax_choice" value={c.v} bind:group={taxChoice} />
+					<span>
+						<span class="rad-t">{c.label}</span>
+						{#if c.caption}<span class="rad-c">{c.caption}</span>{/if}
+					</span>
+				</label>
+			{/each}
+			{@render wrong('taxable')}
+		</fieldset>
+		{#if taxChoice === 'other'}
+			<div class="fc">
+				<label class="fc-l" for="l-rate">Its rate, as a percentage</label>
+				<input
+					id="l-rate"
+					name="tax_rate_pct"
+					class="ti"
+					inputmode="decimal"
+					autocomplete="off"
+					placeholder={site?.rate_pct ?? ''}
+					aria-invalid={errors.tax_rate_pct ? 'true' : undefined}
+					aria-describedby={errors.tax_rate_pct ? 'l-tax_rate_pct-e' : undefined}
+					bind:value={otherRate}
+				/>
+				{@render wrong('tax_rate_pct')}
+			</div>
+		{/if}
+		{#if taxChoice !== 'kind'}
+			<div class="fc">
+				<label class="fc-l" for="l-why">Why</label>
+				<textarea
+					id="l-why"
+					name="tax_override_reason"
+					class="ti"
+					rows="3"
+					placeholder="Why this line is the exception"
+					aria-invalid={errors.tax_override_reason ? 'true' : undefined}
+					aria-describedby={errors.tax_override_reason ? 'l-tax_override_reason-e' : 'l-why-c'}
+					bind:value={reason}></textarea>
+				{#if errors.tax_override_reason}
+					{@render wrong('tax_override_reason')}
+				{:else}
+					<p class="fc-c" id="l-why-c">
+						Kept with the line and in its history, and not on the invoice.
+					</p>
+				{/if}
+			</div>
+		{/if}
+	{:else if sale && taxChoice !== 'kind'}
+		<div class="fc">
+			<span class="fc-l">Tax</span>
+			<span
+				>{taxChoice === 'none'
+					? 'Not taxed'
+					: taxChoice === 'site'
+						? 'Taxed at the site’s rate'
+						: `Taxed at ${pct(otherRate)}`}, set by hand</span
+			>
+			<p class="fc-c">{reason}</p>
+			<p class="fc-c">Someone with Full changes it.</p>
+			{@render wrong('taxable')}
+			{@render wrong('tax_rate_pct')}
+		</div>
+	{/if}
 {/snippet}
 
 <Top
@@ -591,19 +765,24 @@
 			</div>
 
 			{#if stock}
+				{@render taxBox()}
 				{#if drawn && drawn.short === null}
 					<dl class="bill">
 						<dt>Bills</dt>
 						<dd>{money(drawn.amount)}, {unitPrice(drawn.unitPrice)} {item ? per(item) : ''}</dd>
 						<dt>Tax</dt>
 						<dd>
-							{drawn.tax !== null
-								? `${money(drawn.tax)} at ${pct(drawn.taxRatePct)}`
-								: drawn.needsASite
-									? 'needs the site it went to'
-									: drawn.needsPlacing
-										? 'needs the site placed in a tax area'
-										: 'none'}
+							{sale && taxChoice === 'other' && typedRate === null
+								? 'needs its rate'
+								: drawn.tax !== null
+									? `${money(drawn.tax)} at ${pct(drawn.taxRatePct)}${drawn.byHand ? ', set by hand' : ''}`
+									: drawn.byHand && !drawn.refused
+										? 'none, set by hand'
+										: drawn.needsASite
+											? 'needs the site it went to'
+											: drawn.needsPlacing
+												? 'needs the site placed in a tax area'
+												: 'none'}
 						</dd>
 						<dt>Cost</dt>
 						<dd>
@@ -663,6 +842,7 @@
 					</div>
 				{/if}
 
+				{@render taxBox()}
 				{#if bills}
 					<dl class="bill">
 						<dt>Bills</dt>
@@ -675,13 +855,17 @@
 						</dd>
 						<dt>Tax</dt>
 						<dd>
-							{bills.tax !== null
-								? `${money(bills.tax)} at ${pct(bills.taxRatePct)}`
-								: bills.needsASite
-									? 'needs the site it went to'
-									: bills.needsPlacing
-										? 'needs the site placed in a tax area'
-										: 'none'}
+							{sale && taxChoice === 'other' && typedRate === null
+								? 'needs its rate'
+								: bills.tax !== null
+									? `${money(bills.tax)} at ${pct(bills.taxRatePct)}${bills.byHand ? ', set by hand' : ''}`
+									: bills.byHand && !bills.refused
+										? 'none, set by hand'
+										: bills.needsASite
+											? 'needs the site it went to'
+											: bills.needsPlacing
+												? 'needs the site placed in a tax area'
+												: 'none'}
 						</dd>
 					</dl>
 				{/if}

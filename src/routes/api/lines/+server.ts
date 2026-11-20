@@ -2,6 +2,7 @@ import { UUID } from '#lib/field-rules.ts';
 import { refuse } from '#lib/server/field-errors.ts';
 import { addLine, answer } from '#lib/server/lines.ts';
 import { madeAt } from '#lib/server/made-at.ts';
+import { fieldOnly } from '#lib/server/mine.ts';
 import { problem } from '#lib/server/problem.ts';
 import type { RequestHandler } from './$types';
 
@@ -46,6 +47,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		receipt: file instanceof File ? file : null,
 		// Never from the body: who added it is whoever is signed in.
 		userId: locals.user!.id,
+		// Someone with Field sets no line's tax by hand (#lib/access).
+		field: fieldOnly(locals),
 		madeAt: madeAt(text('made_at'))
 	});
 	return answer(added);

@@ -27,6 +27,18 @@ describe('a change made on a phone, merged field by field', () => {
 		expect(m.collided).toEqual([]);
 	});
 
+	it('merges a tax set by hand field by field, and a rate as a figure', () => {
+		const set = { ...base, taxable: 'false', tax_override_reason: 'Resold' };
+		const m = merge(base, set, { ...base, qty: '150' });
+		expect(m.collided).toEqual([]);
+		expect([m.fields.taxable, m.fields.tax_override_reason, m.fields.qty]).toEqual([
+			'false',
+			'Resold',
+			'150'
+		]);
+		expect(same('tax_rate_pct', '4.0625', '4.06250')).toBe(true);
+	});
+
 	it('reads nothing and an empty box as the same', () => {
 		expect(same('bought_from', undefined, '')).toBe(true);
 		expect(same('ex_tax_cost', '30', '30.00')).toBe(true);

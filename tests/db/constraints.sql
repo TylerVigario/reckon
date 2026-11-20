@@ -203,18 +203,23 @@ $$, 'exemption removed again');
 \echo ''
 \echo '=== 4. a rate override must say why ==='
 
+-- At the site it went to, which says where it is owed (#196).
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price,
-                            taxable, tax_rate_pct, tax_source, amount, sale_kind_id)
+                            taxable, tax_rate_pct, tax_source, amount, sale_kind_id,
+                            site_id, tax_jurisdiction, tax_state)
   VALUES ('77777777-7777-7777-7777-777777777777',1,'material','Coax',180,0.22,
-          true, 8.5000, 'override', 39.60, sold_as('goods'))
+          true, 8.5000, 'override', 39.60, sold_as('goods'),
+          '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 'CA')
 $$, 'an 8.5% override with no reason');
 
 SELECT must_pass($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price,
-                            taxable, tax_rate_pct, tax_source, tax_override_reason, amount, sale_kind_id)
+                            taxable, tax_rate_pct, tax_source, tax_override_reason, amount, sale_kind_id,
+                            site_id, tax_jurisdiction, tax_state)
   VALUES ('77777777-7777-7777-7777-777777777777',1,'material','Coax',180,0.22,
-          true, 8.2500, 'override', 'Marysville jobsite, location not yet on file', 39.60, sold_as('goods'))
+          true, 8.2500, 'override', 'Marysville jobsite, location not yet on file', 39.60, sold_as('goods'),
+          '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 'CA')
 $$, 'the same override, explained');
 
 SELECT must_fail($$
@@ -3867,5 +3872,88 @@ BEGIN
   RAISE NOTICE '  recorded  a kind renamed, an answer changed, and a state''s answers gone with it';
 END $$;
 UPDATE taxability SET taxed = false WHERE state = 'CA' AND sale_kind_id = sold_as('travel');
+
+-- 60. A LINE'S TAX SET BY HAND (#196). Its reason says it was, and says
+-- something; it is set only on a sale; a cost passed on is taxed nowhere; at
+-- another rate it is taxed where it went; and taxed is at some rate.
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, tax_override_reason)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 60, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), '   ')
+$$, 'a tax set by hand for a reason that says nothing');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, tax_override_reason)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 60, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), 'Bought for resale: the client holds a resale certificate')
+$$, 'goods bought for the job, not taxed by hand, with why');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            tax_override_reason)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 61, 'paid_for', 'Permit', 1, 40.00, 40.00,
+          'Not taxed')
+$$, 'a cost passed on, its tax set by hand');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            taxable, tax_rate_pct)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 61, 'paid_for', 'Permit', 1, 40.00, 40.00,
+          true, 7.25)
+$$, 'a cost passed on, taxed');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 61, 'paid_for', 'Permit', 1, 40.00, 40.00)
+$$, 'a cost passed on, taxed nowhere');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, taxable, tax_rate_pct, tax_source, tax_override_reason)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 62, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), true, 4.0625, 'override', 'Partly exempt')
+$$, 'another rate, at no site');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, tax_source, tax_override_reason, site_id)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 62, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), 'override', 'Partly exempt', 'c5000000-0000-4000-8000-000000000001')
+$$, 'another rate, not taxed');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, taxable, tax_rate_pct, tax_source, tax_override_reason,
+                            site_id, tax_jurisdiction, tax_state)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 62, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), true, 4.0625, 'override', 'Partly exempt',
+          'c5000000-0000-4000-8000-000000000001', 'AUBURN', 'CA')
+$$, 'another rate, at the site, saying where');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, taxable, tax_rate_pct)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 63, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), true, 0)
+$$, 'taxed at no rate');
+
+-- Why its tax was set by hand is kept, against whoever said it.
+DO $$
+DECLARE n int;
+BEGIN
+  PERFORM set_config('reckon.user_id', 'a0a0a0a0-0000-4000-8000-0000000000a1', true);
+  UPDATE invoice_line SET tax_override_reason = 'Resold: certificate SR-ZZ-000-1234 on file'
+   WHERE invoice_id = '59595959-0000-4000-8000-0000000000c1' AND seq = 60;
+  SELECT count(*) INTO n FROM record_history
+   WHERE table_name = 'invoice_line' AND field = 'tax_override_reason'
+     AND changed_by = 'a0a0a0a0-0000-4000-8000-0000000000a1';
+  IF n < 1 THEN
+    RAISE EXCEPTION 'GUARD MISSING: why a line''s tax was set by hand was not kept';
+  END IF;
+  RAISE NOTICE '  recorded  why a line''s tax was set by hand, and who said it';
+END $$;
+DELETE FROM invoice_line WHERE invoice_id = '59595959-0000-4000-8000-0000000000c1' AND seq >= 60;
 
 \echo 'All guards hold.'

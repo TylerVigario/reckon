@@ -790,6 +790,8 @@ export type ShownLine = {
 	amount: string;
 	taxable: boolean;
 	tax_rate_pct: string;
+	/** Its tax set by hand, by someone with Full, rather than its kind's. */
+	tax_by_hand?: boolean;
 };
 
 export type QueuedLine = {

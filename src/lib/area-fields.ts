@@ -10,14 +10,12 @@
  */
 import {
 	cap,
-	decimal,
 	isoDate,
-	no,
 	oneOf,
 	optional,
 	parseIn,
+	percentage,
 	required,
-	type Parse,
 	type Parsed
 } from './field-rules.ts';
 import { Decimal } from './decimal.ts';
@@ -35,20 +33,13 @@ export function parseAreaField(name: string, raw: string): Parsed {
 	return parseIn(AREA_FIELDS, name, raw);
 }
 
-/** A share of a rate, as tax_piece keeps it: NUMERIC(7, 4), and under 100. */
-const share: Parse = (v) => {
-	const parsed = decimal(7, 4)(v);
-	if (!parsed.ok) return parsed;
-	return Decimal.from(v).lt('100') ? parsed : no('A percentage under 100: 4.6 for 4.6%.');
-};
-
 /** Who levies a piece, and how much. */
 export const PIECE_FIELDS = {
 	level: oneOf(['state', 'local']),
 	// As the state's table names them: Nevada, Washoe County.
 	jurisdiction: required('Who levies it.', cap(100)),
 	code: optional(cap(20)),
-	rate_pct: required('How much, as a percentage.', share)
+	rate_pct: required('How much, as a percentage.', percentage)
 };
 
 /** The day a rate took effect. */

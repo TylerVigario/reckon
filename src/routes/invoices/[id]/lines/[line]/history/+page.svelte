@@ -35,6 +35,7 @@
 	function said(field: Change['field'], v: string | null): string {
 		const is = FIELDS[field].is;
 		if (is === 'person') return v ? who(v) : 'the business';
+		if (is === 'flag') return v === 'true' ? 'yes' : 'no';
 		if (v === null || v === '') return 'nothing';
 		if (is === 'money') return money(v);
 		if (is === 'price') return unitPrice(v);
@@ -51,13 +52,16 @@
 		const amount = text(was.amount);
 		const site = text(was.site_id);
 		const counted = text(was.unit);
+		// Its tax, where it was set by hand, and why.
+		const why = text(was.tax_override_reason);
 		return [
 			text(was.description),
 			qty !== null && price !== null
 				? `${quantity(qty)}${counted ? ` ${counted}` : ''} × ${unitPrice(price)}`
 				: null,
 			amount !== null ? money(amount) : null,
-			site !== null ? (data.sites[site] ?? null) : null
+			site !== null ? (data.sites[site] ?? null) : null,
+			why !== null ? `${was.taxable === true ? 'taxed' : 'not taxed'} by hand: “${why}”` : null
 		]
 			.filter(Boolean)
 			.join(' · ');
