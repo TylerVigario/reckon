@@ -23,6 +23,8 @@ export const SERVICE_DETAILS = {
 	bill_to_nearest_seconds: 'Billed to',
 	minimum_charge: 'Minimum charge',
 	time_tracked: 'On the timer',
+	sale_kind_id: 'Kind of sale',
+	// Whether it was taxed, which a service said before it was a kind of sale.
 	taxable: 'Taxable'
 } as const;
 export type ServiceDetail = keyof typeof SERVICE_DETAILS;

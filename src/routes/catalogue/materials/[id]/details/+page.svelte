@@ -21,7 +21,7 @@
 
 	/**
 	 * A material's Details tab: what it is -- its name, brand and SKU, what it is
-	 * counted in, whether it is taxed -- each changed in place (#lib/Detail),
+	 * counted in, what kind of sale it is -- each changed in place (#lib/Detail),
 	 * carrying the save it began from so a change made since is not written
 	 * over unseen; and what it sells at, changed in a dialog as one choice: the
 	 * business's markup, its own, or a set price, from today.
@@ -59,7 +59,7 @@
 		...('brand' in waitingFields ? { brand: waitingFields.brand || null } : {}),
 		...('sku' in waitingFields ? { sku: waitingFields.sku || null } : {}),
 		...('unit_id' in waitingFields ? { unit_id: waitingFields.unit_id } : {}),
-		...('taxable' in waitingFields ? { taxable: waitingFields.taxable === 'true' } : {}),
+		...('sale_kind_id' in waitingFields ? { sale_kind_id: waitingFields.sale_kind_id } : {}),
 		...(waitingPrice
 			? {
 					listed: waitingPrice.by === 'price' ? waitingPrice.price : null,
@@ -105,10 +105,12 @@
 	/** Cancel on a refused detail: let it go, and keep what is there. */
 	const letGo = (field: string) => () =>
 		discardMaterialChange(materialChangeKey('fields', data.material.id), field);
-	const YES_NO = [
-		{ value: 'true', label: 'Yes' },
-		{ value: 'false', label: 'No' }
-	];
+	// The kinds it could be: those offered, and the one it is, retired or not.
+	const kinds = $derived(
+		data.kinds
+			.filter((k) => k.active || k.id === m.sale_kind_id)
+			.map((k) => ({ value: k.id, label: k.active ? k.name : `${k.name} (retired)` }))
+	);
 
 	let pricing = $state(false);
 	let choice = $state<PricedBy>('business');
@@ -225,12 +227,16 @@
 		{send}
 	/>
 	<Detail
-		name="taxable"
-		oncancel={letGo('taxable')}
-		label="Taxed"
-		value={String(m.taxable)}
-		hint={note('taxable')}
-		options={YES_NO}
+		name="sale_kind_id"
+		oncancel={letGo('sale_kind_id')}
+		label="Kind of sale"
+		value={m.sale_kind_id}
+		shown={data.kinds.find((k) => k.id === m.sale_kind_id)?.name ?? 'A kind since removed'}
+		hint={note(
+			'sale_kind_id',
+			'Each state the business collects in says whether it taxes this kind.'
+		)}
+		options={kinds}
 		{endpoint}
 		version={m.version}
 		validate={parseMaterialField}

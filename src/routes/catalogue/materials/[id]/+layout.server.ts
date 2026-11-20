@@ -4,6 +4,7 @@ import { personalToday } from '#lib/server/calendar.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { materialFigures } from '#lib/server/stock.ts';
 import { isOfflineCopy } from '#lib/offline-copy.ts';
+import { kindChoices } from '#lib/server/sale-kinds.ts';
 import type { LayoutServerLoad } from './$types';
 
 /**
@@ -26,7 +27,7 @@ export const load: LayoutServerLoad = async ({ params, url }) => {
 			eb.fn.coalesce('u.short', 'u.name').as('unit'),
 			'm.unit_id',
 			'u.places',
-			'm.taxable',
+			'm.sale_kind_id',
 			'm.active',
 			'm.markup_pct as own_markup',
 			'm.version'
@@ -34,7 +35,7 @@ export const load: LayoutServerLoad = async ({ params, url }) => {
 		.where('m.id', '=', params.id)
 		.executeTakeFirst();
 	if (!found) error(404, 'no such material');
-	const [figures, adjusted, received] = await Promise.all([
+	const [figures, adjusted, received, kinds] = await Promise.all([
 		materialFigures([found.id]),
 		db
 			.selectFrom('stock_adjustment')
@@ -45,7 +46,8 @@ export const load: LayoutServerLoad = async ({ params, url }) => {
 			.selectFrom('material_lot')
 			.select((eb) => eb.cast<number>(eb.fn.countAll(), 'integer').as('n'))
 			.where('material_id', '=', found.id)
-			.executeTakeFirstOrThrow()
+			.executeTakeFirstOrThrow(),
+		kindChoices(db)
 	]);
 	const copy = isOfflineCopy(url);
 	const worth = figures.of.get(found.id)!;
@@ -65,6 +67,8 @@ export const load: LayoutServerLoad = async ({ params, url }) => {
 		adjusted: adjusted.n,
 		// Whether any of it has been received: its unit is then fixed.
 		received: received.n > 0,
+		// The kinds of sale it could be, by the business's word for each.
+		kinds,
 		today: personalToday()
 	};
 };

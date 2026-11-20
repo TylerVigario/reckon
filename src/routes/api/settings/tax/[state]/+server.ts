@@ -1,19 +1,24 @@
 import type { Updateable } from 'kysely';
 import type { TaxRegistration } from '#lib/server/db/database.ts';
-import { asUser } from '#lib/server/db/index.ts';
+import { asUser, db } from '#lib/server/db/index.ts';
+import { businessToday } from '#lib/server/calendar.ts';
+import { answerEveryKind, Refused } from '#lib/server/sale-kinds.ts';
+import { parseAnswers } from '#lib/kind-fields.ts';
 import { type Errors, refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { parseRegistrationField, REGISTRATION_FIELDS } from '#lib/registration-fields.ts';
 import { COLLECTABLE, stateName, type State } from '#lib/us-states.ts';
 import { syncTaxNow } from '#lib/server/tax-sync.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
-import { readFields } from '#lib/json.ts';
+import { readFields, readJson } from '#lib/json.ts';
 
 /**
  * A state the business collects tax in (#lib/server/tax-registrations). PUT
- * collects there, PATCH changes what the registration says a field at a time,
- * as Settings → Tax saves it, and DELETE stops collecting there -- the lines
- * already taxed there and the returns already handed in keep their state.
+ * collects there, answering whether it taxes each kind of sale -- { taxed: {
+ * [kind]: true | false } }, one for every kind (#lib/server/sale-kinds) --
+ * PATCH changes what the registration says a field at a time, as Settings →
+ * Tax saves it, and DELETE stops collecting there, its answers with it -- the
+ * lines already taxed there and the returns already handed in keep their state.
  *
  * Only a state with a sales tax can be collected in (#lib/us-states
  * COLLECTABLE). In California CDTFA places its sites; anywhere else a person
@@ -21,17 +26,40 @@ import { readFields } from '#lib/json.ts';
  */
 const collectable = (s: string): s is State => (COLLECTABLE as readonly string[]).includes(s);
 
-export const PUT: RequestHandler = async ({ params, locals }) => {
+export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	if (!collectable(params.state))
 		return problem('notFound', 404, `Tax cannot be collected in ${stateName(params.state)} here.`);
-	const made = await asUser(locals.user!.id, (tx) =>
-		tx
-			.insertInto('tax_registration')
-			.values({ state: params.state })
-			.onConflict((oc) => oc.column('state').doNothing())
-			.returning('state')
-			.executeTakeFirst()
+	const body = (await readJson(request).catch(() => null)) as { taxed?: unknown } | null;
+	const kinds = await db.selectFrom('sale_kind').select(['id', 'name']).execute();
+	const name = new Map(kinds.map((k) => [k.id, k.name]));
+	const { answers, errors } = parseAnswers(
+		body?.taxed,
+		kinds.map((k) => k.id),
+		(k) => `Whether ${stateName(params.state)} taxes ${name.get(k)}.`
 	);
+	const had = await db
+		.selectFrom('tax_registration')
+		.select('state')
+		.where('state', '=', params.state)
+		.executeTakeFirst();
+	if (had) return Response.json({ state: params.state }, { status: 200 });
+	if (Object.keys(errors).length) return refuse(errors);
+	let made;
+	try {
+		made = await asUser(locals.user!.id, async (tx) => {
+			const row = await tx
+				.insertInto('tax_registration')
+				.values({ state: params.state })
+				.onConflict((oc) => oc.column('state').doNothing())
+				.returning('state')
+				.executeTakeFirst();
+			if (row) await answerEveryKind(tx, params.state, answers, locals.user!.id, businessToday());
+			return row;
+		});
+	} catch (e) {
+		if (e instanceof Refused) return refuse({ [e.field]: e.message });
+		throw e;
+	}
 	// Its sites are placed in their areas as soon as the server can ask.
 	if (made) syncTaxNow();
 	return Response.json({ state: params.state }, { status: made ? 201 : 200 });

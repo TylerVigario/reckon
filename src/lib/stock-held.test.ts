@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { withChanged, withReceived, type Stocked } from './stock-held.ts';
 import type { ShownReceipt } from './queue.ts';
 
+// reckon's goods, and a kind of the business's own.
+const GOODS = 'g';
+const UNTAXED = 'x';
+
 const raceway: Stocked = {
 	id: 'r',
 	name: 'Raceway',
@@ -11,7 +15,7 @@ const raceway: Stocked = {
 	places: 2,
 	markup: '25',
 	listed: null,
-	taxable: true,
+	kind: GOODS,
 	shelf: {
 		lots: [{ id: 'l1', qtyReceived: '60', qtyRemaining: '60', exTaxCost: '51', taxPaid: '3.70' }],
 		exTaxWorth: '51',
@@ -42,7 +46,8 @@ describe('stock received on this phone', () => {
 	it('puts what came for a material in the catalogue on its shelf, newest last', () => {
 		const [r] = withReceived(
 			[raceway],
-			[receipt([item({ material_id: 'r', name: 'Raceway', qty: '100', cost: '90', tax: '6.53' })])]
+			[receipt([item({ material_id: 'r', name: 'Raceway', qty: '100', cost: '90', tax: '6.53' })])],
+			GOODS
 		);
 		expect(r.shelf.lots.map((l) => l.qtyRemaining)).toEqual(['60', '100']);
 		expect([r.shelf.exTaxWorth, r.shelf.taxWorth]).toEqual(['141', '10.23']);
@@ -63,15 +68,16 @@ describe('stock received on this phone', () => {
 						cost: '12'
 					})
 				])
-			]
+			],
+			GOODS
 		);
 		expect(stock.map((m) => m.id)).toEqual(['u', 'r']);
 		expect(stock[0].shelf.lots[0].qtyRemaining).toBe('100');
-		expect(stock[0].taxable).toBe(true);
+		expect(stock[0].kind).toBe(GOODS);
 	});
 
 	it('leaves the shelf as the server said with nothing waiting', () => {
-		expect(withReceived([raceway], [])).toEqual([raceway]);
+		expect(withReceived([raceway], [], GOODS)).toEqual([raceway]);
 	});
 });
 
@@ -111,6 +117,11 @@ describe('a material changed on this phone', () => {
 			'20'
 		);
 		expect([own.markup, own.listed, business.markup]).toEqual(['40', null, '20']);
+	});
+
+	it('is sold as the kind it was changed to', () => {
+		const [r] = withChanged([raceway], [change('fields', { sale_kind_id: UNTAXED })], '20');
+		expect(r.kind).toBe(UNTAXED);
 	});
 
 	it('is not offered once retired', () => {

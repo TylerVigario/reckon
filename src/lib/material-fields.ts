@@ -1,6 +1,6 @@
 /**
  * What may be said about a material once it is in the catalogue: its name,
- * brand and SKU, whether it is taxed, what it is counted in, and whether it is
+ * brand and SKU, what kind of sale it is, what it is counted in, and whether it is
  * offered -- each changed on its own, in place (#lib/Detail) -- and what it
  * sells at, said as one choice (readPricing).
  *
@@ -28,7 +28,7 @@ export const MATERIAL_FIELDS = {
 	name: required('What it is.', cap(120)),
 	brand: optional(cap(80)),
 	sku: optional(cap(40)),
-	taxable: flag,
+	sale_kind_id: required('What kind of sale it is.', anId),
 	unit_id: required('What it is counted in.', anId),
 	active: flag
 };
@@ -38,7 +38,7 @@ export const MATERIAL_WORDS: Record<keyof typeof MATERIAL_FIELDS, string> = {
 	name: 'Name',
 	brand: 'Brand',
 	sku: 'SKU',
-	taxable: 'Taxed',
+	sale_kind_id: 'Kind of sale',
 	unit_id: 'Counted in',
 	active: 'Offered'
 };

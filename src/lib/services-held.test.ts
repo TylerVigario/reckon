@@ -5,7 +5,14 @@ import type { ServiceEntry } from './queue.ts';
 const field = { id: 's1', name: 'Field service', unit: 'hour' };
 const added = (over: Partial<ServiceEntry['fields']> = {}): ServiceEntry => ({
 	client_uuid: 'u1',
-	fields: { name: 'Cable pulling', unit: 'hour', rate: '80', additional_rate: '50', ...over },
+	fields: {
+		name: 'Cable pulling',
+		unit: 'hour',
+		sale_kind_id: 'k1',
+		rate: '80',
+		additional_rate: '50',
+		...over
+	},
 	from: '2026-11-13'
 });
 

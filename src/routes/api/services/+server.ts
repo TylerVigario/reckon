@@ -3,6 +3,7 @@ import type { ServiceUnit } from '#lib/server/db/database.ts';
 import { pgError, refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { isoDate, UUID } from '#lib/field-rules.ts';
 import { readNewService } from '#lib/service-fields.ts';
+import { refusedKind } from '#lib/server/sale-kinds.ts';
 import { insertNamed } from '#lib/server/slugs.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { madeAt } from '#lib/server/made-at.ts';
@@ -49,6 +50,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	if (had) return Response.json({ id: had });
 
 	const { values, errors } = readNewService(fields as Record<string, unknown>);
+	if (!errors.sale_kind_id) {
+		const why = await refusedKind(db, String(values.sale_kind_id));
+		if (why) errors.sale_kind_id = why;
+	}
 	if (Object.keys(errors).length > 0) return refuse(errors);
 	// Priced from the day it was added, where a phone says one: never after today.
 	const said = typeof body.from === 'string' ? isoDate(body.from) : null;
@@ -68,6 +73,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 								code,
 								name: String(values.name),
 								unit: String(values.unit) as ServiceUnit,
+								sale_kind_id: String(values.sale_kind_id),
 								bill_to_nearest_seconds: values.unit === 'hour' ? 60 : null,
 								client_uuid: clientUuid
 							})

@@ -6,7 +6,12 @@ describe('a material changed', () => {
 		expect(parseMaterialField('name', '').ok).toBe(false);
 		expect(parseMaterialField('name', '12/2 Romex')).toEqual({ ok: true, value: '12/2 Romex' });
 		expect(parseMaterialField('brand', '')).toEqual({ ok: true, value: null });
-		expect(parseMaterialField('taxable', 'false')).toEqual({ ok: true, value: false });
+		expect(parseMaterialField('sale_kind_id', '019A0000-0000-7000-8000-00000000000A')).toEqual({
+			ok: true,
+			value: '019a0000-0000-7000-8000-00000000000a'
+		});
+		expect(parseMaterialField('sale_kind_id', '').ok).toBe(false);
+		expect(parseMaterialField('taxable', 'false').ok).toBe(false);
 	});
 
 	it('refuses a field it does not keep', () => {

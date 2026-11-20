@@ -32,6 +32,19 @@ EXCEPTION WHEN others THEN
   RAISE EXCEPTION 'OVER-TIGHT: % was refused (%)', label, SQLERRM;
 END $$;
 
+-- What kind of sale reckon's own kinds are (#196), for the rows below that are
+-- about something else.
+CREATE FUNCTION sold_as(c reckon_kind) RETURNS uuid LANGUAGE sql STABLE AS $$
+  SELECT id FROM sale_kind WHERE code = c
+$$;
+
+-- Collecting in a state answers every kind of sale there: goods taxed, and
+-- nothing else, for the rows below that are about something else.
+CREATE FUNCTION collect_in(s text) RETURNS void LANGUAGE sql AS $$
+  INSERT INTO tax_registration (state) VALUES (s);
+  INSERT INTO taxability (state, sale_kind_id, taxed) SELECT s, id, code = 'goods' FROM sale_kind;
+$$;
+
 -- A California tax area for the fixtures below, as CDTFA names it, made the
 -- first time it is named: the state's share and, where there are any, the
 -- district taxes.
@@ -74,15 +87,15 @@ INSERT INTO entity (id, name, slug) VALUES
   ('44444444-0000-4000-8000-000000000002','Bluegill Accounting','bluegill-accounting'),
   ('44444444-0000-4000-8000-000000000003','Kingfisher Tutoring','kingfisher-tutoring');
 
-INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds)
+INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds, sale_kind_id)
 VALUES
-  ('b5000000-0000-4000-8000-000000000055','field','Field service','hour',60),
-  ('b5000000-0000-4000-8000-000000000056','helpdesk','Help desk','hour',60),
-  ('b5000000-0000-4000-8000-000000000057','travel','Travel','mile',NULL);
+  ('b5000000-0000-4000-8000-000000000055','field','Field service','hour',60, sold_as('repair')),
+  ('b5000000-0000-4000-8000-000000000056','helpdesk','Help desk','hour',60, sold_as('repair')),
+  ('b5000000-0000-4000-8000-000000000057','travel','Travel','mile',NULL, sold_as('travel'));
 
-INSERT INTO material (id, name, unit_id) VALUES
+INSERT INTO material (id, name, unit_id, sale_kind_id) VALUES
   ('66666666-6666-6666-6666-666666666666','Coax - RG6 - Quad shield',
-   (SELECT id FROM unit WHERE name = 'foot'));
+   (SELECT id FROM unit WHERE name = 'foot'), sold_as('goods'));
 
 INSERT INTO invoice (id, number, entity_id, created_by) VALUES
   ('77777777-7777-7777-7777-777777777777','INV-0412',
@@ -192,23 +205,23 @@ $$, 'exemption removed again');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price,
-                            taxable, tax_rate_pct, tax_source, amount)
+                            taxable, tax_rate_pct, tax_source, amount, sale_kind_id)
   VALUES ('77777777-7777-7777-7777-777777777777',1,'material','Coax',180,0.22,
-          true, 8.5000, 'override', 39.60)
+          true, 8.5000, 'override', 39.60, sold_as('goods'))
 $$, 'an 8.5% override with no reason');
 
 SELECT must_pass($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price,
-                            taxable, tax_rate_pct, tax_source, tax_override_reason, amount)
+                            taxable, tax_rate_pct, tax_source, tax_override_reason, amount, sale_kind_id)
   VALUES ('77777777-7777-7777-7777-777777777777',1,'material','Coax',180,0.22,
-          true, 8.2500, 'override', 'Marysville jobsite, location not yet on file', 39.60)
+          true, 8.2500, 'override', 'Marysville jobsite, location not yet on file', 39.60, sold_as('goods'))
 $$, 'the same override, explained');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price,
-                            taxable, tax_rate_pct, tax_source, amount)
+                            taxable, tax_rate_pct, tax_source, amount, sale_kind_id)
   VALUES ('77777777-7777-7777-7777-777777777777',2,'service','Labour',4.2167,45,
-          false, 7.2500, 'site', 189.75)
+          false, 7.2500, 'site', 189.75, NULL)
 $$, 'tax on a line marked untaxable');
 
 \echo ''
@@ -223,22 +236,22 @@ VALUES ('99999999-9999-9999-9999-999999999999','88888888-8888-8888-8888-88888888
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            time_entry_id, trip_leg_id)
+                            time_entry_id, trip_leg_id, sale_kind_id)
   VALUES ('77777777-7777-7777-7777-777777777777',3,'service','Two sources',1,1,1,
           (SELECT id FROM time_entry WHERE client_uuid='a1000000-0000-4000-8000-000000000001'),
-          '99999999-9999-9999-9999-999999999999')
+          '99999999-9999-9999-9999-999999999999', NULL)
 $$, 'a line claiming both a time entry and a trip leg');
 
 SELECT must_pass($$
-  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, trip_leg_id)
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, trip_leg_id, sale_kind_id)
   VALUES ('77777777-7777-7777-7777-777777777777',3,'service','Travel',31,0.66,20.46,
-          '99999999-9999-9999-9999-999999999999')
+          '99999999-9999-9999-9999-999999999999', NULL)
 $$, 'a line from one trip leg');
 
 SELECT must_fail($$
-  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, trip_leg_id)
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, trip_leg_id, sale_kind_id)
   VALUES ('77777777-7777-7777-7777-777777777777',4,'service','Same leg again',31,0.66,20.46,
-          '99999999-9999-9999-9999-999999999999')
+          '99999999-9999-9999-9999-999999999999', NULL)
 $$, 'the same leg billed twice');
 
 \echo ''
@@ -264,8 +277,8 @@ SELECT must_fail($$
 $$, 'deleting a line after it has gone out');
 
 SELECT must_fail($$
-  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount)
-  VALUES ('77777777-7777-7777-7777-777777777777',9,'service','Added later',1,1,1)
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, sale_kind_id)
+  VALUES ('77777777-7777-7777-7777-777777777777',9,'service','Added later',1,1,1, NULL)
 $$, 'adding a line after it has gone out');
 
 SELECT must_fail($$
@@ -287,8 +300,8 @@ INSERT INTO invoice (id, number, entity_id, created_by) VALUES
    '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1'),
   ('77777777-0000-4000-8000-0000000000d2','INV-0414',
    '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1');
-INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount)
-VALUES ('77777777-0000-4000-8000-0000000000d1',1,'service','Still a draft',1,10,10);
+INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, sale_kind_id)
+VALUES ('77777777-0000-4000-8000-0000000000d1',1,'service','Still a draft',1,10,10, NULL);
 UPDATE invoice SET status='sent', issued_on='2026-09-04', due_on='2026-10-04', sent_at=now(),
        public_token=gen_random_uuid()::text
  WHERE id = '77777777-0000-4000-8000-0000000000d2';
@@ -393,7 +406,7 @@ END $$;
 \echo '=== 11. the help desk: unlimited, included, or nothing ==='
 
 INSERT INTO operator (trading_name) VALUES ('Kestrel Field Services');
-INSERT INTO tax_registration (state) VALUES ('CA');
+SELECT collect_in('CA');
 
 -- Avery and Sam hold the Partner role, and pay is written against the role:
 -- one rule covers whoever holds it.
@@ -462,18 +475,18 @@ $$, 'overage set to no charge');
 -- Coverage is listed per service on the agreement, so a service row says only
 -- how it is charged.
 SELECT must_fail($$
-  INSERT INTO service (code, name, unit)
-  VALUES ('bad','Something','day')
+  INSERT INTO service (code, name, unit, sale_kind_id)
+  VALUES ('bad','Something','day', sold_as('repair'))
 $$, 'a unit nobody named');
 
 SELECT must_pass($$
-  INSERT INTO service (code, name, unit)
-  VALUES ('weekend','Weekend work','hour')
+  INSERT INTO service (code, name, unit, sale_kind_id)
+  VALUES ('weekend','Weekend work','hour', sold_as('repair'))
 $$, 'a service that says nothing about where it is done');
 
 SELECT must_pass($$
-  INSERT INTO service (code, name, unit)
-  VALUES ('setup','Workstation setup','each')
+  INSERT INTO service (code, name, unit, sale_kind_id)
+  VALUES ('setup','Workstation setup','each', sold_as('repair'))
 $$, 'a flat charge, counted each');
 
 DO $$
@@ -521,8 +534,8 @@ $$, 'a solo entry naming nobody');
 \echo '=== 14. every price has one home ==='
 
 SELECT must_pass($$
-  INSERT INTO service (id, code, name, unit)
-  VALUES ('b5000000-0000-4000-8000-00000000005a','delivery','Delivery','mile')
+  INSERT INTO service (id, code, name, unit, sale_kind_id)
+  VALUES ('b5000000-0000-4000-8000-00000000005a','delivery','Delivery','mile', sold_as('repair'))
 $$, 'delivery by the mile is a service');
 
 SELECT must_pass($$
@@ -531,13 +544,13 @@ SELECT must_pass($$
 $$, 'and $1.10 a mile is a dated price row');
 
 SELECT must_pass($$
-  INSERT INTO material (name, unit_id, markup_pct)
-  VALUES ('Wall plate off the default', (SELECT id FROM unit WHERE name = 'each'), NULL)
+  INSERT INTO material (name, unit_id, markup_pct, sale_kind_id)
+  VALUES ('Wall plate off the default', (SELECT id FROM unit WHERE name = 'each'), NULL, sold_as('goods'))
 $$, 'a material with no markup takes the operator default');
 
 SELECT must_pass($$
-  INSERT INTO material (name, unit_id, markup_pct)
-  VALUES ('Wall plate with its own', (SELECT id FROM unit WHERE name = 'each'), 35)
+  INSERT INTO material (name, unit_id, markup_pct, sale_kind_id)
+  VALUES ('Wall plate with its own', (SELECT id FROM unit WHERE name = 'each'), 35, sold_as('goods'))
 $$, 'and one item may override it');
 
 -- Kingfisher's September, charged.
@@ -583,9 +596,9 @@ $$, 'and off the timer again without touching the charge');
 INSERT INTO invoice (id, number, entity_id, created_by) VALUES
   ('7777aaaa-7777-7777-7777-777777777777','KFS-0420',
    '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1');
-INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit_price, unit, amount)
+INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit_price, unit, amount, sale_kind_id)
   VALUES ('7777bbbb-7777-7777-7777-777777777777','7777aaaa-7777-7777-7777-777777777777',
-          1,'service','Delivery, Coloma',44.00,1.10,'mile',48.40);
+          1,'service','Delivery, Coloma',44.00,1.10,'mile',48.40, NULL);
 
 SELECT must_pass($$
   UPDATE invoice_line SET unit = 'box of 25' WHERE id = '7777bbbb-7777-7777-7777-777777777777'
@@ -1319,9 +1332,9 @@ INSERT INTO invoice (id, number, entity_id, created_by) VALUES
   ('7777dddd-7777-7777-7777-777777777777','KFS-0421',
    '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1');
 INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, unit, amount,
-                          time_entry_id)
+                          time_entry_id, sale_kind_id)
 VALUES ('7777dddd-7777-7777-7777-777777777777',1,'service','Field service',2.00,95.00,'hour',190.00,
-        '7777cccc-7777-7777-7777-777777777777');
+        '7777cccc-7777-7777-7777-777777777777', NULL);
 
 SELECT must_fail($$
   DELETE FROM time_entry WHERE id = '7777cccc-7777-7777-7777-777777777777'
@@ -1633,9 +1646,9 @@ $$, 'a proration rule that is neither whole nor by the day');
 \echo ''
 \echo '=== 26. a pay rule pays somebody, in a way that adds up ==='
 
-INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds) VALUES
-  ('b5000000-0000-4000-8000-00000000005c','callout','Call-out','hour',60),
-  ('b5000000-0000-4000-8000-00000000005d','standby','Standby','hour',60);
+INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds, sale_kind_id) VALUES
+  ('b5000000-0000-4000-8000-00000000005c','callout','Call-out','hour',60, sold_as('repair')),
+  ('b5000000-0000-4000-8000-00000000005d','standby','Standby','hour',60, sold_as('repair'));
 
 SELECT must_fail($$
   INSERT INTO pay_rule (service_id, role_id, user_id, pays_for, method, amount, effective_from)
@@ -1736,8 +1749,8 @@ $$, 'a leg billed to nobody, and so no service');
 
 -- Covered hours are paid as a percentage of the retainer, split between however
 -- many answered -- so a covered-time rule is a percentage, or nothing.
-INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds)
-VALUES ('b5000000-0000-4000-8000-0000000000a1','retained','Retained work','hour',60);
+INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds, sale_kind_id)
+VALUES ('b5000000-0000-4000-8000-0000000000a1','retained','Retained work','hour',60, sold_as('repair'));
 
 SELECT must_fail($$
   INSERT INTO pay_rule (service_id, role_id, pays_for, method, amount, effective_from)
@@ -1904,7 +1917,7 @@ SELECT must_fail($$
 $$, 'a unit with no name');
 
 SELECT must_fail($$
-  INSERT INTO material (name) VALUES ('Counted in nothing')
+  INSERT INTO material (name, sale_kind_id) VALUES ('Counted in nothing', sold_as('goods'))
 $$, 'a material counted in nothing');
 
 SELECT must_fail($$
@@ -2036,9 +2049,9 @@ SELECT must_fail($$
    WHERE id = '66666666-6666-6666-6666-666666666666'
 $$, 'what a received material is counted in, changed');
 
-INSERT INTO material (id, name, unit_id) VALUES
+INSERT INTO material (id, name, unit_id, sale_kind_id) VALUES
   ('36c36c36-0000-4000-8000-000000000001','Cable ties - 8 in',
-   (SELECT id FROM unit WHERE name = 'foot'));
+   (SELECT id FROM unit WHERE name = 'foot'), sold_as('goods'));
 
 SELECT must_pass($$
   UPDATE material SET unit_id = (SELECT id FROM unit WHERE name = 'each')
@@ -2161,14 +2174,14 @@ SELECT must_fail($$
   VALUES ('2026-10-05','36e36e36-0000-4000-8000-000000000001')
 $$, 'one receipt sent twice from a phone, made twice');
 
-INSERT INTO material (name, unit_id, client_uuid)
+INSERT INTO material (name, unit_id, client_uuid, sale_kind_id)
 VALUES ('Cable ties - 8 in, black', (SELECT id FROM unit WHERE name = 'each'),
-        '36e36e36-0000-4000-8000-000000000002');
+        '36e36e36-0000-4000-8000-000000000002', sold_as('goods'));
 
 SELECT must_fail($$
-  INSERT INTO material (name, unit_id, client_uuid)
+  INSERT INTO material (name, unit_id, client_uuid, sale_kind_id)
   VALUES ('Cable ties - 8 in, white', (SELECT id FROM unit WHERE name = 'each'),
-          '36e36e36-0000-4000-8000-000000000002')
+          '36e36e36-0000-4000-8000-000000000002', sold_as('goods'))
 $$, 'two materials named by the one uuid a phone made');
 
 INSERT INTO stock_adjustment (material_id, made_on, way, qty, reason, ex_tax_cost, client_uuid,
@@ -2191,13 +2204,13 @@ SELECT must_pass($$
 $$, 'the same uuid from someone else''s phone, theirs');
 
 SELECT must_pass($$
-  INSERT INTO service (code, name, unit, client_uuid)
-  VALUES ('cable-pulling-36e', 'Cable pulling', 'hour', '36e36e36-0000-4000-8000-000000000004')
+  INSERT INTO service (code, name, unit, client_uuid, sale_kind_id)
+  VALUES ('cable-pulling-36e', 'Cable pulling', 'hour', '36e36e36-0000-4000-8000-000000000004', sold_as('repair'))
 $$, 'a service added on a phone, with the uuid it made');
 
 SELECT must_fail($$
-  INSERT INTO service (code, name, unit, client_uuid)
-  VALUES ('cable-pulling-36e-2', 'Cable pulling', 'hour', '36e36e36-0000-4000-8000-000000000004')
+  INSERT INTO service (code, name, unit, client_uuid, sale_kind_id)
+  VALUES ('cable-pulling-36e-2', 'Cable pulling', 'hour', '36e36e36-0000-4000-8000-000000000004', sold_as('repair'))
 $$, 'one service sent twice from a phone, made twice');
 
 \echo ''
@@ -2211,34 +2224,34 @@ INSERT INTO invoice (id, number, entity_id, created_by) VALUES
 SELECT must_pass($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_price, amount,
                             taxable, tax_rate_pct, tax_source, ex_tax_cost, tax_paid,
-                            bought_from, paid_by, receipt, receipt_type)
+                            bought_from, paid_by, receipt, receipt_type, sale_kind_id)
   VALUES ('7777eeee-7777-7777-7777-777777777737', 37, 'bought', 'Keystone jacks x12', 1, 'each',
           33.33, 33.33, true, 8.0000, 'site', 33.33, 2.67, 'Valley Hardware',
-          'a0a0a0a0-0000-4000-8000-0000000000a1', '\xffd8ffe0'::bytea, 'image/jpeg')
+          'a0a0a0a0-0000-4000-8000-0000000000a1', '\xffd8ffe0'::bytea, 'image/jpeg', sold_as('goods'))
 $$, 'jacks bought at Valley Hardware, paid by Avery, with the receipt');
 
 SELECT must_pass($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_price, amount,
-                            bought_from)
+                            bought_from, sale_kind_id)
   VALUES ('7777eeee-7777-7777-7777-777777777737', 38, 'paid_for', 'Low-voltage permit', 1, 'each',
-          35.00, 35.00, 'City of Woodland')
+          35.00, 35.00, 'City of Woodland', NULL)
 $$, 'a permit paid for them, by the business');
 
 SELECT must_fail($$
-  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, paid_by)
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, paid_by, sale_kind_id)
   VALUES ('7777eeee-7777-7777-7777-777777777737', 39, 'service', 'Field service', 1, 95.00, 95.00,
-          'a0a0a0a0-0000-4000-8000-0000000000a1')
+          'a0a0a0a0-0000-4000-8000-0000000000a1', NULL)
 $$, 'who paid, said of an hour worked');
 
 SELECT must_fail($$
-  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, receipt)
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, receipt, sale_kind_id)
   VALUES ('7777eeee-7777-7777-7777-777777777737', 40, 'bought', 'Anchors', 1, 4.00, 4.00,
-          '\x25504446'::bytea)
+          '\x25504446'::bytea, sold_as('goods'))
 $$, 'a receipt with no type');
 
 SELECT must_fail($$
-  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount)
-  VALUES ('7777eeee-7777-7777-7777-777777777737', 41, 'gift', 'Something', 1, 1.00, 1.00)
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, sale_kind_id)
+  VALUES ('7777eeee-7777-7777-7777-777777777737', 41, 'gift', 'Something', 1, 1.00, 1.00, NULL)
 $$, 'a kind of line nobody named');
 
 SELECT must_fail($$
@@ -2249,8 +2262,8 @@ $$, 'a markup on job purchases below nothing');
 \echo '=== 38. a line drawn from stock takes it off the shelf, and gives it back ==='
 
 -- A spool of coax and a box of jacks, each received whole.
-INSERT INTO material (id, name, unit_id) VALUES
-  ('38383838-0000-4000-8000-0000000000aa','Keystone jack',(SELECT id FROM unit WHERE name = 'each'));
+INSERT INTO material (id, name, unit_id, sale_kind_id) VALUES
+  ('38383838-0000-4000-8000-0000000000aa','Keystone jack',(SELECT id FROM unit WHERE name = 'each'), sold_as('goods'));
 INSERT INTO stock_receipt (id, received_on, supplier) VALUES
   ('38383838-0000-4000-8000-0000000000b1','2026-10-01','Delta Wholesale'),
   ('38383838-0000-4000-8000-0000000000b2','2026-10-02','Delta Wholesale');
@@ -2263,11 +2276,11 @@ INSERT INTO material_lot (id, receipt_id, material_id, received_on, qty_received
   ('38383838-0000-4000-8000-000000000003','38383838-0000-4000-8000-0000000000b2',
    '66666666-6666-6666-6666-666666666666','2026-10-02',100,100,35.00);
 INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
-                          material_id, ex_tax_cost, tax_paid) VALUES
+                          material_id, ex_tax_cost, tax_paid, sale_kind_id) VALUES
   ('38383838-0000-4000-8000-0000000000b1','7777eeee-7777-7777-7777-777777777737',50,'material',
-   'Coax',60,'foot',0.3720,22.32,'66666666-6666-6666-6666-666666666666',18.60,0),
+   'Coax',60,'foot',0.3720,22.32,'66666666-6666-6666-6666-666666666666',18.60,0, sold_as('goods')),
   ('38383838-0000-4000-8000-0000000000b2','7777eeee-7777-7777-7777-777777777737',51,'material',
-   'Coax',50,'foot',0.3720,18.60,'66666666-6666-6666-6666-666666666666',15.50,0);
+   'Coax',50,'foot',0.3720,18.60,'66666666-6666-6666-6666-666666666666',15.50,0, sold_as('goods'));
 
 SELECT must_pass($$
   INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty)
@@ -2298,9 +2311,9 @@ SELECT must_fail($$
 $$, 'a draw of nothing');
 
 SELECT must_fail($$
-  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, material_id)
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, material_id, sale_kind_id)
   VALUES ('7777eeee-7777-7777-7777-777777777737', 52, 'service', 'Field service', 1, 95.00, 95.00,
-          '66666666-6666-6666-6666-666666666666')
+          '66666666-6666-6666-6666-666666666666', NULL)
 $$, 'a material named on an hour worked');
 
 SELECT must_pass($$
@@ -2316,9 +2329,9 @@ INSERT INTO invoice (id, number, entity_id, created_by) VALUES
   ('7777eeee-7777-7777-7777-777777777738','KFS-0438',
    '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1');
 INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
-                          material_id, ex_tax_cost, tax_paid) VALUES
+                          material_id, ex_tax_cost, tax_paid, sale_kind_id) VALUES
   ('38383838-0000-4000-8000-0000000000b3','7777eeee-7777-7777-7777-777777777738',1,'material',
-   'Coax',10,'foot',0.3720,3.72,'66666666-6666-6666-6666-666666666666',3.10,0);
+   'Coax',10,'foot',0.3720,3.72,'66666666-6666-6666-6666-666666666666',3.10,0, sold_as('goods'));
 INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty) VALUES
   ('38383838-0000-4000-8000-0000000000b3','38383838-0000-4000-8000-000000000001',
    '66666666-6666-6666-6666-666666666666',10);
@@ -2341,9 +2354,9 @@ SELECT must_pass($$
     ('7777eeee-7777-7777-7777-777777777739','KFS-0439',
      '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1');
   INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
-                            material_id, ex_tax_cost, tax_paid) VALUES
+                            material_id, ex_tax_cost, tax_paid, sale_kind_id) VALUES
     ('38383838-0000-4000-8000-0000000000b4','7777eeee-7777-7777-7777-777777777739',1,'material',
-     'Coax',25,'foot',0.3720,9.30,'66666666-6666-6666-6666-666666666666',7.75,0);
+     'Coax',25,'foot',0.3720,9.30,'66666666-6666-6666-6666-666666666666',7.75,0, sold_as('goods'));
   INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty) VALUES
     ('38383838-0000-4000-8000-0000000000b4','38383838-0000-4000-8000-000000000001',
      '66666666-6666-6666-6666-666666666666',25);
@@ -2367,27 +2380,27 @@ $$, 'a way of costing stock nobody named');
 
 SELECT must_pass($$
   INSERT INTO invoice_line (client_uuid, invoice_id, seq, kind, description, qty, unit, unit_price,
-                            amount, bought_from, created_by)
+                            amount, bought_from, created_by, sale_kind_id)
   VALUES ('39393939-0000-4000-8000-000000000001', '7777eeee-7777-7777-7777-777777777737', 60,
           'paid_for', 'Low-voltage permit', 1, 'each', 35.00, 35.00, 'City of Woodland',
-          'a0a0a0a0-0000-4000-8000-0000000000a2')
+          'a0a0a0a0-0000-4000-8000-0000000000a2', NULL)
 $$, 'a permit added on a phone');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (client_uuid, invoice_id, seq, kind, description, qty, unit, unit_price,
-                            amount, bought_from, created_by)
+                            amount, bought_from, created_by, sale_kind_id)
   VALUES ('39393939-0000-4000-8000-000000000001', '7777eeee-7777-7777-7777-777777777737', 61,
           'paid_for', 'Low-voltage permit', 1, 'each', 35.00, 35.00, 'City of Woodland',
-          'a0a0a0a0-0000-4000-8000-0000000000a2')
+          'a0a0a0a0-0000-4000-8000-0000000000a2', NULL)
 $$, 'the same permit, sent again after a timeout');
 
 -- The uuid is its maker's own, as for time.
 SELECT must_pass($$
   INSERT INTO invoice_line (client_uuid, invoice_id, seq, kind, description, qty, unit, unit_price,
-                            amount, bought_from, created_by)
+                            amount, bought_from, created_by, sale_kind_id)
   VALUES ('39393939-0000-4000-8000-000000000001', '7777eeee-7777-7777-7777-777777777737', 61,
           'paid_for', 'Bucket truck', 1, 'each', 90.00, 90.00, 'Valley Rentals',
-          'a0a0a0a0-0000-4000-8000-0000000000a1')
+          'a0a0a0a0-0000-4000-8000-0000000000a1', NULL)
 $$, 'the same uuid from someone else, as a line of their own');
 DELETE FROM invoice_line WHERE client_uuid = '39393939-0000-4000-8000-000000000001'
    AND created_by = 'a0a0a0a0-0000-4000-8000-0000000000a1';
@@ -2409,16 +2422,16 @@ $$, 'the same draft, sent again after a timeout');
 
 SELECT must_pass($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_price, amount,
-                            bought_from, moved_from_invoice_id)
+                            bought_from, moved_from_invoice_id, sale_kind_id)
   VALUES ('7777eeee-7777-7777-7777-777777777740', 1, 'paid_for', 'Low-voltage permit', 1, 'each',
-          35.00, 35.00, 'City of Woodland', '7777eeee-7777-7777-7777-777777777738')
+          35.00, 35.00, 'City of Woodland', '7777eeee-7777-7777-7777-777777777738', NULL)
 $$, 'a permit meant for an invoice that went out, on a new draft');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_price, amount,
-                            moved_from_invoice_id)
+                            moved_from_invoice_id, sale_kind_id)
   VALUES ('7777eeee-7777-7777-7777-777777777740', 2, 'paid_for', 'Low-voltage permit', 1, 'each',
-          35.00, 35.00, '7777eeee-7777-7777-7777-0000000000ff')
+          35.00, 35.00, '7777eeee-7777-7777-7777-0000000000ff', NULL)
 $$, 'one saying it was meant for an invoice that never was');
 
 \echo ''
@@ -2427,10 +2440,10 @@ $$, 'one saying it was meant for an invoice that never was');
 SELECT must_pass($$
   SELECT set_config('reckon.user_id', 'a0a0a0a0-0000-4000-8000-0000000000a1', true);
   INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
-                            bought_from, receipt, receipt_type)
+                            bought_from, receipt, receipt_type, sale_kind_id)
   VALUES ('41414141-0000-4000-8000-000000000001', '7777eeee-7777-7777-7777-777777777737', 70,
           'bought', 'Anchors', 1, 'each', 4.00, 4.00, 'Valley Hardware',
-          '\xffd8ffe0'::bytea, 'image/jpeg');
+          '\xffd8ffe0'::bytea, 'image/jpeg', sold_as('goods'));
   DO $x$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM record_history
                     WHERE row_id = '41414141-0000-4000-8000-000000000001' AND field = '(added)'
@@ -2444,9 +2457,9 @@ $$, 'adding a line keeps who added it and what it was, its receipt described');
 
 SELECT must_pass($$
   INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
-                            bought_from)
+                            bought_from, sale_kind_id)
   VALUES ('41414141-0000-4000-8000-000000000002', '7777eeee-7777-7777-7777-777777777737', 71,
-          'paid_for', 'Low-voltage permit', 1, 'each', 35.00, 35.00, 'City of Woodland');
+          'paid_for', 'Low-voltage permit', 1, 'each', 35.00, 35.00, 'City of Woodland', NULL);
   DO $x$ BEGIN
     IF (SELECT new_value::jsonb ->> 'description' FROM record_history
          WHERE row_id = '41414141-0000-4000-8000-000000000002' AND field = '(added)')
@@ -2484,10 +2497,10 @@ $$, 'taking it off keeps what it was, its receipt whole: nothing else holds it n
 
 SELECT must_pass($$
   INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
-                            bought_from, receipt, receipt_type)
+                            bought_from, receipt, receipt_type, sale_kind_id)
   VALUES ('42424242-0000-4000-8000-000000000001', '7777eeee-7777-7777-7777-777777777737', 80,
           'bought', 'Faceplates', 1, 'each', 6.00, 6.00, 'Valley Hardware',
-          '\xffd8ffe0'::bytea, 'image/jpeg');
+          '\xffd8ffe0'::bytea, 'image/jpeg', sold_as('goods'));
   UPDATE invoice_line SET description = 'Faceplates x3' WHERE id = '42424242-0000-4000-8000-000000000001';
   UPDATE invoice_line SET description = 'Faceplates x3' WHERE id = '42424242-0000-4000-8000-000000000001';
   DO $x$ BEGIN
@@ -2610,8 +2623,8 @@ SELECT must_pass($$
    WHERE id = 'b5000000-0000-4000-8000-000000000055'
 $$, 'a service renamed');
 
-INSERT INTO service (id, code, name, unit) VALUES
-  ('43b43b43-0000-4000-8000-000000000002','gone-43b','Gone soon','each');
+INSERT INTO service (id, code, name, unit, sale_kind_id) VALUES
+  ('43b43b43-0000-4000-8000-000000000002','gone-43b','Gone soon','each', sold_as('repair'));
 DELETE FROM service WHERE id = '43b43b43-0000-4000-8000-000000000002';
 
 DO $$ BEGIN
@@ -2910,8 +2923,8 @@ $$, 'a correction to what an earlier payment paid back');
 INSERT INTO invoice (id, number, entity_id, created_by) VALUES
   ('77777777-0000-4000-8000-0000000000e1','INV-0480',
    '44444444-4444-4444-4444-444444444444','a0a0a0a0-0000-4000-8000-0000000000a1');
-INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount)
-VALUES ('77777777-0000-4000-8000-0000000000e1',1,'service','To be sent',1,40,40);
+INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, sale_kind_id)
+VALUES ('77777777-0000-4000-8000-0000000000e1',1,'service','To be sent',1,40,40, NULL);
 
 SELECT must_fail($$
   UPDATE invoice SET public_token = 'a-draft-has-no-link-to-give'
@@ -2954,107 +2967,107 @@ INSERT INTO invoice (id, number, entity_id, created_by) VALUES
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            taxable, tax_rate_pct, tax_source, site_id)
+                            taxable, tax_rate_pct, tax_source, site_id, sale_kind_id)
   VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
-          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333')
+          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', sold_as('goods'))
 $$, 'a line taxed at a site, not saying where');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state)
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state, sale_kind_id)
   VALUES ('77777777-0000-4000-8000-0000000000f1',1,'service','Labour',2,95,190.00,
-          false, 0, 'none', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 'CA')
+          false, 0, 'none', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 'CA', NULL)
 $$, 'an untaxed line saying where it was taxed');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state, tax_pieces)
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state, tax_pieces, sale_kind_id)
   VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
           true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 'CA',
           '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"},
-            {"level": "local", "jurisdiction": "YUBA CITY", "rate": "0.5000"}]')
+            {"level": "local", "jurisdiction": "YUBA CITY", "rate": "0.5000"}]', sold_as('goods'))
 $$, 'pieces that do not make the rate');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state, tax_pieces)
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state, tax_pieces, sale_kind_id)
   VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
           true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 'CA',
-          '[{"level": "county", "jurisdiction": "SUTTER", "rate": "7.2500"}]')
+          '[{"level": "county", "jurisdiction": "SUTTER", "rate": "7.2500"}]', sold_as('goods'))
 $$, 'a piece levied by no level there is');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state, tax_pieces)
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state, tax_pieces, sale_kind_id)
   VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
           true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 'CA',
-          '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": 7.25}]')
+          '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": 7.25}]', sold_as('goods'))
 $$, 'a rate written as a number, which JSON would read as a float');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state, tax_pieces)
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state, tax_pieces, sale_kind_id)
   VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
           true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 'CA',
-          '[{"level": "state", "jurisdiction": " ", "rate": "7.2500"}]')
+          '[{"level": "state", "jurisdiction": " ", "rate": "7.2500"}]', sold_as('goods'))
 $$, 'a piece that names nobody');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
                             taxable, tax_rate_pct, tax_source, tax_override_reason, site_id,
-                            tax_jurisdiction, tax_state, tax_pieces)
+                            tax_jurisdiction, tax_state, tax_pieces, sale_kind_id)
   VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
           true, 8.2500, 'override', 'Marysville jobsite, location not yet on file', '33333333-3333-3333-3333-333333333333',
           'YUBA CITY', 'CA', '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"},
-                         {"level": "local", "jurisdiction": "MARYSVILLE", "rate": "1.0000"}]')
+                         {"level": "local", "jurisdiction": "MARYSVILLE", "rate": "1.0000"}]', sold_as('goods'))
 $$, 'pieces of a rate that was not the site''s');
 
 SELECT must_pass($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
                             taxable, tax_rate_pct, tax_source, tax_override_reason, site_id,
-                            tax_jurisdiction, tax_state)
+                            tax_jurisdiction, tax_state, sale_kind_id)
   VALUES ('77777777-0000-4000-8000-0000000000f1',1,'material','Patch cable',4,6.25,25.00,
           true, 8.2500, 'override', 'Marysville jobsite, location not yet on file', '33333333-3333-3333-3333-333333333333',
-          'YUBA CITY', 'CA')
+          'YUBA CITY', 'CA', sold_as('goods'))
 $$, 'a rate set by hand at a site, saying where');
 
 SELECT must_pass($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state, tax_pieces)
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state, tax_pieces, sale_kind_id)
   VALUES ('77777777-0000-4000-8000-0000000000f1',2,'material','Patch cable',4,6.25,25.00,
           true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 'CA',
-          '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"}]')
+          '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"}]', sold_as('goods'))
 $$, 'a line taxed at its site''s rate, saying where and who levied it');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_pieces)
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_pieces, sale_kind_id)
   VALUES ('77777777-0000-4000-8000-0000000000f1',3,'material','Patch cable',4,6.25,25.00,
           true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY',
-          '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"}]')
+          '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"}]', sold_as('goods'))
 $$, 'a taxed line not saying which state');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state, tax_pieces)
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state, tax_pieces, sale_kind_id)
   VALUES ('77777777-0000-4000-8000-0000000000f1',3,'material','Patch cable',4,6.25,25.00,
           true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 'Calif.',
-          '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"}]')
+          '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"}]', sold_as('goods'))
 $$, 'a line taxed in a state that is not its two letters');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state)
+                            taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction, tax_state, sale_kind_id)
   VALUES ('77777777-0000-4000-8000-0000000000f1',3,'material','Patch cable',4,6.25,25.00,
-          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 'CA')
+          true, 7.2500, 'site', '33333333-3333-3333-3333-333333333333', 'YUBA CITY', 'CA', sold_as('goods'))
 $$, 'a line taxed at its site''s rate, keeping no pieces');
 
 SELECT must_fail($$
   INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
-                            taxable, tax_rate_pct, tax_source, site_id, tax_pieces)
+                            taxable, tax_rate_pct, tax_source, site_id, tax_pieces, sale_kind_id)
   VALUES ('77777777-0000-4000-8000-0000000000f1',3,'service','Labour',2,95,190.00,
           false, 0, 'none', '33333333-3333-3333-3333-333333333333',
-          '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "0"}]')
+          '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "0"}]', NULL)
 $$, 'an untaxed line keeping pieces');
 
 UPDATE invoice SET status = 'sent', issued_on = '2026-10-08', due_on = '2026-11-07', sent_at = now(),
@@ -3668,5 +3681,191 @@ SELECT must_tie(
 DELETE FROM agreement
  WHERE id IN ('bbbbbbbb-0000-4000-8000-000000000a01','bbbbbbbb-0000-4000-8000-000000000a02',
               'bbbbbbbb-0000-4000-8000-000000000a03','bbbbbbbb-0000-4000-8000-000000000a04');
+
+\echo ''
+\echo '=== 59. a sale is one kind, and every state collected in answers every kind ==='
+
+-- THE KINDS ARE THE BUSINESS'S OWN LIST, begun with reckon's four, each once
+-- and each staying which it is.
+SELECT must_fail($$
+  INSERT INTO sale_kind (code, name) VALUES ('goods', 'Goods again')
+$$, 'a second of reckon''s goods');
+
+SELECT must_fail($$
+  INSERT INTO sale_kind (name) VALUES ('  ')
+$$, 'a kind with no name');
+
+SELECT must_fail($$
+  INSERT INTO sale_kind (name) VALUES ('repair LABOUR')
+$$, 'two kinds of one name, however written');
+
+SELECT must_fail($$
+  DELETE FROM sale_kind WHERE code = 'travel'
+$$, 'one of reckon''s kinds removed');
+
+SELECT must_fail($$
+  UPDATE sale_kind SET code = 'repair' WHERE code = 'installation'
+$$, 'one of reckon''s kinds made another');
+
+SELECT must_fail($$
+  UPDATE sale_kind SET code = NULL WHERE code = 'installation'
+$$, 'one of reckon''s kinds made the business''s');
+
+SELECT must_pass($$
+  UPDATE sale_kind SET name = 'Installation', active = false WHERE code = 'installation'
+$$, 'one of reckon''s kinds renamed and retired');
+UPDATE sale_kind SET name = 'Installation labour', active = true WHERE code = 'installation';
+
+-- EVERY STATE ANSWERS EVERY KIND, by the end of whatever made the state or the
+-- kind. Checked at the end of the save, so the answers come with it.
+SELECT must_pass($$
+  DO $x$ BEGIN
+    INSERT INTO sale_kind (id, name) VALUES ('59595959-0000-4000-8000-0000000000a1', 'Help desk');
+    INSERT INTO taxability (state, sale_kind_id, taxed)
+      SELECT state, '59595959-0000-4000-8000-0000000000a1', false FROM tax_registration;
+    SET CONSTRAINTS ALL IMMEDIATE;
+  END $x$
+$$, 'a kind added with every state''s answer');
+
+SELECT must_fail($$
+  DO $x$ BEGIN
+    INSERT INTO sale_kind (name) VALUES ('Consulting');
+    SET CONSTRAINTS ALL IMMEDIATE;
+  END $x$
+$$, 'a kind added without California''s answer');
+
+SELECT must_fail($$
+  DO $x$ BEGIN
+    INSERT INTO tax_registration (state) VALUES ('NV');
+    INSERT INTO taxability (state, sale_kind_id, taxed)
+      SELECT 'NV', id, true FROM sale_kind WHERE code IS NOT NULL;
+    SET CONSTRAINTS ALL IMMEDIATE;
+  END $x$
+$$, 'a state collected in without an answer for one kind');
+
+SELECT must_pass($$
+  DO $x$ BEGIN
+    INSERT INTO tax_registration (state) VALUES ('NV');
+    INSERT INTO taxability (state, sale_kind_id, taxed, said_by, said_on)
+      SELECT 'NV', id, true, 'a0a0a0a0-0000-4000-8000-0000000000a1', '2026-11-19' FROM sale_kind;
+    SET CONSTRAINTS ALL IMMEDIATE;
+  END $x$
+$$, 'a state collected in answering every kind, saying who answered');
+
+SELECT must_fail($$
+  DO $x$ BEGIN
+    DELETE FROM taxability
+     WHERE state = 'NV' AND sale_kind_id = '59595959-0000-4000-8000-0000000000a1';
+    SET CONSTRAINTS ALL IMMEDIATE;
+  END $x$
+$$, 'an answer taken away from its state and kind');
+
+SELECT must_fail($$
+  UPDATE taxability SET state = 'CA'
+   WHERE state = 'NV' AND sale_kind_id = '59595959-0000-4000-8000-0000000000a1'
+$$, 'an answer moved to another state');
+
+SELECT must_fail($$
+  UPDATE taxability SET said_on = NULL WHERE state = 'NV'
+$$, 'an answer saying who gave it, and not when');
+
+SELECT must_pass($$
+  UPDATE taxability SET taxed = false, said_by = 'a0a0a0a0-0000-4000-8000-0000000000a2',
+                        said_on = '2026-11-20'
+   WHERE state = 'NV' AND sale_kind_id = '59595959-0000-4000-8000-0000000000a1'
+$$, 'an answer changed, by whoever changed it');
+
+-- A MATERIAL AND A SERVICE ARE EACH ONE KIND.
+SELECT must_fail($$
+  INSERT INTO material (name, unit_id) VALUES ('Unsorted', (SELECT id FROM unit WHERE name = 'each'))
+$$, 'a material that is no kind of sale');
+
+SELECT must_fail($$
+  INSERT INTO service (code, name, unit) VALUES ('unsorted-59', 'Unsorted', 'hour')
+$$, 'a service that is no kind of sale');
+
+SELECT must_pass($$
+  INSERT INTO service (id, code, name, unit, sale_kind_id)
+  VALUES ('59595959-0000-4000-8000-0000000000b1', 'helpdesk-59', 'Remote help', 'hour',
+          '59595959-0000-4000-8000-0000000000a1')
+$$, 'a service of the business''s own kind');
+
+SELECT must_fail($$
+  DELETE FROM sale_kind WHERE id = '59595959-0000-4000-8000-0000000000a1'
+$$, 'a kind something is sold as removed');
+
+-- A LINE KEEPS THE KIND IT WAS SOLD AS: goods drawn or bought as goods, and a
+-- cost passed on as none.
+INSERT INTO invoice (id, number, entity_id, created_by) VALUES
+  ('59595959-0000-4000-8000-0000000000c1', 'KS-0059', '44444444-4444-4444-4444-444444444444',
+   'a0a0a0a0-0000-4000-8000-0000000000a1');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 1, 'bought', 'Anchors', 1, 4.00, 4.00)
+$$, 'goods bought for the job, sold as no kind');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, sale_kind_id)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 1, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('repair'))
+$$, 'goods bought for the job, sold as repair labour');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, sale_kind_id)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 1, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'))
+$$, 'goods bought for the job, sold as goods');
+
+SELECT must_fail($$
+  UPDATE invoice_line SET sale_kind_id = sold_as('travel')
+   WHERE invoice_id = '59595959-0000-4000-8000-0000000000c1' AND seq = 1
+$$, 'goods bought for the job, sold again as travel');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount, sale_kind_id)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 2, 'paid_for', 'Permit', 1, 40.00, 40.00,
+          sold_as('goods'))
+$$, 'a cost passed on, sold as goods');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 2, 'paid_for', 'Permit', 1, 40.00, 40.00)
+$$, 'a cost passed on, sold as no kind');
+
+-- A kind nothing is sold as goes, and its answers with it; and so does a
+-- state's every answer when the business stops collecting there.
+SELECT must_pass($$
+  DO $x$ BEGIN
+    INSERT INTO sale_kind (id, name) VALUES ('59595959-0000-4000-8000-0000000000a2', 'Consulting');
+    INSERT INTO taxability (state, sale_kind_id, taxed)
+      SELECT state, '59595959-0000-4000-8000-0000000000a2', false FROM tax_registration;
+    DELETE FROM sale_kind WHERE id = '59595959-0000-4000-8000-0000000000a2';
+    SET CONSTRAINTS ALL IMMEDIATE;
+  END $x$
+$$, 'a kind nothing was sold as removed, with its answers');
+
+-- Every change to a kind and to an answer is kept, against whoever made it,
+-- and so is one that goes.
+DO $$
+DECLARE n int;
+BEGIN
+  PERFORM set_config('reckon.user_id', 'a0a0a0a0-0000-4000-8000-0000000000a1', true);
+  UPDATE sale_kind SET name = 'Remote support' WHERE id = '59595959-0000-4000-8000-0000000000a1';
+  UPDATE taxability SET taxed = true WHERE state = 'CA' AND sale_kind_id = sold_as('travel');
+  DELETE FROM tax_registration WHERE state = 'NV';
+  SELECT count(*) INTO n FROM record_history
+   WHERE changed_by = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+     AND ((table_name = 'sale_kind' AND field = 'name')
+       OR (table_name = 'taxability' AND field IN ('taxed', '(deleted)')));
+  IF n < 3 THEN
+    RAISE EXCEPTION 'GUARD MISSING: % of a kind''s and its answers'' changes recorded', n;
+  END IF;
+  IF EXISTS (SELECT 1 FROM taxability WHERE state = 'NV') THEN
+    RAISE EXCEPTION 'GUARD MISSING: a state no longer collected in kept its answers';
+  END IF;
+  RAISE NOTICE '  recorded  a kind renamed, an answer changed, and a state''s answers gone with it';
+END $$;
+UPDATE taxability SET taxed = false WHERE state = 'CA' AND sale_kind_id = sold_as('travel');
 
 \echo 'All guards hold.'

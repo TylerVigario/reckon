@@ -20,6 +20,7 @@ import * as aSiteKeepsItsPlacements from './20261118T0605Z_a_site_keeps_its_plac
 import * as theBusinessCollectsByState from './20261118T1721Z_the_business_collects_by_state.ts';
 import * as anAreaCanBeTyped from './20261118T2030Z_an_area_can_be_typed.ts';
 import * as aPersonTypesAreasAndPlacesSites from './20261118T2031Z_a_person_types_areas_and_places_sites.ts';
+import * as kindsOfSale from './20261120T0048Z_kinds_of_sale.ts';
 
 export const MIGRATIONS: Readonly<Record<string, Migration>> = {
 	'20261117T1405Z_the_schema_as_it_stands': theSchemaAsItStands,
@@ -29,5 +30,6 @@ export const MIGRATIONS: Readonly<Record<string, Migration>> = {
 	'20261118T0605Z_a_site_keeps_its_placements': aSiteKeepsItsPlacements,
 	'20261118T1721Z_the_business_collects_by_state': theBusinessCollectsByState,
 	'20261118T2030Z_an_area_can_be_typed': anAreaCanBeTyped,
-	'20261118T2031Z_a_person_types_areas_and_places_sites': aPersonTypesAreasAndPlacesSites
+	'20261118T2031Z_a_person_types_areas_and_places_sites': aPersonTypesAreasAndPlacesSites,
+	'20261120T0048Z_kinds_of_sale': kindsOfSale
 };

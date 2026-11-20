@@ -8,6 +8,7 @@ import { UUID } from '#lib/field-rules.ts';
 import { readBody } from '#lib/json.ts';
 import { madeAt } from '#lib/server/made-at.ts';
 import { MATERIAL_WORDS, parseMaterialField } from '#lib/material-fields.ts';
+import { refusedKind } from '#lib/server/sale-kinds.ts';
 import type { RequestHandler } from './$types';
 
 const MOST_AT_ONCE = 4;
@@ -90,6 +91,11 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		.where('id', '=', params.id)
 		.executeTakeFirst();
 	if (!m) return problem('notFound', 404, 'No material with that id.');
+	// Into a kind of sale that is offered, unless it is that kind already.
+	if (row.sale_kind_id !== undefined && row.sale_kind_id !== m.sale_kind_id) {
+		const why = await refusedKind(db, String(row.sale_kind_id));
+		if (why) return refuse({ sale_kind_id: why });
+	}
 
 	// Saved meanwhile: a field changed since to something other than this one
 	// is a choice for a person, not this save's to overwrite.
@@ -126,6 +132,8 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		const pg = pgError(e);
 		if (pg.constraint === 'material_sku_key')
 			return refuse({ sku: 'Another material has that SKU.' });
+		if (pg.constraint === 'material_sale_kind_id_fkey')
+			return refuse({ sale_kind_id: 'That kind of sale no longer exists.' });
 		if (pg.code === '23000' && /stays as it was/.test(pg.message ?? ''))
 			return refuse({
 				unit_id:

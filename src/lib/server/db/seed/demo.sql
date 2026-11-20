@@ -23,11 +23,6 @@ INSERT INTO operator (trading_name, short_name, singleton, timezone,
 VALUES ('Kestrel Field Services','KFS', true, 'America/Los_Angeles',
         28, 213, 'SR-ZZ-000-0000', 12);
 
--- It collects tax in California, on a seller's permit, files with CDTFA once a
--- year, and claims the tax it paid on goods it resold (Reg 1701).
-INSERT INTO tax_registration (state, held, agency, filing_basis, claims_tax_paid_purchases_resold)
-VALUES ('CA', 'Seller''s permit', 'CDTFA', 'annual', true);
-
 -- Avery owns it and works in it. Sam is employed, and Jordan is a contractor
 -- who takes some of the field work. One person in each of the three roles the
 -- schema starts every operator with. Avery has Full access, and Sam and
@@ -42,18 +37,44 @@ INSERT INTO "user" (id, name, email, active, role_id, access) VALUES
   ('d1496a1c-9d8d-42ac-bf41-d059ed2a634c','Jordan Pike','jordan@kestrel.example', true,
    (SELECT id FROM role WHERE name = 'Contractor'), 'field');
 
+-- It collects tax in California, on a seller's permit, files with CDTFA once a
+-- year, and claims the tax it paid on goods it resold (Reg 1701). Besides
+-- reckon's own kinds of sale -- goods, installation labour, repair labour and
+-- travel -- it sorts out two of its own that a state may treat apart: help
+-- desk, and consulting. California taxes the goods alone, as Avery said when
+-- the business registered. One save, since a state collected in answers every
+-- kind.
+BEGIN;
+INSERT INTO tax_registration (state, held, agency, filing_basis, claims_tax_paid_purchases_resold)
+VALUES ('CA', 'Seller''s permit', 'CDTFA', 'annual', true);
+INSERT INTO sale_kind (id, name) VALUES
+  ('019a0010-0000-7000-8000-000000000001', 'Help desk'),
+  ('019a0010-0000-7000-8000-000000000002', 'Consulting');
+INSERT INTO taxability (state, sale_kind_id, taxed, said_by, said_on)
+SELECT 'CA', id, code IS NOT DISTINCT FROM 'goods', 'c41b2fab-5b71-4954-bb86-1bc803daf7ee',
+       current_date - 200
+  FROM sale_kind;
+COMMIT;
+
 -- ------------------------------------------------------------ what it sells --
 
 -- Help desk went from $55 to $60 an hour last November; the older price stays
 -- on file for the history screen. Field service is $95, and $45 more for each
 -- extra pair of hands. A network assessment is a flat $180 a visit.
 -- Internal projects have no price: nobody is ever billed for them.
-INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds) VALUES
-  ('6d24f906-197c-48c6-9522-b33f242d1c53','travel','Travel','mile',NULL),
-  ('f13e8550-7aec-431c-86e5-856cb36910d7','helpdesk','Help desk','hour',60),
-  ('08cc4be7-1955-4be8-a90c-0b95e4f31a9c','assessment','Network assessment','each',NULL),
-  ('423bddde-4f8e-4e98-aabc-529a817a57a0','internal','Internal projects','hour',60),
-  ('2d15bc02-d08e-4242-860c-5d461bf2b1c2','field','Field service','hour',60);
+-- Each is a kind of sale: field service is repair labour, an assessment
+-- consulting, and internal projects, never billed, consulting too.
+INSERT INTO service (id, code, name, unit, bill_to_nearest_seconds, sale_kind_id) VALUES
+  ('6d24f906-197c-48c6-9522-b33f242d1c53','travel','Travel','mile',NULL,
+   (SELECT id FROM sale_kind WHERE code = 'travel')),
+  ('f13e8550-7aec-431c-86e5-856cb36910d7','helpdesk','Help desk','hour',60,
+   '019a0010-0000-7000-8000-000000000001'),
+  ('08cc4be7-1955-4be8-a90c-0b95e4f31a9c','assessment','Network assessment','each',NULL,
+   '019a0010-0000-7000-8000-000000000002'),
+  ('423bddde-4f8e-4e98-aabc-529a817a57a0','internal','Internal projects','hour',60,
+   '019a0010-0000-7000-8000-000000000002'),
+  ('2d15bc02-d08e-4242-860c-5d461bf2b1c2','field','Field service','hour',60,
+   (SELECT id FROM sale_kind WHERE code = 'repair'));
 
 INSERT INTO service_price (service_id, rate, additional_rate, effective_from) VALUES
   ('f13e8550-7aec-431c-86e5-856cb36910d7', 55.00,  0.00,'2025-01-01'),
@@ -89,10 +110,11 @@ SELECT r.service, (SELECT id FROM role WHERE name = r.role), r.pays_for::pays_fo
 -- Counted in the two units the migrations start the list with, and a box of
 -- the business's own.
 INSERT INTO unit (name, short, places) VALUES ('box of 25', 'box', 0);
-INSERT INTO material (id, sku, name, brand, unit_id, markup_pct, taxable) VALUES
-  ('427ec8a1-9038-4fca-9323-ca62625622a3','AP6-CE','Access point · Wi-Fi 6 · Ceiling','Ridgeline',(SELECT id FROM unit WHERE name = 'each'),18.0,true),
-  ('b144a78b-750a-4bd2-a84e-7d1551328565','RW-075','Raceway · Surface · 3/4 in','Ridgeline',(SELECT id FROM unit WHERE name = 'foot'),NULL,true),
-  ('cf86d35e-06ad-4d9d-b3e9-104390b24ea0','FL-LC-3M','Fibre patch lead · LC-LC · 3 m','Cordwell',(SELECT id FROM unit WHERE name = 'each'),30.0,true);
+-- Each is goods.
+INSERT INTO material (id, sku, name, brand, unit_id, markup_pct, sale_kind_id) VALUES
+  ('427ec8a1-9038-4fca-9323-ca62625622a3','AP6-CE','Access point · Wi-Fi 6 · Ceiling','Ridgeline',(SELECT id FROM unit WHERE name = 'each'),18.0,(SELECT id FROM sale_kind WHERE code = 'goods')),
+  ('b144a78b-750a-4bd2-a84e-7d1551328565','RW-075','Raceway · Surface · 3/4 in','Ridgeline',(SELECT id FROM unit WHERE name = 'foot'),NULL,(SELECT id FROM sale_kind WHERE code = 'goods')),
+  ('cf86d35e-06ad-4d9d-b3e9-104390b24ea0','FL-LC-3M','Fibre patch lead · LC-LC · 3 m','Cordwell',(SELECT id FROM unit WHERE name = 'each'),30.0,(SELECT id FROM sale_kind WHERE code = 'goods'));
 
 -- What was bought, as each receipt says it: six access points and 100 ft of
 -- raceway on one Delta Wholesale invoice three months ago, 757.00 before tax
@@ -388,30 +410,38 @@ INSERT INTO invoice (id, number, entity_id, status, created_by) VALUES
   ('5aee3c6d-15d5-4856-9b44-4357ea9b901a','INV-0209','b652b696-5037-4fe8-822c-9caed8f21c68','draft','c54bf38d-b83d-422f-af31-14a2a01aee5e'),
   ('6f444d02-b482-4506-98fe-ee23f45d26c5','INV-0212','426f8d3b-fc9a-4cf9-a82f-6caf96c90a8f','draft','c41b2fab-5b71-4954-bb86-1bc803daf7ee');
 
+-- Each sold as its service's kind, none of which California taxes.
 INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit, unit_price, amount,
-                          taxable, tax_rate_pct, trip_leg_id, time_entry_id) VALUES
-  ('ed02bc4d-1612-4a45-865a-2b5891620943',1,'service','Field service',1.25,'hour',95.00,118.75,false,0,NULL,NULL),
-  ('ed02bc4d-1612-4a45-865a-2b5891620943',2,'service','Travel',28.0,'mile',0.66,18.48,false,0,'5ba955e1-ee5a-438b-9d26-40c097f20716',NULL),
-  ('5aee3c6d-15d5-4856-9b44-4357ea9b901a',1,'service','Network assessment',1,'each',180.00,180.00,false,0,NULL,'7c9a60be-d9be-4472-b06c-415c6a235f35'),
-  ('6f444d02-b482-4506-98fe-ee23f45d26c5',1,'service','Field service',1.5,'hour',95.00,142.50,false,0,NULL,NULL),
-  ('6f444d02-b482-4506-98fe-ee23f45d26c5',2,'service','Travel',18.0,'mile',0.66,11.88,false,0,NULL,NULL);
+                          taxable, tax_rate_pct, trip_leg_id, time_entry_id, sale_kind_id) VALUES
+  ('ed02bc4d-1612-4a45-865a-2b5891620943',1,'service','Field service',1.25,'hour',95.00,118.75,false,0,NULL,NULL,
+   (SELECT id FROM sale_kind WHERE code = 'repair')),
+  ('ed02bc4d-1612-4a45-865a-2b5891620943',2,'service','Travel',28.0,'mile',0.66,18.48,false,0,'5ba955e1-ee5a-438b-9d26-40c097f20716',NULL,
+   (SELECT id FROM sale_kind WHERE code = 'travel')),
+  ('5aee3c6d-15d5-4856-9b44-4357ea9b901a',1,'service','Network assessment',1,'each',180.00,180.00,false,0,NULL,'7c9a60be-d9be-4472-b06c-415c6a235f35',
+   '019a0010-0000-7000-8000-000000000002'),
+  ('6f444d02-b482-4506-98fe-ee23f45d26c5',1,'service','Field service',1.5,'hour',95.00,142.50,false,0,NULL,NULL,
+   (SELECT id FROM sale_kind WHERE code = 'repair')),
+  ('6f444d02-b482-4506-98fe-ee23f45d26c5',2,'service','Travel',18.0,'mile',0.66,11.88,false,0,NULL,NULL,
+   (SELECT id FROM sale_kind WHERE code = 'travel'));
 
 -- Goods lines name the site whose rate taxes them, with where that rate is
 -- levied, in which state, and the pieces it is made of, and the material each is, with what it cost
--- before tax and the tax already paid on it, and who added it. What each took
--- off its lot is a draw, which takes it off the shelf.
+-- before tax and the tax already paid on it, and who added it, sold as goods.
+-- What each took off its lot is a draw, which takes it off the shelf.
 INSERT INTO invoice_line (id, invoice_id, seq, kind, description, qty, unit, unit_price, amount,
                           taxable, tax_rate_pct, tax_source, site_id, tax_jurisdiction,
                           tax_state, tax_pieces, material_id,
-                          ex_tax_cost, tax_paid, created_by) VALUES
+                          ex_tax_cost, tax_paid, created_by, sale_kind_id) VALUES
   ('a0ca5d14-192f-43eb-9652-48e6fe145e67','2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a',1,'material','Access point · Wi-Fi 6 · Ceiling',
    2,'each',132.16,264.32,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','AUBURN','CA',
    '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"}]',
-   '427ec8a1-9038-4fca-9323-ca62625622a3', 224.00, 16.24, 'c41b2fab-5b71-4954-bb86-1bc803daf7ee'),
+   '427ec8a1-9038-4fca-9323-ca62625622a3', 224.00, 16.24, 'c41b2fab-5b71-4954-bb86-1bc803daf7ee',
+   (SELECT id FROM sale_kind WHERE code = 'goods')),
   ('46c02ef2-14c7-4043-9321-34a0ecd99100','2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a',2,'material','Raceway · Surface · 3/4 in',
    40,'foot',1.06,42.40,true,7.2500,'site','0ab3a11c-d59e-4526-a132-402a4bc9d9ca','AUBURN','CA',
    '[{"level": "state", "jurisdiction": "CALIFORNIA", "rate": "7.2500"}]',
-   'b144a78b-750a-4bd2-a84e-7d1551328565', 34.00, 2.464, 'c41b2fab-5b71-4954-bb86-1bc803daf7ee');
+   'b144a78b-750a-4bd2-a84e-7d1551328565', 34.00, 2.464, 'c41b2fab-5b71-4954-bb86-1bc803daf7ee',
+   (SELECT id FROM sale_kind WHERE code = 'goods'));
 
 INSERT INTO stock_draw (invoice_line_id, material_lot_id, material_id, qty) VALUES
   ('a0ca5d14-192f-43eb-9652-48e6fe145e67','c0ac1e19-b1d7-4e4c-9805-95e66944db65','427ec8a1-9038-4fca-9323-ca62625622a3', 2),

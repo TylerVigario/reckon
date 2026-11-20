@@ -129,7 +129,7 @@
 <div class="pad">
 	<OfflineBanner asOf={data.as_of} {waiting} />
 	<UnderlineNav label="Catalogue" items={catalogueTabs('materials')} />
-	<StockOnPhone today={data.today} />
+	<StockOnPhone today={data.today} kinds={data.kinds} />
 
 	{#if data.open}
 		<div class="banner" role="status">

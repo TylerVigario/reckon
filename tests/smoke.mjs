@@ -136,6 +136,8 @@ const ROUTES = [
 	'/settings/invoicing',
 	'/settings/pricing',
 	'/settings/tax',
+	'/settings/tax/CA',
+	'/settings/tax/kinds/new',
 	'/settings/travel',
 	'/settings/vehicles',
 	'/settings/vehicles/new',

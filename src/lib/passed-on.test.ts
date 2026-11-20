@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { fromStock, passedOn, type FromStock, type Terms } from './passed-on.ts';
 
+// reckon's goods, and a kind of the business's own: California taxes goods alone.
+const GOODS = '019a0000-0000-7000-8000-00000000000a';
+const HELP_DESK = '019a0000-0000-7000-8000-00000000000b';
+
 const CA: Terms = {
 	purchaseMarkupPct: '0',
-	collects: true,
-	site: { collected: true, ratePct: '8.0000' },
+	taxes: { CA: [GOODS] },
+	goods: GOODS,
+	site: { state: 'CA', ratePct: '8.0000' },
 	places: 2
 };
 
@@ -16,6 +21,7 @@ describe('goods bought for a job, passed on', () => {
 			unit: 'each',
 			unitPrice: '33.3300',
 			amount: '33.33',
+			soldAs: GOODS,
 			taxable: true,
 			taxRatePct: '8.0000',
 			taxSource: 'site',
@@ -38,7 +44,7 @@ describe('goods bought for a job, passed on', () => {
 	it('untaxed, needing no site, where the business collects nowhere', () => {
 		const l = passedOn(
 			{ kind: 'bought', cost: '10.00', taxPaid: '0' },
-			{ ...CA, collects: false, site: null }
+			{ ...CA, taxes: {}, site: null }
 		);
 		expect([l.taxable, l.taxRatePct, l.taxSource, l.needsASite, l.needsPlacing]).toEqual([
 			false,
@@ -52,7 +58,7 @@ describe('goods bought for a job, passed on', () => {
 	it("untaxed at a site in a state the business doesn't collect in", () => {
 		const l = passedOn(
 			{ kind: 'bought', cost: '10.00', taxPaid: '0' },
-			{ ...CA, site: { collected: false, ratePct: null } }
+			{ ...CA, site: { state: 'NV', ratePct: null } }
 		);
 		expect([l.taxable, l.taxSource, l.needsASite, l.needsPlacing]).toEqual([
 			false,
@@ -71,20 +77,21 @@ describe('goods bought for a job, passed on', () => {
 	it('needs the site placed in an area, where the business collects in its state', () => {
 		const l = passedOn(
 			{ kind: 'bought', cost: '10.00', taxPaid: '0' },
-			{ ...CA, site: { collected: true, ratePct: null } }
+			{ ...CA, site: { state: 'CA', ratePct: null } }
 		);
 		expect([l.taxable, l.needsASite, l.needsPlacing]).toEqual([false, false, true]);
 	});
 });
 
 describe('a cost paid on the client’s behalf', () => {
-	it('at cost, never marked up, and untaxed under California’s rule', () => {
+	it('at cost, never marked up, and no sale, so taxed nowhere', () => {
 		const l = passedOn(
 			{ kind: 'paid_for', cost: '35.00', taxPaid: '0' },
-			{ ...CA, purchaseMarkupPct: '15' }
+			{ ...CA, purchaseMarkupPct: '15', taxes: { CA: [GOODS, HELP_DESK] } }
 		);
-		expect([l.amount, l.taxable, l.taxSource, l.needsASite]).toEqual([
+		expect([l.amount, l.soldAs, l.taxable, l.taxSource, l.needsASite]).toEqual([
 			'35.00',
+			null,
 			false,
 			'none',
 			false
@@ -100,7 +107,7 @@ describe('goods drawn from stock', () => {
 		taxPaid: '3.6456',
 		listed: null,
 		markupPct: '20',
-		taxable: true
+		kind: GOODS
 	};
 
 	it('at what a unit cost, marked up, and taxed at the site', () => {
@@ -124,9 +131,30 @@ describe('goods drawn from stock', () => {
 		expect([l.unitPrice, l.amount]).toEqual(['0.4500', '66.15']);
 	});
 
-	it('untaxed when it is not goods the business taxes, and needing no site', () => {
-		const l = fromStock({ ...cable, taxable: false }, { ...CA, site: null });
-		expect([l.taxable, l.needsASite]).toEqual([false, false]);
+	it('untaxed, needing no site, when no state collected in taxes its kind', () => {
+		const l = fromStock({ ...cable, kind: HELP_DESK }, { ...CA, site: null });
+		expect([l.soldAs, l.taxable, l.needsASite]).toEqual([HELP_DESK, false, false]);
+	});
+
+	it('taxed by its own state’s answer, not another’s', () => {
+		const taxes = { CA: [GOODS], NV: [GOODS, HELP_DESK] };
+		const at = (state: string) =>
+			fromStock(
+				{ ...cable, kind: HELP_DESK },
+				{ ...CA, taxes, site: { state, ratePct: '8.2650' } }
+			);
+		expect([at('CA').taxable, at('NV').taxable, at('NV').taxRatePct]).toEqual([
+			false,
+			true,
+			'8.2650'
+		]);
+	});
+
+	it('needs a site where any state collected in taxes its kind', () => {
+		const taxes = { CA: [GOODS], NV: [GOODS, HELP_DESK] };
+		expect(fromStock({ ...cable, kind: HELP_DESK }, { ...CA, taxes, site: null }).needsASite).toBe(
+			true
+		);
 	});
 
 	it('needs a site, for its rate, where it is taxed', () => {

@@ -230,6 +230,13 @@ try {
 	places.set('5 Sync St', { tac: 'TSYNC1', jurisdiction: 'SYNCVILLE', rate: 0.08 });
 
 	console.log('17 November: before the business collects in California');
+	// What California taxes, kind by kind, as the database had it, to be put back
+	// as it was: a state collected in answers every kind (#lib/server/sale-kinds).
+	const answers = await db
+		.selectFrom('taxability')
+		.select(['sale_kind_id', 'taxed', 'said_by', 'said_on'])
+		.where('state', '=', 'CA')
+		.execute();
 	if (hadCalifornia) await db.deleteFrom('tax_registration').where('state', '=', 'CA').execute();
 	const none = await syncTax(db, '2026-11-17', { fetcher });
 	expect(
@@ -237,7 +244,26 @@ try {
 		`nothing is asked (${JSON.stringify(none)})`
 	);
 	expect((await area('TSYNC1'))?.confirmed_on === '2026-04-01', 'and nothing is confirmed');
-	await db.insertInto('tax_registration').values({ state: 'CA' }).execute();
+	await db.transaction().execute(async (tx) => {
+		await tx.insertInto('tax_registration').values({ state: 'CA' }).execute();
+		const kinds = await tx.selectFrom('sale_kind').select(['id', 'code']).execute();
+		await tx
+			.insertInto('taxability')
+			.values(
+				kinds
+					.map(
+						(k) =>
+							answers.find((a) => a.sale_kind_id === k.id) ?? {
+								sale_kind_id: k.id,
+								taxed: k.code === 'goods',
+								said_by: null,
+								said_on: null
+							}
+					)
+					.map((a) => ({ state: 'CA', ...a }))
+			)
+			.execute();
+	});
 
 	console.log('18 November: the first pass');
 	const dry = await syncTax(db, '2026-11-18', { dry: true, fetcher });

@@ -1,26 +1,19 @@
 import { Decimal, Ratio } from './decimal.ts';
 
 /**
- * WHAT IS TAXED of what is passed on to a client: goods, bought for the job or
- * drawn from stock, and not a cost paid on the client's behalf -- a permit, a
- * hire, another firm's bill -- which is not a sale of goods. California's rule
- * (Regulation 1700 taxes the sale of tangible personal property), and so far
- * every state's: which kinds of sale a state taxes is #196's.
- */
-export const TAXES = { goods: true, paidFor: false } as const;
-
-/**
  * A line for what was passed on to a client: goods bought for the job, or a
  * cost paid on their behalf. One of it, at what it comes to. Goods drawn from
  * stock are below (fromStock).
  *
  *   bought    the cost before tax, marked up by the operator's markup on job
- *             purchases (none unless it is set), and taxed at the site's rate
- *             where the business collects in the site's state. What it cost and
- *             the tax paid on it go on the line, so the tax already paid comes
- *             off California's return where the operator claims it (Reg 1701).
- *   paid_for  the cost, as it was paid: not goods, so not marked up, and taxed
- *             only where such a cost is (TAXES).
+ *             purchases (none unless it is set), and sold as goods: taxed at
+ *             the site's rate where the site's state taxes goods. What it cost
+ *             and the tax paid on it go on the line, so the tax already paid
+ *             comes off California's return where the operator claims it
+ *             (Reg 1701).
+ *   paid_for  the cost, as it was paid: not goods, so not marked up, and no
+ *             sale -- a permit, a hire, another firm's bill, paid on the
+ *             client's behalf -- so no kind of sale, and taxed nowhere.
  *
  * The price is a price for one of something, to four places; the amount is to
  * the currency's `places`. Shared, so the page can say what a line will bill as
@@ -36,18 +29,26 @@ export type PassedOn = {
 
 export type Terms = {
 	purchaseMarkupPct: string;
-	/** Whether the business collects tax in any state. */
-	collects: boolean;
+	/**
+	 * Each state the business collects in, and the kinds of sale it taxes
+	 * there (#lib/server/sale-kinds): none, where it collects nowhere.
+	 */
+	taxes: Taxes;
+	/** reckon's goods, which goods bought for a job are sold as. */
+	goods: string;
 	/** The site the line names, or null where it names none. */
 	site: SiteTax | null;
 	places: number;
 };
 
+/** Each state the business collects in, and the kinds of sale it taxes there. */
+export type Taxes = Record<string, readonly string[]>;
+
 /**
- * A site's tax: whether the business collects in its state, and its area's
- * rate where it does and the site has been placed in one there.
+ * A site's tax: its state, and its area's rate where the business collects
+ * there and the site has been placed in one.
  */
-export type SiteTax = { collected: boolean; ratePct: string | null };
+export type SiteTax = { state: string; ratePct: string | null };
 
 export function passedOn(line: PassedOn, terms: Terms) {
 	const bought = line.kind === 'bought';
@@ -59,7 +60,7 @@ export function passedOn(line: PassedOn, terms: Terms) {
 		unit: 'each',
 		unitPrice: price.round(4).toString(),
 		amount: price.round(terms.places).toString(),
-		...taxedAt(bought ? TAXES.goods : TAXES.paidFor, terms),
+		...taxedAt(bought ? terms.goods : null, terms),
 		exTaxCost: Decimal.from(line.cost).toString(),
 		taxPaid: Decimal.from(line.taxPaid).toString()
 	};
@@ -69,9 +70,9 @@ export function passedOn(line: PassedOn, terms: Terms) {
  * Goods drawn from stock: how much, in the material's unit, and what the draw
  * cost before tax and in tax (#lib/stock-draw). Sold at the price listed for
  * the material where there is one, and otherwise at what a unit cost marked up
- * by the material's markup, or the business's default. Taxed as goods, at the
- * site's rate where the business collects in its state, unless the material is
- * one the business does not tax.
+ * by the material's markup, or the business's default. Sold as the kind of
+ * sale the material is, and taxed at the site's rate where the site's state
+ * taxes that kind.
  */
 export type FromStock = {
 	qty: string;
@@ -82,11 +83,11 @@ export type FromStock = {
 	/** The price listed for one, today, or null to mark the cost up. */
 	listed: string | null;
 	markupPct: string;
-	/** Whether the material is goods the business taxes. */
-	taxable: boolean;
+	/** The kind of sale the material is. */
+	kind: string;
 };
 
-export function fromStock(line: FromStock, terms: Omit<Terms, 'purchaseMarkupPct'>) {
+export function fromStock(line: FromStock, terms: Omit<Terms, 'purchaseMarkupPct' | 'goods'>) {
 	const unitPrice =
 		line.listed !== null
 			? Decimal.from(line.listed).round(4)
@@ -96,28 +97,31 @@ export function fromStock(line: FromStock, terms: Omit<Terms, 'purchaseMarkupPct
 		unit: line.unit,
 		unitPrice: unitPrice.toString(),
 		amount: unitPrice.mul(line.qty).round(terms.places).toString(),
-		...taxedAt(line.taxable && TAXES.goods, terms),
+		...taxedAt(line.kind, terms),
 		exTaxCost: Decimal.from(line.cost).toString(),
 		taxPaid: Decimal.from(line.taxPaid).toString()
 	};
 }
 
 /**
- * The site's rate, where what the line is is taxed and the business collects
- * in the site's state; and what is missing to know it: the site, where the
- * business collects anywhere and the line names none, or the site's area,
- * where it collects in the site's state and the site has not been placed.
+ * The site's rate, where the site's state taxes the kind of sale the line is
+ * (`kind`, null for what is no sale); and what is missing to know it: the
+ * site, where some state the business collects in taxes the kind and the line
+ * names none, or the site's area, where its state taxes the kind and the site
+ * has not been placed there.
  */
-function taxedAt(taxed: boolean, terms: Pick<Terms, 'collects' | 'site'>) {
-	const due = taxed && terms.collects;
-	const there = due && terms.site !== null && terms.site.collected;
+function taxedAt(kind: string | null, terms: Pick<Terms, 'taxes' | 'site'>) {
+	const due = kind !== null && Object.values(terms.taxes).some((kinds) => kinds.includes(kind));
+	const there = due && terms.site !== null && (terms.taxes[terms.site.state] ?? []).includes(kind);
 	const rate = there && terms.site!.ratePct !== null ? Decimal.from(terms.site!.ratePct) : null;
 	const charged = rate !== null && !rate.isZero();
 	return {
+		/** The kind of sale it was sold as, which the line keeps. */
+		soldAs: kind,
 		taxable: charged,
 		taxRatePct: charged ? rate.toString() : '0',
 		taxSource: charged ? ('site' as const) : ('none' as const),
-		/** Taxed where the business collects, and the line names no site. */
+		/** Taxed somewhere the business collects, and the line names no site. */
 		needsASite: due && terms.site === null,
 		/** Taxed in the site's state, and the site is in no area there yet. */
 		needsPlacing: there && rate === null

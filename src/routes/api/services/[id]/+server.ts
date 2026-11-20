@@ -4,6 +4,7 @@ import type { Service } from '#lib/server/db/database.ts';
 import { refuse, refuseIfTheDatabaseSaidSo, stillReferenced } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { parseServiceField } from '#lib/service-fields.ts';
+import { refusedKind } from '#lib/server/sale-kinds.ts';
 import type { RequestHandler } from './$types';
 import { problem } from '#lib/server/problem.ts';
 import { readFields } from '#lib/json.ts';
@@ -53,10 +54,15 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 
 	const service = await db
 		.selectFrom('service')
-		.select(['unit', 'bill_to_nearest_seconds'])
+		.select(['unit', 'bill_to_nearest_seconds', 'sale_kind_id'])
 		.where('id', '=', params.id)
 		.executeTakeFirst();
 	if (!service) return problem('notFound', 404, 'No service with that id.');
+	// Into a kind of sale that is offered, unless it is that kind already.
+	if ('sale_kind_id' in row && row.sale_kind_id !== service.sale_kind_id) {
+		const why = await refusedKind(db, String(row.sale_kind_id));
+		if (why) return refuse({ sale_kind_id: why });
+	}
 
 	const unit = 'unit' in row ? String(row.unit) : service.unit;
 	if (row.bill_to_nearest_seconds != null && unit !== 'hour')
