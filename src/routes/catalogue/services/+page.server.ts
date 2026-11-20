@@ -2,6 +2,7 @@ import { businessToday, personalToday } from '#lib/server/calendar.ts';
 import { db } from '#lib/server/db/index.ts';
 import { anHourNow } from '#lib/server/reports.ts';
 import { prices, rules } from '#lib/server/catalogue.ts';
+import { kindChoices } from '#lib/server/sale-kinds.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -55,6 +56,8 @@ export const load: PageServerLoad = async () => {
 	return {
 		// The day a count to take refused figures is started on (#lib/StockOnPhone).
 		today: personalToday(),
+		// What a change waiting on this phone made a material, by name (#lib/StockOnPhone).
+		kinds: await kindChoices(db),
 		services: services.map((s) => ({
 			...s,
 			// What is in force or about to be. What was is on the service's own

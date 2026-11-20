@@ -20,7 +20,8 @@ export type Stocked = {
 	places: number;
 	markup: string;
 	listed: string | null;
-	taxable: boolean;
+	/** The kind of sale it is (#lib/server/sale-kinds). */
+	kind: string;
 	shelf: Shelf;
 };
 
@@ -46,11 +47,12 @@ const plus = (
 /**
  * What Add a line offers, with every receipt waiting on this phone on the
  * shelf: in the order received, and something new after what the catalogue
- * has, by name.
+ * has, by name -- goods (`goods`, reckon's), as the server makes it.
  */
 export function withReceived(
 	stock: readonly Stocked[],
-	receipts: readonly ShownReceipt[]
+	receipts: readonly ShownReceipt[],
+	goods: string
 ): Stocked[] {
 	const out = new Map(stock.map((m) => [m.id, m]));
 	receipts.forEach((r, i) =>
@@ -72,7 +74,7 @@ export function withReceived(
 							places: item.places,
 							markup: item.markup,
 							listed: null,
-							taxable: true,
+							kind: goods,
 							shelf: plus({ lots: [], exTaxWorth: '0', taxWorth: '0' }, lot)
 						}
 			);
@@ -83,7 +85,7 @@ export function withReceived(
 
 /**
  * What Add a line offers, with each change to a material still on this phone
- * made to it: its name, SKU and whether it is taxed as changed, what it sells
+ * made to it: its name, SKU and kind of sale as changed, what it sells
  * at as repriced -- a set price, its own markup, or the business's
  * (`stockMarkup`) -- and none retired. A line is priced again when it arrives.
  */
@@ -106,7 +108,7 @@ export function withChanged(
 					...m,
 					name: f.name || m.name,
 					sku: f.sku === undefined ? m.sku : f.sku || null,
-					taxable: f.taxable === undefined ? m.taxable : f.taxable === 'true',
+					kind: f.sale_kind_id || m.kind,
 					...(p
 						? p.by === 'price'
 							? { listed: p.price }

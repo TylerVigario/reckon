@@ -1,7 +1,7 @@
 import { error, redirect } from '@sveltejs/kit';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { collectsIn, siteRate } from '#lib/server/tax-registrations.ts';
+import { siteRate } from '#lib/server/tax-registrations.ts';
 import { formTerms } from '#lib/server/lines.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
@@ -44,10 +44,9 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 			.select((eb) => [
 				'id',
 				'display as label',
-				// Whether the business collects in its state, and its area's rate
-				// today where it does and the site has been placed
-				// (#lib/server/tax-registrations).
-				collectsIn(eb.ref('site.region')).as('collected'),
+				// Its state, and its area's rate today where the business collects
+				// there and the site has been placed (#lib/server/tax-registrations).
+				'region as state',
 				siteRate(
 					{ region: eb.ref('site.region'), area: eb.ref('site.tax_area_id') },
 					businessToday()

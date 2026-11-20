@@ -9,6 +9,7 @@
 	import { AUTHORITY, COLLECTABLE, stateName, typesAreas, type State } from '#lib/us-states.ts';
 	import { AGENCY } from '#lib/state-agencies.ts';
 	import { readProblem } from '#lib/json.ts';
+	import { names } from '#lib/format.ts';
 	import { busy } from '#lib/busy.svelte.ts';
 	import type { PageProps } from './$types';
 
@@ -16,9 +17,11 @@
 	 * WHERE THE BUSINESS COLLECTS TAX: each state it is registered in, as a box
 	 * of its own -- what it holds and from whom, how often it files, and in
 	 * California the Reg 1701 election -- each changed in place (#lib/Detail),
-	 * and, where a person types its areas, a way to them. Then the year a
-	 * return is cut to, which is the business's own. The rate is no setting: a
-	 * site's is its area's, and the note under them says so.
+	 * and a way to what it taxes and, where a person types its areas, to them.
+	 * Collecting in another state answers, for each kind of sale, whether it
+	 * taxes it. Then the business's kinds of sale, and the year a return is cut
+	 * to, which is the business's own. The rate is no setting: a site's is its
+	 * area's, and the note under them says so.
 	 */
 	let { data }: PageProps = $props();
 	const o = $derived(data.operator);
@@ -47,18 +50,58 @@
 	let working = $state<string | null>(null);
 	let why = $state('');
 
+	// Whether the state taxes each kind, said as it is collected in: none assumed.
+	let answers = $state<Record<string, string>>({});
+	let wrong = $state<Record<string, string>>({});
 	async function collect() {
 		if (!adding) return;
+		wrong = Object.fromEntries(
+			data.kinds
+				.filter((k) => !answers[k.id])
+				.map((k) => [`taxed.${k.id}`, `Whether ${stateName(adding)} taxes it.`])
+		);
+		if (Object.keys(wrong).length) return;
 		working = adding;
 		why = '';
-		const r = await fetch(`/api/settings/tax/${adding}`, { method: 'PUT' }).catch(() => null);
+		const r = await fetch(`/api/settings/tax/${adding}`, {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ taxed: answers })
+		}).catch(() => null);
 		working = null;
 		if (!r?.ok) {
-			why = r ? ((await readProblem(r))?.detail ?? 'Not saved.') : 'Not saved — no connection.';
+			const p = r ? await readProblem(r) : null;
+			wrong = p?.errors ?? {};
+			why = Object.keys(wrong).length
+				? ''
+				: r
+					? (p?.detail ?? 'Not saved.')
+					: 'Not saved — no connection.';
 			return;
 		}
+		answers = {};
 		await refreshAll();
 	}
+
+	/** The kinds a state taxes, as its row says them. */
+	const taxedIn = (state: string) =>
+		names(data.kinds.filter((k) => k.taxed_in.includes(state)).map((k) => k.name)) ||
+		'None of its kinds of sale';
+	/** Where a kind is taxed, of the states the business collects in. */
+	const taxedWhere = (taxedIn: string[]) =>
+		!data.registrations.length
+			? 'Collected nowhere yet'
+			: taxedIn.length
+				? `Taxed in ${names(taxedIn.map(stateName))}`
+				: 'Not taxed where the business collects';
+	/** What is sold as a kind: its materials and services. */
+	const soldAs = (k: { materials: number; services: number }) =>
+		[
+			k.materials ? `${k.materials} ${k.materials === 1 ? 'material' : 'materials'}` : '',
+			k.services ? `${k.services} ${k.services === 1 ? 'service' : 'services'}` : ''
+		]
+			.filter(Boolean)
+			.join(' · ') || 'Nothing is this kind yet';
 
 	// Stopping is said before it is done: a second tap stops it.
 	let stopping = $state<string | null>(null);
@@ -158,6 +201,13 @@
 					{#snippet caption()}An election, so it is recorded rather than worked out.{/snippet}
 				</Detail>
 			{/if}
+			<a class="box-row kv" href={resolve('/settings/tax/[state]', { state: r.state })}>
+				<span class="kv-l">What it taxes</span>
+				<span class="kv-v">
+					<span>{taxedIn(r.state)}</span>
+					<span class="kv-s">Each kind of sale, as {stateName(r.state)} answers it</span>
+				</span>
+			</a>
 			{#if typesAreas(r.state)}
 				<a class="box-row kv" href={resolve('/settings/tax/[state]', { state: r.state })}>
 					<span class="kv-l">Tax areas</span>
@@ -199,10 +249,37 @@
 					}}
 				>
 					<label class="fc-l" for="collect-in">State</label>
-					<div class="pick">
-						<select id="collect-in" class="ti" bind:value={adding}>
-							{#each open as s (s)}<option value={s}>{stateName(s)}</option>{/each}
-						</select>
+					<select id="collect-in" class="ti" bind:value={adding}>
+						{#each open as s (s)}<option value={s}>{stateName(s)}</option>{/each}
+					</select>
+					<fieldset class="answers">
+						<legend class="fc-l">What {adding ? stateName(adding) : 'it'} taxes</legend>
+						<p class="fc-c">
+							Each kind of sale, from its own rules. Nothing is assumed: none is taxed or untaxed
+							until it is said.
+						</p>
+						{#each data.kinds as k (k.id)}
+							{@const e = wrong[`taxed.${k.id}`]}
+							<div class="answer">
+								<label class="fc-l" for="ans-{k.id}"
+									>{k.name}{#if !k.active}<span class="kv-s"> · retired</span>{/if}</label
+								>
+								<select
+									id="ans-{k.id}"
+									class="ti"
+									bind:value={answers[k.id]}
+									aria-invalid={e ? 'true' : undefined}
+									aria-describedby={e ? `ans-${k.id}-e` : undefined}
+								>
+									<option value="" disabled selected>Choose</option>
+									<option value="true">Taxed</option>
+									<option value="false">Not taxed</option>
+								</select>
+								{#if e}<p class="fc-e" id="ans-{k.id}-e"><Octicon name="alert" />{e}</p>{/if}
+							</div>
+						{/each}
+					</fieldset>
+					<div>
 						<button
 							type="submit"
 							class="btn"
@@ -215,6 +292,22 @@
 		</section>
 	{/if}
 	{#if why}<p class="fc-e" role="alert"><Octicon name="alert" />{why}</p>{/if}
+
+	<section class="box" aria-labelledby="kinds-h">
+		<div class="box-h">
+			<h2 class="box-t" id="kinds-h">Kinds of sale</h2>
+			<a class="btn sm" href={resolve('/settings/tax/kinds/new')}>New kind</a>
+		</div>
+		{#each data.kinds as k (k.id)}
+			<a class="box-row kind" href={resolve('/settings/tax/kinds/[kind]', { kind: k.id })}>
+				<span class="what">
+					<span class="n">{k.name}</span>
+					<span class="sub">{taxedWhere(k.taxed_in)} · {soldAs(k)}</span>
+				</span>
+				{#if !k.active}<span class="lab">Retired</span>{/if}
+			</a>
+		{/each}
+	</section>
 
 	<section class="box" aria-labelledby="year-h">
 		<div class="box-h"><h2 class="box-t" id="year-h">Filing year</h2></div>
@@ -232,6 +325,10 @@
 		/>
 	</section>
 
+	<p class="note">
+		Every material and service is one kind of sale, and whether a line is taxed is its kind’s answer
+		in its site’s state. A line already on a draft keeps its tax until it is changed.
+	</p>
 	{#if data.registrations.some((r) => r.state === 'CA')}
 		<p class="note">
 			No rate is set here. Every California site’s rate is what CDTFA says for its address, asked as
@@ -258,14 +355,50 @@
 		gap: 6px;
 		margin: 0;
 	}
-	.pick {
+	.answers {
 		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
+		flex-direction: column;
+		gap: 10px;
+		margin: 6px 0 0;
+		padding: 0;
+		border: 0;
+		min-width: 0;
 	}
-	.pick select {
+	.answers .fc-c {
+		margin: 0;
+	}
+	.answer {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.kind {
+		display: flex;
+		align-items: center;
+		gap: 8px 12px;
+		color: inherit;
+		text-decoration: none;
+	}
+	.what {
 		flex: 1 1 12rem;
 		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.n {
+		font-weight: 600;
+	}
+	a.kind:hover .n {
+		color: var(--fgColor-accent);
+		text-decoration: underline;
+	}
+	.sub {
+		font-size: 12px;
+		color: var(--fgColor-muted);
+	}
+	.lab {
+		flex: 0 0 auto;
 	}
 	/* A detail that opens a page of its own: laid out as the details above it. */
 	a.kv {

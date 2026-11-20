@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { readNewService } from './service-fields.ts';
 
+// The kind of sale it is (#lib/server/sale-kinds).
+const REPAIR = '019a0000-0000-7000-8000-00000000000c';
+
 describe('a new service', () => {
 	it('is a name and what it is charged per, with no price yet', () => {
 		const { values, errors } = readNewService({
 			name: 'Cable pulling',
 			unit: 'hour',
+			sale_kind_id: REPAIR,
 			rate: '',
 			additional_rate: ''
 		});
@@ -17,6 +21,7 @@ describe('a new service', () => {
 		const { values, errors } = readNewService({
 			name: 'Cable pulling',
 			unit: 'hour',
+			sale_kind_id: REPAIR,
 			rate: '80',
 			additional_rate: '50'
 		});
@@ -24,10 +29,22 @@ describe('a new service', () => {
 		expect([values.rate, values.additional_rate]).toEqual(['80', '50']);
 	});
 
+	it('is one kind of sale', () => {
+		expect(
+			readNewService({ name: 'Cable pulling', unit: 'hour', rate: '', additional_rate: '' }).errors
+				.sale_kind_id
+		).toBe('What kind of sale it is.');
+	});
+
 	it('does not price each one after with no first', () => {
 		expect(
-			readNewService({ name: 'Cable pulling', unit: 'hour', rate: '', additional_rate: '50' })
-				.errors.rate
+			readNewService({
+				name: 'Cable pulling',
+				unit: 'hour',
+				sale_kind_id: REPAIR,
+				rate: '',
+				additional_rate: '50'
+			}).errors.rate
 		).toBeTruthy();
 	});
 });

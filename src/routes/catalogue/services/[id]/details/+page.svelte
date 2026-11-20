@@ -10,7 +10,7 @@
 	/**
 	 * A service's Details tab: what it is, each changed in place (#lib/Detail)
 	 * -- its name, what it is charged per, what an hour is billed to, its least
-	 * charge, whether it is on the timer, whether it is taxed.
+	 * charge, whether it is on the timer, what kind of sale it is.
 	 */
 	let { data }: PageProps = $props();
 	const s = $derived(data.service);
@@ -20,6 +20,12 @@
 		{ value: 'true', label: 'Yes' },
 		{ value: 'false', label: 'No' }
 	];
+	// The kinds it could be: those offered, and the one it is, retired or not.
+	const kinds = $derived(
+		data.kinds
+			.filter((k) => k.active || k.id === s.sale_kind_id)
+			.map((k) => ({ value: k.id, label: k.active ? k.name : `${k.name} (retired)` }))
+	);
 	const STEPS = [
 		{ value: '', label: 'The exact time' },
 		{ value: '1', label: 'The second' },
@@ -101,10 +107,12 @@
 		onsaved={() => refreshAll()}
 	/>
 	<Detail
-		name="taxable"
-		label="Taxable"
-		value={String(s.taxable)}
-		options={YES_NO}
+		name="sale_kind_id"
+		label="Kind of sale"
+		value={s.sale_kind_id}
+		shown={data.kinds.find((k) => k.id === s.sale_kind_id)?.name ?? 'A kind since removed'}
+		hint="Each state the business collects in says whether it taxes this kind."
+		options={kinds}
 		{endpoint}
 		validate={parseServiceField}
 		onsaved={() => refreshAll()}

@@ -2,6 +2,7 @@ import { db } from '#lib/server/db/index.ts';
 import { personalToday } from '#lib/server/calendar.ts';
 import { materialFigures } from '#lib/server/stock.ts';
 import { isOfflineCopy } from '#lib/offline-copy.ts';
+import { kindChoices } from '#lib/server/sale-kinds.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -61,6 +62,8 @@ export const load: PageServerLoad = async ({ url }) => {
 	return {
 		as_of: new Date().toISOString(),
 		today: personalToday(),
+		// What a change waiting on this phone made it, by name (#lib/StockOnPhone).
+		kinds: await kindChoices(db),
 		open: open ?? null,
 		lastCounted: last?.counted_on ?? null,
 		materials: materials.map((m) => {

@@ -1472,7 +1472,14 @@ export async function stockHeld(): Promise<{
  */
 export type ServiceEntry = {
 	client_uuid: string;
-	fields: { name: string; unit: string; rate: string; additional_rate: string };
+	fields: {
+		name: string;
+		unit: string;
+		/** The kind of sale it is (#lib/server/sale-kinds). */
+		sale_kind_id: string;
+		rate: string;
+		additional_rate: string;
+	};
 	/** The day it was added on this phone, from which its price runs. */
 	from: string;
 	made_at?: string;

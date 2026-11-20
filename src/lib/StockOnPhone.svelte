@@ -44,9 +44,12 @@
 	let {
 		material,
 		today,
+		kinds,
 		onfix
 	}: {
 		material?: string;
+		/** The kinds of sale a material can be, by the business's word for each. */
+		kinds: { id: string; name: string }[];
 		/** The day a count started to take refused figures is counted on. */
 		today: string;
 		/** Fix, for an adjustment on this material's screen: opens Adjust with it. */
@@ -114,16 +117,18 @@
 		brand: 'Brand',
 		sku: 'SKU',
 		unit_id: 'Counted in',
-		taxable: 'Taxed',
+		sale_kind_id: 'Kind of sale',
 		active: 'Offered'
 	};
-	/** A value as a person reads it. */
-	const said = (v: unknown) =>
+	/** A value as a person reads it: a kind of sale by its name. */
+	const said = (field: string, v: unknown) =>
 		v === null || v === undefined || v === ''
 			? 'nothing'
-			: typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
-				? `“${String(v)}”`
-				: 'another price';
+			: field === 'sale_kind_id'
+				? (kinds.find((k) => k.id === v)?.name ?? 'a kind since removed')
+				: typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+					? `“${String(v)}”`
+					: 'another price';
 
 	let confirming = $state<string | null>(null);
 	async function letGo(key: string, go: () => Promise<void>) {
@@ -265,8 +270,9 @@
 					<span class="n">{changeWords(q)} of {q.change.shown.name}</span>
 					{#if c}
 						<span class="sub"
-							>Yours: {q.change.kind === 'price' ? 'another price' : said(q.change.fields[c.field])} ·
-							theirs: {said(c.theirs)}</span
+							>Yours: {q.change.kind === 'price'
+								? 'another price'
+								: said(c.field, q.change.fields[c.field])} · theirs: {said(c.field, c.theirs)}</span
 						>
 					{/if}
 					<span class="why"

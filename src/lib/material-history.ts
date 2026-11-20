@@ -31,6 +31,8 @@ export const DETAILS = {
 	brand: 'Brand',
 	sku: 'SKU',
 	unit_id: 'Counted in',
+	sale_kind_id: 'Kind of sale',
+	// Whether it was taxed, which a material said before it was a kind of sale.
 	taxable: 'Taxed'
 } as const;
 export type Detail = keyof typeof DETAILS;

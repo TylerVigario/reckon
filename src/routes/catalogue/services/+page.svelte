@@ -89,7 +89,7 @@
 
 <div class="pad">
 	<UnderlineNav label="Catalogue" items={catalogueTabs('services')} />
-	<StockOnPhone today={data.today} />
+	<StockOnPhone today={data.today} kinds={data.kinds} />
 
 	{#each [{ key: 'offered', head: 'Offered', list: offered }, { key: 'retired', head: 'Retired', list: retired }] as group (group.key)}
 		{#if group.list.length || group.key === 'offered'}

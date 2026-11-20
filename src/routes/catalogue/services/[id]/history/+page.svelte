@@ -31,6 +31,7 @@
 		if (v === null || v === '') return 'nothing';
 		if (field === 'unit') return UNIT_WORDS[v] ?? v;
 		if (field === 'minimum_charge') return money(v);
+		if (field === 'sale_kind_id') return data.kinds[v] ?? 'a kind since removed';
 		if (field === 'time_tracked' || field === 'taxable') return v === 'true' ? 'Yes' : 'No';
 		return `“${v}”`;
 	}

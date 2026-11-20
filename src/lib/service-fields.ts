@@ -44,12 +44,15 @@ export const PAYS_FOR = everyWord<PaysFor>()(['time', 'covered_time', 'vehicle']
 export const METHODS = everyWord<PayRuleMethod>()(['per_hour', 'percent', 'fixed', 'nothing']);
 
 const name = required('A service needs a name.', cap(80));
+// What kind of sale it is, which each state the business collects in answers
+// (#lib/server/sale-kinds).
+const kind = required('What kind of sale it is.', anId);
 
 export const SERVICE_FIELDS = {
 	name,
 	unit: oneOf(UNITS),
 	time_tracked: flag,
-	taxable: flag,
+	sale_kind_id: kind,
 	// Empty bills the exact time. Only for a service charged by the hour: the
 	// endpoint refuses it on anything else, as service_increment_is_for_time does.
 	bill_to_nearest_seconds: optional(whole(1)),
@@ -64,8 +67,11 @@ export function parseServiceField(field: string, raw: string): Parsed {
 	return parseIn(SERVICE_FIELDS, field, raw);
 }
 
-/** What a new service needs before it can exist: a name, and what it is charged per. */
-export const NEW_SERVICE_FIELDS = { name, unit: oneOf(UNITS) };
+/**
+ * What a new service needs before it can exist: a name, what it is charged
+ * per, and what kind of sale it is.
+ */
+export const NEW_SERVICE_FIELDS = { name, unit: oneOf(UNITS), sale_kind_id: kind };
 
 /**
  * What a new service charges every client, said as it is added: what a phone

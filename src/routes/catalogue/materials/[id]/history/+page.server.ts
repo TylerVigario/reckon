@@ -1,6 +1,7 @@
 import { db } from '#lib/server/db/index.ts';
 import { UUID } from '#lib/field-rules.ts';
 import type { MaterialHistoryRow } from '#lib/material-history.ts';
+import { kindChoices } from '#lib/server/sale-kinds.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -87,6 +88,8 @@ export const load: PageServerLoad = async ({ params }) => {
 			effective_from: fromOf.get(r.row) ?? null
 		})),
 		people: Object.fromEntries(named.map((p) => [p.id, p.name])),
-		units: Object.fromEntries(counted.map((u) => [u.id, u.name]))
+		units: Object.fromEntries(counted.map((u) => [u.id, u.name])),
+		// What it was sold as, by the business's word for each kind.
+		kinds: Object.fromEntries((await kindChoices(db)).map((k) => [k.id, k.name]))
 	};
 };

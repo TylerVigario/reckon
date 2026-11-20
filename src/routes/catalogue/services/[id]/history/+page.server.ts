@@ -2,6 +2,7 @@ import { db } from '#lib/server/db/index.ts';
 import { prices, rules } from '#lib/server/catalogue.ts';
 import { UUID } from '#lib/field-rules.ts';
 import type { ServiceHistoryRow } from '#lib/service-history.ts';
+import { kindChoices } from '#lib/server/sale-kinds.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -40,6 +41,8 @@ export const load: PageServerLoad = async ({ params }) => {
 			changed_at: r.changed_at.toISOString(),
 			xact: r.xact === null ? null : Number(r.xact)
 		})),
-		people: Object.fromEntries(named.map((p) => [p.id, p.name]))
+		people: Object.fromEntries(named.map((p) => [p.id, p.name])),
+		// What it was sold as, by the business's word for each kind.
+		kinds: Object.fromEntries((await kindChoices(db)).map((k) => [k.id, k.name]))
 	};
 };

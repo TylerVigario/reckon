@@ -7,6 +7,7 @@ import { readReceipt } from '#lib/stock-fields.ts';
 import { splitTax } from '#lib/receipt-split.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { isReceiptType, MAX_RECEIPT } from './receipt-file.ts';
+import { reckonsKind } from './sale-kinds.ts';
 
 /** Each foreign key a receipt can break, and what it means to the person fixing it. */
 const GONE: Record<string, [field: string, why: string]> = {
@@ -150,6 +151,8 @@ export async function receive(
 					})
 					.returning('id')
 					.executeTakeFirstOrThrow();
+				// Something new received is goods, until somebody says otherwise.
+				const goods = await reckonsKind(tx, 'goods');
 				for (const [n, item] of read.entries()) {
 					let materialId = item.material_id;
 					if (item.material) {
@@ -158,6 +161,7 @@ export async function receive(
 							.values({
 								name: item.material.name,
 								unit_id: item.material.unit_id,
+								sale_kind_id: goods,
 								client_uuid: newUuid(n)
 							})
 							.returning('id')

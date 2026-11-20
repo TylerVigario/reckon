@@ -71,6 +71,8 @@ export type PlacementWay = "asked" | "chosen";
 
 export type ReceiptType = "application/pdf" | "image/jpeg" | "image/png" | "image/webp";
 
+export type ReckonKind = "goods" | "installation" | "repair" | "travel";
+
 export type SecurityEventName = "authn_link_issued" | "authn_link_refused" | "authn_link_used" | "authn_login_fail" | "authn_login_success" | "authn_passkey_added" | "authn_passkey_removed" | "authz_change" | "authz_fail" | "excess_rate_limit_exceeded" | "session_expired" | "session_logout" | "user_archived" | "user_created" | "user_restored" | "user_updated";
 
 export type ServiceUnit = "each" | "hour" | "mile";
@@ -262,6 +264,7 @@ export interface InvoiceLine {
   qty: NumericColumn;
   receipt: Buffer | null;
   receipt_type: ReceiptType | null;
+  sale_kind_id: string | null;
   seq: number;
   site_id: string | null;
   tax_jurisdiction: string | null;
@@ -304,8 +307,8 @@ export interface Material {
   markup_pct: NumericColumn | null;
   name: string;
   reorder_level: NumericColumn | null;
+  sale_kind_id: string;
   sku: string | null;
-  taxable: Generated<boolean>;
   unit_id: string;
   version: Generated<number>;
 }
@@ -477,6 +480,14 @@ export interface Role {
   pays_as: PaysAs | null;
 }
 
+export interface SaleKind {
+  active: Generated<boolean>;
+  code: ReckonKind | null;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  name: string;
+}
+
 export interface SecurityEvent {
   at: Generated<Timestamp>;
   by_id: string | null;
@@ -496,7 +507,7 @@ export interface Service {
   id: Generated<string>;
   minimum_charge: NumericColumn | null;
   name: string;
-  taxable: Generated<boolean>;
+  sale_kind_id: string;
   time_tracked: Generated<boolean>;
   unit: ServiceUnit;
 }
@@ -625,6 +636,15 @@ export interface StockTake {
   material_id: string;
   material_lot_id: string;
   qty: NumericColumn;
+}
+
+export interface Taxability {
+  id: Generated<string>;
+  said_by: string | null;
+  said_on: string | null;
+  sale_kind_id: string;
+  state: string;
+  taxed: boolean;
 }
 
 export interface TaxArea {
@@ -819,6 +839,7 @@ export interface DB {
   record_history: RecordHistory;
   refund: Refund;
   role: Role;
+  sale_kind: SaleKind;
   security_event: SecurityEvent;
   service: Service;
   service_price: ServicePrice;
@@ -836,6 +857,7 @@ export interface DB {
   tax_piece: TaxPiece;
   tax_registration: TaxRegistration;
   tax_remittance: TaxRemittance;
+  taxability: Taxability;
   time_entry: TimeEntry;
   time_entry_crew: TimeEntryCrew;
   trip: Trip;

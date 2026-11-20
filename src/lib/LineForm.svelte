@@ -23,7 +23,7 @@
 	import { pct, percent, quantity } from '#lib/format.ts';
 	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { readFromStock, readPassedOn } from '#lib/line-fields.ts';
-	import { fromStock, passedOn } from '#lib/passed-on.ts';
+	import { fromStock, passedOn, type Taxes } from '#lib/passed-on.ts';
 	import { changeDraw, drawFrom, unitCost } from '#lib/stock-draw.ts';
 	import { Decimal, Ratio } from '#lib/decimal.ts';
 	import { shrink } from '#lib/receipt.ts';
@@ -52,16 +52,18 @@
 				status?: string;
 			};
 			/**
-			 * Each with whether the business collects tax in its state, and its
-			 * rate where it does and the site has been placed there.
+			 * Each with its state, and its rate where the business collects there
+			 * and the site has been placed.
 			 */
-			sites: { id: string; label: string | null; collected: boolean; rate_pct: string | null }[];
+			sites: { id: string; label: string | null; state: string; rate_pct: string | null }[];
 			people: { id: string; name: string }[];
 			markup: string;
 			/** What stock sells at over its cost, where a material has no markup of its own. */
 			stock_markup?: string;
-			/** Whether the business collects tax anywhere. */
-			collects: boolean;
+			/** Each state the business collects in, and the kinds of sale it taxes there. */
+			taxes: Taxes;
+			/** reckon's goods, which goods bought for the job are sold as. */
+			goods: string;
 			costing: Costing;
 			places: number;
 			stock: {
@@ -73,7 +75,8 @@
 				places: number;
 				markup: string;
 				listed: string | null;
-				taxable: boolean;
+				/** The kind of sale it is. */
+				kind: string;
 				shelf: Shelf;
 			}[];
 			as_of: string;
@@ -136,7 +139,11 @@
 	// And a material changed on this phone is offered as changed.
 	let changed = $state<MaterialChange[]>([]);
 	const offered = $derived(
-		withChanged(withReceived(data.stock, received), changed, data.stock_markup ?? data.markup)
+		withChanged(
+			withReceived(data.stock, received, data.goods),
+			changed,
+			data.stock_markup ?? data.markup
+		)
 	);
 	onMount(() => {
 		void materialChangesHeld().then(
@@ -176,7 +183,7 @@
 
 	const site = $derived(data.sites.find((s) => s.id === siteId));
 	// Its tax, as #lib/passed-on reads it.
-	const siteTax = $derived(site ? { collected: site.collected, ratePct: site.rate_pct } : null);
+	const siteTax = $derived(site ? { state: site.state, ratePct: site.rate_pct } : null);
 	const stock = $derived(kind === 'material');
 	const bought = $derived(kind === 'bought');
 	// What each kind is, said under it: Primer's RadioGroup, each choice with its caption.
@@ -246,9 +253,9 @@
 				taxPaid: draw.taxPaid.toString(),
 				listed: item.listed,
 				markupPct: item.markup,
-				taxable: item.taxable
+				kind: item.kind
 			},
-			{ collects: data.collects, site: siteTax, places: data.places }
+			{ taxes: data.taxes, site: siteTax, places: data.places }
 		);
 		return {
 			...line,
@@ -388,7 +395,8 @@
 			{ kind: bought ? 'bought' : 'paid_for', cost, taxPaid: taxPaid || '0' },
 			{
 				purchaseMarkupPct: data.markup,
-				collects: data.collects,
+				taxes: data.taxes,
+				goods: data.goods,
 				site: siteTax,
 				places: data.places
 			}
@@ -478,7 +486,7 @@
 					{@render wrong('site_id')}
 				{:else if site?.rate_pct}
 					<p class="fc-c">Taxed there at {pct(site.rate_pct)}.</p>
-				{:else if site?.collected}
+				{:else if site && site.state in data.taxes}
 					<p class="fc-c">In no tax area yet, so nothing taxed can be billed there.</p>
 				{/if}
 			</div>

@@ -207,7 +207,8 @@ T["integration"] = [("PK","name","stripe|beancount|press|email"),
     ("","connected","bool"),("","detail","text"),("","checked_at","timestamptz")]
 
 T["service"] = [("PK","id","uuid"),("","code","text"),("","name","text"),
-    ("","unit","hour | mile | each"),("","taxable","bool"),("","time_tracked","bool"),
+    ("","unit","hour | mile | each"),("FK","sale_kind_id","uuid · what it is sold as"),
+    ("","time_tracked","bool"),
     ("","bill_to_nearest_seconds","int · time only, null = exact"),
     ("","minimum_charge","numeric · null = none"),("","active","bool"),
     ("UK","client_uuid","uuid · added on a phone")]
@@ -219,6 +220,14 @@ T["pay_rule"] = [("PK","id","uuid"),("FK","service_id","uuid"),
     ("FK","entity_id","uuid · null = every client"),("","pays_for","time|covered_time|vehicle"),
     ("","method","per_hour|percent|fixed|nothing"),("","amount","numeric · none for nothing"),
     ("","effective_from","date"),("","created_at","timestamptz")]
+T["sale_kind"] = [("PK","id","uuid"),
+    ("UK","code","goods|installation|repair|travel · reckon's own"),
+    ("UK","name","text · the business's word"),("","active","bool · offered for an item"),
+    ("","created_at","timestamptz")]
+T["taxability"] = [("PK","id","uuid"),("UK","state","text · a state collected in"),
+    ("UK","sale_kind_id","uuid · with its state, once"),
+    ("","taxed","bool"),("FK","said_by","uuid · who, where somebody did"),
+    ("","said_on","date · when they did")]
 T["role"] = [("PK","id","uuid"),("UK","name","text · the operator's word"),
     ("","pays_as","pays_as · null = not said"),
     ("","created_at","timestamptz")]
@@ -226,7 +235,8 @@ T["unit"] = [("PK","id","uuid"),("UK","name","text · the operator's"),
     ("","short","text · beside a figure"),("","places","int · 0–4"),("","created_at","timestamptz")]
 T["material"] = [("PK","id","uuid"),("","sku","text"),("","name","text"),
     ("","brand","text"),("FK","unit_id","uuid · counted in"),("","markup_pct","numeric"),
-    ("","taxable","bool"),("","reorder_level","numeric · nothing reads it yet"),("","active","bool"),
+    ("FK","sale_kind_id","uuid · what it is sold as"),
+    ("","reorder_level","numeric · nothing reads it yet"),("","active","bool"),
     ("","version","int · its saves"),("UK","client_uuid","uuid · received on a phone")]
 T["material_lot"] = [("PK","id","uuid"),("FK","material_id","uuid"),
     ("FK","receipt_id","uuid · the receipt it came on, or"),
@@ -319,7 +329,7 @@ T["invoice_line"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the ph
     ("","kind","service|material|recurring|adjustment|bought|paid_for"),("","description","text"),
     ("","qty","numeric"),("","unit","text · as billed"),
     ("","unit_price","numeric · as billed"),
-    ("FK","site_id","uuid"),("","taxable","bool"),
+    ("FK","site_id","uuid"),("FK","sale_kind_id","uuid · as it was sold"),("","taxable","bool"),
     ("","tax_rate_pct","numeric · as applied"),("","tax_source","none|site|override|exempt"),
     ("","tax_jurisdiction","text · its area, as taxed"),
     ("","tax_state","text · its state, as taxed"),
@@ -561,16 +571,25 @@ files.append(write("02-who-and-where.drawio", "Who and where", c, 1560, 1470))
 c = at("service",40,60) + at("service_price",440,60) + at("pay_rule",440,280) \
   + at("role",840,400) \
   + at("material",840,60) + at("material_lot",1240,60) + at("material_price",1240,370) \
-  + at("unit",1240,530)
+  + at("unit",1240,530) + at("sale_kind",40,360) + at("taxability",40,540)
 c += [edge("e30","service","service_price","priced by"),
       edge("e31","service","pay_rule","pays by"),
       edge("e34","role","pay_rule","is paid by",
            S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1")),
       edge("e32","material","material_lot","received as"),
       edge("e33","material","material_price","may pin"),
-      edge("e35","material","unit","counted in")]
-c += [note("n3", "A service is configured, not categorised: what it is charged per, how "
+      edge("e35","material","unit","counted in"),
+      edge("e36","sale_kind","service","is the kind of", S_EDGE.replace("exitX=1","exitX=0")),
+      edge("e37","sale_kind","material","is the kind of"),
+      edge("e38","sale_kind","taxability","is answered in", S_EDGE.replace("exitX=1","exitX=0"))]
+c += [note("n3", "A service is configured: what it is charged per, how "
                  "finely, at least what, and whom it pays.\n\n"
+                 "A material or a service is one kind of sale, sale_kind: the business's own "
+                 "list, begun with reckon's four, goods, installation labour, repair labour "
+                 "and travel, which stay. Each state the business collects in answers each "
+                 "kind, taxability, so whether a line is taxed is its kind's answer in its "
+                 "site's state. A line keeps the kind it was sold as; a cost passed on is "
+                 "no sale, so it is none.\n\n"
                  "rate is the first person's and additional_rate each extra person's: "
                  "at $120 and +$70 a crew of three costs $260 an hour.\n\n"
                  "Pay is for work done. Each pay_rule is for a role or for one person, pays "
@@ -604,8 +623,8 @@ c += [note("n3", "A service is configured, not categorised: what it is charged p
                  "A material is counted in one of the operator's units -- each, the foot, "
                  "a box of 25 -- each with how it is written and how many places a "
                  "quantity may have. Nothing converts one unit into another, and a line "
-                 "keeps its unit's name as it was billed.", 40, 740, 1540, 360)]
-files.append(write("03-catalogue.drawio", "What you sell", c, 1620, 1140))
+                 "keeps its unit's name as it was billed.", 40, 740, 1540, 420)]
+files.append(write("03-catalogue.drawio", "What you sell", c, 1620, 1200))
 
 # 04 -- stock
 c = at("material",40,60) + at("stock_count_line",40,420) \

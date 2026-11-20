@@ -28,6 +28,7 @@
 		if (v === null || v === '') return 'nothing';
 		if (field === 'taxable') return v === 'true' ? 'Yes' : 'No';
 		if (field === 'unit_id') return data.units[v] ?? 'a unit since removed';
+		if (field === 'sale_kind_id') return data.kinds[v] ?? 'a kind since removed';
 		return `“${v}”`;
 	}
 	const markup = (v: string | null) => (v === null ? 'the business’s' : percent(v));

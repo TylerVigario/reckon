@@ -14,8 +14,8 @@
 	import { busy } from '#lib/busy.svelte.ts';
 
 	/**
-	 * A new service: what it is called, what it is charged per, and, if it is
-	 * known now, what every client pays for it -- the first person, and each
+	 * A new service: what it is called, what it is charged per, what kind of
+	 * sale it is, and, if it is known now, what every client pays for it -- the first person, and each
 	 * one after. Everything else -- a client's own price, and whom it pays -- is
 	 * set on its own screen, which is where this goes next.
 	 *
@@ -26,6 +26,7 @@
 	let { data }: PageProps = $props();
 	let name = $state('');
 	let unit = $state('hour');
+	let kind = $state('');
 	let rate = $state('');
 	let additional = $state('');
 	let errors = $state<Record<string, string>>({});
@@ -45,6 +46,7 @@
 				uuid = q.service.client_uuid;
 				name = q.service.fields.name;
 				unit = q.service.fields.unit;
+				kind = q.service.fields.sale_kind_id ?? '';
 				rate = q.service.fields.rate;
 				additional = q.service.fields.additional_rate;
 				errors = q.refused?.errors ?? {};
@@ -67,7 +69,7 @@
 	async function create(e: SubmitEvent) {
 		e.preventDefault();
 		if (saving) return;
-		const fields = { name, unit, rate, additional_rate: additional };
+		const fields = { name, unit, sale_kind_id: kind, rate, additional_rate: additional };
 		errors = readNewService(fields).errors;
 		saying = '';
 		if (Object.keys(errors).length) return;
@@ -145,6 +147,26 @@
 					{/each}
 					{#if errors.unit}<p class="fc-e"><Octicon name="alert" />{errors.unit}</p>{/if}
 				</fieldset>
+				<div class="fc">
+					<label class="fc-l" for="n-kind">Kind of sale<span aria-hidden="true"> *</span></label>
+					<select
+						id="n-kind"
+						class="ti"
+						bind:value={kind}
+						aria-invalid={errors.sale_kind_id ? 'true' : undefined}
+						aria-describedby={errors.sale_kind_id ? 'n-kind-e' : 'n-kind-c'}
+					>
+						<option value="" disabled>Choose one</option>
+						{#each data.kinds as k (k.id)}<option value={k.id}>{k.name}</option>{/each}
+					</select>
+					{#if errors.sale_kind_id}
+						<p class="fc-e" id="n-kind-e"><Octicon name="alert" />{errors.sale_kind_id}</p>
+					{:else}
+						<p class="fc-c" id="n-kind-c">
+							Each state the business collects in says whether it taxes this kind.
+						</p>
+					{/if}
+				</div>
 				<div class="pair">
 					<div class="fc">
 						<label class="fc-l" for="n-rate">Every client pays</label>

@@ -1157,6 +1157,7 @@ if (phase === 'offline') {
 	);
 	await go('/catalogue/services/new');
 	await typeIn('#n-name', SERVICE);
+	await choose('#n-kind', 'Installation labour');
 	await typeIn('#n-rate', '80');
 	await typeIn('#n-more', '50');
 	await click('Add the service');

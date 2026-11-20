@@ -260,7 +260,13 @@
 			</div>
 		</div>
 	{/if}
-	<StockOnPhone bind:this={onPhone} material={m.id} today={data.today} onfix={fix} />
+	<StockOnPhone
+		bind:this={onPhone}
+		material={m.id}
+		today={data.today}
+		kinds={data.kinds}
+		onfix={fix}
+	/>
 	{#if failed}
 		<div class="banner crit" role="alert">
 			<Octicon name="alert" />

@@ -3,6 +3,7 @@ import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { prices } from '#lib/server/catalogue.ts';
+import { kindChoices } from '#lib/server/sale-kinds.ts';
 import type { LayoutServerLoad } from './$types';
 
 /**
@@ -23,7 +24,7 @@ export const load: LayoutServerLoad = async ({ params }) => {
 			'name',
 			'unit',
 			'time_tracked',
-			'taxable',
+			'sale_kind_id',
 			'active',
 			'bill_to_nearest_seconds',
 			'minimum_charge'
@@ -42,17 +43,20 @@ export const load: LayoutServerLoad = async ({ params }) => {
 	// What would stop it being deleted: the same three things the schema
 	// refuses a delete over. Its own prices and rules do not count -- they go
 	// with it.
-	const [priced, entries, legs, agreements] = await Promise.all([
+	const [priced, entries, legs, agreements, kinds] = await Promise.all([
 		prices(service.id),
 		uses('time_entry'),
 		uses('trip_leg'),
-		uses('agreement_service')
+		uses('agreement_service'),
+		kindChoices(db)
 	]);
 	return {
 		service,
 		today: businessToday(),
 		// What every client pays now: what a service is known by.
 		rate: priced.find((p) => p.client === null && p.state === 'current')?.rate ?? null,
-		used: { entries: entries.n, legs: legs.n, agreements: agreements.n }
+		used: { entries: entries.n, legs: legs.n, agreements: agreements.n },
+		// The kinds of sale it could be, by the business's word for each.
+		kinds
 	};
 };

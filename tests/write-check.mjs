@@ -887,6 +887,28 @@ await check(
 	400
 );
 
+// The kinds of sale (#lib/server/sale-kinds): reckon's own, by which each is,
+// and every one there is, as a state collected in answers them.
+const kindsDb = new pg.Client(database());
+await kindsDb.connect();
+/** @type {Record<string, string>} */
+const KIND = Object.fromEntries(
+	(await kindsDb.query('select code, id from sale_kind where code is not null')).rows.map((r) => [
+		r.code,
+		r.id
+	])
+);
+/** Every state the business collects in now, each answering `taxed`. */
+const everyState = async (/** @type {boolean} */ taxed) =>
+	Object.fromEntries(
+		(await kindsDb.query('select state from tax_registration')).rows.map((r) => [r.state, taxed])
+	);
+/** Every kind there is now, each answered `taxed`. */
+const everyKind = async (/** @type {boolean} */ taxed) =>
+	Object.fromEntries(
+		(await kindsDb.query('select id from sale_kind')).rows.map((r) => [r.id, taxed])
+	);
+
 console.log('\n  services — made, priced, and taken away again');
 
 // Days far from today on purpose: the harness's clock and the database's can
@@ -902,14 +924,24 @@ await check(
 	'a service with no name is refused',
 	'POST',
 	'/api/services',
-	{ fields: { name: '', unit: 'hour' }, client_uuid: crypto.randomUUID() },
+	{
+		fields: { name: '', unit: 'hour', sale_kind_id: KIND.repair },
+		client_uuid: crypto.randomUUID()
+	},
 	400
+);
+await check(
+	'a service that is no kind of sale is refused, said where',
+	'POST',
+	'/api/services',
+	{ fields: { name: `Write check ${stamp}`, unit: 'hour' }, client_uuid: crypto.randomUUID() },
+	(r) => r.status === 400 && Boolean(r.body?.errors?.sale_kind_id)
 );
 await check(
 	'a service with no uuid it was added with is refused',
 	'POST',
 	'/api/services',
-	{ fields: { name: `Write check ${stamp}`, unit: 'hour' } },
+	{ fields: { name: `Write check ${stamp}`, unit: 'hour', sale_kind_id: KIND.repair } },
 	400
 );
 const added = crypto.randomUUID();
@@ -917,7 +949,10 @@ const svc = await check(
 	'a service is made',
 	'POST',
 	'/api/services',
-	{ fields: { name: `Write check ${stamp}`, unit: 'hour' }, client_uuid: added },
+	{
+		fields: { name: `Write check ${stamp}`, unit: 'hour', sale_kind_id: KIND.repair },
+		client_uuid: added
+	},
 	201
 );
 const sid = svc.body?.id;
@@ -925,7 +960,10 @@ await check(
 	'sent twice, as a phone retrying would, it is the one service',
 	'POST',
 	'/api/services',
-	{ fields: { name: `Write check ${stamp}`, unit: 'hour' }, client_uuid: added },
+	{
+		fields: { name: `Write check ${stamp}`, unit: 'hour', sale_kind_id: KIND.repair },
+		client_uuid: added
+	},
 	(r) => r.status === 200 && r.body?.id === sid
 );
 if (sid) {
@@ -2161,8 +2199,19 @@ console.log('\n  typed tax areas — collected in, typed, confirmed, and let go'
 		},
 		404
 	);
-	await check('the business collects in Nevada', 'PUT', nv, undefined, (r) =>
-		[200, 201].includes(r.status)
+	await check(
+		'collecting in Nevada without saying what it taxes is refused, said for each kind',
+		'PUT',
+		nv,
+		{ taxed: { [KIND.goods]: true } },
+		(r) => r.status === 400 && Boolean(r.body?.errors?.[`taxed.${KIND.repair}`])
+	);
+	await check(
+		'the business collects in Nevada, saying whether it taxes each kind',
+		'PUT',
+		nv,
+		{ taxed: await everyKind(true) },
+		(r) => [200, 201].includes(r.status)
 	);
 	await check(
 		'an area with no pieces is refused, said where',
@@ -2247,6 +2296,197 @@ console.log('\n  typed tax areas — collected in, typed, confirmed, and let go'
 	await check('an area no site was ever in is taken away', 'DELETE', at, undefined, 204);
 	await check('the business stops collecting in Nevada', 'DELETE', nv, undefined, 204);
 }
+
+// ---------------------------------------------------------------------------
+console.log('\n  kinds of sale — added, answered, given, retired, and let go');
+{
+	// Each state the business collects in answers each kind (#lib/server/sale-kinds).
+	const kinds = '/api/settings/tax/kinds';
+	const ca = (/** @type {string} */ k) => `/api/settings/tax/CA/kinds/${k}`;
+	await check(
+		'a kind with no name is refused',
+		'POST',
+		kinds,
+		{ fields: { name: '' }, taxed: await everyState(false) },
+		(r) => r.status === 400 && Boolean(r.body?.errors?.name)
+	);
+	await check(
+		'a kind California has not answered is refused, said where',
+		'POST',
+		kinds,
+		{ fields: { name: `Help line ${stamp}` }, taxed: {} },
+		(r) => r.status === 400 && Boolean(r.body?.errors?.['taxed.CA'])
+	);
+	const made = await check(
+		'a kind of the business’s own is added, with every state’s answer',
+		'POST',
+		kinds,
+		{ fields: { name: `Help line ${stamp}` }, taxed: await everyState(false) },
+		201
+	);
+	const kind = made.body?.id;
+	const at = `${kinds}/${kind}`;
+	await check(
+		'a second of the same name is refused',
+		'POST',
+		kinds,
+		{ fields: { name: `HELP LINE ${stamp}` }, taxed: await everyState(false) },
+		(r) => r.status === 400 && Boolean(r.body?.errors?.name)
+	);
+	await check('it is renamed', 'PATCH', at, { fields: { name: `Remote help ${stamp}` } }, 200);
+	await check(
+		'California’s answer for it is changed',
+		'PATCH',
+		ca(kind),
+		{ fields: { taxed: 'true' } },
+		(r) => r.status === 200 && r.body?.saved?.taxed === 'true'
+	);
+	await check(
+		'an answer that is not yes or no is refused',
+		'PATCH',
+		ca(kind),
+		{ fields: { taxed: 'sometimes' } },
+		(r) => r.status === 400 && Boolean(r.body?.errors?.taxed)
+	);
+	await check(
+		'an answer for a state the business does not collect in is not found',
+		'PATCH',
+		`/api/settings/tax/NV/kinds/${kind}`,
+		{ fields: { taxed: 'true' } },
+		404
+	);
+	const svc = await check(
+		'a service of that kind is made',
+		'POST',
+		'/api/services',
+		{
+			fields: { name: `Remote help ${stamp}`, unit: 'hour', sale_kind_id: kind },
+			client_uuid: crypto.randomUUID()
+		},
+		201
+	);
+	const service = `/api/services/${svc.body?.id}`;
+	await check(
+		'a kind something is sold as is kept',
+		'DELETE',
+		at,
+		undefined,
+		(r) => r.status === 409
+	);
+	await check('it is retired', 'PATCH', at, { fields: { active: 'false' } }, 200);
+	await check(
+		'its service is made another kind',
+		'PATCH',
+		service,
+		{ fields: { sale_kind_id: KIND.repair } },
+		200
+	);
+	await check(
+		'a service is not made a retired kind, said where',
+		'PATCH',
+		service,
+		{ fields: { sale_kind_id: kind } },
+		(r) => r.status === 400 && Boolean(r.body?.errors?.sale_kind_id)
+	);
+	for (const [path, words] of [
+		[`/settings/tax/kinds/${kind}`, `Remote help ${stamp}`],
+		['/settings/tax/kinds/new', 'Taxed where the business collects'],
+		['/settings/tax/CA', 'What it taxes']
+	]) {
+		const page = await fetch(`${base}${path}`, { headers: { cookie } });
+		const text = await page.text();
+		if (page.status === 200 && text.includes(words)) passed++;
+		else failures.push(`${path} does not say “${words}” (${page.status})`);
+	}
+	await check(
+		'one of reckon’s own kinds stays',
+		'DELETE',
+		`${kinds}/${KIND.goods}`,
+		undefined,
+		409
+	);
+	// A line is taxed by its kind's answer in its site's state: goods bought for
+	// the job as goods, and a cost passed on as no sale at all.
+	// A draft of its own, for a client with a California site placed in an area.
+	const placed = (
+		await kindsDb.query(
+			`select s.entity_id as client, s.id as site from site s
+			  where s.active and s.region = 'CA' and s.tax_area_id is not null
+			  order by s.slug limit 1`
+		)
+	).rows[0];
+	const draft = placed
+		? await call('POST', '/api/drafts', {
+				client_uuid: crypto.randomUUID(),
+				entity_id: placed.client
+			})
+		: null;
+	const where = draft?.body?.id ? { invoice: draft.body.id, site: placed.site } : null;
+	/** A line passed on, at the site, as the phone's queue sends it: its id and how it was taxed. */
+	const passOn = async (/** @type {'bought' | 'paid_for'} */ kind) => {
+		// Only called once there is one.
+		const to = /** @type {{ invoice: string; site: string }} */ (where);
+		const form = new FormData();
+		const fields = {
+			client_uuid: crypto.randomUUID(),
+			invoice_id: to.invoice,
+			kind,
+			description: `Kinds check ${kind} ${stamp}`,
+			site_id: to.site,
+			ex_tax_cost: '10.00',
+			tax_paid: '0'
+		};
+		for (const [k, v] of Object.entries(fields)) form.set(k, v);
+		const { 'content-type': _, ...headers } = H;
+		const r = await fetch(`${base}/api/lines`, { method: 'POST', headers, body: form });
+		const id = /** @type {{ id?: string }} */ (await r.json().catch(() => ({}))).id;
+		const row = id
+			? (
+					await kindsDb.query(
+						'select taxable, tax_source, sale_kind_id from invoice_line where id = $1',
+						[id]
+					)
+				).rows[0]
+			: null;
+		return { id, row };
+	};
+	if (!where) failures.push('no California site placed in an area, to start a draft for');
+	else {
+		const taxed = await passOn('bought');
+		await check(
+			'goods bought for the job are taxed where the state taxes goods, sold as goods',
+			'PATCH',
+			ca(KIND.goods),
+			{ fields: { taxed: 'false' } },
+			(r) =>
+				r.status === 200 &&
+				taxed.row?.taxable === true &&
+				taxed.row?.tax_source === 'site' &&
+				taxed.row?.sale_kind_id === KIND.goods
+		);
+		const untaxed = await passOn('bought');
+		const cost = await passOn('paid_for');
+		await check(
+			'and not where it says it does not, while a cost passed on is no kind of sale',
+			'PATCH',
+			ca(KIND.goods),
+			{ fields: { taxed: 'true' } },
+			(r) =>
+				r.status === 200 &&
+				untaxed.row?.taxable === false &&
+				untaxed.row?.tax_source === 'none' &&
+				untaxed.row?.sale_kind_id === KIND.goods &&
+				cost.row?.taxable === false &&
+				cost.row?.sale_kind_id === null
+		);
+		for (const line of [taxed, untaxed, cost])
+			if (line.id) await call('DELETE', `/api/lines/${line.id}?force=1`);
+	}
+	await check('the service is taken away', 'DELETE', service, undefined, 200);
+	await check('a kind nothing is sold as is taken away', 'DELETE', at, undefined, 204);
+	await check('and is gone', 'PATCH', at, { fields: { name: 'Back' } }, 404);
+}
+await kindsDb.end();
 
 console.log('');
 if (failures.length) {
