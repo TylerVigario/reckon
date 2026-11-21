@@ -140,6 +140,8 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 				'il.amount',
 				'il.taxable',
 				'il.tax_rate_pct',
+				// Its tax set by hand, by someone with Full, rather than its kind's.
+				eb('il.tax_override_reason', 'is not', null).$castTo<boolean>().as('tax_by_hand'),
 				'il.trip_leg_id',
 				eb.fn.coalesce('si.display', eb.val('')).as('where_from'),
 				'il.bought_from',

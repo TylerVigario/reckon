@@ -8,8 +8,8 @@ import { businessToday } from './calendar.ts';
 import { pgError, type Errors } from './field-errors.ts';
 import { problem } from './problem.ts';
 import { shelves } from './stock.ts';
-import { fromStock, passedOn } from '../passed-on.ts';
-import { readFromStock, readPassedOn } from '../line-fields.ts';
+import { fromStock, passedOn, taxNeeds, type ByHand } from '../passed-on.ts';
+import { BY_HAND, readByHand, readFromStock, readPassedOn } from '../line-fields.ts';
 import { changeDraw, drawFrom } from '../stock-draw.ts';
 import { quantity } from '../format.ts';
 import { Decimal } from '../decimal.ts';
@@ -20,7 +20,7 @@ import { startIn } from './drafts.ts';
 import { isReceiptType, MAX_RECEIPT } from './receipt-file.ts';
 import { areaPieces } from './tax-areas.ts';
 import { siteRate } from './tax-registrations.ts';
-import { reckonsKind, taxesByState } from './sale-kinds.ts';
+import { kindChoices, reckonsKind, taxesByState } from './sale-kinds.ts';
 
 /**
  * A LINE ADDED TO A DRAFT BY HAND: goods drawn from stock (#lib/stock-draw),
@@ -75,6 +75,13 @@ const notTheirs: Added = {
 	ok: false,
 	status: 403,
 	detail: 'Whoever added it, or someone with Full, changes it.'
+};
+
+/** A line's tax is set by hand by someone with Full alone (#lib/access). */
+const notFull: Added = {
+	ok: false,
+	status: 403,
+	detail: 'Someone with Full sets a line’s tax by hand.'
 };
 
 /** Refused, with a sentence for the person and, where there is one, the box it is about. */
@@ -140,7 +147,7 @@ export function materials(ids?: string[]) {
  * terms, and what is on the shelf.
  */
 export async function formTerms() {
-	const [people, op, places, all, taxes, goods] = await Promise.all([
+	const [people, op, places, all, taxes, goods, kinds] = await Promise.all([
 		db
 			.selectFrom('user')
 			.select(['id', 'name'])
@@ -158,7 +165,8 @@ export async function formTerms() {
 		moneyPlaces(),
 		materials(),
 		taxesByState(db),
-		reckonsKind(db, 'goods')
+		reckonsKind(db, 'goods'),
+		kindChoices(db)
 	]);
 	const onShelf = await shelves(all.map((m) => m.id));
 	return {
@@ -171,6 +179,8 @@ export async function formTerms() {
 		// there; each site says its state (#lib/server/sale-kinds).
 		taxes,
 		goods,
+		// What each kind of sale is called, so a line says how its kind is taxed.
+		kinds: Object.fromEntries(kinds.map((k) => [k.id, k.name])),
 		costing: op?.costing ?? 'average',
 		places,
 		stock: all
@@ -219,7 +229,11 @@ const LINE_AS_FORM = [
 	'invoice_line.bought_from',
 	'invoice_line.ex_tax_cost',
 	'invoice_line.tax_paid',
-	'invoice_line.paid_by'
+	'invoice_line.paid_by',
+	'invoice_line.taxable',
+	'invoice_line.tax_rate_pct',
+	'invoice_line.tax_source',
+	'invoice_line.tax_override_reason'
 ] as const;
 
 /** A column's value, however it was read: a string from a query, or JSON's number. */
@@ -234,18 +248,52 @@ export function asTyped(field: string, v: unknown, places: number): string {
 	const s = str(v);
 	if (s === '') return '';
 	if (field === 'ex_tax_cost' || field === 'tax_paid') return Decimal.from(s).toFixed(places);
-	if (field === 'qty') return s.includes('.') ? s.replace(/\.?0+$/, '') : s;
+	if (field === 'qty' || field === 'tax_rate_pct')
+		return s.includes('.') ? s.replace(/\.?0+$/, '') : s;
 	return s;
 }
 
-/** A line's fields as the form names and writes them: what a change is merged against. */
+/**
+ * A line's fields as the form names and writes them: what a change is merged
+ * against. Its tax is said only where it was set by hand (#lib/line-fields
+ * readByHand): whether it is taxed, the rate where it is not the site's, and
+ * why. A line taxed as its kind is says nothing of it.
+ */
 export function formFieldsOf(
 	line: Record<string, unknown>,
 	places: number
 ): Record<string, string> {
 	const out: Record<string, string> = { kind: str(line.kind), material_id: str(line.material_id) };
 	for (const f of MERGED_FIELDS) out[f] = asTyped(f, line[f], places);
+	const byHand = str(line.tax_override_reason) !== '';
+	out.taxable = byHand ? str(line.taxable) : '';
+	out.tax_rate_pct = byHand && line.tax_source === 'override' ? out.tax_rate_pct : '';
 	return out;
+}
+
+/**
+ * A line's tax set by hand, as a change's fields say it -- its three fields
+ * together, those not sent empty -- or, where they say nothing of it, as the
+ * line `now` is the form of has it.
+ */
+function byHandSaid(fields: Record<string, string>, now: Record<string, string>) {
+	const says = BY_HAND.some((f) => f in fields);
+	return Object.fromEntries(BY_HAND.map((f) => [f, (says ? fields[f] : now[f]) ?? '']));
+}
+
+/**
+ * A line's tax set by hand, from a change's fields, for a line `now` is the
+ * form of (byHandSaid). Someone with Field sets none and changes none.
+ */
+function byHandFor(
+	fields: Record<string, string>,
+	now: Record<string, string>,
+	field: boolean | undefined
+): { byHand: ByHand | null; reason: string | null; errors: Errors } | Added {
+	const said = byHandSaid(fields, now);
+	if (field && BY_HAND.some((f) => !same(f, said[f], now[f]))) return notFull;
+	const read = readByHand(said);
+	return { byHand: read.byHand ?? null, reason: read.reason, errors: read.errors };
 }
 
 /** Who took a line off, and when: the newest removal its history has. */
@@ -285,20 +333,33 @@ async function collision(
 		.orderBy('h.changed_at')
 		.orderBy('h.id')
 		.execute();
+	// The line as each save left it, in the form's words: a field's value can
+	// turn on another's -- its tax, on whether it was set by hand -- so the
+	// history is played forward a save at a time, not read a field at a time.
+	const saves: { form: Record<string, string>; row: (typeof rows)[number] }[] = [];
+	let state: Record<string, unknown> = {};
+	for (const [i, r] of rows.entries()) {
+		if (r.field === '(added)') {
+			try {
+				state = JSON.parse(r.value ?? '{}') as Record<string, unknown>;
+			} catch {
+				state = {};
+			}
+		} else if (r.field !== '(deleted)') state = { ...state, [r.field]: r.value };
+		const next = rows[i + 1];
+		const sameSave =
+			next !== undefined &&
+			next.field !== '(added)' &&
+			next.at.getTime() === r.at.getTime() &&
+			next.who === r.who;
+		if (!sameSave && r.field !== '(deleted)')
+			saves.push({ form: formFieldsOf(state, places), row: r });
+	}
 	const fields: Extract<Conflict, { what: 'collided' }>['fields'] = {};
 	for (const f of m.collided) {
 		const chain: Held[] = [];
-		for (const r of rows) {
-			let held: unknown;
-			if (r.field === '(added)') {
-				try {
-					held = (JSON.parse(r.value ?? '{}') as Record<string, unknown>)[f];
-				} catch {
-					continue;
-				}
-			} else if (r.field === f) held = r.value;
-			else continue;
-			const value = asTyped(f, held, places);
+		for (const { form, row: r } of saves) {
+			const value = form[f] ?? '';
 			if (chain.some((c) => same(f, c.value, value))) continue;
 			chain.push({
 				value,
@@ -397,14 +458,6 @@ async function siteOf(draft: { entity_id: string; who: string }, siteId: string 
 	};
 }
 
-/** What a line taxed where the business collects still needs, if anything. */
-function taxNeeds(line: { needsASite: boolean; needsPlacing: boolean }): Errors | null {
-	if (line.needsASite) return { site_id: 'Where it went, so its tax rate is known.' };
-	if (line.needsPlacing)
-		return { site_id: 'That site is in no tax area yet, so its rate is not known.' };
-	return null;
-}
-
 /**
  * Where a taxed line was taxed -- its area's name and its state -- and the
  * pieces its rate was made of where it is the site's -- who levied what --
@@ -481,6 +534,8 @@ export async function addLine(input: {
 	/** A line put back after it was taken off keeps its id, and its receipt where none comes. */
 	id?: string;
 	kept?: { bytes: Buffer; type: ReceiptType } | null;
+	/** Whoever is adding it has Field, and sets no line's tax by hand. */
+	field?: boolean;
 }): Promise<Added> {
 	const had = await sentBefore(input.clientUuid, input.userId);
 	if (had) return { ok: true, id: had.id };
@@ -503,10 +558,16 @@ export async function addLine(input: {
 		.executeTakeFirst();
 	if (!draft) return { ok: false, status: 404, detail: 'That draft no longer exists.' };
 
+	const read = readByHand(input.fields);
+	if (input.field && read.byHand) return notFull;
+	const tax = { byHand: read.byHand ?? null, reason: read.reason, errors: read.errors };
 	return input.fields.kind === 'material'
-		? fromTheShelf(draft, input)
-		: boughtOrPaidFor(draft, input);
+		? fromTheShelf(draft, input, tax)
+		: boughtOrPaidFor(draft, input, tax);
 }
+
+/** A line's tax set by hand, as it was read from its fields (#lib/line-fields readByHand). */
+type TaxByHand = { byHand: ByHand | null; reason: string | null; errors: Errors };
 
 /** The next place on the draft. */
 const nextSeq = async (tx: Tx, invoiceId: string) => {
@@ -542,11 +603,13 @@ async function fromTheShelf(
 		userId: string;
 		madeAt?: string | null;
 		id?: string;
-	}
+	},
+	tax: TaxByHand
 ): Promise<Added> {
 	const id = await materialNamed(input.fields.material_id ?? '');
 	const [m] = UUID.test(id) ? await materials([id]) : [];
 	const { values, errors } = readFromStock(input.fields, m?.places ?? null);
+	Object.assign(errors, tax.errors);
 	if (id && !m && !errors.material_id) errors.material_id = 'That item no longer exists.';
 	// Retired is not offered for a new line, one made on a phone meanwhile
 	// included; a line put back keeps what it was of, as a line on a draft does.
@@ -591,7 +654,8 @@ async function fromTheShelf(
 						taxPaid: draw.taxPaid.toString(),
 						listed: m.listed,
 						markupPct: m.markup,
-						kind: m.kind
+						kind: m.kind,
+						byHand: tax.byHand
 					},
 					{ taxes, site: site?.tax ?? null, places }
 				);
@@ -616,6 +680,7 @@ async function fromTheShelf(
 						taxable: line.taxable,
 						tax_rate_pct: line.taxRatePct,
 						tax_source: line.taxSource,
+						tax_override_reason: tax.reason,
 						sale_kind_id: line.soldAs,
 						...taxedWhere(line, site),
 						ex_tax_cost: line.exTaxCost,
@@ -656,9 +721,13 @@ async function boughtOrPaidFor(
 		madeAt?: string | null;
 		id?: string;
 		kept?: { bytes: Buffer; type: ReceiptType } | null;
-	}
+	},
+	tax: TaxByHand
 ): Promise<Added> {
 	const { values, errors } = readPassedOn(input.fields);
+	Object.assign(errors, tax.errors);
+	if (values.kind === 'paid_for' && tax.byHand)
+		errors.taxable = 'A cost passed on is no sale, so it is taxed nowhere.';
 	const siteId = typeof values.site_id === 'string' ? values.site_id : null;
 	const { taxes, goods, site, why } = await siteOf(draft, siteId);
 	if (why) errors.site_id = why;
@@ -674,7 +743,8 @@ async function boughtOrPaidFor(
 		{
 			kind: values.kind as 'bought' | 'paid_for',
 			cost: String(values.ex_tax_cost),
-			taxPaid: String(values.tax_paid)
+			taxPaid: String(values.tax_paid),
+			byHand: tax.byHand
 		},
 		{
 			purchaseMarkupPct: op?.markup ?? '0',
@@ -710,6 +780,7 @@ async function boughtOrPaidFor(
 						taxable: line.taxable,
 						tax_rate_pct: line.taxRatePct,
 						tax_source: line.taxSource,
+						tax_override_reason: tax.reason,
 						sale_kind_id: line.soldAs,
 						...taxedWhere(line, site),
 						ex_tax_cost: line.exTaxCost,
@@ -805,8 +876,8 @@ export async function changeLine(
 	// Changed meanwhile: merged with the change, field by field, against what
 	// the change began from.
 	const places = await moneyPlaces();
+	const now = formFieldsOf(line, places);
 	if (input.version !== undefined && input.base && line.version !== input.version) {
-		const now = formFieldsOf(line, places);
 		const m = merge(input.base, input.fields, now);
 		if (m.collided.length > 0)
 			return {
@@ -817,6 +888,10 @@ export async function changeLine(
 			};
 		input = { ...input, fields: { ...m.fields, kind: line.kind } };
 	}
+	// Its tax set by hand: as the change says, or as the line has it where the
+	// change says nothing of it.
+	const tax = byHandFor(input.fields, now, input.field);
+	if ('ok' in tax) return tax;
 
 	/**
 	 * The draft locked while the line changes, so it cannot go out in between;
@@ -845,6 +920,7 @@ export async function changeLine(
 				{ ...input.fields, material_id: line.material_id ?? '' },
 				m?.places ?? null
 			);
+			Object.assign(errors, tax.errors);
 			const siteId = typeof values.site_id === 'string' ? values.site_id : null;
 			const { taxes, site, why } = await siteOf(draft, siteId);
 			if (why) errors.site_id = why;
@@ -898,7 +974,8 @@ export async function changeLine(
 							taxPaid: change.taxPaid.toString(),
 							listed: m.listed,
 							markupPct: m.markup,
-							kind: m.kind
+							kind: m.kind,
+							byHand: tax.byHand
 						},
 						{ taxes, site: site?.tax ?? null, places }
 					);
@@ -960,6 +1037,7 @@ export async function changeLine(
 							taxable: priced.taxable,
 							tax_rate_pct: priced.taxRatePct,
 							tax_source: priced.taxSource,
+							tax_override_reason: tax.reason,
 							sale_kind_id: priced.soldAs,
 							...taxedWhere(priced, site),
 							ex_tax_cost: priced.exTaxCost,
@@ -975,6 +1053,9 @@ export async function changeLine(
 		}
 
 		const { values, errors } = readPassedOn({ ...input.fields, kind: line.kind });
+		Object.assign(errors, tax.errors);
+		if (line.kind === 'paid_for' && tax.byHand)
+			errors.taxable = 'A cost passed on is no sale, so it is taxed nowhere.';
 		const siteId = typeof values.site_id === 'string' ? values.site_id : null;
 		const { taxes, goods, site, why } = await siteOf(draft, siteId);
 		if (why) errors.site_id = why;
@@ -988,7 +1069,8 @@ export async function changeLine(
 			{
 				kind: line.kind,
 				cost: String(values.ex_tax_cost),
-				taxPaid: String(values.tax_paid)
+				taxPaid: String(values.tax_paid),
+				byHand: tax.byHand
 			},
 			{
 				purchaseMarkupPct: op?.markup ?? '0',
@@ -1013,6 +1095,7 @@ export async function changeLine(
 						taxable: priced.taxable,
 						tax_rate_pct: priced.taxRatePct,
 						tax_source: priced.taxSource,
+						tax_override_reason: tax.reason,
 						sale_kind_id: priced.soldAs,
 						...taxedWhere(priced, site),
 						ex_tax_cost: priced.exTaxCost,
@@ -1145,6 +1228,11 @@ export async function restoreLine(input: {
 		/* nothing to put back from */
 	}
 	if (input.field && str(was.created_by) !== input.userId) return notTheirs;
+	// Its tax set by hand, as it was taken off with, where the change says
+	// nothing of it; and someone with Field puts it back as it was.
+	const before = formFieldsOf(was, await moneyPlaces());
+	const tax = byHandFor(input.fields, before, input.field);
+	if ('ok' in tax) return tax;
 	const hex = str(was.receipt);
 	// The type as the line's own column held it, which is what its history wrote.
 	const kept =
@@ -1155,7 +1243,12 @@ export async function restoreLine(input: {
 		id: input.lineId,
 		invoiceId: str(was.invoice_id),
 		clientUuid: str(was.client_uuid) || crypto.randomUUID(),
-		fields: { ...input.fields, kind: str(was.kind), material_id: str(was.material_id) },
+		fields: {
+			...input.fields,
+			...byHandSaid(input.fields, before),
+			kind: str(was.kind),
+			material_id: str(was.material_id)
+		},
 		receipt: input.receipt,
 		kept,
 		userId: input.userId,

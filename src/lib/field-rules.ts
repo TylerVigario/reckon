@@ -11,6 +11,7 @@
  */
 
 import { currency, currencyPlaces, MONEY_WHOLE } from './currency.ts';
+import { Decimal } from './decimal.ts';
 
 export type Parsed =
 	{ ok: true; value: string | number | boolean | null } | { ok: false; why: string };
@@ -109,6 +110,16 @@ export const decimal =
 		if (after.length > scale) return no(`At most ${scale} decimal place${scale === 1 ? '' : 's'}.`);
 		return no(`At most ${room} digit${room === 1 ? '' : 's'} before the decimal point.`);
 	};
+
+/**
+ * A tax rate, or a share of one, as a percentage: NUMERIC(7, 4), as a piece
+ * and a line keep it, and under 100.
+ */
+export const percentage: Parse = (v) => {
+	const parsed = decimal(7, 4)(v);
+	if (!parsed.ok) return parsed;
+	return Decimal.from(v).lt('100') ? parsed : no('A percentage under 100: 4.6 for 4.6%.');
+};
 
 /**
  * An amount of money: no more places than the business's currency has -- two

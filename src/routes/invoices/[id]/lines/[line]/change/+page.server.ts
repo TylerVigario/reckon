@@ -32,6 +32,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			'il.ex_tax_cost',
 			'il.tax_paid',
 			'il.paid_by',
+			// Its tax, where it was set by hand (#lib/server/lines formFieldsOf).
+			'il.taxable',
+			'il.tax_rate_pct',
+			'il.tax_source',
+			'il.tax_override_reason',
 			eb('il.receipt', 'is not', null).$castTo<boolean>().as('receipt'),
 			'i.id as invoice_id',
 			'i.client_uuid',

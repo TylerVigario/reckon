@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fromStock, passedOn, type FromStock, type Terms } from './passed-on.ts';
+import { fromStock, passedOn, taxNeeds, type FromStock, type Terms } from './passed-on.ts';
 
 // reckon's goods, and a kind of the business's own: California taxes goods alone.
 const GOODS = '019a0000-0000-7000-8000-00000000000a';
@@ -159,5 +159,88 @@ describe('goods drawn from stock', () => {
 
 	it('needs a site, for its rate, where it is taxed', () => {
 		expect(fromStock(cable, { ...CA, site: null }).needsASite).toBe(true);
+	});
+});
+
+describe('a line’s tax set by hand', () => {
+	const cable: FromStock = {
+		qty: '10',
+		unit: 'foot',
+		cost: '3.10',
+		taxPaid: '0.25',
+		listed: '0.45',
+		markupPct: '20',
+		kind: GOODS
+	};
+	const help = { ...cable, kind: HELP_DESK };
+
+	it('not taxed, where its kind is: no rate, no source, and no site needed', () => {
+		const l = fromStock({ ...cable, byHand: { taxed: false } }, CA);
+		expect(l).toMatchObject({
+			taxable: false,
+			taxRatePct: '0',
+			taxSource: 'none',
+			byHand: true,
+			refused: null
+		});
+		const away = fromStock({ ...cable, byHand: { taxed: false } }, { ...CA, site: null });
+		expect([away.taxable, away.needsASite, taxNeeds(away)]).toEqual([false, false, null]);
+	});
+
+	it('taxed at the site’s rate, where its kind is not: from the site, as any taxed there', () => {
+		const l = fromStock({ ...help, byHand: { taxed: true, ratePct: null } }, CA);
+		expect(l).toMatchObject({
+			soldAs: HELP_DESK,
+			taxable: true,
+			taxRatePct: '8.0000',
+			taxSource: 'site',
+			byHand: true
+		});
+	});
+
+	it('taxed at another rate: an override, at that rate', () => {
+		const l = fromStock({ ...cable, byHand: { taxed: true, ratePct: '4.0625' } }, CA);
+		expect(l).toMatchObject({ taxable: true, taxRatePct: '4.0625', taxSource: 'override' });
+	});
+
+	it('refused where it changes nothing, so no reason is kept for its kind’s answer', () => {
+		expect(taxNeeds(fromStock({ ...help, byHand: { taxed: false } }, CA))).toEqual({
+			taxable: 'It is not taxed there anyway, as its kind is.'
+		});
+		expect(taxNeeds(fromStock({ ...cable, byHand: { taxed: true, ratePct: null } }, CA))).toEqual({
+			taxable: 'It is taxed at the site’s rate anyway, as its kind is.'
+		});
+		expect(taxNeeds(fromStock({ ...help, byHand: { taxed: true, ratePct: '8' } }, CA))).toEqual({
+			tax_rate_pct: 'That is the site’s rate: choose taxed at the site’s rate.'
+		});
+	});
+
+	it('taxed only where it is owed: a site, in a state collected in, placed in an area', () => {
+		const taxed = { ...help, byHand: { taxed: true as const, ratePct: '5' } };
+		expect(taxNeeds(fromStock(taxed, { ...CA, site: null }))).toEqual({
+			site_id: 'Where it went, so its tax rate is known.'
+		});
+		expect(taxNeeds(fromStock(taxed, { ...CA, site: { state: 'NV', ratePct: null } }))).toEqual({
+			taxable: "The business doesn't collect in Nevada, so it charges no tax there."
+		});
+		expect(taxNeeds(fromStock(taxed, { ...CA, site: { state: 'CA', ratePct: null } }))).toEqual({
+			site_id: 'That site is in no tax area yet, so its rate is not known.'
+		});
+	});
+
+	it('is not had by a cost passed on, which is no sale', () => {
+		const l = passedOn(
+			{ kind: 'paid_for', cost: '35', taxPaid: '0', byHand: { taxed: true, ratePct: null } },
+			CA
+		);
+		expect([l.taxable, l.byHand, l.soldAs]).toEqual([false, false, null]);
+	});
+
+	it('on goods bought for the job, as on goods from stock', () => {
+		const l = passedOn(
+			{ kind: 'bought', cost: '33.33', taxPaid: '2.67', byHand: { taxed: false } },
+			CA
+		);
+		expect([l.taxable, l.byHand, l.soldAs]).toEqual([false, true, GOODS]);
 	});
 });

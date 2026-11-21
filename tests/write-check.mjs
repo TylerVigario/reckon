@@ -2443,7 +2443,7 @@ console.log('\n  kinds of sale — added, answered, given, retired, and let go')
 		const row = id
 			? (
 					await kindsDb.query(
-						'select taxable, tax_source, sale_kind_id from invoice_line where id = $1',
+						'select taxable, tax_source, sale_kind_id, tax_rate_pct::text as rate from invoice_line where id = $1',
 						[id]
 					)
 				).rows[0]
@@ -2481,6 +2481,163 @@ console.log('\n  kinds of sale — added, answered, given, retired, and let go')
 		);
 		for (const line of [taxed, untaxed, cost])
 			if (line.id) await call('DELETE', `/api/lines/${line.id}?force=1`);
+
+		// A line's tax set by hand (#196), where this one is the exception to its
+		// kind: California taxes goods, so goods bought for the job not taxed,
+		// with why; then at another rate; then as its kind is taxed again.
+		/** A line's form sent as the phone's queue sends it, and the line as it is then. */
+		const lineForm = async (
+			/** @type {string} */ method,
+			/** @type {string} */ path,
+			/** @type {Record<string, string>} */ fields
+		) => {
+			const form = new FormData();
+			for (const [k, v] of Object.entries(fields)) form.set(k, v);
+			const { 'content-type': _, ...headers } = H;
+			const r = await fetch(base + path, { method, headers, body: form });
+			const body = await r.json().catch(() => null);
+			return { status: r.status, body };
+		};
+		const rowOf = async (/** @type {string} */ id) =>
+			(
+				await kindsDb.query(
+					`select taxable, tax_rate_pct::text as rate, tax_source, tax_override_reason as reason,
+					        tax_state, tax_jurisdiction is not null as said_where, tax_pieces is not null as pieces
+					   from invoice_line where id = $1`,
+					[id]
+				)
+			).rows[0];
+		/** `ok` is whether it went as it should; `what` is said either way. */
+		const expect = (/** @type {boolean} */ ok, /** @type {string} */ what, detail = '') => {
+			if (ok) passed++;
+			else failures.push(`${what}: ${detail}`);
+			console.log(`  ${ok ? '✓' : '✗'} ${what}`);
+		};
+		const goods = {
+			kind: 'bought',
+			description: `By-hand check ${stamp}`,
+			site_id: where.site,
+			ex_tax_cost: '10.00',
+			tax_paid: '0'
+		};
+		const why = 'Wire installed in the walls: the business is the consumer (Reg 1521)';
+		const noWhy = await lineForm('POST', '/api/lines', {
+			...goods,
+			client_uuid: crypto.randomUUID(),
+			invoice_id: where.invoice,
+			taxable: 'false'
+		});
+		expect(
+			noWhy.status === 400 && Boolean(noWhy.body?.errors?.tax_override_reason),
+			'a line’s tax set by hand without why is refused, said where',
+			`${noWhy.status} ${JSON.stringify(noWhy.body?.errors)}`
+		);
+		const made = await lineForm('POST', '/api/lines', {
+			...goods,
+			client_uuid: crypto.randomUUID(),
+			invoice_id: where.invoice,
+			taxable: 'false',
+			tax_override_reason: why
+		});
+		const id = /** @type {string | undefined} */ (made.body?.id);
+		const notTaxed = id ? await rowOf(id) : null;
+		expect(
+			made.status === 200 &&
+				notTaxed?.taxable === false &&
+				notTaxed?.tax_source === 'none' &&
+				notTaxed?.reason === why,
+			'goods bought for the job, not taxed by hand, with why',
+			`${made.status} ${JSON.stringify(notTaxed)}`
+		);
+		if (id) {
+			const kept = await lineForm('PATCH', `/api/lines/${id}`, {
+				...goods,
+				description: `By-hand check ${stamp}, two boxes`
+			});
+			const still = await rowOf(id);
+			expect(
+				kept.status === 200 && still?.taxable === false && still?.reason === why,
+				'a change that says nothing of its tax keeps the tax set by hand',
+				`${kept.status} ${JSON.stringify(still)}`
+			);
+			const siteRate = taxed.row?.rate ?? '';
+			const same = await lineForm('PATCH', `/api/lines/${id}`, {
+				...goods,
+				taxable: 'true',
+				tax_rate_pct: siteRate,
+				tax_override_reason: 'Partly exempt'
+			});
+			expect(
+				same.status === 400 && Boolean(same.body?.errors?.tax_rate_pct),
+				'another rate that is the site’s own is refused, said where',
+				`${same.status} ${JSON.stringify(same.body?.errors)}`
+			);
+			const anyway = await lineForm('PATCH', `/api/lines/${id}`, {
+				...goods,
+				taxable: 'true',
+				tax_override_reason: 'Taxed'
+			});
+			expect(
+				anyway.status === 400 && Boolean(anyway.body?.errors?.taxable),
+				'taxed at the site’s rate by hand, where its kind is anyway, is refused',
+				`${anyway.status} ${JSON.stringify(anyway.body?.errors)}`
+			);
+			const other = await lineForm('PATCH', `/api/lines/${id}`, {
+				...goods,
+				taxable: 'true',
+				tax_rate_pct: '4.0625',
+				tax_override_reason: 'Partly exempt'
+			});
+			const atOther = await rowOf(id);
+			expect(
+				other.status === 200 &&
+					atOther?.taxable === true &&
+					atOther?.rate === '4.0625' &&
+					atOther?.tax_source === 'override' &&
+					atOther?.tax_state === 'CA' &&
+					atOther?.said_where === true &&
+					atOther?.pieces === false,
+				'taxed at another rate by hand: an override, owed where it went, levied by nobody named',
+				`${other.status} ${JSON.stringify(atOther)}`
+			);
+			const back = await lineForm('PATCH', `/api/lines/${id}`, { ...goods, taxable: '' });
+			const asKind = await rowOf(id);
+			expect(
+				back.status === 200 &&
+					asKind?.taxable === true &&
+					asKind?.tax_source === 'site' &&
+					asKind?.reason === null &&
+					asKind?.pieces === true,
+				'and taxed as its kind is again, with no reason kept on it',
+				`${back.status} ${JSON.stringify(asKind)}`
+			);
+			const told = (
+				await kindsDb.query(
+					`select count(*)::int as n from record_history
+					  where table_name = 'invoice_line' and row_id = $1 and field = 'tax_override_reason'`,
+					[id]
+				)
+			).rows[0];
+			expect(
+				told?.n >= 2,
+				'why its tax was set by hand is kept in its history',
+				JSON.stringify(told)
+			);
+			await call('DELETE', `/api/lines/${id}?force=1`);
+		}
+		const passedOn = await lineForm('POST', '/api/lines', {
+			...goods,
+			kind: 'paid_for',
+			client_uuid: crypto.randomUUID(),
+			invoice_id: where.invoice,
+			taxable: 'false',
+			tax_override_reason: 'Not a sale'
+		});
+		expect(
+			passedOn.status === 400 && Boolean(passedOn.body?.errors?.taxable),
+			'a cost passed on has no tax to set by hand',
+			`${passedOn.status} ${JSON.stringify(passedOn.body?.errors)}`
+		);
 	}
 	await check('the service is taken away', 'DELETE', service, undefined, 200);
 	await check('a kind nothing is sold as is taken away', 'DELETE', at, undefined, 204);

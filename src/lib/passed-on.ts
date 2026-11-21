@@ -1,4 +1,5 @@
 import { Decimal, Ratio } from './decimal.ts';
+import { stateName } from './us-states.ts';
 
 /**
  * A line for what was passed on to a client: goods bought for the job, or a
@@ -25,6 +26,8 @@ export type PassedOn = {
 	cost: string;
 	/** The tax paid on it, all of it. */
 	taxPaid: string;
+	/** Its tax set by hand, where goods bought for the job are the exception. */
+	byHand?: ByHand | null;
 };
 
 export type Terms = {
@@ -50,6 +53,14 @@ export type Taxes = Record<string, readonly string[]>;
  */
 export type SiteTax = { state: string; ratePct: string | null };
 
+/**
+ * A line's tax set by hand, by someone with Full, where the line is the
+ * exception to its kind (#lib/line-fields readByHand): not taxed, or taxed at
+ * the site's rate (ratePct null) or at another. Taxed, it is owed where the
+ * line went: a site in a state the business collects in, placed in an area.
+ */
+export type ByHand = { taxed: false } | { taxed: true; ratePct: string | null };
+
 export function passedOn(line: PassedOn, terms: Terms) {
 	const bought = line.kind === 'bought';
 	const price = bought
@@ -60,7 +71,7 @@ export function passedOn(line: PassedOn, terms: Terms) {
 		unit: 'each',
 		unitPrice: price.round(4).toString(),
 		amount: price.round(terms.places).toString(),
-		...taxedAt(bought ? terms.goods : null, terms),
+		...taxedAt(bought ? terms.goods : null, terms, bought ? (line.byHand ?? null) : null),
 		exTaxCost: Decimal.from(line.cost).toString(),
 		taxPaid: Decimal.from(line.taxPaid).toString()
 	};
@@ -85,6 +96,8 @@ export type FromStock = {
 	markupPct: string;
 	/** The kind of sale the material is. */
 	kind: string;
+	/** Its tax set by hand, where this line is the exception to its kind. */
+	byHand?: ByHand | null;
 };
 
 export function fromStock(line: FromStock, terms: Omit<Terms, 'purchaseMarkupPct' | 'goods'>) {
@@ -97,7 +110,7 @@ export function fromStock(line: FromStock, terms: Omit<Terms, 'purchaseMarkupPct
 		unit: line.unit,
 		unitPrice: unitPrice.toString(),
 		amount: unitPrice.mul(line.qty).round(terms.places).toString(),
-		...taxedAt(line.kind, terms),
+		...taxedAt(line.kind, terms, line.byHand ?? null),
 		exTaxCost: Decimal.from(line.cost).toString(),
 		taxPaid: Decimal.from(line.taxPaid).toString()
 	};
@@ -109,21 +122,107 @@ export function fromStock(line: FromStock, terms: Omit<Terms, 'purchaseMarkupPct
  * site, where some state the business collects in taxes the kind and the line
  * names none, or the site's area, where its state taxes the kind and the site
  * has not been placed there.
+ *
+ * Or, where the line's tax was set by hand (`byHand`), that: not taxed, or
+ * taxed at the site's rate or at another, where the line went. A tax set by
+ * hand that would change nothing is refused, so no line keeps a reason for
+ * being taxed as its kind is anyway.
  */
-function taxedAt(kind: string | null, terms: Pick<Terms, 'taxes' | 'site'>) {
+function taxedAt(kind: string | null, terms: Pick<Terms, 'taxes' | 'site'>, byHand: ByHand | null) {
+	const site = terms.site;
 	const due = kind !== null && Object.values(terms.taxes).some((kinds) => kinds.includes(kind));
-	const there = due && terms.site !== null && (terms.taxes[terms.site.state] ?? []).includes(kind);
-	const rate = there && terms.site!.ratePct !== null ? Decimal.from(terms.site!.ratePct) : null;
+	const there = due && site !== null && (terms.taxes[site.state] ?? []).includes(kind);
+	const rate = there && site.ratePct !== null ? Decimal.from(site.ratePct) : null;
 	const charged = rate !== null && !rate.isZero();
-	return {
+	const asItsKind = {
 		/** The kind of sale it was sold as, which the line keeps. */
 		soldAs: kind,
 		taxable: charged,
 		taxRatePct: charged ? rate.toString() : '0',
 		taxSource: charged ? ('site' as const) : ('none' as const),
+		/** Whether its tax was set by hand, rather than its kind's. */
+		byHand: false,
 		/** Taxed somewhere the business collects, and the line names no site. */
-		needsASite: due && terms.site === null,
+		needsASite: due && site === null,
 		/** Taxed in the site's state, and the site is in no area there yet. */
-		needsPlacing: there && rate === null
+		needsPlacing: there && rate === null,
+		/** Why its tax cannot be set by hand as it was, by the box that says so. */
+		refused: null as Record<string, string> | null
 	};
+	if (byHand === null) return asItsKind;
+	const refuse = (field: string, why: string) => ({
+		...asItsKind,
+		needsASite: false,
+		needsPlacing: false,
+		refused: { [field]: why }
+	});
+
+	if (!byHand.taxed) {
+		if (!charged && !asItsKind.needsASite && !asItsKind.needsPlacing)
+			return refuse('taxable', 'It is not taxed there anyway, as its kind is.');
+		return {
+			...asItsKind,
+			taxable: false,
+			taxRatePct: '0',
+			taxSource: 'none' as const,
+			byHand: true,
+			needsASite: false,
+			needsPlacing: false
+		};
+	}
+
+	// Taxed, it is owed where it went: a site, in a state the business collects
+	// in, in an area there.
+	const taxedThere = { ...asItsKind, byHand: true, needsASite: false, needsPlacing: false };
+	if (site === null) return { ...taxedThere, needsASite: true };
+	if (!(site.state in terms.taxes))
+		return refuse(
+			'taxable',
+			`The business doesn't collect in ${stateName(site.state)}, so it charges no tax there.`
+		);
+	if (site.ratePct === null) return { ...taxedThere, needsPlacing: true };
+	const siteRate = Decimal.from(site.ratePct);
+	if (byHand.ratePct === null) {
+		if (charged) return refuse('taxable', 'It is taxed at the site’s rate anyway, as its kind is.');
+		if (siteRate.isZero()) return refuse('taxable', 'The site’s rate is nothing.');
+		return {
+			...taxedThere,
+			taxable: true,
+			taxRatePct: siteRate.toString(),
+			taxSource: 'site' as const
+		};
+	}
+	const typed = Decimal.from(byHand.ratePct);
+	if (typed.eq(siteRate))
+		return refuse('tax_rate_pct', 'That is the site’s rate: choose taxed at the site’s rate.');
+	return {
+		...taxedThere,
+		taxable: true,
+		taxRatePct: typed.toString(),
+		taxSource: 'override' as const
+	};
+}
+
+/**
+ * How a line of `kind` is taxed at the site, as its kind is: what a page says
+ * beside the choice of setting it by hand.
+ */
+export function asItsKind(kind: string | null, terms: Pick<Terms, 'taxes' | 'site'>) {
+	return taxedAt(kind, terms, null);
+}
+
+/**
+ * What a line's tax still needs, or why it is refused, by the box each is
+ * about: the page says it as a person types, and the server again.
+ */
+export function taxNeeds(line: {
+	needsASite: boolean;
+	needsPlacing: boolean;
+	refused: Record<string, string> | null;
+}): Record<string, string> | null {
+	if (line.refused) return line.refused;
+	if (line.needsASite) return { site_id: 'Where it went, so its tax rate is known.' };
+	if (line.needsPlacing)
+		return { site_id: 'That site is in no tax area yet, so its rate is not known.' };
+	return null;
 }

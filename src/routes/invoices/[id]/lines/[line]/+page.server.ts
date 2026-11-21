@@ -39,6 +39,9 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 			'il.amount',
 			'il.taxable',
 			'il.tax_rate_pct',
+			// Where its rate came from, and why, where its tax was set by hand.
+			'il.tax_source',
+			'il.tax_override_reason',
 			// Whether the Reg 1701 election is made where it was taxed.
 			claimsResold(eb.ref('il.tax_state')).as('claims'),
 			'il.ex_tax_cost',

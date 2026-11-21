@@ -334,7 +334,7 @@ T["invoice_line"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the ph
     ("","tax_jurisdiction","text · its area, as taxed"),
     ("","tax_state","text · its state, as taxed"),
     ("","tax_pieces","jsonb · who levied what"),
-    ("","tax_override_reason","text"),("","ex_tax_cost","numeric · snapshot"),
+    ("","tax_override_reason","text · why, set by hand"),("","ex_tax_cost","numeric · snapshot"),
     ("","tax_paid","numeric · snapshot"),("","amount","numeric"),
     ("FK","time_entry_id","uuid"),("FK","trip_leg_id","uuid"),
     ("FK","agreement_period_id","uuid"),("FK","material_id","uuid · drawn from stock"),

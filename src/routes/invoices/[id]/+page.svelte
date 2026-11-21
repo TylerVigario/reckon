@@ -390,10 +390,11 @@
 					<span class="what">
 						<span class="n">{l.description}</span>
 						{#if l.detail}<span class="sub">{l.detail}{l.taxable ? ' · taxable' : ''}</span>{/if}
-						{#if l.receipt || l.moved_from || c || (field && l.mine)}
+						{#if l.receipt || l.moved_from || c || l.tax_by_hand || (field && l.mine)}
 							<span class="labs">
 								{#if field && l.mine}<span class="lab">Added by you</span>{/if}
 								{#if l.receipt}<span class="lab">Receipt</span>{/if}
+								{#if l.tax_by_hand}<span class="lab">Tax set by hand</span>{/if}
 								{#if l.moved_from}<span class="lab">Moved from {l.moved_from}</span>{/if}
 								{#if c?.refused?.conflict?.what === 'collided'}
 									<span class="lab warn">Changed in two places</span>
@@ -440,6 +441,7 @@
 					<span class="sub">{l.detail}{l.taxable ? ' · taxable' : ''}</span>
 					<span class="labs">
 						{#if q.line.receipt}<span class="lab">Receipt</span>{/if}
+						{#if l.tax_by_hand}<span class="lab">Tax set by hand</span>{/if}
 						<span class="lab acc">On this phone</span>
 					</span>
 				</span>

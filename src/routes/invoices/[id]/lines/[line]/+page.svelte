@@ -85,6 +85,9 @@
 	/** A field's value, as the line's screen writes it. */
 	function said(field: string, v: string): string {
 		if (field === 'paid_by') return v ? (data.people[v] ?? 'Someone') : 'the business';
+		if (field === 'taxable')
+			return v === 'true' ? 'taxed' : v === 'false' ? 'not taxed' : 'as its kind is';
+		if (field === 'tax_rate_pct') return v ? pct(v) : 'the site’s rate';
 		if (v === '') return 'nothing';
 		if (field === 'ex_tax_cost' || field === 'tax_paid') return money(v);
 		if (field === 'qty') return `${quantity(v)}${l.unit ? ` ${l.unit}` : ''}`;
@@ -98,7 +101,10 @@
 		bought_from: 'From',
 		ex_tax_cost: 'Cost before tax',
 		tax_paid: 'Tax paid',
-		paid_by: 'Who paid'
+		paid_by: 'Who paid',
+		taxable: 'Its tax',
+		tax_rate_pct: 'Taxed at',
+		tax_override_reason: 'Why'
 	};
 
 	// A collision is settled field by field: each picks one of the values it has
@@ -419,6 +425,22 @@
 			<span class="kv-l">{l.taxable ? `Tax at ${pct(l.tax_rate_pct)}` : 'Tax'}</span>
 			<span class="kv-v"><span>{tax !== null ? money(tax) : 'None'}</span></span>
 		</div>
+		{#if l.tax_override_reason}
+			<!-- Its tax set by hand, by someone with Full: why, as its history keeps it. -->
+			<div class="box-row kv">
+				<span class="kv-l">Set by hand</span>
+				<span class="kv-v">
+					<span
+						>{!l.taxable
+							? 'Not taxed'
+							: l.tax_source === 'override'
+								? 'At another rate than the site’s'
+								: 'At the site’s rate'}</span
+					>
+					<span class="kv-s">{l.tax_override_reason}</span>
+				</span>
+			</div>
+		{/if}
 		{#if l.taxable && data.claims && l.ex_tax_cost !== null}
 			<div class="box-row kv">
 				<span class="kv-l">Off the return</span>
