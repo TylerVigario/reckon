@@ -8,7 +8,7 @@ import { businessToday } from './calendar.ts';
 import { pgError, type Errors } from './field-errors.ts';
 import { problem } from './problem.ts';
 import { shelves } from './stock.ts';
-import { fromStock, passedOn, taxNeeds, type ByHand } from '../passed-on.ts';
+import { fromStock, passedOn, taxNeeds, type ByHand, type Taxes } from '../passed-on.ts';
 import { BY_HAND, readByHand, readFromStock, readPassedOn } from '../line-fields.ts';
 import { changeDraw, drawFrom } from '../stock-draw.ts';
 import { quantity } from '../format.ts';
@@ -18,9 +18,9 @@ import { merge, MERGED_FIELDS, same, type Merge } from '../line-merge.ts';
 import type { Conflict, Held } from '../line-conflict.ts';
 import { startIn } from './drafts.ts';
 import { isReceiptType, MAX_RECEIPT } from './receipt-file.ts';
-import { areaPieces } from './tax-areas.ts';
-import { siteRate } from './tax-registrations.ts';
-import { kindChoices, reckonsKind, taxesByState } from './sale-kinds.ts';
+import { areaPieces, piecesFor } from './tax-areas.ts';
+import { siteKindRates, siteRate } from './tax-registrations.ts';
+import { areaTaxesByState, kindChoices, reckonsKind, taxesByState } from './sale-kinds.ts';
 
 /**
  * A LINE ADDED TO A DRAFT BY HAND: goods drawn from stock (#lib/stock-draw),
@@ -147,7 +147,7 @@ export function materials(ids?: string[]) {
  * terms, and what is on the shelf.
  */
 export async function formTerms() {
-	const [people, op, places, all, taxes, goods, kinds] = await Promise.all([
+	const [people, op, places, all, taxes, areaTaxes, goods, kinds] = await Promise.all([
 		db
 			.selectFrom('user')
 			.select(['id', 'name'])
@@ -165,6 +165,7 @@ export async function formTerms() {
 		moneyPlaces(),
 		materials(),
 		taxesByState(db),
+		areaTaxesByState(db, businessToday()),
 		reckonsKind(db, 'goods'),
 		kindChoices(db)
 	]);
@@ -175,9 +176,11 @@ export async function formTerms() {
 		// What stock sells at over its cost where a material has no markup of
 		// its own: for a material repriced on the phone (#lib/stock-held).
 		stock_markup: op?.stock ?? '0',
-		// Each state the business collects in, and the kinds of sale it taxes
-		// there; each site says its state (#lib/server/sale-kinds).
+		// Each state the business collects in, the kinds of sale it taxes
+		// there, and those some area of it taxes alone; each site says its
+		// state (#lib/server/sale-kinds).
 		taxes,
+		areaTaxes,
 		goods,
 		// What each kind of sale is called, so a line says how its kind is taxed.
 		kinds: Object.fromEntries(kinds.map((k) => [k.id, k.name])),
@@ -427,53 +430,64 @@ async function refused(
 
 /**
  * Each state the business collects in and the kinds of sale it taxes there,
- * and the client's site a line names -- its tax (#lib/passed-on SiteTax), its
- * state, and its area's name and pieces -- or why it cannot be named.
+ * and those some area of it taxes alone; and the client's site a line names
+ * -- its tax (#lib/passed-on SiteTax), its state, and its area's name and
+ * pieces -- or why it cannot be named.
  */
 async function siteOf(draft: { entity_id: string; who: string }, siteId: string | null) {
-	const [taxes, goods] = await Promise.all([taxesByState(db), reckonsKind(db, 'goods')]);
-	if (!siteId) return { taxes, goods, site: null, why: null };
+	const day = businessToday();
+	const [taxes, areaTaxes, goods] = await Promise.all([
+		taxesByState(db),
+		areaTaxesByState(db, day),
+		reckonsKind(db, 'goods')
+	]);
+	if (!siteId) return { taxes, areaTaxes, goods, site: null, why: null };
 	// Its area's rate today, and who levies it (#lib/server/tax-areas), where
 	// the business collects in its state.
-	const day = businessToday();
 	const found = await db
 		.selectFrom('site')
 		.leftJoin('tax_area', 'tax_area.id', 'site.tax_area_id')
-		.select((eb) => [
-			siteRate({ region: eb.ref('site.region'), area: eb.ref('site.tax_area_id') }, day).as('rate'),
-			'site.region as state',
-			'tax_area.name as jurisdiction',
-			areaPieces(eb.ref('site.tax_area_id').$castTo<string>(), day).as('pieces')
-		])
+		.select((eb) => {
+			const site = { region: eb.ref('site.region'), area: eb.ref('site.tax_area_id') };
+			return [
+				siteRate(site, day).as('rate'),
+				siteKindRates(site, day).as('kind_rates'),
+				'site.region as state',
+				'tax_area.name as jurisdiction',
+				areaPieces(eb.ref('site.tax_area_id').$castTo<string>(), day).as('pieces')
+			];
+		})
 		.where('site.id', '=', siteId)
 		.where('site.entity_id', '=', draft.entity_id)
 		.executeTakeFirst();
-	if (!found) return { taxes, goods, site: null, why: `Not one of ${draft.who}'s sites.` };
-	const { rate, ...where } = found;
-	return {
-		taxes,
-		goods,
-		site: { ...where, tax: { state: where.state, ratePct: rate } },
-		why: null
-	};
+	if (!found)
+		return { taxes, areaTaxes, goods, site: null, why: `Not one of ${draft.who}'s sites.` };
+	const { rate, kind_rates, ...where } = found;
+	const tax = { state: where.state, ratePct: rate, kindRates: kind_rates ?? {} };
+	return { taxes, areaTaxes, goods, site: { ...where, tax }, why: null };
 }
 
 /**
  * Where a taxed line was taxed -- its area's name and its state -- and the
  * pieces its rate was made of where it is the site's -- who levied what --
  * from the same read of the site as the rate, kept with the line as they were
- * then.
+ * then: those for its kind alone, and those on every kind where they fall on
+ * it, its state taxing the kind or its tax set by hand to the site's rate
+ * (#lib/server/tax-areas piecesFor).
  */
 function taxedWhere(
-	line: { taxable: boolean; taxSource: string },
-	site: { state: string; jurisdiction: string | null; pieces: TaxPiece[] } | null
+	line: { taxable: boolean; taxSource: string; soldAs: string | null; byHand: boolean },
+	site: { state: string; jurisdiction: string | null; pieces: TaxPiece[] } | null,
+	taxes: Taxes
 ) {
 	const at = line.taxable && site !== null && site.jurisdiction !== null;
 	const own = at && line.taxSource === 'site';
+	const everyKind =
+		line.byHand || (at && line.soldAs !== null && (taxes[site.state] ?? []).includes(line.soldAs));
 	return {
 		tax_jurisdiction: at ? site.jurisdiction : null,
 		tax_state: at ? site.state : null,
-		tax_pieces: own ? JSON.stringify(site.pieces) : null
+		tax_pieces: own ? JSON.stringify(piecesFor(site.pieces, line.soldAs, everyKind)) : null
 	};
 }
 
@@ -616,7 +630,7 @@ async function fromTheShelf(
 	if (m && !m.active && !input.id && !errors.material_id)
 		errors.material_id = `${m.name} is retired. Offer it again from its record, or choose another.`;
 	const siteId = typeof values.site_id === 'string' ? values.site_id : null;
-	const { taxes, site, why } = await siteOf(draft, siteId);
+	const { taxes, areaTaxes, site, why } = await siteOf(draft, siteId);
 	if (why) errors.site_id = why;
 	if (Object.keys(errors).length > 0 || !m) return no(errors);
 
@@ -657,7 +671,7 @@ async function fromTheShelf(
 						kind: m.kind,
 						byHand: tax.byHand
 					},
-					{ taxes, site: site?.tax ?? null, places }
+					{ taxes, areaTaxes, site: site?.tax ?? null, places }
 				);
 				const needs = taxNeeds(line);
 				if (needs) throw new Refused(no(needs));
@@ -682,7 +696,7 @@ async function fromTheShelf(
 						tax_source: line.taxSource,
 						tax_override_reason: tax.reason,
 						sale_kind_id: line.soldAs,
-						...taxedWhere(line, site),
+						...taxedWhere(line, site, taxes),
 						ex_tax_cost: line.exTaxCost,
 						tax_paid: line.taxPaid,
 						site_id: siteId,
@@ -729,7 +743,7 @@ async function boughtOrPaidFor(
 	if (values.kind === 'paid_for' && tax.byHand)
 		errors.taxable = 'A cost passed on is no sale, so it is taxed nowhere.';
 	const siteId = typeof values.site_id === 'string' ? values.site_id : null;
-	const { taxes, goods, site, why } = await siteOf(draft, siteId);
+	const { taxes, areaTaxes, goods, site, why } = await siteOf(draft, siteId);
 	if (why) errors.site_id = why;
 
 	const receipt = (await readReceipt(input.receipt, errors)) ?? input.kept ?? null;
@@ -749,6 +763,7 @@ async function boughtOrPaidFor(
 		{
 			purchaseMarkupPct: op?.markup ?? '0',
 			taxes,
+			areaTaxes,
 			goods,
 			site: site?.tax ?? null,
 			places: await moneyPlaces()
@@ -782,7 +797,7 @@ async function boughtOrPaidFor(
 						tax_source: line.taxSource,
 						tax_override_reason: tax.reason,
 						sale_kind_id: line.soldAs,
-						...taxedWhere(line, site),
+						...taxedWhere(line, site, taxes),
 						ex_tax_cost: line.exTaxCost,
 						tax_paid: line.taxPaid,
 						site_id: siteId,
@@ -922,7 +937,7 @@ export async function changeLine(
 			);
 			Object.assign(errors, tax.errors);
 			const siteId = typeof values.site_id === 'string' ? values.site_id : null;
-			const { taxes, site, why } = await siteOf(draft, siteId);
+			const { taxes, areaTaxes, site, why } = await siteOf(draft, siteId);
 			if (why) errors.site_id = why;
 			if (Object.keys(errors).length > 0 || !m) return no(errors);
 			const op = await db
@@ -977,7 +992,7 @@ export async function changeLine(
 							kind: m.kind,
 							byHand: tax.byHand
 						},
-						{ taxes, site: site?.tax ?? null, places }
+						{ taxes, areaTaxes, site: site?.tax ?? null, places }
 					);
 					const needs = taxNeeds(priced);
 					if (needs) throw new Refused(no(needs));
@@ -1039,7 +1054,7 @@ export async function changeLine(
 							tax_source: priced.taxSource,
 							tax_override_reason: tax.reason,
 							sale_kind_id: priced.soldAs,
-							...taxedWhere(priced, site),
+							...taxedWhere(priced, site, taxes),
 							ex_tax_cost: priced.exTaxCost,
 							tax_paid: priced.taxPaid,
 							site_id: siteId
@@ -1057,7 +1072,7 @@ export async function changeLine(
 		if (line.kind === 'paid_for' && tax.byHand)
 			errors.taxable = 'A cost passed on is no sale, so it is taxed nowhere.';
 		const siteId = typeof values.site_id === 'string' ? values.site_id : null;
-		const { taxes, goods, site, why } = await siteOf(draft, siteId);
+		const { taxes, areaTaxes, goods, site, why } = await siteOf(draft, siteId);
 		if (why) errors.site_id = why;
 		const receipt = await readReceipt(input.receipt, errors);
 		if (Object.keys(errors).length > 0) return no(errors);
@@ -1075,6 +1090,7 @@ export async function changeLine(
 			{
 				purchaseMarkupPct: op?.markup ?? '0',
 				taxes,
+				areaTaxes,
 				goods,
 				site: site?.tax ?? null,
 				places
@@ -1097,7 +1113,7 @@ export async function changeLine(
 						tax_source: priced.taxSource,
 						tax_override_reason: tax.reason,
 						sale_kind_id: priced.soldAs,
-						...taxedWhere(priced, site),
+						...taxedWhere(priced, site, taxes),
 						ex_tax_cost: priced.exTaxCost,
 						tax_paid: priced.taxPaid,
 						site_id: siteId,

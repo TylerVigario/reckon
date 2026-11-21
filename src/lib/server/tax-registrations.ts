@@ -1,6 +1,6 @@
 import { expressionBuilder, sql, type Expression, type Kysely, type NumericString } from 'kysely';
 import type { DB } from './db/database.ts';
-import { areaRate } from './tax-areas.ts';
+import { areaKindRates, areaRate } from './tax-areas.ts';
 
 /**
  * WHERE THE BUSINESS COLLECTS TAX: each state it is registered in
@@ -35,9 +35,10 @@ export function collectsAnywhere() {
 }
 
 /**
- * A site's rate on `day`: its area's, where the business collects in the
- * site's state and the site has been placed there, and otherwise null -- never
- * a rate of nothing, which would read as a rate.
+ * A site's rate on `day` on every kind of sale its state taxes: its area's,
+ * where the business collects in the site's state and the site has been placed
+ * there, and otherwise null -- never a rate of nothing, which would read as a
+ * rate.
  */
 export function siteRate(
 	site: { region: Expression<string>; area: Expression<string | null> },
@@ -45,6 +46,23 @@ export function siteRate(
 ) {
 	return sql<NumericString | null>`case when ${collectsIn(site.region)} and ${site.area} is not null
 		then ${areaRate(site.area as Expression<string>, day)} end`;
+}
+
+/**
+ * What a site's area adds on `day` for each kind of sale it taxes alone, by
+ * kind (#lib/server/tax-areas areaKindRates): where the business collects in
+ * the site's state and the site has been placed there, and otherwise null, as
+ * its rate is.
+ */
+export function siteKindRates(
+	site: { region: Expression<string>; area: Expression<string | null> },
+	day: string | Expression<string>
+) {
+	return sql<Record<
+		string,
+		string
+	> | null>`case when ${collectsIn(site.region)} and ${site.area} is not null
+		then ${areaKindRates(site.area as Expression<string>, day)} end`;
 }
 
 /**

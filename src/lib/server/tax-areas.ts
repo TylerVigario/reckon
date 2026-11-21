@@ -31,9 +31,11 @@ function setInForce(area: Expression<string>, day: string | Expression<string>) 
 }
 
 /**
- * An area's rate on `day`, or the part of it one level levies: its pieces in
- * force then, added together. A level with no piece is 0.0000, as a share was
- * written before the pieces had a table.
+ * An area's rate on `day` on every kind of sale its state taxes, or the part
+ * of it one level levies: its pieces in force then that fall on every kind,
+ * added together. A level with no piece is 0.0000, as a share was written
+ * before the pieces had a table. What a piece for one kind adds is that
+ * kind's (areaKindRates).
  */
 export function areaRate(
 	area: Expression<string>,
@@ -47,15 +49,34 @@ export function areaRate(
 		)
 		.where('p.area_id', '=', area)
 		.where('p.effective_from', '=', setInForce(area, day))
+		.where('p.sale_kind_id', 'is', null)
 		.$if(level !== undefined, (qb) => qb.where('p.level', '=', level!))
 		.$asScalar()
 		.$notNull();
 }
 
 /**
- * An area's pieces in force on `day`, as a line keeps them
- * (invoice_line.tax_pieces): who levies what, the state's before the local
- * ones, each rate as the text Postgres writes.
+ * What an area's pieces for one kind of sale alone come to on `day`, by kind:
+ * what a line of that kind is taxed at there over the area's rate, or in
+ * place of it where its state does not tax the kind. Each rate is the text
+ * Postgres writes; a kind with no piece of its own is not there.
+ */
+export function areaKindRates(area: Expression<string>, day: string | Expression<string>) {
+	return sql<Record<string, string>>`coalesce((
+		select jsonb_object_agg(k.kind, k.rate)
+		  from (select p.sale_kind_id::text as kind, sum(p.rate_pct)::numeric(7, 4)::text as rate
+		          from tax_piece p
+		         where p.area_id = ${area}
+		           and p.effective_from = (${setInForce(area, day)})
+		           and p.sale_kind_id is not null
+		         group by p.sale_kind_id) k), '{}'::jsonb)`;
+}
+
+/**
+ * An area's pieces in force on `day`: who levies what, the state's before the
+ * local ones and, at each level, those on every kind before those for one,
+ * each rate as the text Postgres writes and each piece's kind, null for every
+ * kind its state taxes. A line keeps those it is taxed by (#lib/server/lines).
  */
 export function areaPieces(area: Expression<string>, day: string) {
 	return jsonArrayFrom(
@@ -64,13 +85,57 @@ export function areaPieces(area: Expression<string>, day: string) {
 			.select((eb) => [
 				'p.level',
 				'p.jurisdiction',
-				eb.cast<string>('p.rate_pct', 'text').as('rate')
+				eb.cast<string>('p.rate_pct', 'text').as('rate'),
+				'p.sale_kind_id as kind'
 			])
 			.where('p.area_id', '=', area)
 			.where('p.effective_from', '=', setInForce(area, day))
 			.orderBy('p.level')
+			.orderBy(sql`p.sale_kind_id is not null`)
 			.orderBy('p.jurisdiction')
 	).$castTo<TaxPiece[]>();
+}
+
+/**
+ * The pieces a line of `kind` taxed at its site's rate keeps, of its area's
+ * `pieces`: those for its kind alone, and those on every kind where they fall
+ * on it -- its state taxes the kind, or its tax was set by hand to the site's
+ * rate (`everyKind`). A piece for its kind says so; one on every kind says no
+ * kind.
+ */
+export function piecesFor(
+	pieces: readonly TaxPiece[],
+	kind: string | null,
+	everyKind: boolean
+): TaxPiece[] {
+	return pieces.flatMap(({ kind: k, ...p }) =>
+		k ? (k === kind ? [{ ...p, kind: k }] : []) : everyKind ? [p] : []
+	);
+}
+
+/**
+ * What a line of each kind of sale an area taxes alone is taxed at there, of
+ * its `pieces` in force: those on every kind where its state taxes the kind
+ * (`taxed`), and the kind's own. By the kind's name, as `names` gives it, so a
+ * page can say "On Meals, 7.000%" beside the rate on every kind.
+ */
+export function kindRates(
+	pieces: readonly TaxPiece[],
+	taxed: readonly string[],
+	names: Readonly<Record<string, string>>
+) {
+	const kinds = [...new Set(pieces.flatMap((p) => (p.kind ? [p.kind] : [])))];
+	return kinds
+		.map((kind) => {
+			const of = piecesFor(pieces, kind, taxed.includes(kind)).map(({ kind: _, ...p }) => p);
+			return {
+				kind,
+				name: names[kind] ?? 'A kind of sale',
+				rate: of.reduce((t, p) => t.add(p.rate), Decimal.ZERO).toFixed(4),
+				pieces: of
+			};
+		})
+		.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
@@ -157,7 +222,8 @@ async function dropRepeats(db: Kysely<DB>, area: string) {
 		with sets as (
 		  select effective_from,
 		         string_agg(level || ' ' || jurisdiction || ' ' || coalesce(code, '') || ' ' ||
-		                    rate_pct::text, ', ' order by level, jurisdiction) as said
+		                    rate_pct::text || ' ' || coalesce(sale_kind_id::text, ''), ', '
+		                    order by level, jurisdiction, sale_kind_id) as said
 		    from tax_piece where area_id = ${area} group by effective_from
 		), repeated as (
 		  select effective_from from (

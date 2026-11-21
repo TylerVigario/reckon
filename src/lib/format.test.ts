@@ -152,6 +152,19 @@ describe('levied', () => {
 		).toBe('CALIFORNIA 7.250% + WOODLAND 0.750%');
 		expect(levied([{ jurisdiction: 'CALIFORNIA', rate: '7.2500' }])).toBe('CALIFORNIA 7.250%');
 	});
+
+	it('says which kind a piece for one kind alone falls on', () => {
+		const meals = '019a0000-0000-7000-8000-00000000000c';
+		expect(
+			levied(
+				[
+					{ jurisdiction: 'Massachusetts', rate: '6.2500', kind: null },
+					{ jurisdiction: 'Boston', rate: '0.7500', kind: meals }
+				],
+				{ [meals]: 'Meals' }
+			)
+		).toBe('Massachusetts 6.250% + Boston 0.750% on Meals');
+	});
 });
 
 describe('hours', () => {

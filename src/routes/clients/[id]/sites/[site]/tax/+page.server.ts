@@ -1,8 +1,9 @@
 import { db } from '#lib/server/db/index.ts';
 import { businessDay, businessToday } from '#lib/server/calendar.ts';
 import { findClient, findSite } from '#lib/server/find.ts';
-import { areaRate } from '#lib/server/tax-areas.ts';
+import { areaRate, kindRates } from '#lib/server/tax-areas.ts';
 import { typedAreas, typesAreasIn } from '#lib/server/typed-areas.ts';
+import { kindChoices, taxesByState } from '#lib/server/sale-kinds.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -14,9 +15,10 @@ import type { PageServerLoad } from './$types';
  *
  * And where a person chooses a site's area -- the business collects in its
  * state, and no authority answers there -- the state's typed areas to choose
- * from (#lib/server/typed-areas).
+ * from (#lib/server/typed-areas). Its rate is on every kind its state taxes,
+ * and a kind its area taxes alone says its own.
  */
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, parent }) => {
 	const client = await findClient(params.id);
 	const found = await findSite(client.id, params.site);
 	const { region } = await db
@@ -24,7 +26,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		.select('region')
 		.where('id', '=', found.id)
 		.executeTakeFirstOrThrow();
-	const [placements, areas] = await Promise.all([
+	const [placements, areas, kinds, taxes, { site }] = await Promise.all([
 		db
 			.selectFrom('site_placement as k')
 			.innerJoin('tax_area as a', 'a.id', 'k.area_id')
@@ -55,7 +57,16 @@ export const load: PageServerLoad = async ({ params }) => {
 			.orderBy('k.id', 'desc')
 			.limit(8)
 			.execute(),
-		(await typesAreasIn(db, region)) ? typedAreas(db, region, businessToday()) : null
+		(await typesAreasIn(db, region)) ? typedAreas(db, region, businessToday()) : null,
+		kindChoices(db),
+		taxesByState(db),
+		parent()
 	]);
-	return { placements, areas };
+	const names = Object.fromEntries(kinds.map((k) => [k.id, k.name]));
+	return {
+		placements,
+		areas,
+		every: site.pieces.filter((p) => !p.kind),
+		byKind: kindRates(site.pieces, taxes[region] ?? [], names)
+	};
 };

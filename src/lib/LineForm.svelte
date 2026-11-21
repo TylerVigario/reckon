@@ -27,6 +27,7 @@
 		asItsKind,
 		fromStock,
 		passedOn,
+		siteRateFor,
 		taxNeeds,
 		type ByHand,
 		type Taxes
@@ -60,16 +61,25 @@
 				status?: string;
 			};
 			/**
-			 * Each with its state, and its rate where the business collects there
-			 * and the site has been placed.
+			 * Each with its state, and where the business collects there and the
+			 * site has been placed, its rate on every kind the state taxes and
+			 * what its area's pieces for one kind alone add, by kind.
 			 */
-			sites: { id: string; label: string | null; state: string; rate_pct: string | null }[];
+			sites: {
+				id: string;
+				label: string | null;
+				state: string;
+				rate_pct: string | null;
+				kind_rates: Record<string, string> | null;
+			}[];
 			people: { id: string; name: string }[];
 			markup: string;
 			/** What stock sells at over its cost, where a material has no markup of its own. */
 			stock_markup?: string;
 			/** Each state the business collects in, and the kinds of sale it taxes there. */
 			taxes: Taxes;
+			/** And the kinds some area of each taxes alone. */
+			areaTaxes: Taxes;
 			/** reckon's goods, which goods bought for the job are sold as. */
 			goods: string;
 			/** What each kind of sale is called. */
@@ -212,7 +222,21 @@
 
 	const site = $derived(data.sites.find((s) => s.id === siteId));
 	// Its tax, as #lib/passed-on reads it.
-	const siteTax = $derived(site ? { state: site.state, ratePct: site.rate_pct } : null);
+	const siteTax = $derived(
+		site ? { state: site.state, ratePct: site.rate_pct, kindRates: site.kind_rates ?? {} } : null
+	);
+	/** What each kind its area taxes alone is taxed at there: "Meals at 7.000%". */
+	const byKind = $derived(
+		site && siteTax
+			? Object.entries(site.kind_rates ?? {})
+					.map(([k, own]) => {
+						const every = (data.taxes[site.state] ?? []).includes(k);
+						const at = every ? siteRateFor(siteTax, k) : Decimal.from(own);
+						return `${data.kinds[k] ?? 'A kind'} at ${pct(at?.toString() ?? own)}`;
+					})
+					.sort()
+			: []
+	);
 	const stock = $derived(kind === 'material');
 	const bought = $derived(kind === 'bought');
 	// A cost passed on is no sale, so it has no tax to set.
@@ -251,22 +275,36 @@
 	// The kind of sale the line is, and how its kind is taxed where it went.
 	const soldAs = $derived(stock ? (item?.kind ?? null) : bought ? data.goods : null);
 	const kindTax = $derived(
-		soldAs !== null ? asItsKind(soldAs, { taxes: data.taxes, site: siteTax }) : null
+		soldAs !== null
+			? asItsKind(soldAs, { taxes: data.taxes, areaTaxes: data.areaTaxes, site: siteTax })
+			: null
 	);
+	// Whether the site's state taxes the kind, and the rate a taxed line of
+	// the kind pays there: the site's, and what its area adds on the kind.
+	const stateTaxes = $derived(
+		!!site && soldAs !== null && (data.taxes[site.state] ?? []).includes(soldAs)
+	);
+	const siteAt = $derived(siteTax ? siteRateFor(siteTax, soldAs) : null);
+	const ownKind = $derived(soldAs !== null && !!site?.kind_rates?.[soldAs]);
+	const kindName = $derived((soldAs && data.kinds[soldAs]) || 'its kind of sale');
 	// Where it went is somewhere the business collects, in an area with a rate.
 	const collects = $derived(
-		!!site && site.state in data.taxes && site.rate_pct !== null && Number(site.rate_pct) > 0
+		!!site && site.state in data.taxes && siteAt !== null && !siteAt.isZero()
 	);
 	/** The choices of its tax: Primer's RadioGroup, as its kind is first, then the exceptions. */
 	const taxChoices = $derived(
 		[
 			{
 				v: 'kind' as const,
-				label: `As ${(soldAs && data.kinds[soldAs]) || 'its kind of sale'} is taxed${site ? ` in ${stateName(site.state)}` : ''}`,
+				label: `As ${kindName} is taxed${site ? ` in ${stateName(site.state)}` : ''}`,
 				caption: !kindTax
 					? 'Once it is chosen.'
 					: kindTax.taxable
-						? `${pct(kindTax.taxRatePct)}, the site’s rate.`
+						? !stateTaxes
+							? `${pct(kindTax.taxRatePct)}, which the site’s area levies on ${kindName} alone.`
+							: ownKind
+								? `${pct(kindTax.taxRatePct)}, the site’s rate on ${kindName}.`
+								: `${pct(kindTax.taxRatePct)}, the site’s rate.`
 						: kindTax.needsASite
 							? 'Taxed where the business collects, so it needs the site it went to.'
 							: kindTax.needsPlacing
@@ -283,8 +321,11 @@
 			{
 				v: 'site' as const,
 				label: 'Taxed at the site’s rate',
-				caption: site?.rate_pct ? `${pct(site.rate_pct)}, though its kind is not taxed there.` : '',
-				offered: collects && !!kindTax && !kindTax.taxable
+				caption:
+					site && siteAt
+						? `${pct(siteAt.toString())}, though ${stateName(site.state)} doesn’t tax ${kindName}.`
+						: '',
+				offered: collects && !!kindTax && !stateTaxes
 			},
 			{
 				v: 'other' as const,
@@ -341,7 +382,7 @@
 				kind: item.kind,
 				byHand
 			},
-			{ taxes: data.taxes, site: siteTax, places: data.places }
+			{ taxes: data.taxes, areaTaxes: data.areaTaxes, site: siteTax, places: data.places }
 		);
 		return {
 			...line,
@@ -488,6 +529,7 @@
 			{
 				purchaseMarkupPct: data.markup,
 				taxes: data.taxes,
+				areaTaxes: data.areaTaxes,
 				goods: data.goods,
 				site: siteTax,
 				places: data.places
@@ -542,7 +584,7 @@
 					class="ti"
 					inputmode="decimal"
 					autocomplete="off"
-					placeholder={site?.rate_pct ?? ''}
+					placeholder={siteAt?.toString() ?? ''}
 					aria-invalid={errors.tax_rate_pct ? 'true' : undefined}
 					aria-describedby={errors.tax_rate_pct ? 'l-tax_rate_pct-e' : undefined}
 					bind:value={otherRate}
@@ -659,7 +701,9 @@
 				{#if errors.site_id}
 					{@render wrong('site_id')}
 				{:else if site?.rate_pct}
-					<p class="fc-c">Taxed there at {pct(site.rate_pct)}.</p>
+					<p class="fc-c">
+						Taxed there at {pct(site.rate_pct)}{byKind.length ? `; ${byKind.join('; ')}` : ''}.
+					</p>
 				{:else if site && site.state in data.taxes}
 					<p class="fc-c">In no tax area yet, so nothing taxed can be billed there.</p>
 				{/if}

@@ -1,4 +1,4 @@
-import { sql, type Kysely } from 'kysely';
+import { sql, type Kysely, type NotNull } from 'kysely';
 import type { DB, ReckonKind } from './db/database.ts';
 import type { Taxes } from '../passed-on.ts';
 import { pgError, stillReferenced } from './field-errors.ts';
@@ -56,6 +56,36 @@ export async function taxesByState(db: Kysely<DB>): Promise<Taxes> {
 		out[r.state] ??= [];
 		if (r.sale_kind_id) out[r.state].push(r.sale_kind_id);
 	}
+	return out satisfies Taxes;
+}
+
+/**
+ * Each state the business collects in, and the kinds of sale some area of it
+ * taxes on `day` by a piece for that kind alone (#lib/server/tax-areas),
+ * whether or not the state does: a line of one of them needs its site there,
+ * as a line of a kind the state taxes does.
+ */
+export async function areaTaxesByState(db: Kysely<DB>, day: string): Promise<Taxes> {
+	const rows = await db
+		.selectFrom('tax_piece as p')
+		.innerJoin('tax_area as a', 'a.id', 'p.area_id')
+		.innerJoin('tax_registration as r', 'r.state', 'a.state')
+		.select(['a.state', 'p.sale_kind_id'])
+		.distinct()
+		.where('p.sale_kind_id', 'is not', null)
+		.where('p.effective_from', '=', (eb) =>
+			eb
+				.selectFrom('tax_piece as q')
+				.select((eb) => eb.fn.max('q.effective_from').as('d'))
+				.whereRef('q.area_id', '=', 'p.area_id')
+				.where('q.effective_from', '<=', day)
+				.$asScalar()
+		)
+		.$narrowType<{ sale_kind_id: NotNull }>()
+		.orderBy('a.state')
+		.execute();
+	const out: Record<string, string[]> = {};
+	for (const r of rows) (out[r.state] ??= []).push(r.sale_kind_id);
 	return out satisfies Taxes;
 }
 
@@ -239,7 +269,8 @@ export async function changeKind(
 
 /**
  * A kind of the business's own that nothing is or was sold as taken away, its
- * answers with it. reckon's own kinds stay, and so does one anything names.
+ * answers with it. reckon's own kinds stay, and so does one anything names --
+ * an area's piece for it among them.
  */
 export async function removeKind(db: Kysely<DB>, id: string): Promise<boolean> {
 	try {
@@ -248,6 +279,8 @@ export async function removeKind(db: Kysely<DB>, id: string): Promise<boolean> {
 	} catch (e) {
 		if (pgError(e).constraint === 'reckons_kinds_stay')
 			throw new Refused('kind', 'One of reckon’s own kinds stays. Retire it instead.');
+		if (pgError(e).constraint === 'tax_piece_sale_kind_id_fkey')
+			throw new Refused('kind', 'An area taxes it by a piece of its own. Retire it instead.');
 		if (stillReferenced(e))
 			throw new Refused('kind', 'Something is, or was, sold as it. Retire it instead.');
 		throw e;

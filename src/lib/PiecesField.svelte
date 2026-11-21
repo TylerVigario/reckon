@@ -1,6 +1,14 @@
 <script lang="ts" module>
-	/** One piece of a rate as it is typed: who levies it, and how much. */
-	export type PieceDraft = { level: 'state' | 'local'; jurisdiction: string; rate_pct: string };
+	/**
+	 * One piece of a rate as it is typed: who levies it, how much, and on what
+	 * -- every kind the state taxes (''), or one kind of sale alone.
+	 */
+	export type PieceDraft = {
+		level: 'state' | 'local';
+		jurisdiction: string;
+		rate_pct: string;
+		sale_kind_id: string;
+	};
 
 	/** A rate as it is kept, "6.8500", written as a person would type it: "6.85". */
 	export const asTyped = (rate: string) => (rate.includes('.') ? rate.replace(/\.?0+$/, '') : rate);
@@ -10,25 +18,32 @@
 	import Octicon from '#lib/Octicon.svelte';
 	import { Decimal } from '#lib/decimal.ts';
 	import { pct } from '#lib/format.ts';
-	import { NO_STATE_TAX, type State } from '#lib/us-states.ts';
+	import { NO_STATE_TAX, stateName, type State } from '#lib/us-states.ts';
 
 	/**
 	 * A RATE, PIECE BY PIECE, as a state's own table lists it: who levies each
-	 * share and how much -- the state's, then each local one -- and what they
-	 * come to. Pieces are added and taken away here; what each may be is
-	 * #lib/area-fields', and its complaints arrive keyed `pieces.2.rate_pct`.
+	 * share and how much -- the state's, then each local one -- what each falls
+	 * on, and what those on every kind come to. A piece falls on every kind of
+	 * sale the state taxes, or on one kind alone, such as a meals tax, whether
+	 * or not the state taxes that kind. Pieces are added and taken away here;
+	 * what each may be is #lib/area-fields', and its complaints arrive keyed
+	 * `pieces.2.rate_pct`.
 	 */
 	let {
 		pieces = $bindable(),
 		state,
+		kinds,
 		errors = {},
 		id
 	}: {
 		pieces: PieceDraft[];
 		state: State;
+		/** The business's kinds of sale; a retired one is offered only to a piece already for it. */
+		kinds: readonly { id: string; name: string; active: boolean }[];
 		errors?: Record<string, string>;
 		id: string;
 	} = $props();
+	const onKinds = (p: PieceDraft) => kinds.filter((k) => k.active || k.id === p.sale_kind_id);
 
 	// Alaska's and Montana's taxes are local alone.
 	const levels = $derived(
@@ -39,14 +54,19 @@
 					{ value: 'local', label: 'Local' }
 				]
 	);
+	// What the pieces on every kind come to: one for a kind alone is that kind's.
+	const byKind = $derived(pieces.some((p) => p.sale_kind_id));
 	const total = $derived.by(() => {
 		try {
-			return pieces.reduce((t, p) => t.add(p.rate_pct.trim() || '0'), Decimal.from('0'));
+			return pieces
+				.filter((p) => !p.sale_kind_id)
+				.reduce((t, p) => t.add(p.rate_pct.trim() || '0'), Decimal.from('0'));
 		} catch {
 			return null;
 		}
 	});
-	const add = () => (pieces = [...pieces, { level: 'local', jurisdiction: '', rate_pct: '' }]);
+	const add = () =>
+		(pieces = [...pieces, { level: 'local', jurisdiction: '', rate_pct: '', sale_kind_id: '' }]);
 	const drop = (i: number) => (pieces = pieces.filter((_, j) => j !== i));
 	const wrong = (i: number, f: string) => errors[`pieces.${i}.${f}`] ?? errors[`pieces.${i}`];
 </script>
@@ -97,7 +117,19 @@
 					onclick={() => drop(i)}><Octicon name="x" /></button
 				>
 			</div>
-			{#each ['jurisdiction', 'level', 'rate_pct'] as f (f)}
+			<div class="on">
+				<label class="fc-l sr" for="{id}-{i}-k">What piece {i + 1} falls on</label>
+				<select
+					id="{id}-{i}-k"
+					class="ti"
+					bind:value={p.sale_kind_id}
+					aria-invalid={wrong(i, 'sale_kind_id') ? 'true' : undefined}
+				>
+					<option value="">On every kind {stateName(state)} taxes</option>
+					{#each onKinds(p) as k (k.id)}<option value={k.id}>On {k.name} alone</option>{/each}
+				</select>
+			</div>
+			{#each ['jurisdiction', 'level', 'rate_pct', 'sale_kind_id'] as f (f)}
 				{#if errors[`pieces.${i}.${f}`]}
 					<p class="fc-e"><Octicon name="alert" />{errors[`pieces.${i}.${f}`]}</p>
 				{/if}
@@ -106,13 +138,16 @@
 	{/each}
 	<div class="foot">
 		<button type="button" class="btn sm" onclick={add}>Add a piece</button>
-		<span class="sum">{total ? `${pct(total.toString())} in all` : ''}</span>
+		<span class="sum"
+			>{total ? `${pct(total.toString())} ${byKind ? 'on every kind' : 'in all'}` : ''}</span
+		>
 	</div>
 	{#if errors.pieces}
 		<p class="fc-e"><Octicon name="alert" />{errors.pieces}</p>
 	{:else}
 		<p class="fc-c" id="{id}-c">
-			As the state’s table lists them: the state’s share, then each county, city or district’s.
+			As the state’s table lists them: the state’s share, then each county, city or district’s. A
+			piece on one kind alone, such as a meals tax, falls on it whether or not the state taxes it.
 		</p>
 	{/if}
 </fieldset>
@@ -141,6 +176,9 @@
 	}
 	.how select {
 		flex: 0 0 6.5rem;
+	}
+	.on select {
+		width: 100%;
 	}
 	.rate {
 		flex: 1 1 auto;

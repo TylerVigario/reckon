@@ -26,9 +26,40 @@ describe('a rate, piece by piece', () => {
 		const { pieces, errors } = parsePieces(reno, 'NV');
 		expect(errors).toEqual({});
 		expect(pieces).toEqual([
-			{ level: 'state', jurisdiction: 'Nevada', code: null, rate_pct: '6.85' },
-			{ level: 'local', jurisdiction: 'Washoe County', code: null, rate_pct: '1.415' }
+			{ level: 'state', jurisdiction: 'Nevada', code: null, rate_pct: '6.85', sale_kind_id: null },
+			{
+				level: 'local',
+				jurisdiction: 'Washoe County',
+				code: null,
+				rate_pct: '1.415',
+				sale_kind_id: null
+			}
 		]);
+	});
+
+	it('takes a piece for one kind of sale alone, once more from one who levies on every kind', () => {
+		// Richmond levies its local sales tax, and a meals tax of its own.
+		const MEALS = '019a0000-0000-7000-8000-00000000000c';
+		const richmond = [
+			{ level: 'state', jurisdiction: 'Virginia', rate_pct: '4.3' },
+			{ level: 'local', jurisdiction: 'Richmond', rate_pct: '1' },
+			{ level: 'local', jurisdiction: 'Richmond', rate_pct: '7.5', sale_kind_id: MEALS }
+		];
+		const { pieces, errors } = parsePieces(richmond, 'VA');
+		expect(errors).toEqual({});
+		expect(pieces.map((p) => p.sale_kind_id)).toEqual([null, null, MEALS]);
+		expect(parsePieces([...richmond, richmond[2]], 'VA').errors).toEqual({
+			'pieces.3.jurisdiction': 'Each levies once on a kind.'
+		});
+		expect(
+			parsePieces([...richmond, { ...richmond[0], jurisdiction: 'VA', sale_kind_id: MEALS }], 'VA')
+				.errors
+		).toEqual({});
+		expect(
+			parsePieces([...richmond, { ...richmond[2], sale_kind_id: 'meals' }], 'VA').errors[
+				'pieces.3.sale_kind_id'
+			]
+		).toBeDefined();
 	});
 
 	it('needs a piece, and no more than a place has', () => {

@@ -60,7 +60,8 @@
 		pieces = a.pieces.map((p) => ({
 			level: p.level === 'state' ? 'state' : 'local',
 			jurisdiction: p.jurisdiction,
-			rate_pct: asTyped(p.rate)
+			rate_pct: asTyped(p.rate),
+			sale_kind_id: p.kind ?? ''
 		}));
 		errors = {};
 		typing = true;
@@ -125,8 +126,13 @@
 			? []
 			: [{ label: 'Remove', danger: true, onselect: (): void => void (removing = true) }]
 	);
-	const total = (ps: { rate: string }[]) =>
-		ps.reduce((t, p) => t.add(p.rate), Decimal.from('0')).toString();
+	// What a set's pieces on every kind come to; one for a kind alone is that kind's.
+	const total = (ps: { rate: string; kind: string | null }[]) =>
+		ps
+			.filter((p) => !p.kind)
+			.reduce((t, p) => t.add(p.rate), Decimal.from('0'))
+			.toString();
+	const names = $derived(Object.fromEntries(data.kinds.map((k) => [k.id, k.name])));
 	const WHEN = { coming: 'Coming', now: 'In force', was: 'Replaced' } as const;
 </script>
 
@@ -165,9 +171,18 @@
 			<span class="kv-l">Rate</span>
 			<span class="kv-v">
 				<span class="num">{pct(a.rate_pct)}</span>
-				<span class="kv-s">{levied(a.pieces)}</span>
+				<span class="kv-s">{levied(a.every)}</span>
 			</span>
 		</div>
+		{#each a.byKind as k (k.kind)}
+			<div class="box-row kv">
+				<span class="kv-l">On {k.name}</span>
+				<span class="kv-v">
+					<span class="num">{pct(k.rate)}</span>
+					<span class="kv-s">{levied(k.pieces)}</span>
+				</span>
+			</div>
+		{/each}
 		<div class="box-row kv">
 			<span class="kv-l">Confirmed</span>
 			<span class="kv-v">
@@ -248,7 +263,7 @@
 						</p>
 					{/if}
 				</div>
-				<PiecesField bind:pieces state={data.state} {errors} id="r-p" />
+				<PiecesField bind:pieces state={data.state} kinds={data.kinds} {errors} id="r-p" />
 				<div class="keep">
 					<button type="submit" class="btn pri" {@attach busy(saving && 'Saving the rate')}
 						>Save rate</button
@@ -264,7 +279,9 @@
 						>From {dated(r.from)}
 						<span class="lab" class:acc={r.when === 'coming'}>{WHEN[r.when]}</span></span
 					>
-					<span class="sub">{levied(r.pieces)}{r.typed_by ? ` · typed by ${r.typed_by}` : ''}</span>
+					<span class="sub"
+						>{levied(r.pieces, names)}{r.typed_by ? ` · typed by ${r.typed_by}` : ''}</span
+					>
 				</span>
 				<span class="num">{pct(total(r.pieces))}</span>
 				{#if r.removable}

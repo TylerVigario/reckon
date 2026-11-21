@@ -148,10 +148,19 @@ export function percent(v: Figure): string {
  * Who levies a rate, piece by piece, as its authority names each:
  * "CALIFORNIA 7.250% + WOODLAND 0.750%". A place where nobody but the state
  * levies anything says only the state's, rather than a 0.000% that reads like
- * a figure -- Auburn really does charge the state's share and nothing else.
+ * a figure -- Auburn really does charge the state's share and nothing else. A
+ * piece for one kind of sale alone says which, by the name `kinds` gives it:
+ * "BOSTON 0.750% on Meals".
  */
-export function levied(pieces: readonly { jurisdiction: string; rate: Figure }[]): string {
-	return pieces.map((p) => `${p.jurisdiction} ${pct(p.rate)}`).join(' + ');
+export function levied(
+	pieces: readonly { jurisdiction: string; rate: Figure; kind?: string | null }[],
+	kinds: Readonly<Record<string, string>> = {}
+): string {
+	return pieces
+		.map(
+			(p) => `${p.jurisdiction} ${pct(p.rate)}${p.kind ? ` on ${kinds[p.kind] ?? 'one kind'}` : ''}`
+		)
+		.join(' + ');
 }
 
 /**
