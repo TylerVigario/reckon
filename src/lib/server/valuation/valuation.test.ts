@@ -703,6 +703,33 @@ describe('tax collected is split by who levied each piece of it', () => {
 		expect(money(t.tax)).toBe('3.63');
 		expect(t.levied).toEqual([]);
 	});
+	it('what one levies on a kind alone apart from what it levies on every kind', () => {
+		// Richmond levies its local sales tax on everything Virginia taxes, and
+		// a meals tax of its own, which its own return asks for.
+		const meals = '019a0000-0000-7000-8000-00000000000c';
+		const richmond = (pieces: TaxLine['pieces'], taxRatePct: string) =>
+			line({ jurisdiction: 'Richmond', taxRatePct, pieces });
+		const every = [
+			{ level: 'state' as const, jurisdiction: 'Virginia', rate: '5.0000' },
+			{ level: 'local' as const, jurisdiction: 'Richmond', rate: '1.0000' }
+		];
+		const t = invoiceTax(
+			[
+				richmond(every, '6.0000'),
+				richmond(
+					[...every, { level: 'local', jurisdiction: 'Richmond', rate: '7.5000', kind: meals }],
+					'13.5000'
+				)
+			],
+			TAX_ROUNDING,
+			CENTS
+		).get('i')!;
+		expect(t.levied.map((p) => [p.jurisdiction, p.kind, money(p.tax)])).toEqual([
+			['Virginia', null, '10.00'],
+			['Richmond', null, '2.00'],
+			['Richmond', meals, '7.50']
+		]);
+	});
 });
 
 /**

@@ -187,7 +187,8 @@ T["tax_piece"] = [("PK","id","uuid"),("FK","area_id","uuid"),
     ("","level","federal|state|local"),("","jurisdiction","text · who levies it"),
     ("","code","text · its authority's"),("","rate_pct","numeric"),
     ("","effective_from","date · a set's, newest in force"),
-    ("FK","typed_by","uuid · who typed it")]
+    ("FK","typed_by","uuid · who typed it"),
+    ("FK","sale_kind_id","uuid · the one kind it falls on")]
 T["site_placement"] = [("PK","id","uuid"),("FK","site_id","uuid"),
     ("","placed_at","timestamptz"),("FK","area_id","uuid · the area it was in"),
     ("","moved","bool · another area than before"),
@@ -523,7 +524,9 @@ c += [note("n2", "One building can host two businesses and one person can act fo
                  "was asked. Nothing in the application can author CDTFA’s rate. Where no "
                  "authority answers for an address, a person types the state’s areas from its "
                  "own table, typed_by, and confirms them each quarter, confirmed_by; a site "
-                 "there is placed by a person choosing its area. site_placement keeps every time a site "
+                 "there is placed by a person choosing its area. A typed piece can fall on one kind of "
+                 "sale alone, sale_kind_id, whether or not the state taxes that kind; every other "
+                 "piece falls on every kind its state taxes. site_placement keeps every time a site "
                  "was placed, and an area every rate it has had, so a rate that moved can "
                  "be explained against the invoices billed at the old one. A second copy "
                  "of a published rate goes stale without "

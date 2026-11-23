@@ -18,6 +18,7 @@
  */
 import { database } from '../scripts/env.mjs';
 import pg from 'pg';
+import { isDeepStrictEqual } from 'node:util';
 import { signIn } from './passkeys.mjs';
 
 const [, , base = 'http://localhost:5181', email] = process.argv;
@@ -2294,6 +2295,195 @@ console.log('\n  typed tax areas — collected in, typed, confirmed, and let go'
 			409
 		);
 	await check('an area no site was ever in is taken away', 'DELETE', at, undefined, 204);
+	await check('the business stops collecting in Nevada', 'DELETE', nv, undefined, 204);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n  a piece for one kind of sale — typed, and charged on that kind alone');
+{
+	// A typed area's piece can fall on one kind alone, whether or not the state
+	// taxes it (#196): here Washoe County's 0.5% on goods, beside its 1.415% on
+	// everything Nevada taxes. The site stays in its area once placed, so the
+	// area is one of this section's own.
+	const nv = '/api/settings/tax/NV';
+	const iso = (/** @type {Date} */ d) => d.toISOString().slice(0, 10);
+	const quarter = new Date();
+	quarter.setUTCDate(1);
+	quarter.setUTCMonth(quarter.getUTCMonth() - (quarter.getUTCMonth() % 3) - 3);
+	const from = iso(quarter);
+	const every = [
+		{ level: 'state', jurisdiction: 'Nevada', rate_pct: '6.85' },
+		{ level: 'local', jurisdiction: 'Washoe County', rate_pct: '1.415' }
+	];
+	const onGoods = { level: 'local', jurisdiction: 'Washoe County', rate_pct: '0.5' };
+
+	await check(
+		'the business collects in Nevada again, taxing every kind',
+		'PUT',
+		nv,
+		{ taxed: await everyKind(true) },
+		(r) => [200, 201].includes(r.status)
+	);
+	await check(
+		'a piece for a kind of sale there is not is refused, said where',
+		'POST',
+		`${nv}/areas`,
+		{
+			fields: { name: `Sparks ${stamp}`, from },
+			pieces: [...every, { ...onGoods, sale_kind_id: crypto.randomUUID() }]
+		},
+		(r) => r.status === 400 && Boolean(r.body?.errors?.['pieces.2.sale_kind_id'])
+	);
+	await check(
+		'one levying twice on a kind alone is refused, said where',
+		'POST',
+		`${nv}/areas`,
+		{
+			fields: { name: `Sparks ${stamp}`, from },
+			pieces: [
+				...every,
+				{ ...onGoods, sale_kind_id: KIND.goods },
+				{ ...onGoods, sale_kind_id: KIND.goods }
+			]
+		},
+		(r) => r.status === 400 && Boolean(r.body?.errors?.['pieces.3.jurisdiction'])
+	);
+	const area = await check(
+		'an area with a piece on goods alone is typed, beside its pieces on every kind',
+		'POST',
+		`${nv}/areas`,
+		{
+			fields: { name: `Sparks ${stamp}`, from },
+			pieces: [...every, { ...onGoods, sale_kind_id: KIND.goods }]
+		},
+		201
+	);
+	const page = await fetch(`${base}/settings/tax/NV/${area.body?.id}`, { headers: { cookie } });
+	const html = await page.text();
+	const says =
+		page.status === 200 &&
+		html.includes('8.265%') &&
+		html.includes('Washoe County 0.500% on Goods');
+	if (says) passed++;
+	else failures.push(`a typed area's page with a piece on one kind: ${page.status}`);
+	console.log(
+		`  ${says ? '✓' : '✗'} its page says its rate on every kind, and the piece on goods alone`
+	);
+
+	// A Nevada site, chosen into it. A site's address is Google's to give, so
+	// this one is written straight in, and its area chosen as a person would.
+	const db = new pg.Client(database());
+	await db.connect();
+	const client = (await db.query(`select id, slug from entity where active order by slug limit 1`))
+		.rows[0];
+	const site = (
+		await db.query(
+			`insert into site (entity_id, label, slug, street, city, region, postcode)
+			 values ($1, $2, $3, '1 Victorian Ave', 'Sparks', 'NV', '89431') returning id, slug`,
+			[client.id, `Sparks shop ${stamp}`, `sparks-shop-${stamp}`]
+		)
+	).rows[0];
+	await check(
+		'the Nevada site is chosen into it',
+		'PUT',
+		`/api/clients/${client.slug}/sites/${site.slug}/area`,
+		{ fields: { area: area.body?.id } },
+		200
+	);
+	const draft = await call('POST', '/api/drafts', {
+		client_uuid: crypto.randomUUID(),
+		entity_id: client.id
+	});
+	/** Goods bought for the job at the Nevada site: how they were taxed, and by whom. */
+	const bought = async () => {
+		const form = new FormData();
+		const fields = {
+			client_uuid: crypto.randomUUID(),
+			invoice_id: draft.body?.id,
+			kind: 'bought',
+			description: `Piece for one kind ${stamp}`,
+			site_id: site.id,
+			ex_tax_cost: '10.00',
+			tax_paid: '0'
+		};
+		for (const [k, v] of Object.entries(fields)) form.set(k, v);
+		const { 'content-type': _, ...headers } = H;
+		const r = await fetch(`${base}/api/lines`, { method: 'POST', headers, body: form });
+		const id = /** @type {{ id?: string }} */ (await r.json().catch(() => ({}))).id;
+		return id
+			? (
+					await db.query(
+						`select tax_source, tax_rate_pct::text as rate, tax_pieces as pieces
+						   from invoice_line where id = $1`,
+						[id]
+					)
+				).rows[0]
+			: null;
+	};
+	const both = await bought();
+	const all =
+		both?.tax_source === 'site' &&
+		both?.rate === '8.7650' &&
+		// As values: Postgres keeps a jsonb object's keys in an order of its own.
+		isDeepStrictEqual(both?.pieces, [
+			{ level: 'state', jurisdiction: 'Nevada', rate: '6.8500' },
+			{ level: 'local', jurisdiction: 'Washoe County', rate: '1.4150' },
+			{ level: 'local', jurisdiction: 'Washoe County', rate: '0.5000', kind: KIND.goods }
+		]);
+	if (all) passed++;
+	else failures.push(`goods where Nevada taxes goods: ${JSON.stringify(both)}`);
+	console.log(
+		`  ${all ? '✓' : '✗'} goods are taxed on every kind's pieces and goods' own, each kept`
+	);
+	await check(
+		'Nevada is said not to tax goods',
+		'PATCH',
+		`${nv}/kinds/${KIND.goods}`,
+		{ fields: { taxed: 'false' } },
+		200
+	);
+	const own = await bought();
+	const alone =
+		own?.tax_source === 'site' &&
+		own?.rate === '0.5000' &&
+		isDeepStrictEqual(own?.pieces, [
+			{ level: 'local', jurisdiction: 'Washoe County', rate: '0.5000', kind: KIND.goods }
+		]);
+	if (alone) passed++;
+	else failures.push(`goods where Nevada does not tax goods: ${JSON.stringify(own)}`);
+	console.log(
+		`  ${alone ? '✓' : '✗'} where Nevada does not, by the piece on goods alone, and it alone`
+	);
+
+	// A kind an area's piece is for stays, as a kind something is sold as does.
+	const kind = await check(
+		'a kind of the business’s own is added',
+		'POST',
+		'/api/settings/tax/kinds',
+		{ fields: { name: `Meals ${stamp}` }, taxed: await everyState(true) },
+		201
+	);
+	await check(
+		'a piece on it alone is typed into the area',
+		'PUT',
+		`${nv}/areas/${area.body?.id}/rates/${from}`,
+		{
+			pieces: [
+				...every,
+				{ ...onGoods, sale_kind_id: KIND.goods },
+				{ ...onGoods, rate_pct: '0.75', sale_kind_id: kind.body?.id }
+			]
+		},
+		200
+	);
+	await check(
+		'a kind an area’s piece is for is kept',
+		'DELETE',
+		`/api/settings/tax/kinds/${kind.body?.id}`,
+		undefined,
+		(r) => r.status === 409 && /piece of its own/.test(r.body?.detail ?? '')
+	);
+	await db.end();
 	await check('the business stops collecting in Nevada', 'DELETE', nv, undefined, 204);
 }
 

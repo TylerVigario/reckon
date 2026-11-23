@@ -287,12 +287,13 @@ export async function taxObligation(p: Period, state: string): Promise<Obligatio
 		levied: [
 			...Map.groupBy(
 				taxes.flatMap((x) => x.levied),
-				(p) => `${p.level} ${p.jurisdiction}`
+				(p) => `${p.level} ${p.jurisdiction} ${p.kind ?? ''}`
 			).values()
 		]
 			.map((ps) => ({
 				level: ps[0].level,
 				jurisdiction: ps[0].jurisdiction,
+				kind: ps[0].kind,
 				amount: sum(ps.map((p) => p.tax)).toFixed(places)
 			}))
 			.sort(inLevelOrder),

@@ -3956,4 +3956,68 @@ BEGIN
 END $$;
 DELETE FROM invoice_line WHERE invoice_id = '59595959-0000-4000-8000-0000000000c1' AND seq >= 60;
 
+-- 61. A PIECE FOR ONE KIND OF SALE (#196). A typed area's piece can fall on
+-- one kind alone, and an authority's cannot; a jurisdiction levies once on
+-- every kind in a set and once on each kind alone; and a line keeps a piece
+-- for one kind only for the kind it was sold as.
+SELECT must_pass($$
+  INSERT INTO tax_piece (area_id, level, jurisdiction, rate_pct, effective_from, typed_by,
+                         sale_kind_id)
+  VALUES ('c6000000-0000-4000-8000-000000000001', 'local', 'Washoe County', 0.5000, '2026-10-01',
+          'a0a0a0a0-0000-4000-8000-0000000000a1', sold_as('travel'))
+$$, 'Washoe County''s piece on travel alone, beside its piece on everything');
+
+SELECT must_fail($$
+  INSERT INTO tax_piece (area_id, level, jurisdiction, rate_pct, effective_from, typed_by,
+                         sale_kind_id)
+  VALUES ('c6000000-0000-4000-8000-000000000001', 'local', 'Washoe County', 0.2500, '2026-10-01',
+          'a0a0a0a0-0000-4000-8000-0000000000a1', sold_as('travel'))
+$$, 'a jurisdiction levying twice on one kind alone in a set');
+
+SELECT must_fail($$
+  INSERT INTO tax_piece (area_id, level, jurisdiction, rate_pct, effective_from, typed_by)
+  VALUES ('c6000000-0000-4000-8000-000000000001', 'local', 'Washoe County', 0.2500, '2026-10-01',
+          'a0a0a0a0-0000-4000-8000-0000000000a1')
+$$, 'a jurisdiction levying twice on every kind in a set');
+
+SELECT must_pass($$
+  INSERT INTO tax_piece (area_id, level, jurisdiction, rate_pct, effective_from)
+  SELECT id, 'local', 'A DISTRICT', 0.2500, '2099-01-01'
+    FROM tax_area WHERE state = 'CA' AND code = '559980000000'
+$$, 'a piece of CDTFA''s on every kind');
+
+SELECT must_fail($$
+  INSERT INTO tax_piece (area_id, level, jurisdiction, rate_pct, effective_from, sale_kind_id)
+  SELECT id, 'local', 'A DISTRICT', 0.2500, '2099-01-01', sold_as('travel')
+    FROM tax_area WHERE state = 'CA' AND code = '559980000000'
+$$, 'a piece of CDTFA''s for one kind alone');
+DELETE FROM tax_piece WHERE jurisdiction = 'A DISTRICT';
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, taxable, tax_rate_pct, tax_source, site_id,
+                            tax_jurisdiction, tax_state, tax_pieces)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 64, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), true, 7.7500, 'site', 'c5000000-0000-4000-8000-000000000001',
+          'AUBURN', 'CA',
+          jsonb_build_array(
+            jsonb_build_object('level', 'state', 'jurisdiction', 'CALIFORNIA', 'rate', '7.2500'),
+            jsonb_build_object('level', 'local', 'jurisdiction', 'AUBURN', 'rate', '0.5000',
+                               'kind', sold_as('goods')::text)))
+$$, 'a line keeping a piece for the kind it was sold as');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, taxable, tax_rate_pct, tax_source, site_id,
+                            tax_jurisdiction, tax_state, tax_pieces)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 65, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), true, 7.7500, 'site', 'c5000000-0000-4000-8000-000000000001',
+          'AUBURN', 'CA',
+          jsonb_build_array(
+            jsonb_build_object('level', 'state', 'jurisdiction', 'CALIFORNIA', 'rate', '7.2500'),
+            jsonb_build_object('level', 'local', 'jurisdiction', 'AUBURN', 'rate', '0.5000',
+                               'kind', sold_as('travel')::text)))
+$$, 'a line keeping a piece for another kind than it was sold as');
+DELETE FROM invoice_line WHERE invoice_id = '59595959-0000-4000-8000-0000000000c1' AND seq >= 64;
+
 \echo 'All guards hold.'

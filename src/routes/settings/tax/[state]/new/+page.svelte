@@ -38,14 +38,15 @@
 	let pieces = $state<PieceDraft[]>(
 		untrack(() =>
 			NO_STATE_TAX.includes(data.state)
-				? [{ level: 'local', jurisdiction: '', rate_pct: '' }]
+				? [{ level: 'local', jurisdiction: '', rate_pct: '', sale_kind_id: '' }]
 				: [
 						{
 							level: 'state',
 							jurisdiction: data.stateShare?.jurisdiction ?? stateName(data.state),
-							rate_pct: data.stateShare ? asTyped(data.stateShare.rate_pct) : ''
+							rate_pct: data.stateShare ? asTyped(data.stateShare.rate_pct) : '',
+							sale_kind_id: ''
 						},
-						{ level: 'local', jurisdiction: '', rate_pct: '' }
+						{ level: 'local', jurisdiction: '', rate_pct: '', sale_kind_id: '' }
 					]
 		)
 	);
@@ -162,7 +163,7 @@
 					</p>
 				{/if}
 			</div>
-			<PiecesField bind:pieces state={data.state} {errors} id="a-p" />
+			<PiecesField bind:pieces state={data.state} kinds={data.kinds} {errors} id="a-p" />
 		</div>
 		<div class="box-row keep">
 			<button type="submit" class="btn pri" {@attach busy(saving && 'Adding the area')}

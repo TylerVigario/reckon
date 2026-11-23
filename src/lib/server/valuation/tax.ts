@@ -22,8 +22,12 @@ export type TaxLine = {
 	pieces: TaxPiece[] | null;
 };
 
-/** What one jurisdiction levied, at one level. */
-export type Levied = { level: TaxLevel; jurisdiction: string; tax: Decimal };
+/**
+ * What one jurisdiction levied, at one level: on every kind its state taxes,
+ * or on one kind of sale alone (`kind`), which a return can ask for on its
+ * own -- Boston's meals tax apart from its sales tax.
+ */
+export type Levied = { level: TaxLevel; jurisdiction: string; kind: string | null; tax: Decimal };
 
 export type InvoiceTax = {
 	invoiceId: string;
@@ -36,9 +40,20 @@ export type InvoiceTax = {
 
 const LEVELS: readonly TaxLevel[] = ['federal', 'state', 'local'];
 
-/** Pieces in the order a return lists them: by level, then by name. */
-export const inLevelOrder = <T extends { level: TaxLevel; jurisdiction: string }>(a: T, b: T) =>
-	LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level) || a.jurisdiction.localeCompare(b.jurisdiction);
+/**
+ * Pieces in the order a return lists them: by level, then by name, and one on
+ * every kind before one on a kind alone.
+ */
+export const inLevelOrder = <
+	T extends { level: TaxLevel; jurisdiction: string; kind?: string | null }
+>(
+	a: T,
+	b: T
+) =>
+	LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level) ||
+	a.jurisdiction.localeCompare(b.jurisdiction) ||
+	Number(!!a.kind) - Number(!!b.kind) ||
+	(a.kind ?? '').localeCompare(b.kind ?? '');
 
 /**
  * The tax of each invoice that has a taxable line, and who levied it. The tax
@@ -53,7 +68,7 @@ export function invoiceTax(
 ): Map<string, InvoiceTax> {
 	type Part = { amount: Decimal; rate: string; tax: Ratio; jurisdiction: string | null };
 	const parts = new Map<string, Part[]>();
-	type Piece = { level: TaxLevel; jurisdiction: string; tax: Ratio };
+	type Piece = { level: TaxLevel; jurisdiction: string; kind: string | null; tax: Ratio };
 	const by = new Map<string, Map<string, Piece>>();
 	for (const l of lines) {
 		if (!l.taxable) continue;
@@ -69,12 +84,14 @@ export function invoiceTax(
 		if (l.pieces === null || rate.isZero()) continue;
 		const levied = by.get(l.invoiceId) ?? new Map<string, Piece>();
 		for (const p of l.pieces) {
-			const key = `${p.level} ${p.jurisdiction}`;
+			const kind = p.kind ?? null;
+			const key = `${p.level} ${p.jurisdiction} ${kind ?? ''}`;
 			const was = levied.get(key);
 			const part = tax.mul(p.rate).div(rate);
 			levied.set(key, {
 				level: p.level,
 				jurisdiction: p.jurisdiction,
+				kind,
 				tax: was ? was.tax.add(part) : part
 			});
 		}

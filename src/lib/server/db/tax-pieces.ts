@@ -6,8 +6,18 @@ import type { TaxLevel } from './database.ts';
  * local -- and at what rate, as the site's area had it when the line was added
  * (#lib/server/tax-areas). The rate is the string Postgres writes, as every
  * NUMERIC is: inside JSON a number would be a float.
+ *
+ * A piece for one kind of sale alone says which, `kind`; a line keeps one only
+ * for the kind it was sold as (line_pieces_are_for_its_kind). One with no kind,
+ * or a null one as an area's pieces are read, falls on every kind its state
+ * taxes.
  */
-export type TaxPiece = { level: TaxLevel; jurisdiction: string; rate: string };
+export type TaxPiece = {
+	level: TaxLevel;
+	jurisdiction: string;
+	rate: string;
+	kind?: string | null;
+};
 
 /**
  * invoice_line.tax_pieces, as database.ts types it: the list as pg parses it,

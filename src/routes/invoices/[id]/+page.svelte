@@ -167,7 +167,9 @@
 	// The rate and who levied each piece of it: a return allocates each
 	// separately, so the invoice that charged them says which is which.
 	const made = (x: { rate_pct: string | null; pieces: TaxPiece[] | null }) =>
-		x.pieces ? `${pct(x.rate_pct)} (${levied(x.pieces)})` : pct(x.rate_pct);
+		x.pieces ? `${pct(x.rate_pct)} (${levied(x.pieces, data.kinds)})` : pct(x.rate_pct);
+	// The one rate its taxed lines were charged, where there is one; otherwise each.
+	const oneRate = $derived(data.rates.length === 1 ? data.rates[0] : null);
 
 	// The schema's own words for what a line is. A label that says "goods" over
 	// a taxed labour line is the page asserting something the data did not.
@@ -465,10 +467,17 @@
 			<div class="box-row line">
 				<span class="what">
 					<span class="sub">
-						Sales tax{t.area ? ` · ${t.area} ${made(t)}` : ''}{listed(t.taxed_kinds)
+						Sales tax{oneRate?.area ? ` · ${oneRate.area} ${made(oneRate)}` : ''}{listed(
+							t.taxed_kinds
+						)
 							? ` on ${listed(t.taxed_kinds)}`
 							: ''}
 					</span>
+					{#if !oneRate}
+						{#each data.rates as x (`${x.area} ${x.rate_pct} ${JSON.stringify(x.pieces)}`)}
+							<span class="sub">{x.area ? `${x.area} ` : ''}{made(x)}</span>
+						{/each}
+					{/if}
 					{#if data.lines.find((l) => l.taxable && l.where_from)}
 						<span class="sub">
 							From {data.lines.find((l) => l.taxable && l.where_from)?.where_from}, where the work

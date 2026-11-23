@@ -8,8 +8,9 @@ const HELP_DESK = '019a0000-0000-7000-8000-00000000000b';
 const CA: Terms = {
 	purchaseMarkupPct: '0',
 	taxes: { CA: [GOODS] },
+	areaTaxes: {},
 	goods: GOODS,
-	site: { state: 'CA', ratePct: '8.0000' },
+	site: { state: 'CA', ratePct: '8.0000', kindRates: {} },
 	places: 2
 };
 
@@ -58,7 +59,7 @@ describe('goods bought for a job, passed on', () => {
 	it("untaxed at a site in a state the business doesn't collect in", () => {
 		const l = passedOn(
 			{ kind: 'bought', cost: '10.00', taxPaid: '0' },
-			{ ...CA, site: { state: 'NV', ratePct: null } }
+			{ ...CA, site: { state: 'NV', ratePct: null, kindRates: {} } }
 		);
 		expect([l.taxable, l.taxSource, l.needsASite, l.needsPlacing]).toEqual([
 			false,
@@ -77,7 +78,7 @@ describe('goods bought for a job, passed on', () => {
 	it('needs the site placed in an area, where the business collects in its state', () => {
 		const l = passedOn(
 			{ kind: 'bought', cost: '10.00', taxPaid: '0' },
-			{ ...CA, site: { state: 'CA', ratePct: null } }
+			{ ...CA, site: { state: 'CA', ratePct: null, kindRates: {} } }
 		);
 		expect([l.taxable, l.needsASite, l.needsPlacing]).toEqual([false, false, true]);
 	});
@@ -141,7 +142,7 @@ describe('goods drawn from stock', () => {
 		const at = (state: string) =>
 			fromStock(
 				{ ...cable, kind: HELP_DESK },
-				{ ...CA, taxes, site: { state, ratePct: '8.2650' } }
+				{ ...CA, taxes, site: { state, ratePct: '8.2650', kindRates: {} } }
 			);
 		expect([at('CA').taxable, at('NV').taxable, at('NV').taxRatePct]).toEqual([
 			false,
@@ -220,10 +221,14 @@ describe('a line’s tax set by hand', () => {
 		expect(taxNeeds(fromStock(taxed, { ...CA, site: null }))).toEqual({
 			site_id: 'Where it went, so its tax rate is known.'
 		});
-		expect(taxNeeds(fromStock(taxed, { ...CA, site: { state: 'NV', ratePct: null } }))).toEqual({
+		expect(
+			taxNeeds(fromStock(taxed, { ...CA, site: { state: 'NV', ratePct: null, kindRates: {} } }))
+		).toEqual({
 			taxable: "The business doesn't collect in Nevada, so it charges no tax there."
 		});
-		expect(taxNeeds(fromStock(taxed, { ...CA, site: { state: 'CA', ratePct: null } }))).toEqual({
+		expect(
+			taxNeeds(fromStock(taxed, { ...CA, site: { state: 'CA', ratePct: null, kindRates: {} } }))
+		).toEqual({
 			site_id: 'That site is in no tax area yet, so its rate is not known.'
 		});
 	});
@@ -242,5 +247,88 @@ describe('a line’s tax set by hand', () => {
 			CA
 		);
 		expect([l.taxable, l.byHand, l.soldAs]).toEqual([false, true, GOODS]);
+	});
+});
+
+describe('a piece of an area for one kind of sale alone', () => {
+	// Massachusetts taxes meals and Boston adds 0.75% on them (M.G.L. c. 64L
+	// s. 2); New York doesn't tax barbering and New York City does, at 4.5%
+	// (Form ST-810.5, Schedule N).
+	const MEALS = '019a0000-0000-7000-8000-00000000000c';
+	const BARBERING = '019a0000-0000-7000-8000-00000000000d';
+	const supper: FromStock = {
+		qty: '1',
+		unit: 'each',
+		cost: '20',
+		taxPaid: '0',
+		listed: '40',
+		markupPct: '0',
+		kind: MEALS
+	};
+	const trim: FromStock = { ...supper, kind: BARBERING };
+	const boston: Terms = {
+		...CA,
+		taxes: { MA: [GOODS, MEALS] },
+		areaTaxes: { MA: [MEALS] },
+		site: { state: 'MA', ratePct: '6.2500', kindRates: { [MEALS]: '0.7500' } }
+	};
+	const manhattan: Terms = {
+		...CA,
+		taxes: { NY: [GOODS] },
+		areaTaxes: { NY: [BARBERING] },
+		site: { state: 'NY', ratePct: '8.8750', kindRates: { [BARBERING]: '4.5000' } }
+	};
+
+	it('adds to the site’s rate on its kind, where the state taxes the kind', () => {
+		expect(fromStock(supper, boston)).toMatchObject({
+			taxable: true,
+			taxRatePct: '7.0000',
+			taxSource: 'site'
+		});
+	});
+
+	it('leaves every other kind at the site’s rate', () => {
+		expect(fromStock({ ...supper, kind: GOODS }, boston).taxRatePct).toBe('6.2500');
+	});
+
+	it('taxes its kind alone, where the state does not tax the kind', () => {
+		expect(fromStock(trim, manhattan)).toMatchObject({
+			taxable: true,
+			taxRatePct: '4.5000',
+			taxSource: 'site'
+		});
+	});
+
+	it('leaves the kind untaxed in an area with no piece for it', () => {
+		const l = fromStock(trim, {
+			...manhattan,
+			site: { state: 'NY', ratePct: '8.0000', kindRates: {} }
+		});
+		expect([l.taxable, taxNeeds(l)]).toEqual([false, null]);
+	});
+
+	it('needs the site, and its area, where only an area taxes the kind', () => {
+		expect(taxNeeds(fromStock(trim, { ...manhattan, site: null }))).toEqual({
+			site_id: 'Where it went, so its tax rate is known.'
+		});
+		expect(
+			taxNeeds(
+				fromStock(trim, { ...manhattan, site: { state: 'NY', ratePct: null, kindRates: {} } })
+			)
+		).toEqual({ site_id: 'That site is in no tax area yet, so its rate is not known.' });
+	});
+
+	it('is in the site’s rate set by hand: what a taxed line of its kind pays there', () => {
+		const l = fromStock({ ...trim, byHand: { taxed: true, ratePct: null } }, manhattan);
+		expect([l.taxRatePct, l.taxSource, l.refused]).toEqual(['13.3750', 'site', null]);
+	});
+
+	it('refuses another rate by hand that is its kind’s rate there anyway', () => {
+		expect(
+			taxNeeds(fromStock({ ...trim, byHand: { taxed: true, ratePct: '4.5' } }, manhattan))
+		).toEqual({ tax_rate_pct: 'It is taxed at that rate there anyway, as its kind is.' });
+		expect(
+			taxNeeds(fromStock({ ...supper, byHand: { taxed: true, ratePct: null } }, boston))
+		).toEqual({ taxable: 'It is taxed at the site’s rate anyway, as its kind is.' });
 	});
 });

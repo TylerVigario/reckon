@@ -11,6 +11,7 @@ import { claimsResold } from '#lib/server/tax-registrations.ts';
 import type { TaxPiece } from '#lib/server/db/tax-pieces.ts';
 import { day, monthName, names } from '#lib/format.ts';
 import { crewNames } from '#lib/server/choices.ts';
+import { kindChoices } from '#lib/server/sale-kinds.ts';
 import { clientLink } from '#lib/client-link.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import { refusedForAccess } from '#lib/server/refused.ts';
@@ -85,7 +86,7 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 		places
 	);
 
-	const [lines, totals, movedIn, takenOff, movedOut] = await Promise.all([
+	const [lines, totals, rates, kinds, movedIn, takenOff, movedOut] = await Promise.all([
 		db
 			.selectFrom('invoice_line as il')
 			.leftJoin('time_entry as te', 'te.id', 'il.time_entry_id')
@@ -211,15 +212,6 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 						)
 						.as('resold'),
 					eb.cast<string>(dueOnReturn, 'text').as('due_on_return'),
-					// Where it was taxed, as each line kept it when it was priced (0030),
-					// not as its site says now.
-					eb.fn.max<string | null>('il.tax_jurisdiction').as('area'),
-					eb.cast<string | null>(eb.fn.max('il.tax_rate_pct'), 'text').as('rate_pct'),
-					// And who levied it, as a line taxed there kept it.
-					eb.fn
-						.agg<TaxPiece[] | null>('any_value', ['il.tax_pieces'])
-						.filterWhere('il.tax_pieces', 'is not', null)
-						.as('pieces'),
 					// What is actually in each half, so the page can name them instead of
 					// assuming labour is never taxed and goods always are.
 					kinds(untaxed).as('untaxed_kinds'),
@@ -229,6 +221,23 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 			.where('il.invoice_id', '=', params.id)
 			// An aggregate: always one row.
 			.executeTakeFirstOrThrow(),
+		// Each rate its taxed lines were charged, where, and who levied it, as
+		// each line kept them when it was priced (0030), not as its site says
+		// now: one site can charge two, a kind with a piece of its own at one.
+		db
+			.selectFrom('invoice_line as il')
+			.select((eb) => [
+				'il.tax_jurisdiction as area',
+				eb.cast<string>('il.tax_rate_pct', 'text').as('rate_pct'),
+				eb.ref('il.tax_pieces').$castTo<TaxPiece[] | null>().as('pieces')
+			])
+			.where('il.invoice_id', '=', params.id)
+			.where('il.taxable', '=', true)
+			.groupBy(['il.tax_jurisdiction', 'il.tax_rate_pct', 'il.tax_pieces'])
+			.orderBy('il.tax_jurisdiction')
+			.orderBy('il.tax_rate_pct')
+			.execute(),
+		kindChoices(db),
 		// Lines that came here because the draft they were added for on a phone
 		// had gone out: which draft, when it went, and how many -- in the order
 		// they went.
@@ -327,6 +336,9 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 			})
 		),
 		totals: field ? { ...totals, resold: null, due_on_return: null } : totals,
+		rates,
+		// What each kind of sale is called, for a piece that fell on one alone.
+		kinds: Object.fromEntries(kinds.map((k) => [k.id, k.name])),
 		movedIn,
 		movedOut,
 		takenOff: field ? [] : takenOff,

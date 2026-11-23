@@ -667,6 +667,7 @@ export interface TaxPiece {
   jurisdiction: string;
   level: TaxLevel;
   rate_pct: NumericColumn;
+  sale_kind_id: string | null;
   typed_by: string | null;
 }
 

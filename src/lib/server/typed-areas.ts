@@ -51,7 +51,13 @@ function taken(e: unknown, state: string): Refused | null {
 
 /** Whether two sets of pieces say the same. */
 function same(
-	a: readonly { level: string; jurisdiction: string; code: string | null; rate_pct: string }[],
+	a: readonly {
+		level: string;
+		jurisdiction: string;
+		code: string | null;
+		rate_pct: string;
+		sale_kind_id: string | null;
+	}[],
 	b: readonly TypedPiece[]
 ) {
 	return (
@@ -62,17 +68,50 @@ function same(
 					n.level === p.level &&
 					n.jurisdiction === p.jurisdiction &&
 					n.code === p.code &&
+					n.sale_kind_id === p.sale_kind_id &&
 					Decimal.from(n.rate_pct).eq(p.rate_pct)
 			)
 		)
 	);
 }
 
+/**
+ * Refuses a piece for a kind of sale there is not, or for one retired that
+ * the area has no piece for already: a retired kind is offered for nothing
+ * new, and a piece the area has for it stays as the state's table has it.
+ */
+async function kindsThere(db: Kysely<DB>, area: string | null, pieces: readonly TypedPiece[]) {
+	const named = [...new Set(pieces.flatMap((p) => (p.sale_kind_id ? [p.sale_kind_id] : [])))];
+	if (!named.length) return;
+	const [kinds, had] = await Promise.all([
+		db.selectFrom('sale_kind').select(['id', 'name', 'active']).where('id', 'in', named).execute(),
+		area
+			? db
+					.selectFrom('tax_piece')
+					.select('sale_kind_id')
+					.distinct()
+					.where('area_id', '=', area)
+					.where('sale_kind_id', 'in', named)
+					.execute()
+			: []
+	]);
+	pieces.forEach((p, i) => {
+		if (!p.sale_kind_id) return;
+		const k = kinds.find((k) => k.id === p.sale_kind_id);
+		if (!k) throw new Refused(`pieces.${i}.sale_kind_id`, 'That kind of sale no longer exists.');
+		if (!k.active && !had.some((h) => h.sale_kind_id === k.id))
+			throw new Refused(
+				`pieces.${i}.sale_kind_id`,
+				`${k.name} is retired. Offer it again from Settings → Tax, or choose another.`
+			);
+	});
+}
+
 /** The set an area has from `day` exactly, or the one in force just before it. */
 async function setOn(db: Kysely<DB>, area: string, day: string, before = false) {
 	return db
 		.selectFrom('tax_piece')
-		.select(['level', 'jurisdiction', 'code', 'rate_pct', 'effective_from'])
+		.select(['level', 'jurisdiction', 'code', 'rate_pct', 'sale_kind_id', 'effective_from'])
 		.where('area_id', '=', area)
 		.where('effective_from', '=', (eb) =>
 			before
@@ -105,6 +144,7 @@ export async function typeArea(
 			'from',
 			'Its first rate is the one in force today: the day it took effect, or this quarter’s first day.'
 		);
+	await kindsThere(db, null, rate.pieces);
 	try {
 		const { id } = await db
 			.insertInto('tax_area')
@@ -159,6 +199,7 @@ export async function typeRate(
 	by: string,
 	today: string
 ): Promise<'typed' | 'replaced'> {
+	await kindsThere(db, area, pieces);
 	const there = await setOn(db, area, from);
 	if (there.length && same(there, pieces))
 		throw new Refused('pieces', 'That is its rate from that day already.');

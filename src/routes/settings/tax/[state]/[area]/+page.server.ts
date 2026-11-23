@@ -2,9 +2,10 @@ import { error } from '@sveltejs/kit';
 import { sql } from 'kysely';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { areaPieces, areaRate } from '#lib/server/tax-areas.ts';
+import { areaPieces, areaRate, kindRates } from '#lib/server/tax-areas.ts';
 import { quarterBegan } from '#lib/server/stale.ts';
 import { findTypedArea, typesAreasIn } from '#lib/server/typed-areas.ts';
+import { kindChoices, taxesByState } from '#lib/server/sale-kinds.ts';
 import { isState, stateName } from '#lib/us-states.ts';
 import { nextQuarter } from '#lib/quarters.ts';
 import type { PageServerLoad } from './$types';
@@ -12,7 +13,9 @@ import type { PageServerLoad } from './$types';
 /**
  * One typed area: what the state calls it and who typed it, its rate today
  * and whether anyone has confirmed it this quarter, every rate it has had or
- * will have from a day and who typed each, and the sites in it.
+ * will have from a day and who typed each, the sites in it, and the kinds of
+ * sale a piece can fall on alone. Its rate today is on every kind the state
+ * taxes, and a kind it taxes alone says its own.
  */
 export const load: PageServerLoad = async ({ params }) => {
 	if (!isState(params.state) || !(await typesAreasIn(db, params.state)))
@@ -21,7 +24,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	if (!found) error(404, 'No such area of that state is typed here.');
 	const today = businessToday();
 
-	const [area, sets, sites] = await Promise.all([
+	const [area, sets, sites, kinds, taxes] = await Promise.all([
 		db
 			.selectFrom('tax_area as a')
 			.innerJoin('user as t', 't.id', 'a.typed_by')
@@ -57,11 +60,13 @@ export const load: PageServerLoad = async ({ params }) => {
 				'p.jurisdiction',
 				'p.code',
 				eb.cast<string>('p.rate_pct', 'text').as('rate'),
+				'p.sale_kind_id as kind',
 				'u.name as typed_by'
 			])
 			.where('p.area_id', '=', found.id)
 			.orderBy('p.effective_from', 'desc')
 			.orderBy('p.level')
+			.orderBy(sql`p.sale_kind_id is not null`)
 			.orderBy('p.jurisdiction')
 			.execute(),
 		db
@@ -72,8 +77,11 @@ export const load: PageServerLoad = async ({ params }) => {
 			.where('s.active', '=', true)
 			.orderBy('e.name')
 			.orderBy('s.display')
-			.execute()
+			.execute(),
+		kindChoices(db),
+		taxesByState(db)
 	]);
+	const names = Object.fromEntries(kinds.map((k) => [k.id, k.name]));
 
 	const rates = [...new Set(sets.map((p) => p.from))].map((from) => {
 		const pieces = sets.filter((p) => p.from === from);
@@ -85,7 +93,12 @@ export const load: PageServerLoad = async ({ params }) => {
 	const inForceToday = rates.filter((r) => r.from <= today).length;
 	return {
 		state: params.state,
-		area,
+		area: {
+			...area,
+			// Its pieces on every kind, which its rate today is.
+			every: area.pieces.filter((p) => !p.kind),
+			byKind: kindRates(area.pieces, taxes[params.state] ?? [], names)
+		},
 		rates: rates.map((r) => ({
 			...r,
 			when:
@@ -98,6 +111,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			removable: r.from > today || inForceToday > 1
 		})),
 		sites,
+		kinds,
 		today,
 		next: nextQuarter(today)
 	};

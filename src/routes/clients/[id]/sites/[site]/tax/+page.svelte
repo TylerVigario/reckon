@@ -23,7 +23,8 @@
 	let { data }: PageProps = $props();
 	const s = $derived(data.site);
 	const field = $derived(data.user?.access === 'field');
-	const made = $derived(levied(s.pieces));
+	// Who levies its rate on every kind; a kind its area taxes alone has its own row.
+	const made = $derived(levied(data.every));
 	// CDTFA is asked about a California site, where the business collects there.
 	const asks = $derived(s.collected && s.region === 'CA');
 	const placed = $derived(s.rate_pct !== null);
@@ -183,6 +184,15 @@
 					<span class="kv-s">{made}</span>
 				</span>
 			</div>
+			{#each data.byKind as k (k.kind)}
+				<div class="box-row kv">
+					<span class="kv-l">On {k.name}</span>
+					<span class="kv-v">
+						<span class="rt">{pct(k.rate)}</span>
+						<span class="kv-s">{levied(k.pieces)}</span>
+					</span>
+				</div>
+			{/each}
 			<div class="box-row kv">
 				<span class="kv-l">Area</span>
 				<span class="kv-v">
@@ -234,6 +244,15 @@
 					<span class="kv-s">{made}</span>
 				</span>
 			</div>
+			{#each data.byKind as k (k.kind)}
+				<div class="box-row kv">
+					<span class="kv-l">On {k.name}</span>
+					<span class="kv-v">
+						<span class="rt">{pct(k.rate)}</span>
+						<span class="kv-s">{levied(k.pieces)}</span>
+					</span>
+				</div>
+			{/each}
 			<div class="box-row kv">
 				<span class="kv-l">Area</span>
 				<span class="kv-v">

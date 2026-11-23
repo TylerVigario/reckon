@@ -1,7 +1,7 @@
 import { error, redirect } from '@sveltejs/kit';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { siteRate } from '#lib/server/tax-registrations.ts';
+import { siteKindRates, siteRate } from '#lib/server/tax-registrations.ts';
 import { formFieldsOf, formTerms, materials } from '#lib/server/lines.ts';
 import { shelves } from '#lib/server/stock.ts';
 import { UUID } from '#lib/field-rules.ts';
@@ -64,13 +64,18 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			.select((eb) => [
 				'id',
 				'display as label',
-				// Its state, and its area's rate today where the business collects
-				// there and the site has been placed (#lib/server/tax-registrations).
+				// Its state, and where the business collects there and the site has
+				// been placed, its area's rate today on every kind the state taxes and
+				// what its pieces for one kind alone add (#lib/server/tax-registrations).
 				'region as state',
 				siteRate(
 					{ region: eb.ref('site.region'), area: eb.ref('site.tax_area_id') },
 					businessToday()
-				).as('rate_pct')
+				).as('rate_pct'),
+				siteKindRates(
+					{ region: eb.ref('site.region'), area: eb.ref('site.tax_area_id') },
+					businessToday()
+				).as('kind_rates')
 			])
 			.where('entity_id', '=', line.entity_id)
 			.where('active', '=', true)
