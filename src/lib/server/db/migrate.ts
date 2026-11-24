@@ -2,8 +2,8 @@
 // that everything in it belongs to its owner. And, for the server, checking that
 // it is.
 //
-// Plain TypeScript over pg and Kysely, with nothing of SvelteKit's, so the
-// commands in scripts/ can run it under Node as well as the server.
+// Plain TypeScript over pg and Kysely, with nothing of SvelteKit's, so
+// `bin/reckon migrate` can run it under Node as well as the server.
 import { Kysely, PostgresDialect } from 'kysely';
 import { Migrator, type MigrationProvider } from 'kysely/migration';
 import type pg from 'pg';
@@ -45,8 +45,8 @@ const over = (pool: pg.Pool) => new Kysely<any>({ dialect: new PostgresDialect({
 
 /**
  * THE DATABASE IS UP TO DATE BEFORE ANYTHING IS SERVED (10 October 2026).
- * `node scripts/migrate.mjs`, or `npm run db:migrate` in a clone, runs this as
- * the database's owner (scripts/migrate.mjs); the server runs it in its init
+ * `bin/reckon migrate`, in a clone or a release, runs this as the database's
+ * owner (src/cli/migrate.ts); the server runs it in its init
  * hook (hooks.server.ts) only where MIGRATE_ON_START=true, connected as the
  * owner.
  *
@@ -88,7 +88,7 @@ export async function bringUpToDate(pool: pg.Pool, migrations = MIGRATIONS): Pro
 				`${who.role} may not do what the migrations do (${(error as Error).message}), so the migration was not applied. ` +
 					(who.role === who.owner
 						? `Something in the database belongs to another role: ALTER TABLE <name> OWNER TO ${who.owner};`
-						: `Migrating is for the database's owner, ${who.owner}: run \`node scripts/migrate.mjs\` as ${who.owner}, ` +
+						: `Migrating is for the database's owner, ${who.owner}: run \`bin/reckon migrate\` as ${who.owner}, ` +
 							`or as a role that may become it. A server that connects as ${who.role} leaves MIGRATE_ON_START unset, and only checks.`)
 			);
 		}
@@ -116,7 +116,7 @@ export async function bringUpToDate(pool: pg.Pool, migrations = MIGRATIONS): Pro
 /**
  * THE SERVER ONLY CHECKS (12 November 2026), unless MIGRATE_ON_START=true:
  * migrating is its own step, run as the database's owner before each start --
- * `node scripts/migrate.mjs` -- so the server can connect as a role that owns
+ * `bin/reckon migrate` -- so the server can connect as a role that owns
  * nothing, granted rows and reading the record of migrations. It will not
  * start while one in its build is waiting, so nothing is served from a
  * database the code does not expect, here either; nor where the database has
@@ -152,7 +152,7 @@ export async function mustBeUpToDate(pool: pg.Pool, migrations = MIGRATIONS): Pr
 	if (waiting)
 		throw new Behind(
 			`${waiting} ${waiting === 1 ? 'migration is' : 'migrations are'} waiting. ` +
-				'Bring the database up to date as its owner -- `node scripts/migrate.mjs`, or `npm run db:migrate` in a clone -- then start the server. ' +
+				'Bring the database up to date as its owner -- `bin/reckon migrate` -- then start the server. ' +
 				'Or set MIGRATE_ON_START=true, and the server, connected as the owner, applies them as it starts.'
 		);
 }

@@ -25,7 +25,6 @@
 		"test:watch": "vitest",
 		"test:tz": "TZ=Pacific/Kiritimati vitest run src/lib/format.test.ts src/lib/timers.test.ts && TZ=Pacific/Midway vitest run src/lib/format.test.ts src/lib/timers.test.ts",
 		"db:types": "node scripts/db-types.mjs",
-		"db:migrate": "node scripts/migrate.mjs",
 		"db:seed": "node scripts/seed.mjs",
 		"db:test": "node scripts/db-test.mjs",
 		"db:drift": "node scripts/db-types.mjs --verify",

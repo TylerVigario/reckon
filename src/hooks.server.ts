@@ -1,8 +1,7 @@
 // Temporal, before anything that uses it: the server's Node does not have it
 // until Node 26, and the polyfill steps aside for a runtime that does
-// (hooks.client.ts does the same in the browser). Nothing that
-// scripts/refresh-tax-rates.mjs imports may need it -- that runs under plain
-// Node, without this file.
+// (hooks.client.ts does the same in the browser). Nothing that bin/reckon
+// imports may need it -- that runs under plain Node, without this file.
 import 'temporal-polyfill/global';
 import { redirect, error } from '@sveltejs/kit';
 import {

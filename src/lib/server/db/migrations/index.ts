@@ -10,7 +10,7 @@
 // sort, and refuses one that sorts before a migration already run.
 //
 // Listed here rather than read from a folder, so the server's bundle and
-// scripts/migrate.mjs's carry them: nothing is looked for on disk at runtime.
+// bin/reckon's carry them: nothing is looked for on disk at runtime.
 import type { Migration } from 'kysely/migration';
 import * as theSchemaAsItStands from './20261117T1405Z_the_schema_as_it_stands/index.ts';
 import * as agreementsNeverTie from './20261117T2356Z_agreements_never_tie.ts';

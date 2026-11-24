@@ -35,7 +35,9 @@ reckon is a SvelteKit project with Kysely, laid out as SvelteKit lays one out.
 | `src/lib/server/log.ts`         | the log: one JSON line for each thing the server records — see [Logging](#logging)                              |
 | `tests/db/constraints.sql`      | proves the guards, both ways                                                                                    |
 | `tests/`                        | the behaviour checks, which drive the built app in a browser against an invented business                       |
-| `scripts/`                      | the commands: adding people, refreshing tax rates, migrating, proving the guards, printing, making a release    |
+| `bin/reckon`                    | the command a host runs: migrating, the people who sign in, refreshing tax rates; `bin/reckon --help`           |
+| `src/cli/`                      | what each of its commands does                                                                                  |
+| `scripts/`                      | what developing reckon needs: proving the guards, generating types, seeding, making a release                   |
 | `docs/schema/*.drawio`          | the data model: an overview and ten clusters                                                                    |
 | `docs/schema/regenerate.py`     | lays the diagrams out from one description of the tables, checked against the migrations; overwrites hand edits |
 | `docs/schema/make-printable.py` | reads the printed reference's tables and notes out of the diagrams, as data                                     |
@@ -48,15 +50,15 @@ reckon is a SvelteKit project with Kysely, laid out as SvelteKit lays one out.
 npm run db:test      a scratch database, brought up to date, every guard proven, dropped
 npm run db:types     database.ts, generated from a scratch database the migrations build
 npm run db:drift     database.ts and the schema docs are what the migrations make: compared
-npm run db:migrate   bring the database up to date: the one PGDATABASE or DATABASE_URL names
+bin/reckon migrate   bring the database up to date: the one PGDATABASE or DATABASE_URL names
 npm run db:seed      the invented business the checks run against, into that database
 ```
 
 **The database is brought up to date before the server starts**, as its own
-step: `npm run db:migrate`, or `node scripts/migrate.mjs` in a release, applies
-every migration the build carries that the database has not seen, by Kysely's
-migrator, each in a transaction of its own, so one that fails is undone and
-stops there, those before it kept. The server only checks: while a migration
+step: `bin/reckon migrate`, in a clone or a release, applies every migration
+the build carries that the database has not seen, by Kysely's migrator, each in
+a transaction of its own, so one that fails is undone and stops there, those
+before it kept. The server only checks: while a migration
 in its build is waiting, or the database has run one its build does not have,
 it does not start, so nothing is ever served from a database the code does not
 expect.
@@ -77,11 +79,12 @@ whole schema as it stood on 17 November 2026 — the triggers that freeze a sent
 invoice and keep the history among it — and every one after it changes it a
 step at a time.
 
-The commands connect the way every other Postgres client does — `PGHOST`,
-`PGPORT`, `PGUSER`, `PGPASSWORD` — and add nothing of their own. Whoever owns a
-database owns everything a migration makes; `npm run db:migrate`, run by a role
-that may become the owner — `postgres`, say — acts as the owner, and run by one
-that may not, stops before anything is applied.
+`bin/reckon` and the database scripts connect the way every other Postgres
+client does — `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` — and add nothing of
+their own. Whoever owns a database owns everything a migration makes;
+`bin/reckon migrate`, run by a role that may become the owner — `postgres`,
+say — acts as the owner, and run by one that may not, stops before anything is
+applied.
 
 Afterwards nothing in `public` or `kysely` — where the record of applied
 migrations is kept — may be owned by anyone else, or it stops. An object made by
@@ -111,7 +114,7 @@ CREATE ROLE reckon LOGIN;
 CREATE DATABASE reckon OWNER reckon_owner;
 ```
 
-Then `node scripts/migrate.mjs` as `reckon_owner`, and once more as `postgres`,
+Then `bin/reckon migrate` as `reckon_owner`, and once more as `postgres`,
 in the database, what the server may do:
 
 ```sql
@@ -255,9 +258,9 @@ emailed an invitation: a link to make their passkey with. The first person is
 added from the command line, and given theirs there:
 
 ```bash
-node scripts/user.mjs add you@example.com "Your Name" --role Partner
-node scripts/user.mjs invite you@example.com
-node scripts/user.mjs list
+bin/reckon user add you@example.com "Your Name" --role Partner
+bin/reckon user invite you@example.com
+bin/reckon user list
 ```
 
 `add` prints the person's invitation link, to open on the phone or computer they
@@ -276,7 +279,7 @@ everywhere as it goes, since a lost authenticator is taken as compromised and
 invalidated promptly (§4.3), and waiting for the link to be used would leave
 whoever has the phone signed in. **End their passkeys**, on Team, does the same
 with no link, for someone who reports one lost while still able to sign in, and
-`node scripts/user.mjs end <email>` does it from the command line. A person's
+`bin/reckon user end <email>` does it from the command line. A person's
 **Passkeys** tab on Team lists theirs as Your profile does, and ends one alone,
 signing them out everywhere while the rest keep working. Either way they are
 told by email (§4.5).
@@ -561,26 +564,28 @@ provenance attested: the part of this repository that runs, at the same paths it
 has here, with every package it uses bundled in, so a host needs Node and
 nothing else.
 
-|                   |                                                                                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `build/`          | the application, carrying its migrations; `node build` runs it                                                                                   |
-| `scripts/`        | `user.mjs`, which adds the first person and gives a link to make a passkey, and `migrate.mjs`, which brings the database up to date as its owner |
-| `package.json`    | and `package-lock.json`: which version of each package is bundled                                                                                |
-| `RELEASE`         | the version, the commit, and the Node it was built with                                                                                          |
-| `MANIFEST.sha256` | every file's digest, so what is installed can be checked                                                                                         |
+|                   |                                                                                                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `build/`          | the application, carrying its migrations; `node build` runs it                                                                                                                                   |
+| `bin/reckon`      | the command a host runs: `migrate` brings the database up to date as its owner, `user` adds the first person and gives a link to make a passkey, and `tax refresh` asks about every tax rate now |
+| `package.json`    | and `package-lock.json`: which version of each package is bundled                                                                                                                                |
+| `RELEASE`         | the version, the commit, and the Node it was built with                                                                                                                                          |
+| `MANIFEST.sha256` | every file's digest, so what is installed can be checked                                                                                                                                         |
 
 **Everything it runs is in the bundle, so it has no `node_modules/`.** What it
 reaches outside itself is the host's own: Node, Postgres and the mail server.
 Every package is a devDependency: adapter-node bundles everything but
-`dependencies`, and a test fails if one appears there. Each command in
-`scripts/` is bundled as `build/` is, into one file at the path it has here.
+`dependencies`, and a test fails if one appears there. `bin/reckon` is bundled
+as `build/` is, into one file at the path it has here.
 
 Run it from its own directory — a service unit's `WorkingDirectory` — as a
 clone is run from its own. The migrations travel inside the bundles, the
-server's and `migrate.mjs`'s, so nothing is read from disk for them. A deploy is a backup of the database,
-the release unpacked, `node scripts/migrate.mjs` run from it as the database's
-owner, and the server restarted, which does not start on a database still
-behind it.
+server's and `bin/reckon`'s, so nothing is read from disk for them. A deploy is
+a backup of the database, the release unpacked, `bin/reckon migrate` run from
+it as the database's owner, and the server restarted, which does not start on a
+database still behind it. `bin/reckon --help` says what else it does, each of
+its commands answers `--help`, and `bin/reckon --version` says which release it
+is.
 
 ## Environment
 
@@ -597,32 +602,32 @@ there, and so do the commands and checks that reach the database
 one deployment to the next is assumed**: without a database or a secret, the
 server and the commands stop and say which, in development too.
 
-|                                  |                   |                                                                                                                                                                                                                                |
-| -------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `BETTER_AUTH_SECRET`             | **required**      | signs every session cookie; 32 characters at least, random — `openssl rand -hex 32`. Without it the server does not start, in development either. Changing it signs everybody out                                              |
-| `BETTER_AUTH_SECRET_FILE`        | unset             | a file holding `BETTER_AUTH_SECRET`, in its place — see [Signing in](#signing-in)                                                                                                                                              |
-| `SECURE_COOKIES`                 | `true`            | `false` only behind a proxy that serves plain http — see [Serving it](#serving-it)                                                                                                                                             |
-| `PORT`                           | `3000`            |                                                                                                                                                                                                                                |
-| `HOST`                           | `0.0.0.0`         | set it to `127.0.0.1` where a reverse proxy is the only route in, so the bind enforces that rather than convention                                                                                                             |
-| `PROTOCOL_HEADER`, `HOST_HEADER` | unset             | read by adapter-node: the headers a proxy uses for the scheme and the public name, where it does not pass them as https and `Host` — see [Serving it](#serving-it)                                                             |
-| `ADDRESS_HEADER`, `XFF_DEPTH`    | unset             | read by adapter-node: the header holding a visitor's address. **Needed behind any proxy** — unset, every visitor is the proxy — see [Serving it](#serving-it)                                                                  |
-| `PGHOST`                         | where libpq looks | on Linux the unix socket `/var/run/postgresql`, which peer-authenticates rather than asking for a password; `/tmp` on macOS, `localhost` on Windows                                                                            |
-| `PGUSER`, `PGPASSWORD`, `PGPORT` | unset             | who to connect as, its password and the port: the operating-system user, none, 5432                                                                                                                                            |
-| `PGPASSFILE`                     | `~/.pgpass`       | libpq's password file, for a password in place of `PGPASSWORD`; passed over unless only its owner may read it                                                                                                                  |
-| `PGDATABASE`                     | **required**      | which database, unless `DATABASE_URL` says: `reckon_dev`, say, in development. None is assumed                                                                                                                                 |
-| `DATABASE_URL`                   | —                 | wins outright over `PGHOST`/`PGDATABASE`, for TCP, another machine, or a managed service                                                                                                                                       |
-| `MIGRATE_ON_START`               | `false`           | `true` has the server bring the database up to date as it starts, connected as its owner; unset, it only checks, and `node scripts/migrate.mjs` does that, as the owner, before each start — see [The database](#the-database) |
-| `PUBLIC_GOOGLE_MAPS_API_KEY`     | **unset**         | the browser key. Address lookup; unset, no address can be chosen, so none is saved                                                                                                                                             |
-| `GOOGLE_MAPS_API_KEY`            | **unset**         | the server key. Confirms a chosen place, and measures a site's drive and a trip's miles; unset, no address is saved and miles are typed                                                                                        |
-| `GOOGLE_MAPS_API_KEY_FILE`       | unset             | a file holding `GOOGLE_MAPS_API_KEY`, in its place                                                                                                                                                                             |
-| `SMTP_HOST`                      | **unset**         | the relay email goes to — see [Email](#email). Unset, reckon sends none                                                                                                                                                        |
-| `SMTP_PORT`                      | `587`             | its port; `465` where `SMTP_SECURITY=tls`                                                                                                                                                                                      |
-| `SMTP_SECURITY`                  | `starttls`        | `starttls`, `tls`, or `none` for a relay on this machine                                                                                                                                                                       |
-| `SMTP_USERNAME`, `SMTP_PASSWORD` | unset             | its sign-in, where it asks; `SMTP_PASSWORD_FILE` holds the password in a file instead                                                                                                                                          |
-| `SMTP_CA_FILE`                   | the system's      | the authorities to trust for its certificate, for one a private authority issued                                                                                                                                               |
-| `SMTP_HELO_NAME`                 | this machine's    | the name it greets the relay with, where the relay asks for a real one                                                                                                                                                         |
-| `SMTP_FROM`                      | —                 | the address email comes from; needed with `SMTP_HOST`                                                                                                                                                                          |
-| `SITE_URL`                       | unset             | where reckon is reached, https://reckon.example.com: the links it emails, and the site each passkey is made for. https except to this machine. Unset, nobody can make a passkey                                                |
+|                                  |                   |                                                                                                                                                                                                                          |
+| -------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BETTER_AUTH_SECRET`             | **required**      | signs every session cookie; 32 characters at least, random — `openssl rand -hex 32`. Without it the server does not start, in development either. Changing it signs everybody out                                        |
+| `BETTER_AUTH_SECRET_FILE`        | unset             | a file holding `BETTER_AUTH_SECRET`, in its place — see [Signing in](#signing-in)                                                                                                                                        |
+| `SECURE_COOKIES`                 | `true`            | `false` only behind a proxy that serves plain http — see [Serving it](#serving-it)                                                                                                                                       |
+| `PORT`                           | `3000`            |                                                                                                                                                                                                                          |
+| `HOST`                           | `0.0.0.0`         | set it to `127.0.0.1` where a reverse proxy is the only route in, so the bind enforces that rather than convention                                                                                                       |
+| `PROTOCOL_HEADER`, `HOST_HEADER` | unset             | read by adapter-node: the headers a proxy uses for the scheme and the public name, where it does not pass them as https and `Host` — see [Serving it](#serving-it)                                                       |
+| `ADDRESS_HEADER`, `XFF_DEPTH`    | unset             | read by adapter-node: the header holding a visitor's address. **Needed behind any proxy** — unset, every visitor is the proxy — see [Serving it](#serving-it)                                                            |
+| `PGHOST`                         | where libpq looks | on Linux the unix socket `/var/run/postgresql`, which peer-authenticates rather than asking for a password; `/tmp` on macOS, `localhost` on Windows                                                                      |
+| `PGUSER`, `PGPASSWORD`, `PGPORT` | unset             | who to connect as, its password and the port: the operating-system user, none, 5432                                                                                                                                      |
+| `PGPASSFILE`                     | `~/.pgpass`       | libpq's password file, for a password in place of `PGPASSWORD`; passed over unless only its owner may read it                                                                                                            |
+| `PGDATABASE`                     | **required**      | which database, unless `DATABASE_URL` says: `reckon_dev`, say, in development. None is assumed                                                                                                                           |
+| `DATABASE_URL`                   | —                 | wins outright over `PGHOST`/`PGDATABASE`, for TCP, another machine, or a managed service                                                                                                                                 |
+| `MIGRATE_ON_START`               | `false`           | `true` has the server bring the database up to date as it starts, connected as its owner; unset, it only checks, and `bin/reckon migrate` does that, as the owner, before each start — see [The database](#the-database) |
+| `PUBLIC_GOOGLE_MAPS_API_KEY`     | **unset**         | the browser key. Address lookup; unset, no address can be chosen, so none is saved                                                                                                                                       |
+| `GOOGLE_MAPS_API_KEY`            | **unset**         | the server key. Confirms a chosen place, and measures a site's drive and a trip's miles; unset, no address is saved and miles are typed                                                                                  |
+| `GOOGLE_MAPS_API_KEY_FILE`       | unset             | a file holding `GOOGLE_MAPS_API_KEY`, in its place                                                                                                                                                                       |
+| `SMTP_HOST`                      | **unset**         | the relay email goes to — see [Email](#email). Unset, reckon sends none                                                                                                                                                  |
+| `SMTP_PORT`                      | `587`             | its port; `465` where `SMTP_SECURITY=tls`                                                                                                                                                                                |
+| `SMTP_SECURITY`                  | `starttls`        | `starttls`, `tls`, or `none` for a relay on this machine                                                                                                                                                                 |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | unset             | its sign-in, where it asks; `SMTP_PASSWORD_FILE` holds the password in a file instead                                                                                                                                    |
+| `SMTP_CA_FILE`                   | the system's      | the authorities to trust for its certificate, for one a private authority issued                                                                                                                                         |
+| `SMTP_HELO_NAME`                 | this machine's    | the name it greets the relay with, where the relay asks for a real one                                                                                                                                                   |
+| `SMTP_FROM`                      | —                 | the address email comes from; needed with `SMTP_HOST`                                                                                                                                                                    |
+| `SITE_URL`                       | unset             | where reckon is reached, https://reckon.example.com: the links it emails, and the site each passkey is made for. https except to this machine. Unset, nobody can make a passkey                                          |
 
 **Two keys, because a Google API key carries exactly one application
 restriction.** It can be restricted to HTTP referrers _or_ to IP addresses,
@@ -776,7 +781,7 @@ rounded.
 npm install
 cp .env.example .env                # then PGDATABASE=reckon_dev, and a BETTER_AUTH_SECRET
 createdb reckon_dev
-npm run db:migrate                  # and again after pulling a migration
+bin/reckon migrate                  # and again after pulling a migration
 npm run dev
 npm run db:seed                     # the invented business, if it is wanted
 ```

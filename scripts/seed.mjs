@@ -6,7 +6,7 @@
  *   npm run db:seed
  *
  * The database is the one the server would use, from the same settings, as
- * db:migrate's is (#lib/server/db/defaults). Needs psql, since the seed is a
+ * bin/reckon's is (#lib/server/db/defaults). Needs psql, since the seed is a
  * psql script.
  */
 // First, so .env is read before anything reads what it sets.

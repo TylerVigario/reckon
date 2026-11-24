@@ -34,8 +34,9 @@ import { log } from './log.ts';
  * it has not been confirmed since this quarter began (#lib/server/stale): the
  * server not having reached CDTFA.
  *
- * Imports nothing of SvelteKit's, so scripts/refresh-tax-rates.mjs runs it
- * once under plain Node, and the database and the day are handed in.
+ * Imports nothing of SvelteKit's, so `bin/reckon tax refresh` runs it once
+ * under plain Node (src/cli/tax.ts), and the database and the day are handed
+ * in.
  */
 
 /**
@@ -57,6 +58,15 @@ const PAUSE_MS = 250;
 const pause = () => new Promise((r) => setTimeout(r, PAUSE_MS));
 
 /**
+ * Whether there is an authority to ask: CDTFA answers for California, so only
+ * where the business collects there. Elsewhere a person types each area and
+ * confirms it.
+ */
+export async function anyoneToAsk(db: Kysely<DB>): Promise<boolean> {
+	return (await collecting(db)).includes('CA');
+}
+
+/**
  * One pass: every area not confirmed on `today` (the business's), and every
  * site not placed since this quarter began -- or, `all`, every one. `dry`
  * says what is due and asks nothing.
@@ -71,9 +81,7 @@ export async function syncTax(
 	}: { all?: boolean; dry?: boolean; fetcher?: typeof fetch } = {}
 ): Promise<Synced> {
 	const out: Synced = { areas: 0, changed: 0, sites: 0, moved: 0, failed: [] };
-	// CDTFA answers for California, so there is nothing to ask it unless the
-	// business collects there.
-	if (!(await collecting(db)).includes('CA')) return out;
+	if (!(await anyoneToAsk(db))) return out;
 	const areas = await db
 		.selectFrom('tax_area')
 		.select(['id', 'name', 'code'])

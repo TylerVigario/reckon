@@ -16,8 +16,8 @@ import type { Priced, PublishedRate } from './cdtfa.ts';
  * reads it from here, as of a day: today, for a site's page or a line being
  * added.
  *
- * Imports nothing of SvelteKit's, so scripts/refresh-tax-rates.mjs runs it
- * under plain Node, as it does cdtfa.ts.
+ * Imports nothing of SvelteKit's, so `bin/reckon tax refresh` runs it under
+ * plain Node, as it does cdtfa.ts.
  */
 
 /** The day an area's set in force on `day` took effect. */

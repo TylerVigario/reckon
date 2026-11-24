@@ -15,8 +15,8 @@ import type { TaxAreaSource } from './db/database.ts';
  * (#lib/server/tax-sync) -- so a stale rate is the server not having reached
  * it. A typed area is confirmed by a person, against the state's own table.
  *
- * Imports nothing of SvelteKit's, so scripts/refresh-tax-rates.mjs runs it
- * under plain Node, and the day to judge by is handed in: the business's
+ * Imports nothing of SvelteKit's, so `bin/reckon tax refresh` runs it under
+ * plain Node, and the day to judge by is handed in: the business's
  * (#lib/server/calendar's businessToday).
  */
 

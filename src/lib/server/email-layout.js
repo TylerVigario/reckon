@@ -1,8 +1,8 @@
 // How every email reckon sends is laid out: one layout, written by hand, and each
 // email built from the same blocks for its HTML and its plain text, so the two
 // say the same thing (a text part that differs from its HTML is itself a spam
-// signal: SpamAssassin's MPART_ALT_DIFF). Plain JavaScript, as notices.js is,
-// so scripts/user.mjs lays out what it sends the same way.
+// signal: SpamAssassin's MPART_ALT_DIFF). `bin/reckon user` lays out what it
+// sends with it too, as notices.js does.
 //
 // THE HTML is for every mail program, the oldest included: classic Outlook for
 // Windows draws with Word, which takes padding only on table cells and ignores

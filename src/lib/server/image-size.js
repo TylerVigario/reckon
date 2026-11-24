@@ -1,7 +1,6 @@
 // An image's width and height in pixels, read from the file's own header, so
 // no image library is shipped for it; null for a file that is not what it
-// says. Plain JavaScript, so scripts/user.mjs reads a logo's size as the server
-// does.
+// says. `bin/reckon user` reads a logo's size with it, as the server does.
 
 /** @typedef {{ width: number, height: number }} Size */
 

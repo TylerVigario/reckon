@@ -44,7 +44,7 @@ oversights:
   checking who is holding it — a fingerprint, a face, a screen lock — is
   refused.
 - **There is no sign-up.** Someone with Full adds people on Team, and the first
-  person is added with `scripts/user.mjs` on the host. Each is emailed a link to
+  person is added with `bin/reckon user add` on the host. Each is emailed a link to
   make their first passkey. Someone who has lost theirs is sent a new link by
   someone with Full, which ends none of the passkeys they have; a lost phone's
   passkeys are ended on Team. Someone with Full keeps at least one passkey.

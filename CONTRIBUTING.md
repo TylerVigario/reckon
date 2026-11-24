@@ -88,13 +88,14 @@ cd reckon
 npm ci                      # the dependencies, and the git hooks
 
 cp .env.example .env
-$EDITOR .env                # PGDATABASE=reckon_dev, BETTER_AUTH_SECRET=$(openssl rand -hex 32)
+$EDITOR .env                # PGDATABASE=reckon_dev, BETTER_AUTH_SECRET=$(openssl rand -hex 32),
+                            # SITE_URL=http://localhost:5173
 
 createdb reckon_dev
 npm run db:test             # prove the schema before applying it anywhere
-npm run db:migrate
-npm run db:seed                                                    # the invented business
-node scripts/user.mjs password avery@kestrel.example --insecure   # its owner, Avery
+bin/reckon migrate
+npm run db:seed                                   # the invented business
+bin/reckon user invite avery@kestrel.example      # a link for its owner, Avery, to make a passkey
 npm run dev
 ```
 
@@ -115,12 +116,13 @@ what it does, then `npm approve-scripts` or `npm deny-scripts` it.
 every package is a devDependency; one in `dependencies` would be left out of
 the bundle and missing from a release, and a test says so.
 
-The database commands read `.env` as `npm run dev` does, under whatever the shell
-sets, and connect the way the server does, so `PGHOST`, `PGUSER` and the rest
-apply. If your cluster wants a different user, become one:
-`sudo -u postgres npm run db:migrate`. The server only checks its database,
+`bin/reckon` and the database scripts read `.env` as `npm run dev` does, under
+whatever the shell sets, and connect the way the server does, so `PGHOST`,
+`PGUSER` and the rest apply. If your cluster wants a different user, become one:
+`sudo -u postgres bin/reckon migrate`. The server only checks its database,
 and will not start while a migration is waiting: after pulling one, or
-writing your own, `npm run db:migrate` applies it.
+writing your own, `bin/reckon migrate` applies it. `bin/reckon --help` says
+what else it does.
 
 Node is pinned in [`.nvmrc`](.nvmrc). Postgres 18 or newer — every id defaults
 to `uuidv7()`, which does not predate it. CI runs 18, which is what the guards

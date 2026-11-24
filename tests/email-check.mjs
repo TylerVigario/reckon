@@ -164,7 +164,9 @@ try {
 		'removing it on Your profile tells them'
 	);
 
-	const ran = spawnSync('node', ['scripts/user.mjs', 'invite', email], { encoding: 'utf8' });
+	const ran = spawnSync(process.execPath, ['bin/reckon', 'user', 'invite', email], {
+		encoding: 'utf8'
+	});
 	check(
 		ran.status === 0 && /\/link#[A-Za-z0-9_-]{43}/.test(ran.stdout),
 		'the command line gives a new link, printed to hand over',

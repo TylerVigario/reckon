@@ -1,0 +1,17 @@
+#!/usr/bin/env node
+/**
+ * reckon's command: `bin/reckon --help` says what it does (src/cli/main.ts).
+ *
+ * The same path in a clone and a release. Here Node runs it as it is, and the
+ * TypeScript it imports, stripping the types itself; a release carries it at
+ * this path, bundled with everything it imports into this one file
+ * (scripts/release-files.mjs). Either way the .env beside bin/ is read first,
+ * under whatever the shell sets, and the database is the one the server
+ * would use.
+ */
+// First, so .env is read before anything reads what it sets.
+import { database } from '../scripts/env.mjs';
+import pkg from '../package.json' with { type: 'json' };
+import { main } from '../src/cli/main.ts';
+
+process.exitCode = await main(process.argv.slice(2), { version: pkg.version, database });

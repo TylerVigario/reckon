@@ -481,7 +481,7 @@ try {
 
 	// From the command line, for the one with Full who has lost theirs: invite
 	// gives a new link and ends nothing; end ends them.
-	const printed = spawnSync(process.execPath, ['scripts/user.mjs', 'invite', robin], {
+	const printed = spawnSync(process.execPath, ['bin/reckon', 'user', 'invite', robin], {
 		encoding: 'utf8'
 	});
 	const printedCode = /\/link#([A-Za-z0-9_-]{43})/.exec(printed.stdout)?.[1];
@@ -493,14 +493,16 @@ try {
 	);
 	const r6 = browser();
 	await signInWith(r6, desk2);
-	const again2 = spawnSync(process.execPath, ['scripts/user.mjs', 'invite', robin], {
+	const again2 = spawnSync(process.execPath, ['bin/reckon', 'user', 'invite', robin], {
 		encoding: 'utf8'
 	});
 	check(
 		again2.status === 0 && (await signInWith(browser(), desk2)).status === 200,
 		'giving another ends none they have'
 	);
-	const cut = spawnSync(process.execPath, ['scripts/user.mjs', 'end', robin], { encoding: 'utf8' });
+	const cut = spawnSync(process.execPath, ['bin/reckon', 'user', 'end', robin], {
+		encoding: 'utf8'
+	});
 	check(cut.status === 0, 'the command line ends their passkeys', cut.stderr.trim());
 	check(
 		(await signInWith(browser(), desk2)).status !== 200 && !(await signedIn(r6)),
@@ -512,7 +514,8 @@ try {
 	);
 	const laptop = softPasskeys({ origin: base });
 	const laptopCode = /\/link#([A-Za-z0-9_-]{43})/.exec(
-		spawnSync(process.execPath, ['scripts/user.mjs', 'invite', robin], { encoding: 'utf8' }).stdout
+		spawnSync(process.execPath, ['bin/reckon', 'user', 'invite', robin], { encoding: 'utf8' })
+			.stdout
 	)?.[1];
 	check(
 		(await makeWithLink(browser(), laptop, laptopCode ?? '')).status === 200,

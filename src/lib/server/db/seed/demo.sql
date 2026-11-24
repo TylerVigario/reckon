@@ -9,7 +9,7 @@
 -- from an invented home base.
 --
 --     createdb reckon_demo
---     PGDATABASE=reckon_demo npm run db:migrate
+--     PGDATABASE=reckon_demo bin/reckon migrate
 --     PGDATABASE=reckon_demo npm run db:seed
 --
 
@@ -28,7 +28,7 @@ VALUES ('Kestrel Field Services','KFS', true, 'America/Los_Angeles',
 -- schema starts every operator with. Avery has Full access, and Sam and
 -- Jordan Field: their own work, and what they are paid for it. None of them
 -- can sign in until they make a passkey, with the link this prints:
--- node scripts/user.mjs invite avery@kestrel.example
+-- bin/reckon user invite avery@kestrel.example
 INSERT INTO "user" (id, name, email, active, role_id, access) VALUES
   ('c41b2fab-5b71-4954-bb86-1bc803daf7ee','Avery Lind','avery@kestrel.example', true,
    (SELECT id FROM role WHERE name = 'Partner'), 'full'),

@@ -75,7 +75,7 @@
 					{#if data.cannotSend === 'SMTP_HOST'}
 						Adding someone emails them a link to make their passkey, and reckon has no relay to send
 						it through: <code>SMTP_HOST</code> is unset. Whoever runs reckon sets it where reckon is
-						installed. Until then, <code>scripts/user.mjs</code> on the server adds someone and prints
+						installed. Until then, <code>bin/reckon user add</code> on the server adds someone and prints
 						their link, to hand to them.
 					{:else}
 						Adding someone emails them a link to make their passkey, and reckon has no address to

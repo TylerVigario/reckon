@@ -1,7 +1,7 @@
 /**
- * Not a command: what the commands and checks that reach the database import
- * first, so they read the .env beside vite.config.ts as `npm run dev` does,
- * under whatever the shell sets. (The dev server reads Vite's others too, as
+ * Not a command: what bin/reckon, the scripts and the checks that reach the
+ * database import first, so they read the .env beside vite.config.ts as
+ * `npm run dev` does, under whatever the shell sets. (The dev server reads Vite's others too, as
  * .env.local; these read .env alone.) With none, they read the shell's alone,
  * as they do in production.
  */

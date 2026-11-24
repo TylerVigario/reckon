@@ -92,6 +92,16 @@ export default defineConfig([
 	},
 
 	{
+		// bin/reckon has no extension, as a command has none, so no tsconfig can
+		// include it and the checker never sees it: it is linted for what needs
+		// no types. It is three lines; what it runs is src/cli, checked as the
+		// app is.
+		files: ['bin/reckon'],
+		extends: [ts.configs.disableTypeChecked],
+		languageOptions: { globals: globals.node }
+	},
+
+	{
 		// A migration is handed Kysely<any>, as Kysely's migration guide says it
 		// must be: "It's important to use Kysely<any> and not
 		// Kysely<YourDatabase>. Migrations should never depend on the current
