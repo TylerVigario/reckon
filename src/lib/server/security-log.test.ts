@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// The log is read from the database, but saying a row in words is not.
+vi.mock('./db/index.ts', () => ({ db: {} }));
+
 import { inWords } from './security-log.ts';
 import { VIA } from '../../cli/user.ts';
 
