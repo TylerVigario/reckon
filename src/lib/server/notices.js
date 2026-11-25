@@ -1,6 +1,5 @@
-// What reckon tells a person by email, and how it is worded. Plain JavaScript, so
-// the server and scripts/user.mjs, which runs with no build step, write the same
-// notice.
+// What reckon tells a person by email, and how it is worded, so the server and
+// `bin/reckon user` (src/cli/user.ts) write the same notice.
 //
 // A notice says what happened, when, in the person's own zone and words, and
 // what to do if it was not them -- NIST SP 800-63B-4 §4.6: "clear

@@ -177,15 +177,15 @@ jobs:
       - uses: ./.github/actions/setup
       - run: npm run build
 
-      - name: The tax-rate refresh starts, outside SvelteKit
+      - name: bin/reckon tax refresh starts, outside SvelteKit
         # It runs the server's own tax sync under plain Node, so a $app import
         # anywhere beneath it stops it before it asks about anything. An empty
-        # database has no areas or sites, so this needs no network: it proves
-        # the script loads, connects and finds its day.
+        # database collects tax nowhere, so there is nothing to ask and this
+        # needs no network: it proves the command loads, and connects.
         run: |
           createdb reckon_empty
-          PGDATABASE=reckon_empty npm run db:migrate
-          PGDATABASE=reckon_empty node scripts/refresh-tax-rates.mjs --dry-run
+          PGDATABASE=reckon_empty bin/reckon migrate
+          PGDATABASE=reckon_empty bin/reckon tax refresh --dry-run
 
       - name: The database and the valuation round tax alike
         # Every scope and method of a tax rule's rounding, in SQL and in
@@ -216,8 +216,8 @@ jobs:
         # and the server connects as reckon, granted rows and nothing more, so
         # anything that quietly needs to own a table fails here first. The owner
         # signs in nowhere: the job's superuser migrates, as a host's postgres
-        # could, and db:migrate acts as the owner. The server migrating as it
-        # starts is the Build job's.
+        # could, and bin/reckon migrate acts as the owner. The server migrating
+        # as it starts is the Build job's.
         run: |
           psql -q -v ON_ERROR_STOP=1 -d postgres <<'SQL'
           CREATE ROLE reckon_owner;
@@ -225,7 +225,7 @@ jobs:
           SQL
           createdb -O reckon_owner reckon_ci
           psql -q -d postgres -c "ALTER DATABASE reckon_ci SET TimeZone = 'Pacific/Kiritimati'"
-          npm run db:migrate
+          bin/reckon migrate
           npm run db:seed
           psql -q -v ON_ERROR_STOP=1 -d reckon_ci <<'SQL'
           GRANT USAGE ON SCHEMA public, kysely TO reckon;
@@ -237,18 +237,18 @@ jobs:
           SQL
 
       - name: The role that owns nothing may not migrate, and is told why
-        # By hand, db:migrate stops before it tries anything; and a server
-        # told to migrate as it starts says the same and does not start,
+        # By hand, bin/reckon migrate stops before it tries anything; and a
+        # server told to migrate as it starts says the same and does not start,
         # rather than showing the first statement Postgres refused.
         env:
           PGUSER: reckon
           PGPASSWORD: ci-only-serving-role
         run: |
-          if out=$(npm run db:migrate 2>&1); then
-            echo "::error::db:migrate ran as reckon"; exit 1
+          if out=$(bin/reckon migrate 2>&1); then
+            echo "::error::bin/reckon migrate ran as reckon"; exit 1
           fi
           grep -q "reckon may not act as its owner, reckon_owner" <<<"$out" || {
-            echo "$out"; echo "::error::db:migrate did not say why"; exit 1
+            echo "$out"; echo "::error::bin/reckon migrate did not say why"; exit 1
           }
           if out=$(MIGRATE_ON_START=true timeout 60 node build 2>&1); then
             echo "::error::the server started, told to migrate as reckon"; exit 1
@@ -271,7 +271,7 @@ jobs:
           echo "::error::the server never answered"; exit 1
 
       - name: Passkeys for the people the checks act as
-        # As the first person gets theirs: scripts/user.mjs gives an invitation
+        # As the first person gets theirs: bin/reckon user gives an invitation
         # link, and a passkey is made with it on the link's page. Someone with
         # Full, and someone with Field, for what that level reaches.
         run: node tests/passkeys.mjs "http://localhost:$PORT" avery@kestrel.example sam@kestrel.example

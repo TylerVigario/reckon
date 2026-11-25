@@ -4,8 +4,8 @@
 // Settings → Business, the way it chooses to be reached; or, where it gives
 // neither, their administrator, as Microsoft's and Okta's sign-in pages say.
 // Never a level of access: nobody locked out knows who has one. NIST SP
-// 800-63B-4 §4.6 asks a notification to carry contact information. Plain
-// JavaScript, so scripts/user.mjs tells a person the same.
+// 800-63B-4 §4.6 asks a notification to carry contact information.
+// `bin/reckon user` tells a person the same.
 
 /**
  * @typedef {object} Reachable

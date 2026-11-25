@@ -163,7 +163,7 @@ export const variables = defineEnvVars({
 
 	MIGRATE_ON_START: {
 		description:
-			"Whether the server brings the database up to date as it starts, which it can only do connected as the database's owner. false unless set: the server only checks, and will not start while a migration is waiting; `node scripts/migrate.mjs` (`npm run db:migrate` in a clone) applies them, as the owner, before it starts, so the server can connect as a role that owns nothing (#lib/server/db/migrate).",
+			"Whether the server brings the database up to date as it starts, which it can only do connected as the database's owner. false unless set: the server only checks, and will not start while a migration is waiting; `bin/reckon migrate` applies them, as the owner, before it starts, so the server can connect as a role that owns nothing (#lib/server/db/migrate).",
 		schema: (value = 'false') => {
 			if (value === 'true') return true;
 			if (value === 'false') return false;

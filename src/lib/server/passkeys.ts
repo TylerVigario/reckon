@@ -97,7 +97,7 @@ export async function forTheLink({
  * Ends every passkey someone has, and signs them out everywhere, there and
  * then, for a phone or computer of theirs that is lost or stolen: on Team, by
  * someone with Full, as its own action or as a new link is sent, or from the
- * command line (scripts/user.mjs end does the same). NIST SP 800-63B-4 §4.3
+ * command line (`bin/reckon user end` does the same). NIST SP 800-63B-4 §4.3
  * takes "a lost authenticator" to have been "stolen or compromised", and the
  * CSP "SHALL suspend, invalidate, or destroy compromised authenticators"
  * promptly; their sessions go with them, since "an attacker may still have an

@@ -5,10 +5,10 @@
  *   build/             the application, from `vite build`; `node build` runs it,
  *                      carrying its migrations, which it applies as it starts where
  *                      MIGRATE_ON_START=true, and otherwise only checks
- *   scripts/           user.mjs, the command that adds the first person, before anyone
- *                      can sign in, and migrate.mjs, which brings the database up to
- *                      date as its owner; each bundled with everything it imports
- *                      (release-files.mjs bundleScripts)
+ *   bin/reckon         the command a host runs: it brings the database up to date as
+ *                      its owner, adds the first person before anyone can sign in,
+ *                      and keeps the tax rates in sync; bundled with everything it
+ *                      imports (release-files.mjs bundleCommand)
  *   package.json       and package-lock.json, as they are here
  *   .env.example       what the environment may set
  *   LICENSE, LICENSE-NOTICE.md, CHANGELOG.md
@@ -18,7 +18,7 @@
  * THE SAME PATHS AS A CLONE. What runs from a release runs from a clone the same
  * way, so nothing has to know which of the two it is in. The migrations are in
  * the bundles themselves (#lib/server/db/migrations), the server's and
- * migrate.mjs's, so neither looks for them on disk.
+ * bin/reckon's, so neither looks for them on disk.
  *
  * SELF-CONTAINED. Everything it runs is bundled, so it carries no node_modules
  * and a host needs Node and nothing else -- no registry to reach, nothing to
@@ -36,7 +36,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
-import { bundleScripts, RELEASE_FILES, RELEASE_SCRIPTS } from './release-files.mjs';
+import { bundleCommand, RELEASE_COMMAND, RELEASE_FILES } from './release-files.mjs';
 import { releaseVersion } from './release-version.mjs';
 
 /** @type {(name: string, fallback: string) => string} */
@@ -86,8 +86,8 @@ run('npm', ['run', 'build'], { stdio: 'inherit' });
 
 for (const p of RELEASE_FILES) fs.cpSync(p, path.join(staging, p), { recursive: true });
 
-console.log(`  scripts/${RELEASE_SCRIPTS.join(', ')}, bundled`);
-await bundleScripts(staging);
+console.log(`  ${RELEASE_COMMAND}, bundled`);
+await bundleCommand(staging);
 
 // What changed, inside the artifact, so it is known without a path back to the
 // release notes.

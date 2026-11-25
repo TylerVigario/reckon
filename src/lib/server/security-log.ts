@@ -119,7 +119,10 @@ export function inWords(name: SecurityEvent, d: Detail): string {
 			if (s('route')) parts.push(`${s('method') ?? ''} ${s('route')}`.trim());
 			break;
 	}
-	if (s('via') === 'scripts/user.mjs') parts.push('from the command line on the host');
+	// Written on the host by `bin/reckon user` (src/cli/user.ts VIA), or by
+	// scripts/user.mjs before it: the log stands as it was written.
+	if (s('via') === 'reckon user' || s('via') === 'scripts/user.mjs')
+		parts.push('from the command line on the host');
 	return parts.join(' · ');
 }
 

@@ -31,9 +31,10 @@ import { SESSION_UNUSED_DAYS } from '#lib/offline-copy.ts';
  * there are no passwords (#lib/server/passkeys).
  *
  * There is no sign-up: someone with Full adds people on Team, and the first
- * person is added from the command line (scripts/user.mjs); either way they
- * are given an invitation link to make their passkey with (#lib/server/links).
- * Someone who has lost theirs is given a new link the same way.
+ * person is added from the command line (`bin/reckon user add`); either way
+ * they are given an invitation link to make their passkey with
+ * (#lib/server/links). Someone who has lost theirs is given a new link the
+ * same way.
  *
  * Its HTTP routes are mounted under /api/auth, as its SvelteKit guide has it
  * (hooks.server.ts), and only where SITE_URL says where reckon is: that is its

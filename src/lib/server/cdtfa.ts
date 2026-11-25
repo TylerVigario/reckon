@@ -4,7 +4,7 @@
  * This is the one place that knows the contract with CDTFA. The app asks it
  * the moment somebody saves a site or asks again on its page, and the server
  * keeps every area and site in sync through it (#lib/server/tax-sync) -- as
- * does scripts/refresh-tax-rates.mjs, which runs that under plain Node. So
+ * does `bin/reckon tax refresh`, which runs that under plain Node. So
  * imports here are relative or #lib, never a $app module, which only exists
  * inside SvelteKit. A second copy of a network contract is a copy that
  * drifts, and the drift shows up as a rate.

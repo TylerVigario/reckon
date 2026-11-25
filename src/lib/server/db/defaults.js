@@ -1,6 +1,6 @@
 // Where the database is when nothing says otherwise, and which one it is, which
-// nothing assumes. Plain JavaScript, so the server, the commands in scripts/ and
-// the checks in tests/, which run with no build step, share one answer.
+// nothing assumes: the server's, bin/reckon's and the checks' in tests/, one
+// answer for all of them.
 
 import { createReadStream, stat } from 'node:fs';
 import { userInfo } from 'node:os';

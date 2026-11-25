@@ -3,7 +3,7 @@
  * (#lib/server/passkeys), the people the checks act as included.
  *
  * enrol() gives each of them a passkey the way the first person gets theirs --
- * `scripts/user.mjs invite` prints a link, and a passkey is made with it on the
+ * `bin/reckon user invite` prints a link, and a passkey is made with it on the
  * link's page -- and keeps them in a file (RECKON_TEST_PASSKEYS, or one in the
  * temporary directory). signIn() signs in as one of them, as the sign-in page
  * does, for any check after. The passkeys are software ones
@@ -101,7 +101,7 @@ export async function makePasskey(base, code) {
  * @param {string} email
  */
 export async function enrol(base, email) {
-	const said = execFileSync(process.execPath, ['scripts/user.mjs', 'invite', email], {
+	const said = execFileSync(process.execPath, ['bin/reckon', 'user', 'invite', email], {
 		encoding: 'utf8'
 	});
 	const code = /\/link#([A-Za-z0-9_-]{43})/.exec(said)?.[1];
@@ -166,6 +166,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	}
 	for (const email of emails) {
 		await enrol(base, email);
-		console.log(`  ✓ ${email} has a passkey, made with the link scripts/user.mjs gave`);
+		console.log(`  ✓ ${email} has a passkey, made with the link bin/reckon user gave`);
 	}
 }
