@@ -1,6 +1,6 @@
 import { sql } from 'kysely';
 import { materialNamed } from '#lib/server/named.ts';
-import { asUser, db, type Tx } from './db/index.ts';
+import { asUser, db, type Db, type Tx } from './db/index.ts';
 import type { ReceiptType } from './db/database.ts';
 import type { TaxPiece } from './db/tax-pieces.ts';
 import { moneyPlaces } from './business.ts';
@@ -8,7 +8,15 @@ import { businessToday } from './calendar.ts';
 import { pgError, type Errors } from './field-errors.ts';
 import { problem } from './problem.ts';
 import { shelves } from './stock.ts';
-import { fromStock, passedOn, taxNeeds, type ByHand, type Taxes } from '../passed-on.ts';
+import {
+	asItsKind,
+	fromStock,
+	passedOn,
+	taxNeeds,
+	type ByHand,
+	type SiteTax,
+	type Taxes
+} from '../passed-on.ts';
 import { BY_HAND, readByHand, readFromStock, readPassedOn } from '../line-fields.ts';
 import { changeDraw, drawFrom } from '../stock-draw.ts';
 import { quantity } from '../format.ts';
@@ -19,7 +27,7 @@ import type { Conflict, Held } from '../line-conflict.ts';
 import { startIn } from './drafts.ts';
 import { isReceiptType, MAX_RECEIPT } from './receipt-file.ts';
 import { areaPieces, piecesFor } from './tax-areas.ts';
-import { siteKindRates, siteRate } from './tax-registrations.ts';
+import { siteExemptions, siteKindRates, siteRate } from './tax-registrations.ts';
 import { areaTaxesByState, kindChoices, reckonsKind, taxesByState } from './sale-kinds.ts';
 
 /**
@@ -442,9 +450,20 @@ async function siteOf(draft: { entity_id: string; who: string }, siteId: string 
 		reckonsKind(db, 'goods')
 	]);
 	if (!siteId) return { taxes, areaTaxes, goods, site: null, why: null };
+	const site = await siteTaxOf(db, draft.entity_id, siteId, day);
+	if (!site)
+		return { taxes, areaTaxes, goods, site: null, why: `Not one of ${draft.who}'s sites.` };
+	return { taxes, areaTaxes, goods, site, why: null };
+}
+
+/**
+ * A client's site, as a line taxed there reads it on `day`: its tax, its
+ * state, and its area's name and pieces. Undefined where it is not theirs.
+ */
+async function siteTaxOf(ex: Db, entityId: string, siteId: string, day: string) {
 	// Its area's rate today, and who levies it (#lib/server/tax-areas), where
-	// the business collects in its state.
-	const found = await db
+	// the business collects in its state; and its client's exemptions there.
+	const found = await ex
 		.selectFrom('site')
 		.leftJoin('tax_area', 'tax_area.id', 'site.tax_area_id')
 		.select((eb) => {
@@ -452,19 +471,128 @@ async function siteOf(draft: { entity_id: string; who: string }, siteId: string 
 			return [
 				siteRate(site, day).as('rate'),
 				siteKindRates(site, day).as('kind_rates'),
+				siteExemptions({ entity: eb.ref('site.entity_id'), region: eb.ref('site.region') }).as(
+					'exempt'
+				),
 				'site.region as state',
+				'site.display as label',
 				'tax_area.name as jurisdiction',
 				areaPieces(eb.ref('site.tax_area_id').$castTo<string>(), day).as('pieces')
 			];
 		})
 		.where('site.id', '=', siteId)
-		.where('site.entity_id', '=', draft.entity_id)
+		.where('site.entity_id', '=', entityId)
 		.executeTakeFirst();
-	if (!found)
-		return { taxes, areaTaxes, goods, site: null, why: `Not one of ${draft.who}'s sites.` };
-	const { rate, kind_rates, ...where } = found;
-	const tax = { state: where.state, ratePct: rate, kindRates: kind_rates ?? {} };
-	return { taxes, areaTaxes, goods, site: { ...where, tax }, why: null };
+	if (!found) return undefined;
+	const { rate, kind_rates, exempt, ...where } = found;
+	const tax: SiteTax = { state: where.state, ratePct: rate, kindRates: kind_rates ?? {}, exempt };
+	return { ...where, tax };
+}
+
+/**
+ * THE CLIENT HELD FOR A LINE'S TRANSACTION, first, and the site's tax read
+ * again under it with their exemptions as they stand. Recording, ending or
+ * taking off an exemption holds the client too, and then its drafts, and taxes
+ * those again (taxDraftsAgain): so a line either waits for that and is taxed
+ * as it left them, or is on a draft before it starts and is taxed again by it.
+ * Held before the draft, in the order an exemption holds them.
+ */
+async function heldFor<S extends { tax: SiteTax } | null>(
+	tx: Tx,
+	entityId: string,
+	site: S
+): Promise<S> {
+	await tx.selectFrom('entity').select('id').where('id', '=', entityId).forShare().execute();
+	if (site === null) return site;
+	const exempt = await tx
+		.selectFrom('tax_exemption')
+		.select(['id', 'sale_kind_ids as kinds'])
+		.where('entity_id', '=', entityId)
+		.where('state', '=', site.tax.state)
+		.where('ended_on', 'is', null)
+		.orderBy('id')
+		.execute();
+	return { ...site, tax: { ...site.tax, exempt } };
+}
+
+/**
+ * A CLIENT'S DRAFTS TAXED AGAIN in `state`, in the transaction that recorded,
+ * ended or took off an exemption of theirs there, the client held first
+ * (#lib/server/exemptions): a line the client is now exempt from is untaxed
+ * and names the exemption, and one an exemption no longer covers is taxed as
+ * its kind is there today. A certificate is timely "any time before the seller
+ * bills the purchaser" (Reg 1667 (b)(1), Reg 1668 (a)), and a draft is not
+ * billed yet; a sent invoice keeps what it was billed, since a certificate
+ * late "is not retroactive" (Reg 1668 (e)).
+ *
+ * Every other line keeps its tax, as any line on a draft does until it is
+ * changed, and so does a line set by hand, which says its own reason. The
+ * drafts are held while it is done, so none goes out between.
+ *
+ * Answers with the site of a line that would be taxed and is in no tax area
+ * yet, to be placed first -- nothing is written then -- or null.
+ */
+export async function taxDraftsAgain(
+	tx: Tx,
+	entityId: string,
+	state: string
+): Promise<string | null> {
+	const drafts = await tx
+		.selectFrom('invoice')
+		.select('id')
+		.where('entity_id', '=', entityId)
+		.where('status', '=', 'draft')
+		.orderBy('id')
+		.forNoKeyUpdate()
+		.execute();
+	if (!drafts.length) return null;
+	const lines = await tx
+		.selectFrom('invoice_line as il')
+		.innerJoin('site as s', 's.id', 'il.site_id')
+		.select([
+			'il.id',
+			'il.sale_kind_id as kind',
+			'il.site_id as site',
+			'il.tax_exemption_id as was'
+		])
+		.where(
+			'il.invoice_id',
+			'in',
+			drafts.map((d) => d.id)
+		)
+		.where('s.region', '=', state)
+		.where('il.tax_override_reason', 'is', null)
+		.where('il.sale_kind_id', 'is not', null)
+		.orderBy('il.id')
+		.execute();
+	if (!lines.length) return null;
+
+	const day = businessToday();
+	const [taxes, areaTaxes] = await Promise.all([taxesByState(tx), areaTaxesByState(tx, day)]);
+	const sites = new Map<string, Awaited<ReturnType<typeof siteTaxOf>>>();
+	const changes = [];
+	for (const l of lines) {
+		if (!sites.has(l.site!)) sites.set(l.site!, await siteTaxOf(tx, entityId, l.site!, day));
+		const site = sites.get(l.site!);
+		if (!site) continue;
+		const now = asItsKind(l.kind, { taxes, areaTaxes, site: site.tax });
+		if (now.taxExemption === l.was) continue;
+		if (now.needsPlacing) return site.label ?? 'A site';
+		changes.push({ id: l.id, now, site });
+	}
+	for (const { id, now, site } of changes)
+		await tx
+			.updateTable('invoice_line')
+			.set({
+				taxable: now.taxable,
+				tax_rate_pct: now.taxRatePct,
+				tax_source: now.taxSource,
+				tax_exemption_id: now.taxExemption,
+				...taxedWhere(now, site, taxes)
+			})
+			.where('id', '=', id)
+			.execute();
+	return null;
 }
 
 /**
@@ -643,6 +771,7 @@ async function fromTheShelf(
 		return await asUser(
 			input.userId,
 			async (tx): Promise<Added> => {
+				const here = await heldFor(tx, draft.entity_id, site);
 				const to = await target(tx, draft, input.userId);
 				await tx
 					.selectFrom('material')
@@ -671,7 +800,7 @@ async function fromTheShelf(
 						kind: m.kind,
 						byHand: tax.byHand
 					},
-					{ taxes, areaTaxes, site: site?.tax ?? null, places }
+					{ taxes, areaTaxes, site: here?.tax ?? null, places }
 				);
 				const needs = taxNeeds(line);
 				if (needs) throw new Refused(no(needs));
@@ -694,9 +823,10 @@ async function fromTheShelf(
 						taxable: line.taxable,
 						tax_rate_pct: line.taxRatePct,
 						tax_source: line.taxSource,
+						tax_exemption_id: line.taxExemption,
 						tax_override_reason: tax.reason,
 						sale_kind_id: line.soldAs,
-						...taxedWhere(line, site, taxes),
+						...taxedWhere(line, here, taxes),
 						ex_tax_cost: line.exTaxCost,
 						tax_paid: line.taxPaid,
 						site_id: siteId,
@@ -753,29 +883,37 @@ async function boughtOrPaidFor(
 		.selectFrom('operator')
 		.select(['purchase_markup_pct as markup'])
 		.executeTakeFirst();
-	const line = passedOn(
-		{
-			kind: values.kind as 'bought' | 'paid_for',
-			cost: String(values.ex_tax_cost),
-			taxPaid: String(values.tax_paid),
-			byHand: tax.byHand
-		},
-		{
-			purchaseMarkupPct: op?.markup ?? '0',
-			taxes,
-			areaTaxes,
-			goods,
-			site: site?.tax ?? null,
-			places: await moneyPlaces()
-		}
-	);
-	const needs = taxNeeds(line);
+	const places = await moneyPlaces();
+	/** What it bills and its tax, at the site as it is read. */
+	const price = (at: { tax: SiteTax } | null) =>
+		passedOn(
+			{
+				kind: values.kind as 'bought' | 'paid_for',
+				cost: String(values.ex_tax_cost),
+				taxPaid: String(values.tax_paid),
+				byHand: tax.byHand
+			},
+			{
+				purchaseMarkupPct: op?.markup ?? '0',
+				taxes,
+				areaTaxes,
+				goods,
+				site: at?.tax ?? null,
+				places
+			}
+		);
+	const needs = taxNeeds(price(site));
 	if (needs) return no(needs);
 
 	try {
 		return await asUser(
 			input.userId,
 			async (tx): Promise<Added> => {
+				// Its tax again, with the client's exemptions as they stand under the hold.
+				const here = await heldFor(tx, draft.entity_id, site);
+				const line = price(here);
+				const needs = taxNeeds(line);
+				if (needs) throw new Refused(no(needs));
 				const to = await target(tx, draft, input.userId);
 				const added = await tx
 					.insertInto('invoice_line')
@@ -795,9 +933,10 @@ async function boughtOrPaidFor(
 						taxable: line.taxable,
 						tax_rate_pct: line.taxRatePct,
 						tax_source: line.taxSource,
+						tax_exemption_id: line.taxExemption,
 						tax_override_reason: tax.reason,
 						sale_kind_id: line.soldAs,
-						...taxedWhere(line, site, taxes),
+						...taxedWhere(line, here, taxes),
 						ex_tax_cost: line.exTaxCost,
 						tax_paid: line.taxPaid,
 						site_id: siteId,
@@ -948,6 +1087,7 @@ export async function changeLine(
 			return await asUser(
 				input.userId,
 				async (tx): Promise<Added> => {
+					const here = await heldFor(tx, draft.entity_id, site);
 					await stillADraft(tx);
 					await tx
 						.selectFrom('material')
@@ -992,7 +1132,7 @@ export async function changeLine(
 							kind: m.kind,
 							byHand: tax.byHand
 						},
-						{ taxes, areaTaxes, site: site?.tax ?? null, places }
+						{ taxes, areaTaxes, site: here?.tax ?? null, places }
 					);
 					const needs = taxNeeds(priced);
 					if (needs) throw new Refused(no(needs));
@@ -1052,9 +1192,10 @@ export async function changeLine(
 							taxable: priced.taxable,
 							tax_rate_pct: priced.taxRatePct,
 							tax_source: priced.taxSource,
+							tax_exemption_id: priced.taxExemption,
 							tax_override_reason: tax.reason,
 							sale_kind_id: priced.soldAs,
-							...taxedWhere(priced, site, taxes),
+							...taxedWhere(priced, here, taxes),
 							ex_tax_cost: priced.exTaxCost,
 							tax_paid: priced.taxPaid,
 							site_id: siteId
@@ -1080,28 +1221,33 @@ export async function changeLine(
 			.selectFrom('operator')
 			.select(['purchase_markup_pct as markup'])
 			.executeTakeFirst();
-		const priced = passedOn(
-			{
-				kind: line.kind,
-				cost: String(values.ex_tax_cost),
-				taxPaid: String(values.tax_paid),
-				byHand: tax.byHand
-			},
-			{
-				purchaseMarkupPct: op?.markup ?? '0',
-				taxes,
-				areaTaxes,
-				goods,
-				site: site?.tax ?? null,
-				places
-			}
-		);
-		const needs = taxNeeds(priced);
+		const price = (at: { tax: SiteTax } | null) =>
+			passedOn(
+				{
+					kind: line.kind as 'bought' | 'paid_for',
+					cost: String(values.ex_tax_cost),
+					taxPaid: String(values.tax_paid),
+					byHand: tax.byHand
+				},
+				{
+					purchaseMarkupPct: op?.markup ?? '0',
+					taxes,
+					areaTaxes,
+					goods,
+					site: at?.tax ?? null,
+					places
+				}
+			);
+		const needs = taxNeeds(price(site));
 		if (needs) return no(needs);
 		return await asUser(
 			input.userId,
 			async (tx): Promise<Added> => {
+				const here = await heldFor(tx, draft.entity_id, site);
 				await stillADraft(tx);
+				const priced = price(here);
+				const needs = taxNeeds(priced);
+				if (needs) throw new Refused(no(needs));
 				await tx
 					.updateTable('invoice_line')
 					.set({
@@ -1111,9 +1257,10 @@ export async function changeLine(
 						taxable: priced.taxable,
 						tax_rate_pct: priced.taxRatePct,
 						tax_source: priced.taxSource,
+						tax_exemption_id: priced.taxExemption,
 						tax_override_reason: tax.reason,
 						sale_kind_id: priced.soldAs,
-						...taxedWhere(priced, site, taxes),
+						...taxedWhere(priced, here, taxes),
 						ex_tax_cost: priced.exTaxCost,
 						tax_paid: priced.taxPaid,
 						site_id: siteId,

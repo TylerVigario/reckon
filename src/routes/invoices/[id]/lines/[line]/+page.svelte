@@ -22,6 +22,8 @@
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 	import { opens } from '#lib/access.ts';
+	import { reasonSaid } from '#lib/exemption-fields.ts';
+	import { stateName } from '#lib/us-states.ts';
 	import { busy } from '#lib/busy.svelte.ts';
 
 	let { data }: PageProps = $props();
@@ -425,6 +427,16 @@
 			<span class="kv-l">{l.taxable ? `Tax at ${pct(l.tax_rate_pct)}` : 'Tax'}</span>
 			<span class="kv-v"><span>{tax !== null ? money(tax) : 'None'}</span></span>
 		</div>
+		{#if l.exempt_in && l.exempt_for}
+			<!-- Untaxed by its client's exemption, which the line keeps. -->
+			<div class="box-row kv">
+				<span class="kv-l">Exempt</span>
+				<span class="kv-v">
+					<span>{l.who} is exempt in {stateName(l.exempt_in)}</span>
+					<span class="kv-s">{reasonSaid(l.exempt_for)}</span>
+				</span>
+			</div>
+		{/if}
 		{#if l.tax_override_reason}
 			<!-- Its tax set by hand, by someone with Full: why, as its history keeps it. -->
 			<div class="box-row kv">

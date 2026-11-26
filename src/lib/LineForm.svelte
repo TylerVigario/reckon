@@ -20,7 +20,7 @@
 		type ShownReceipt
 	} from '#lib/queue.ts';
 	import { withChanged, withReceived } from '#lib/stock-held.ts';
-	import { pct, percent, quantity } from '#lib/format.ts';
+	import { names, pct, percent, quantity } from '#lib/format.ts';
 	import { money, unitPrice } from '#lib/money.svelte.ts';
 	import { readByHand, readFromStock, readPassedOn } from '#lib/line-fields.ts';
 	import {
@@ -30,6 +30,7 @@
 		siteRateFor,
 		taxNeeds,
 		type ByHand,
+		type InForce,
 		type Taxes
 	} from '#lib/passed-on.ts';
 	import { stateName } from '#lib/us-states.ts';
@@ -63,7 +64,8 @@
 			/**
 			 * Each with its state, and where the business collects there and the
 			 * site has been placed, its rate on every kind the state taxes and
-			 * what its area's pieces for one kind alone add, by kind.
+			 * what its area's pieces for one kind alone add, by kind; and the
+			 * client's exemptions in force in its state.
 			 */
 			sites: {
 				id: string;
@@ -71,6 +73,7 @@
 				state: string;
 				rate_pct: string | null;
 				kind_rates: Record<string, string> | null;
+				exempt: InForce[];
 			}[];
 			people: { id: string; name: string }[];
 			markup: string;
@@ -223,7 +226,14 @@
 	const site = $derived(data.sites.find((s) => s.id === siteId));
 	// Its tax, as #lib/passed-on reads it.
 	const siteTax = $derived(
-		site ? { state: site.state, ratePct: site.rate_pct, kindRates: site.kind_rates ?? {} } : null
+		site
+			? {
+					state: site.state,
+					ratePct: site.rate_pct,
+					kindRates: site.kind_rates ?? {},
+					exempt: site.exempt
+				}
+			: null
 	);
 	/** What each kind its area taxes alone is taxed at there: "Meals at 7.000%". */
 	const byKind = $derived(
@@ -237,6 +247,15 @@
 					.sort()
 			: []
 	);
+	/** What the client is exempt from at the site, in its state: its kinds by name, or every kind. */
+	const exemptFrom = $derived.by(() => {
+		const all = site?.exempt ?? [];
+		if (!all.length) return null;
+		if (all.some((x) => x.kinds === null)) return 'every kind of sale';
+		return names(
+			[...new Set(all.flatMap((x) => x.kinds ?? []))].map((k) => data.kinds[k] ?? 'a kind')
+		);
+	});
 	const stock = $derived(kind === 'material');
 	const bought = $derived(kind === 'bought');
 	// A cost passed on is no sale, so it has no tax to set.
@@ -299,17 +318,19 @@
 				label: `As ${kindName} is taxed${site ? ` in ${stateName(site.state)}` : ''}`,
 				caption: !kindTax
 					? 'Once it is chosen.'
-					: kindTax.taxable
-						? !stateTaxes
-							? `${pct(kindTax.taxRatePct)}, which the site’s area levies on ${kindName} alone.`
-							: ownKind
-								? `${pct(kindTax.taxRatePct)}, the site’s rate on ${kindName}.`
-								: `${pct(kindTax.taxRatePct)}, the site’s rate.`
-						: kindTax.needsASite
-							? 'Taxed where the business collects, so it needs the site it went to.'
-							: kindTax.needsPlacing
-								? 'It needs the site placed in a tax area.'
-								: 'Not taxed there.',
+					: kindTax.taxSource === 'exempt'
+						? `Not taxed: ${data.draft.who} is exempt there.`
+						: kindTax.taxable
+							? !stateTaxes
+								? `${pct(kindTax.taxRatePct)}, which the site’s area levies on ${kindName} alone.`
+								: ownKind
+									? `${pct(kindTax.taxRatePct)}, the site’s rate on ${kindName}.`
+									: `${pct(kindTax.taxRatePct)}, the site’s rate.`
+							: kindTax.needsASite
+								? 'Taxed where the business collects, so it needs the site it went to.'
+								: kindTax.needsPlacing
+									? 'It needs the site placed in a tax area.'
+									: 'Not taxed there.',
 				offered: true
 			},
 			{
@@ -323,9 +344,11 @@
 				label: 'Taxed at the site’s rate',
 				caption:
 					site && siteAt
-						? `${pct(siteAt.toString())}, though ${stateName(site.state)} doesn’t tax ${kindName}.`
+						? kindTax?.taxSource === 'exempt'
+							? `${pct(siteAt.toString())}, though ${data.draft.who} is exempt there.`
+							: `${pct(siteAt.toString())}, though ${stateName(site.state)} doesn’t tax ${kindName}.`
 						: '',
-				offered: collects && !!kindTax && !stateTaxes
+				offered: collects && !!kindTax && (!stateTaxes || kindTax.taxSource === 'exempt')
 			},
 			{
 				v: 'other' as const,
@@ -707,6 +730,9 @@
 				{:else if site && site.state in data.taxes}
 					<p class="fc-c">In no tax area yet, so nothing taxed can be billed there.</p>
 				{/if}
+				{#if !errors.site_id && exemptFrom && site && site.state in data.taxes}
+					<p class="fc-c">{data.draft.who} is exempt there from {exemptFrom}.</p>
+				{/if}
 			</div>
 
 			{#if stock && editing}
@@ -826,7 +852,9 @@
 											? 'needs the site it went to'
 											: drawn.needsPlacing
 												? 'needs the site placed in a tax area'
-												: 'none'}
+												: drawn.taxSource === 'exempt'
+													? `none: ${data.draft.who} is exempt there`
+													: 'none'}
 						</dd>
 						<dt>Cost</dt>
 						<dd>
@@ -909,7 +937,9 @@
 											? 'needs the site it went to'
 											: bills.needsPlacing
 												? 'needs the site placed in a tax area'
-												: 'none'}
+												: bills.taxSource === 'exempt'
+													? `none: ${data.draft.who} is exempt there`
+													: 'none'}
 						</dd>
 					</dl>
 				{/if}

@@ -1,5 +1,5 @@
 import type { Updateable } from 'kysely';
-import { asUser, db } from '#lib/server/db/index.ts';
+import { asUser } from '#lib/server/db/index.ts';
 import type { Entity } from '#lib/server/db/database.ts';
 import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { lookUpClient } from '#lib/server/find.ts';
@@ -16,13 +16,8 @@ import {
 import { readFields } from '#lib/json.ts';
 
 /**
- * Saves one client's standing terms, a field at a time.
- *
- * EXEMPTION AND ITS CERTIFICATE ARE ONE DECISION, and a PATCH may carry only
- * one of them -- so the pair is judged as it will END UP rather than as it
- * arrived. The certificate is what supports an untaxed sale; claiming
- * exemption without one is a claim that cannot be defended at audit, which is
- * a worse outcome than being told no here.
+ * Saves one client's standing terms, a field at a time. Their exemptions are
+ * each a state's, recorded and ended on their own (/api/clients/[id]/exemptions).
  */
 const MOST_AT_ONCE = 8;
 
@@ -60,23 +55,6 @@ export const PATCH: RequestHandler = async (event) => {
 		else errors[name] = parsed.why;
 	}
 	if (Object.keys(errors).length > 0) return refuse(errors);
-
-	const client = await db
-		.selectFrom('entity')
-		.select(['id', 'tax_exempt', 'exemption_certificate'])
-		.where('id', '=', id)
-		.executeTakeFirstOrThrow();
-
-	const exempt = 'tax_exempt' in row ? row.tax_exempt : client.tax_exempt;
-	const certificate =
-		'exemption_certificate' in row ? row.exemption_certificate : client.exemption_certificate;
-
-	if (exempt && !certificate) {
-		return refuse({
-			[('exemption_certificate' in row ? 'exemption_certificate' : 'tax_exempt') as string]:
-				'The certificate is what supports an untaxed sale. Record it, or leave them taxed.'
-		});
-	}
 
 	let after: { version: string } | undefined;
 	try {

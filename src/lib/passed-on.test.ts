@@ -10,7 +10,7 @@ const CA: Terms = {
 	taxes: { CA: [GOODS] },
 	areaTaxes: {},
 	goods: GOODS,
-	site: { state: 'CA', ratePct: '8.0000', kindRates: {} },
+	site: { state: 'CA', ratePct: '8.0000', kindRates: {}, exempt: [] },
 	places: 2
 };
 
@@ -59,7 +59,7 @@ describe('goods bought for a job, passed on', () => {
 	it("untaxed at a site in a state the business doesn't collect in", () => {
 		const l = passedOn(
 			{ kind: 'bought', cost: '10.00', taxPaid: '0' },
-			{ ...CA, site: { state: 'NV', ratePct: null, kindRates: {} } }
+			{ ...CA, site: { state: 'NV', ratePct: null, kindRates: {}, exempt: [] } }
 		);
 		expect([l.taxable, l.taxSource, l.needsASite, l.needsPlacing]).toEqual([
 			false,
@@ -78,7 +78,7 @@ describe('goods bought for a job, passed on', () => {
 	it('needs the site placed in an area, where the business collects in its state', () => {
 		const l = passedOn(
 			{ kind: 'bought', cost: '10.00', taxPaid: '0' },
-			{ ...CA, site: { state: 'CA', ratePct: null, kindRates: {} } }
+			{ ...CA, site: { state: 'CA', ratePct: null, kindRates: {}, exempt: [] } }
 		);
 		expect([l.taxable, l.needsASite, l.needsPlacing]).toEqual([false, false, true]);
 	});
@@ -142,7 +142,7 @@ describe('goods drawn from stock', () => {
 		const at = (state: string) =>
 			fromStock(
 				{ ...cable, kind: HELP_DESK },
-				{ ...CA, taxes, site: { state, ratePct: '8.2650', kindRates: {} } }
+				{ ...CA, taxes, site: { state, ratePct: '8.2650', kindRates: {}, exempt: [] } }
 			);
 		expect([at('CA').taxable, at('NV').taxable, at('NV').taxRatePct]).toEqual([
 			false,
@@ -222,12 +222,16 @@ describe('a line’s tax set by hand', () => {
 			site_id: 'Where it went, so its tax rate is known.'
 		});
 		expect(
-			taxNeeds(fromStock(taxed, { ...CA, site: { state: 'NV', ratePct: null, kindRates: {} } }))
+			taxNeeds(
+				fromStock(taxed, { ...CA, site: { state: 'NV', ratePct: null, kindRates: {}, exempt: [] } })
+			)
 		).toEqual({
 			taxable: "The business doesn't collect in Nevada, so it charges no tax there."
 		});
 		expect(
-			taxNeeds(fromStock(taxed, { ...CA, site: { state: 'CA', ratePct: null, kindRates: {} } }))
+			taxNeeds(
+				fromStock(taxed, { ...CA, site: { state: 'CA', ratePct: null, kindRates: {}, exempt: [] } })
+			)
 		).toEqual({
 			site_id: 'That site is in no tax area yet, so its rate is not known.'
 		});
@@ -270,13 +274,13 @@ describe('a piece of an area for one kind of sale alone', () => {
 		...CA,
 		taxes: { MA: [GOODS, MEALS] },
 		areaTaxes: { MA: [MEALS] },
-		site: { state: 'MA', ratePct: '6.2500', kindRates: { [MEALS]: '0.7500' } }
+		site: { state: 'MA', ratePct: '6.2500', kindRates: { [MEALS]: '0.7500' }, exempt: [] }
 	};
 	const manhattan: Terms = {
 		...CA,
 		taxes: { NY: [GOODS] },
 		areaTaxes: { NY: [BARBERING] },
-		site: { state: 'NY', ratePct: '8.8750', kindRates: { [BARBERING]: '4.5000' } }
+		site: { state: 'NY', ratePct: '8.8750', kindRates: { [BARBERING]: '4.5000' }, exempt: [] }
 	};
 
 	it('adds to the site’s rate on its kind, where the state taxes the kind', () => {
@@ -302,7 +306,7 @@ describe('a piece of an area for one kind of sale alone', () => {
 	it('leaves the kind untaxed in an area with no piece for it', () => {
 		const l = fromStock(trim, {
 			...manhattan,
-			site: { state: 'NY', ratePct: '8.0000', kindRates: {} }
+			site: { state: 'NY', ratePct: '8.0000', kindRates: {}, exempt: [] }
 		});
 		expect([l.taxable, taxNeeds(l)]).toEqual([false, null]);
 	});
@@ -313,7 +317,10 @@ describe('a piece of an area for one kind of sale alone', () => {
 		});
 		expect(
 			taxNeeds(
-				fromStock(trim, { ...manhattan, site: { state: 'NY', ratePct: null, kindRates: {} } })
+				fromStock(trim, {
+					...manhattan,
+					site: { state: 'NY', ratePct: null, kindRates: {}, exempt: [] }
+				})
 			)
 		).toEqual({ site_id: 'That site is in no tax area yet, so its rate is not known.' });
 	});
@@ -330,5 +337,96 @@ describe('a piece of an area for one kind of sale alone', () => {
 		expect(
 			taxNeeds(fromStock({ ...supper, byHand: { taxed: true, ratePct: null } }, boston))
 		).toEqual({ taxable: 'It is taxed at the site’s rate anyway, as its kind is.' });
+	});
+});
+
+describe('a client exempt in the site’s state', () => {
+	const cable: FromStock = {
+		qty: '10',
+		unit: 'foot',
+		cost: '3.10',
+		taxPaid: '0.25',
+		listed: '0.45',
+		markupPct: '20',
+		kind: GOODS
+	};
+	const help = { ...cable, kind: HELP_DESK };
+	const RESALE = '019a0000-0000-7000-8000-0000000000e1';
+	const FEDERAL = '019a0000-0000-7000-8000-0000000000e2';
+	const exempt = (...exempt: { id: string; kinds: string[] | null }[]): Terms => ({
+		...CA,
+		taxes: { CA: [GOODS, HELP_DESK] },
+		site: { ...CA.site!, exempt }
+	});
+
+	it('is not taxed on what the exemption covers, and names it', () => {
+		const l = fromStock(cable, exempt({ id: RESALE, kinds: [GOODS] }));
+		expect(l).toMatchObject({
+			taxable: false,
+			taxRatePct: '0',
+			taxSource: 'exempt',
+			taxExemption: RESALE,
+			byHand: false,
+			needsPlacing: false
+		});
+		expect(taxNeeds(l)).toBeNull();
+	});
+
+	it('is taxed on a kind the exemption does not cover', () => {
+		const l = fromStock(help, exempt({ id: RESALE, kinds: [GOODS] }));
+		expect([l.taxable, l.taxSource, l.taxExemption]).toEqual([true, 'site', null]);
+	});
+
+	it('is exempt by the oldest that covers the kind, one for every kind among them', () => {
+		const both = exempt({ id: RESALE, kinds: [GOODS] }, { id: FEDERAL, kinds: null });
+		expect(fromStock(cable, both).taxExemption).toBe(RESALE);
+		expect(fromStock(help, both).taxExemption).toBe(FEDERAL);
+	});
+
+	it('needs no area for the site, since it pays nothing wherever it is', () => {
+		const terms = exempt({ id: FEDERAL, kinds: null });
+		const l = fromStock(cable, { ...terms, site: { ...terms.site!, ratePct: null } });
+		expect([l.taxSource, l.needsPlacing, taxNeeds(l)]).toEqual(['exempt', false, null]);
+	});
+
+	it('names no exemption where its kind is not taxed there anyway', () => {
+		const l = fromStock(help, { ...exempt({ id: FEDERAL, kinds: null }), taxes: { CA: [GOODS] } });
+		expect([l.taxSource, l.taxExemption]).toEqual(['none', null]);
+	});
+
+	it('names none in a state it is not exempt in: an exemption is a state’s', () => {
+		const l = fromStock(cable, {
+			...CA,
+			taxes: { NV: [GOODS] },
+			site: { state: 'NV', ratePct: '8.2650', kindRates: {}, exempt: [] }
+		});
+		expect([l.taxSource, l.taxExemption]).toEqual(['site', null]);
+	});
+
+	it('is taxed by hand, saying why, as the exception: no exemption named', () => {
+		const terms = exempt({ id: RESALE, kinds: [GOODS] });
+		const l = fromStock({ ...cable, byHand: { taxed: true, ratePct: null } }, terms);
+		expect(l).toMatchObject({
+			taxable: true,
+			taxRatePct: '8.0000',
+			taxSource: 'site',
+			taxExemption: null,
+			byHand: true,
+			refused: null
+		});
+		const other = fromStock({ ...cable, byHand: { taxed: true, ratePct: '8' } }, terms);
+		expect(taxNeeds(other)).toEqual({
+			tax_rate_pct: 'That is the site’s rate: choose taxed at the site’s rate.'
+		});
+	});
+
+	it('refuses not taxed by hand: it is not taxed anyway', () => {
+		const l = fromStock(
+			{ ...cable, byHand: { taxed: false } },
+			exempt({ id: RESALE, kinds: null })
+		);
+		expect(taxNeeds(l)).toEqual({
+			taxable: 'It is not taxed there anyway: the client is exempt there.'
+		});
 	});
 });

@@ -2,8 +2,9 @@
  * What a client may say about itself.
  *
  * The standing terms of doing business with somebody: how long they have to
- * pay, how they usually pay, and whether they are exempt. Not what they owe --
- * that is the invoices' to say and nothing here can move it.
+ * pay, and how they usually pay. Not what they owe -- that is the invoices' to
+ * say and nothing here can move it -- nor where they are exempt from tax,
+ * which is each state's (#lib/exemption-fields).
  */
 import {
 	cap,
@@ -14,7 +15,6 @@ import {
 	optional,
 	parseIn,
 	required,
-	text,
 	whole,
 	type Parsed
 } from './field-rules.ts';
@@ -40,14 +40,6 @@ export const CLIENT_FIELDS = {
 	terms_days: optional(whole(0)),
 
 	payment_method: optional(oneOf(['cheque', 'card', 'transfer', 'cash', 'other'])),
-
-	// Exemption and its certificate are one decision. CDTFA needs the
-	// certificate to support an untaxed sale, so claiming exemption without
-	// one is a claim that cannot be defended -- the endpoint refuses the pair
-	// rather than letting it through half-made.
-	tax_exempt: flag,
-	exemption_certificate: optional(cap(60, text)),
-	exemption_expires_on: optional(text),
 
 	active: flag
 };

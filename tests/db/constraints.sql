@@ -184,21 +184,64 @@ SELECT must_fail($$
 $$, 'billable time with nobody to bill');
 
 \echo ''
-\echo '=== 3. an exemption without its certificate ==='
+\echo '=== 3. a client is exempt in a state, for a reason, with what supports it, until it ends ==='
 
 SELECT must_fail($$
-  UPDATE entity SET tax_exempt = true WHERE id = '44444444-4444-4444-4444-444444444444'
-$$, 'exempt with no certificate on file');
+  INSERT INTO tax_exemption (entity_id, state, reason, supported_by)
+  VALUES ('44444444-4444-4444-4444-444444444444', 'CA', 'resale', '   ')
+$$, 'an exemption supported by nothing');
+
+SELECT must_fail($$
+  INSERT INTO tax_exemption (entity_id, state, reason, supported_by)
+  VALUES ('44444444-4444-4444-4444-444444444444', 'California', 'resale', 'SR-ZZ-000-1234')
+$$, 'an exemption in no state');
+
+SELECT must_fail($$
+  INSERT INTO tax_exemption (entity_id, state, reason, supported_by)
+  VALUES ('44444444-4444-4444-4444-444444444444', 'CA', 'other', 'EX-1')
+$$, 'an exemption for another reason, unexplained');
 
 SELECT must_pass($$
-  UPDATE entity SET tax_exempt = true, exemption_certificate = 'SR-ZZ-000-1234'
-   WHERE id = '44444444-4444-4444-4444-444444444444'
-$$, 'exempt with a certificate');
+  INSERT INTO tax_exemption (entity_id, state, reason, explanation, supported_by)
+  VALUES ('44444444-4444-4444-4444-444444444444', 'CA', 'other', 'Exempt under a special act',
+          'EX-1')
+$$, 'an exemption for another reason, explained');
+DELETE FROM tax_exemption;
+
+SELECT must_fail($$
+  INSERT INTO tax_exemption (entity_id, state, reason, supported_by, sale_kind_ids)
+  VALUES ('44444444-4444-4444-4444-444444444444', 'CA', 'resale', 'SR-ZZ-000-1234', '{}')
+$$, 'an exemption covering no kind of sale');
+
+SELECT must_fail($$
+  INSERT INTO tax_exemption (entity_id, state, reason, supported_by, sale_kind_ids)
+  VALUES ('44444444-4444-4444-4444-444444444444', 'CA', 'resale', 'SR-ZZ-000-1234',
+          ARRAY['00000000-0000-4000-8000-000000000000']::uuid[])
+$$, 'an exemption covering a kind there is not');
 
 SELECT must_pass($$
-  UPDATE entity SET tax_exempt = false, exemption_certificate = NULL
-   WHERE id = '44444444-4444-4444-4444-444444444444'
-$$, 'exemption removed again');
+  INSERT INTO tax_exemption (id, entity_id, state, reason, supported_by, sale_kind_ids)
+  VALUES ('e3000000-0000-4000-8000-000000000001', '44444444-4444-4444-4444-444444444444', 'CA',
+          'resale', 'SR-ZZ-000-1234', ARRAY[sold_as('goods')])
+$$, 'a resale certificate for goods');
+
+SELECT must_fail($$
+  UPDATE tax_exemption SET supported_by = 'SR-ZZ-000-9999'
+   WHERE id = 'e3000000-0000-4000-8000-000000000001'
+$$, 'an exemption changed after it was recorded');
+
+SELECT must_pass($$
+  UPDATE tax_exemption SET ended_on = current_date WHERE id = 'e3000000-0000-4000-8000-000000000001'
+$$, 'an exemption ended');
+
+SELECT must_fail($$
+  UPDATE tax_exemption SET ended_on = current_date + 1
+   WHERE id = 'e3000000-0000-4000-8000-000000000001'
+$$, 'an exemption ended again');
+
+SELECT must_pass($$
+  DELETE FROM tax_exemption WHERE id = 'e3000000-0000-4000-8000-000000000001'
+$$, 'an exemption nothing was untaxed by, taken off');
 
 \echo ''
 \echo '=== 4. a rate override must say why ==='
@@ -4019,5 +4062,149 @@ SELECT must_fail($$
                                'kind', sold_as('travel')::text)))
 $$, 'a line keeping a piece for another kind than it was sold as');
 DELETE FROM invoice_line WHERE invoice_id = '59595959-0000-4000-8000-0000000000c1' AND seq >= 64;
+
+-- 62. A CLIENT EXEMPT IN A STATE (#207). A line its client is exempt from is
+-- untaxed and names the exemption: the client's, in force, in its site's
+-- state, covering its kind. A line taxed as its kind where its client is
+-- exempt from it is refused, and one taxed by hand, saying why, is not.
+INSERT INTO tax_exemption (id, entity_id, state, reason, supported_by, sale_kind_ids) VALUES
+  ('e6200000-0000-4000-8000-000000000001', '44444444-4444-4444-4444-444444444444', 'CA',
+   'resale', 'SR-ZZ-000-1234', ARRAY[sold_as('goods')]),
+  ('e6200000-0000-4000-8000-000000000002', '44444444-4444-4444-4444-444444444444', 'NV',
+   'charitable', 'NV-EX-1', NULL),
+  ('e6200000-0000-4000-8000-000000000003', '44444444-0000-4000-8000-000000000002', 'CA',
+   'charitable', 'CH-1', NULL);
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, taxable, tax_rate_pct, tax_source, site_id,
+                            tax_jurisdiction, tax_state, tax_pieces)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 70, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), true, 7.2500, 'site', 'c5000000-0000-4000-8000-000000000001',
+          'AUBURN', 'CA',
+          jsonb_build_array(jsonb_build_object('level', 'state', 'jurisdiction', 'CALIFORNIA',
+                                               'rate', '7.2500')))
+$$, 'goods taxed as their kind for a client exempt from goods there');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, tax_source, tax_exemption_id, site_id)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 70, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), 'exempt', 'e6200000-0000-4000-8000-000000000001',
+          'c5000000-0000-4000-8000-000000000001')
+$$, 'goods untaxed for a client exempt from them, naming the exemption');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, taxable, tax_rate_pct, tax_source, site_id,
+                            tax_jurisdiction, tax_state, tax_pieces, tax_override_reason)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 71, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), true, 7.2500, 'site', 'c5000000-0000-4000-8000-000000000001',
+          'AUBURN', 'CA',
+          jsonb_build_array(jsonb_build_object('level', 'state', 'jurisdiction', 'CALIFORNIA',
+                                               'rate', '7.2500')),
+          'For their own use, not resale: their purchase order says taxable')
+$$, 'goods taxed by hand, saying why, for a client exempt from them');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, tax_source, site_id)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 72, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), 'exempt', 'c5000000-0000-4000-8000-000000000001')
+$$, 'a line exempt by no exemption');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, tax_exemption_id, site_id)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 72, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), 'e6200000-0000-4000-8000-000000000001',
+          'c5000000-0000-4000-8000-000000000001')
+$$, 'a line naming an exemption, and not exempt');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, tax_source, tax_exemption_id)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 72, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), 'exempt', 'e6200000-0000-4000-8000-000000000001')
+$$, 'a line exempt at no site');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            tax_source, tax_exemption_id, site_id)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 72, 'paid_for', 'Permit', 1, 40.00, 40.00,
+          'exempt', 'e6200000-0000-4000-8000-000000000001', 'c5000000-0000-4000-8000-000000000001')
+$$, 'a cost passed on, exempt: it is no sale');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, tax_source, tax_exemption_id, site_id, tax_override_reason)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 72, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), 'exempt', 'e6200000-0000-4000-8000-000000000001',
+          'c5000000-0000-4000-8000-000000000001', 'Exempt anyway')
+$$, 'a line exempt, and set by hand');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            material_id, sale_kind_id, tax_source, tax_exemption_id, site_id)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 72, 'material', 'Travel', 1, 4.00, 4.00,
+          NULL, sold_as('travel'), 'exempt', 'e6200000-0000-4000-8000-000000000001',
+          'c5000000-0000-4000-8000-000000000001')
+$$, 'a line exempt by an exemption that does not cover its kind');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, tax_source, tax_exemption_id, site_id)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 72, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), 'exempt', 'e6200000-0000-4000-8000-000000000002',
+          'c5000000-0000-4000-8000-000000000001')
+$$, 'a line in California exempt by its client''s exemption in Nevada');
+
+SELECT must_fail($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, tax_source, tax_exemption_id, site_id)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 72, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), 'exempt', 'e6200000-0000-4000-8000-000000000003',
+          'c5000000-0000-4000-8000-000000000001')
+$$, 'a line exempt by another client''s exemption');
+
+SELECT must_fail($$
+  DELETE FROM tax_exemption WHERE id = 'e6200000-0000-4000-8000-000000000001'
+$$, 'an exemption a line is untaxed by, taken off');
+
+SELECT must_pass($$
+  UPDATE tax_exemption SET ended_on = current_date WHERE id = 'e6200000-0000-4000-8000-000000000001'
+$$, 'an exemption a line is untaxed by, ended');
+
+SELECT must_fail($$
+  UPDATE invoice_line SET description = 'Anchors, galvanised', tax_source = 'exempt'
+   WHERE invoice_id = '59595959-0000-4000-8000-0000000000c1' AND seq = 70
+$$, 'a line exempt by an exemption that has ended, written again');
+
+SELECT must_pass($$
+  INSERT INTO invoice_line (invoice_id, seq, kind, description, qty, unit_price, amount,
+                            sale_kind_id, taxable, tax_rate_pct, tax_source, site_id,
+                            tax_jurisdiction, tax_state, tax_pieces)
+  VALUES ('59595959-0000-4000-8000-0000000000c1', 72, 'bought', 'Anchors', 1, 4.00, 4.00,
+          sold_as('goods'), true, 7.2500, 'site', 'c5000000-0000-4000-8000-000000000001',
+          'AUBURN', 'CA',
+          jsonb_build_array(jsonb_build_object('level', 'state', 'jurisdiction', 'CALIFORNIA',
+                                               'rate', '7.2500')))
+$$, 'goods taxed as their kind once the exemption has ended');
+
+-- A kind an exemption covers stays.
+WITH k AS (INSERT INTO sale_kind (id, name) VALUES ('e6200000-0000-4000-8000-0000000000f1', 'Fixtures')
+           RETURNING id)
+INSERT INTO taxability (state, sale_kind_id, taxed) SELECT r.state, k.id, true FROM tax_registration r, k;
+INSERT INTO tax_exemption (id, entity_id, state, reason, supported_by, sale_kind_ids)
+VALUES ('e6200000-0000-4000-8000-000000000004', '44444444-0000-4000-8000-000000000002', 'CA',
+        'resale', 'SR-ZZ-000-5678', ARRAY['e6200000-0000-4000-8000-0000000000f1'::uuid]);
+
+SELECT must_fail($$
+  DELETE FROM sale_kind WHERE id = 'e6200000-0000-4000-8000-0000000000f1'
+$$, 'a kind a client''s exemption covers, removed');
+
+DELETE FROM invoice_line WHERE invoice_id = '59595959-0000-4000-8000-0000000000c1' AND seq >= 70;
+DELETE FROM tax_exemption;
+DELETE FROM sale_kind WHERE id = 'e6200000-0000-4000-8000-0000000000f1';
 
 \echo 'All guards hold.'
