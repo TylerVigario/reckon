@@ -270,7 +270,7 @@ export async function changeKind(
 /**
  * A kind of the business's own that nothing is or was sold as taken away, its
  * answers with it. reckon's own kinds stay, and so does one anything names --
- * an area's piece for it among them.
+ * an area's piece for it, or a client's exemption, among them.
  */
 export async function removeKind(db: Kysely<DB>, id: string): Promise<boolean> {
 	try {
@@ -281,6 +281,8 @@ export async function removeKind(db: Kysely<DB>, id: string): Promise<boolean> {
 			throw new Refused('kind', 'One of reckon’s own kinds stays. Retire it instead.');
 		if (pgError(e).constraint === 'tax_piece_sale_kind_id_fkey')
 			throw new Refused('kind', 'An area taxes it by a piece of its own. Retire it instead.');
+		if (pgError(e).constraint === 'an_exemption_names_kinds')
+			throw new Refused('kind', 'A client’s exemption covers it. Retire it instead.');
 		if (stillReferenced(e))
 			throw new Refused('kind', 'Something is, or was, sold as it. Retire it instead.');
 		throw e;

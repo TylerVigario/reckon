@@ -1,6 +1,7 @@
 import { expressionBuilder, sql, type Expression, type Kysely, type NumericString } from 'kysely';
 import type { DB } from './db/database.ts';
 import { areaKindRates, areaRate } from './tax-areas.ts';
+import type { InForce } from '../passed-on.ts';
 
 /**
  * WHERE THE BUSINESS COLLECTS TAX: each state it is registered in
@@ -63,6 +64,20 @@ export function siteKindRates(
 		string
 	> | null>`case when ${collectsIn(site.region)} and ${site.area} is not null
 		then ${areaKindRates(site.area as Expression<string>, day)} end`;
+}
+
+/**
+ * A site's client's exemptions in force in its state (#lib/server/exemptions),
+ * oldest first, as a line's tax reads them (#lib/passed-on InForce): none
+ * where it has none. Which exemption and what it covers, and nothing of why or
+ * its number, so a phone's copy carries no more than its tax needs.
+ */
+export function siteExemptions(site: { entity: Expression<string>; region: Expression<string> }) {
+	return sql<InForce[]>`coalesce((
+		select jsonb_agg(jsonb_build_object('id', x.id, 'kinds', x.sale_kind_ids) order by x.id)
+		  from tax_exemption x
+		 where x.entity_id = ${site.entity} and x.state = ${site.region} and x.ended_on is null
+	), '[]'::jsonb)`;
 }
 
 /**

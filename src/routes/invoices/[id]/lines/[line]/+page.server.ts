@@ -25,6 +25,7 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 		.leftJoin('user as payer', 'payer.id', 'il.paid_by')
 		.leftJoin('material as m', 'm.id', 'il.material_id')
 		.leftJoin('invoice as src', 'src.id', 'il.moved_from_invoice_id')
+		.leftJoin('tax_exemption as x', 'x.id', 'il.tax_exemption_id')
 		.select((eb) => [
 			'il.id',
 			'il.version',
@@ -42,6 +43,9 @@ export const load: PageServerLoad = async ({ params, locals, route, request }) =
 			// Where its rate came from, and why, where its tax was set by hand.
 			'il.tax_source',
 			'il.tax_override_reason',
+			// Where its client is exempt, the exemption it is untaxed by: where, and why.
+			'x.state as exempt_in',
+			'x.reason as exempt_for',
 			// Whether the Reg 1701 election is made where it was taxed.
 			claimsResold(eb.ref('il.tax_state')).as('claims'),
 			'il.ex_tax_cost',

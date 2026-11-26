@@ -1,6 +1,6 @@
 {
  "counted": {
-  "tables": "58",
+  "tables": "62",
   "clusters": "ten",
   "files": "11"
  },
@@ -38,23 +38,58 @@
       ],
       [
        "",
-       "tax_exempt",
-       "bool"
-      ],
-      [
-       "",
-       "exemption_certificate",
-       "text"
-      ],
-      [
-       "",
-       "exemption_expires_on",
-       "date"
-      ],
-      [
-       "",
        "active",
        "bool"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ]
+     ]
+    },
+    {
+     "name": "tax_exemption",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "FK",
+       "entity_id",
+       "uuid · the client"
+      ],
+      [
+       "",
+       "state",
+       "text · claimed in, two letters"
+      ],
+      [
+       "",
+       "reason",
+       "exemption_reason · F0003's"
+      ],
+      [
+       "",
+       "explanation",
+       "text · as the certificate says"
+      ],
+      [
+       "",
+       "supported_by",
+       "text · its number, or what else"
+      ],
+      [
+       "",
+       "sale_kind_ids",
+       "uuid[] · the kinds it covers, null = every"
+      ],
+      [
+       "",
+       "ended_on",
+       "date · in force until then"
       ],
       [
        "",
@@ -104,7 +139,7 @@
       [
        "",
        "region",
-       "text"
+       "text · its state, two letters"
       ],
       [
        "",
@@ -124,12 +159,12 @@
       [
        "FK",
        "tax_area_id",
-       "uuid · the place it is in"
+       "uuid · where the business collects"
       ],
       [
        "",
        "area_verified_on",
-       "date · last asked, NOT NULL"
+       "date · last placed, with it"
       ],
       [
        "",
@@ -278,8 +313,18 @@
       ],
       [
        "",
+       "way",
+       "asked|chosen"
+      ],
+      [
+       "FK",
+       "placed_by",
+       "uuid · who, where somebody did"
+      ],
+      [
+       "",
        "note",
-       "text · why it was asked"
+       "text · why"
       ]
      ]
     },
@@ -290,6 +335,11 @@
        "PK",
        "id",
        "uuid"
+      ],
+      [
+       "",
+       "state",
+       "text · to whom"
       ],
       [
        "",
@@ -364,12 +414,22 @@
       [
        "",
        "source",
-       "tax_area_source"
+       "cdtfa|typed"
+      ],
+      [
+       "FK",
+       "typed_by",
+       "uuid · who typed it"
       ],
       [
        "",
        "confirmed_on",
        "date · last confirmed"
+      ],
+      [
+       "FK",
+       "confirmed_by",
+       "uuid · who, where a person did"
       ],
       [
        "",
@@ -415,12 +475,22 @@
        "",
        "effective_from",
        "date · a set's, newest in force"
+      ],
+      [
+       "FK",
+       "typed_by",
+       "uuid · who typed it"
+      ],
+      [
+       "FK",
+       "sale_kind_id",
+       "uuid · the one kind it falls on"
       ]
      ]
     }
    ],
    "notes": [
-    "One building can host two businesses and one person can act for several clients, so both joins are many-to-many.  A rate belongs to a place, not to a site: a tax_area is one place with one combination of jurisdictions, named as its authority names it -- CDTFA’s area and TAC -- never by a postal city, and its rate is its pieces, who levies what, federal, state and local, in dated sets, the newest on or before a day in force then. A site is in the area CDTFA’s API placed its address in, on the day it was asked; nothing in the application can author a rate. site_placement keeps every time a site was placed, and an area every rate it has had, so a rate that moved can be explained against the invoices billed at the old one. A second copy of a published rate goes stale without telling anyone, and is then charged at addresses it was never true for.  A site’s address is chosen from Google’s suggestions, never typed: street, city, region and postcode are Google’s parts for the place chosen, stored with google_place_id once Google confirms it, and moved only together. A suite or unit is in the label. The google_ figures are Google’s route there and back from the business, measured whenever the place is chosen and whenever the business moves; the typed_ ones are typed over them where somebody knows better, and kept beside them so Google’s stays in view. round_trip_miles and drive_minutes are generated: the typed figure, or Google’s where none is. A site that moves where Google cannot say keeps neither, and what was typed goes with the move.  CDTFA’s published rate layer carries StateRate, CountyRate and CityRate beside the total, keyed by the same TAC the rate API returns — StateRate is one value for every jurisdiction in the state, so the statewide rate is read rather than assumed, and State+County+City = RATE on every record. That split is what lets tax collected post to the right obligation: it is not income, it is somebody else’s money held briefly. tax_remittance records what was actually handed over, because no invoice knows that. County and city fold into one district share, because CDTFA-105 is a list of districts and names no other kind.  Every site is in an area from the API, so the address and the area are NOT NULL together: the lookup takes street, city and postcode or answers nothing, and a place with no rate cannot be billed from — so it is not a site. Creating one is a lookup, not a form that can be half-filled.  A contact is named per client and per site, and a person is shared: one contact acts for several clients, which is why contact has no owner. What is per client is entity_contact, and what is per site is site_contact — several people at a site, one of them answering first, and a site naming nobody falling back to the client’s primary. site_contact carries the client so two foreign keys can agree: the site is that client’s and the person is that client’s contact.  A site belongs to exactly one client; two clients at one address are two sites."
+    "One building can host two businesses and one person can act for several clients, so both joins are many-to-many.  A rate belongs to a place, not to a site: a tax_area is one place with one combination of jurisdictions, named as its authority names it -- CDTFA’s area and TAC -- never by a postal city, and its rate is its pieces, who levies what, federal, state and local, in dated sets, the newest on or before a day in force then. A site is in a state, region, and in an area of it only where the business collects there; in California, the area CDTFA’s API placed its address in, on the day it was asked. Nothing in the application can author CDTFA’s rate. Where no authority answers for an address, a person types the state’s areas from its own table, typed_by, and confirms them each quarter, confirmed_by; a site there is placed by a person choosing its area. A typed piece can fall on one kind of sale alone, sale_kind_id, whether or not the state taxes that kind; every other piece falls on every kind its state taxes. site_placement keeps every time a site was placed, and an area every rate it has had, so a rate that moved can be explained against the invoices billed at the old one. A second copy of a published rate goes stale without telling anyone, and is then charged at addresses it was never true for.  A site’s address is chosen from Google’s suggestions, never typed: street, city, region and postcode are Google’s parts for the place chosen, stored with google_place_id once Google confirms it, and moved only together. A suite or unit is in the label. The google_ figures are Google’s route there and back from the business, measured whenever the place is chosen and whenever the business moves; the typed_ ones are typed over them where somebody knows better, and kept beside them so Google’s stays in view. round_trip_miles and drive_minutes are generated: the typed figure, or Google’s where none is. A site that moves where Google cannot say keeps neither, and what was typed goes with the move.  CDTFA’s published rate layer carries StateRate, CountyRate and CityRate beside the total, keyed by the same TAC the rate API returns — StateRate is one value for every jurisdiction in the state, so the statewide rate is read rather than assumed, and State+County+City = RATE on every record. That split is what lets tax collected post to the right obligation: it is not income, it is somebody else’s money held briefly. tax_remittance records what was actually handed over, because no invoice knows that. County and city fold into one district share, because CDTFA-105 is a list of districts and names no other kind.  Every site is in an area from the API, so the address and the area are NOT NULL together: the lookup takes street, city and postcode or answers nothing, and a place with no rate cannot be billed from — so it is not a site. Creating one is a lookup, not a form that can be half-filled.  A contact is named per client and per site, and a person is shared: one contact acts for several clients, which is why contact has no owner. What is per client is entity_contact, and what is per site is site_contact — several people at a site, one of them answering first, and a site naming nobody falling back to the client’s primary. site_contact carries the client so two foreign keys can agree: the site is that client’s and the person is that client’s contact.  A site belongs to exactly one client; two clients at one address are two sites.  A client is exempt in a state, under its law: tax_exemption is one certificate's claim there, for a reason from the Streamlined certificate's list, with what supports it -- its number, or for the United States its purchase orders -- and the kinds of sale it covers, or every kind. It stands as recorded until it ends, and a line it untaxed names it, so the invoice keeps why it carried no tax."
    ]
   },
   {
@@ -450,9 +520,9 @@
        "hour | mile | each"
       ],
       [
-       "",
-       "taxable",
-       "bool"
+       "FK",
+       "sale_kind_id",
+       "uuid · what it is sold as"
       ],
       [
        "",
@@ -630,9 +700,9 @@
        "numeric"
       ],
       [
-       "",
-       "taxable",
-       "bool"
+       "FK",
+       "sale_kind_id",
+       "uuid · what it is sold as"
       ],
       [
        "",
@@ -760,10 +830,75 @@
        "timestamptz"
       ]
      ]
+    },
+    {
+     "name": "sale_kind",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "UK",
+       "code",
+       "reckon_kind · reckon's own"
+      ],
+      [
+       "UK",
+       "name",
+       "text · the business's word"
+      ],
+      [
+       "",
+       "active",
+       "bool · offered for an item"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ]
+     ]
+    },
+    {
+     "name": "taxability",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "UK",
+       "state",
+       "text · a state collected in"
+      ],
+      [
+       "UK",
+       "sale_kind_id",
+       "uuid · with its state, once"
+      ],
+      [
+       "",
+       "taxed",
+       "bool"
+      ],
+      [
+       "FK",
+       "said_by",
+       "uuid · who, where somebody did"
+      ],
+      [
+       "",
+       "said_on",
+       "date · when they did"
+      ]
+     ]
     }
    ],
    "notes": [
-    "A service is configured, not categorised: what it is charged per, how finely, at least what, and whom it pays.  rate is the first person's and additional_rate each extra person's: at $120 and +$70 a crew of three costs $260 an hour.  Pay is for work done. Each pay_rule is for a role or for one person, pays for time or a vehicle — hourly to the second, as a share of the line, as a fixed sum, or not at all. Among rules in force, a client's own comes first, then a person's own, then the role's.  A role's name is the operator's; pays_as is a fixed list -- a partner's guaranteed payments, an employee's wages, a contractor's fees -- since that, not the name, decides where pay is reported. Null is a role named before it was asked, whose work cannot be paid until it says.  A vehicle rule pays whoever owns the vehicle a trip was driven in, on each leg — a share or a sum, never by the hour — so a vehicle the business owns pays nobody.  A covered_time rule pays a percentage of the period's retainer charge, divided by each person's part of the covered time.  unit each charges per entry, whatever its length: a flat rate.  unit is how a service is charged; time_tracked is whether time is captured against it. Mileage may be timed and still billed per mile.  Allotments live on agreements, service by service, never on the service itself.  bill_to_nearest_seconds and minimum_charge are the usual next questions about an hourly price. Pay is never rounded to them; it is counted as worked.  material_lot is where stock enters, on a receipt or found, and where the Reg 1701 ex-tax purchase price is sourced. How stock comes and goes is Stock's.  A material received, or a service added, on a phone with no signal keeps the client_uuid the phone made it with: what a line names it by until it arrives. A material's version is its saves, so a change made from an old copy is told of one made since.  A material is counted in one of the operator's units -- each, the foot, a box of 25 -- each with how it is written and how many places a quantity may have. Nothing converts one unit into another, and a line keeps its unit's name as it was billed."
+    "A service is configured: what it is charged per, how finely, at least what, and whom it pays.  A material or a service is one kind of sale, sale_kind: the business's own list, begun with reckon's four, goods, installation labour, repair labour and travel, which stay. Each state the business collects in answers each kind, taxability, so whether a line is taxed is its kind's answer in its site's state. A line keeps the kind it was sold as; a cost passed on is no sale, so it is none.  rate is the first person's and additional_rate each extra person's: at $120 and +$70 a crew of three costs $260 an hour.  Pay is for work done. Each pay_rule is for a role or for one person, pays for time or a vehicle — hourly to the second, as a share of the line, as a fixed sum, or not at all. Among rules in force, a client's own comes first, then a person's own, then the role's.  A role's name is the operator's; pays_as is a fixed list -- a partner's guaranteed payments, an employee's wages, a contractor's fees -- since that, not the name, decides where pay is reported. Null is a role named before it was asked, whose work cannot be paid until it says.  A vehicle rule pays whoever owns the vehicle a trip was driven in, on each leg — a share or a sum, never by the hour — so a vehicle the business owns pays nobody.  A covered_time rule pays a percentage of the period's retainer charge, divided by each person's part of the covered time.  unit each charges per entry, whatever its length: a flat rate.  unit is how a service is charged; time_tracked is whether time is captured against it. Mileage may be timed and still billed per mile.  Allotments live on agreements, service by service, never on the service itself.  bill_to_nearest_seconds and minimum_charge are the usual next questions about an hourly price. Pay is never rounded to them; it is counted as worked.  material_lot is where stock enters, on a receipt or found, and where the Reg 1701 ex-tax purchase price is sourced. How stock comes and goes is Stock's.  A material received, or a service added, on a phone with no signal keeps the client_uuid the phone made it with: what a line names it by until it arrives. A material's version is its saves, so a change made from an old copy is told of one made since.  A material is counted in one of the operator's units -- each, the foot, a box of 25 -- each with how it is written and how many places a quantity may have. Nothing converts one unit into another, and a line keeps its unit's name as it was billed."
    ]
   },
   {
@@ -1712,6 +1847,11 @@
        "uuid"
       ],
       [
+       "FK",
+       "sale_kind_id",
+       "uuid · as it was sold"
+      ],
+      [
        "",
        "taxable",
        "bool"
@@ -1733,13 +1873,23 @@
       ],
       [
        "",
+       "tax_state",
+       "text · its state, as taxed"
+      ],
+      [
+       "",
        "tax_pieces",
        "jsonb · who levied what"
       ],
       [
+       "FK",
+       "tax_exemption_id",
+       "uuid · the client's, where exempt"
+      ],
+      [
        "",
        "tax_override_reason",
-       "text"
+       "text · why, set by hand"
       ],
       [
        "",
@@ -2690,11 +2840,6 @@
       ],
       [
        "",
-       "tax_rule_set",
-       "us_ca|flat_per_site|none"
-      ],
-      [
-       "",
        "invoice_number_format",
        "text"
       ],
@@ -2750,28 +2895,8 @@
       ],
       [
        "",
-       "tax_registration",
-       "text"
-      ],
-      [
-       "",
-       "tax_agency",
-       "text"
-      ],
-      [
-       "",
-       "filing_basis",
-       "annual|quarterly|monthly"
-      ],
-      [
-       "",
        "fiscal_year_end_month",
        "1–12"
-      ],
-      [
-       "",
-       "claims_tax_paid_purchases_resold",
-       "bool"
       ],
       [
        "",
@@ -2914,10 +3039,50 @@
        "bigint · the save it was in"
       ]
      ]
+    },
+    {
+     "name": "tax_registration",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "UK",
+       "state",
+       "text · two letters"
+      ],
+      [
+       "",
+       "held",
+       "text · Seller's permit"
+      ],
+      [
+       "",
+       "agency",
+       "text · CDTFA"
+      ],
+      [
+       "",
+       "filing_basis",
+       "annual|quarterly|monthly"
+      ],
+      [
+       "",
+       "claims_tax_paid_purchases_resold",
+       "bool · California's alone"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ]
+     ]
     }
    ],
    "notes": [
-    "Everything that identifies the business is the operator's to supply: logo is nullable and the interface renders trading_name in its place.  An included-hours figure is a client's, on their agreement, and what is paid to whoever answers is a dated pay_rule.  record_history is append-only and exists to explain a figure, not to police one. An invoice line is followed from its birth: what it was when added, each field changed, and what it was when taken off. A receipt is described rather than copied while its row holds it, and kept whole once the history is the only place it is: replaced, or taken off with its line. made_at is when a change was made on a phone, beside changed_at, when it arrived, and xact is the save it was in, so a change is read with what went with it.  Which migrations a database has seen is Kysely's record, in kysely.kysely_migration, so bringing it up to date again applies only what is new."
+    "Everything that identifies the business is the operator's to supply: logo is nullable and the interface renders trading_name in its place.  It collects tax in each state it is registered in, tax_registration: what it holds there and from whom, and how often it files. Collecting nowhere is having none. Its fiscal year is its own, not a state's.  An included-hours figure is a client's, on their agreement, and what is paid to whoever answers is a dated pay_rule.  record_history is append-only and exists to explain a figure, not to police one. An invoice line is followed from its birth: what it was when added, each field changed, and what it was when taken off. A receipt is described rather than copied while its row holds it, and kept whole once the history is the only place it is: replaced, or taken off with its line. made_at is when a change was made on a phone, beside changed_at, when it arrived, and xact is the save it was in, so a change is read with what went with it.  Which migrations a database has seen is Kysely's record, in kysely.kysely_migration, so bringing it up to date again applies only what is new."
    ]
   }
  ]

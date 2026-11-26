@@ -21,6 +21,8 @@ export type EmailLinkPurpose = "change" | "confirm" | "invite" | "reset";
 
 export type EmailMessageKind = "access_changed" | "deactivated" | "email_change" | "email_changing" | "email_confirmation" | "invitation" | "name_changed" | "passkey_added" | "passkey_link" | "passkey_removed" | "passkeys_ended" | "reactivated";
 
+export type ExemptionReason = "agricultural_production" | "charitable" | "direct_mail" | "direct_pay_permit" | "educational" | "federal_government" | "foreign_diplomat" | "industrial_production" | "other" | "religious" | "resale" | "state_or_local_government" | "tribal_government";
+
 export type FilingBasis = "annual" | "monthly" | "quarterly";
 
 export type FinalPeriodProration = "daily" | "none";
@@ -206,13 +208,10 @@ export interface EmailMessage {
 export interface Entity {
   active: Generated<boolean>;
   created_at: Generated<Timestamp>;
-  exemption_certificate: string | null;
-  exemption_expires_on: string | null;
   id: Generated<string>;
   name: string;
   payment_method: string | null;
   slug: string;
-  tax_exempt: Generated<boolean>;
   terms_days: number | null;
 }
 
@@ -267,6 +266,7 @@ export interface InvoiceLine {
   sale_kind_id: string | null;
   seq: number;
   site_id: string | null;
+  tax_exemption_id: string | null;
   tax_jurisdiction: string | null;
   tax_override_reason: string | null;
   tax_paid: NumericColumn | null;
@@ -659,6 +659,18 @@ export interface TaxArea {
   typed_by: string | null;
 }
 
+export interface TaxExemption {
+  created_at: Generated<Timestamp>;
+  ended_on: string | null;
+  entity_id: string;
+  explanation: string | null;
+  id: Generated<string>;
+  reason: ExemptionReason;
+  sale_kind_ids: string[] | null;
+  state: string;
+  supported_by: string;
+}
+
 export interface TaxPiece {
   area_id: string;
   code: string | null;
@@ -855,6 +867,7 @@ export interface DB {
   stock_receipt: StockReceipt;
   stock_take: StockTake;
   tax_area: TaxArea;
+  tax_exemption: TaxExemption;
   tax_piece: TaxPiece;
   tax_registration: TaxRegistration;
   tax_remittance: TaxRemittance;

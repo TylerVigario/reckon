@@ -613,7 +613,7 @@ console.log('\n  contacts — added to a client, changed on their own page, sent
 }
 
 await check(
-	'exemption without a certificate is refused',
+	'a client is not exempt by a yes or no: an exemption is a state’s',
 	'PATCH',
 	`/api/clients/${clientSlug}`,
 	{ fields: { tax_exempt: 'true' } },
@@ -2692,7 +2692,8 @@ console.log('\n  kinds of sale — added, answered, given, retired, and let go')
 			(
 				await kindsDb.query(
 					`select taxable, tax_rate_pct::text as rate, tax_source, tax_override_reason as reason,
-					        tax_state, tax_jurisdiction is not null as said_where, tax_pieces is not null as pieces
+					        tax_state, tax_jurisdiction is not null as said_where, tax_pieces is not null as pieces,
+					        tax_exemption_id as exemption
 					   from invoice_line where id = $1`,
 					[id]
 				)
@@ -2827,6 +2828,144 @@ console.log('\n  kinds of sale — added, answered, given, retired, and let go')
 			passedOn.status === 400 && Boolean(passedOn.body?.errors?.taxable),
 			'a cost passed on has no tax to set by hand',
 			`${passedOn.status} ${JSON.stringify(passedOn.body?.errors)}`
+		);
+
+		// A client exempt in California (#207): goods on their draft there are
+		// untaxed by the exemption, which each names, from when it is recorded;
+		// taxed again once it ends; and it stays with an invoice that went out.
+		const exemptions = `/api/clients/${placed.client}/exemptions`;
+		const add = (/** @type {Record<string, string>} */ more = {}) =>
+			lineForm('POST', '/api/lines', {
+				...goods,
+				client_uuid: crypto.randomUUID(),
+				invoice_id: where.invoice,
+				...more
+			});
+		const before = await add();
+		const { rows: collected } = await kindsDb.query('select state from tax_registration');
+		const elsewhere = ['VT', 'WY', 'ME'].find((s) => !collected.some((r) => r.state === s));
+		await check(
+			'an exemption with no reason is refused',
+			'POST',
+			exemptions,
+			{ fields: { state: 'CA', supported_by: `SR-${stamp}` }, kinds: null },
+			(r) => r.status === 400 && Boolean(r.body?.errors?.reason)
+		);
+		await check(
+			'and one where the business does not collect',
+			'POST',
+			exemptions,
+			{ fields: { state: elsewhere, reason: 'resale', supported_by: `SR-${stamp}` }, kinds: null },
+			(r) => r.status === 400 && Boolean(r.body?.errors?.state)
+		);
+		await check(
+			'and one for some kinds that names none',
+			'POST',
+			exemptions,
+			{ fields: { state: 'CA', reason: 'resale', supported_by: `SR-${stamp}` }, kinds: [] },
+			(r) => r.status === 400 && Boolean(r.body?.errors?.kinds)
+		);
+		const resale = await call('POST', exemptions, {
+			fields: { state: 'CA', reason: 'resale', supported_by: `SR-${stamp}` },
+			kinds: [KIND.goods]
+		});
+		const xid = /** @type {string | undefined} */ (resale.body?.id);
+		const onDraft = before.body?.id ? await rowOf(before.body.id) : null;
+		expect(
+			resale.status === 201 &&
+				onDraft?.taxable === false &&
+				onDraft?.tax_source === 'exempt' &&
+				onDraft?.exemption === xid &&
+				onDraft?.said_where === false,
+			'a resale certificate recorded untaxes the goods already on their draft, each naming it',
+			`${resale.status} ${JSON.stringify(onDraft)}`
+		);
+		const after = await add();
+		const exempt = after.body?.id ? await rowOf(after.body.id) : null;
+		expect(
+			after.status === 200 && exempt?.tax_source === 'exempt' && exempt?.exemption === xid,
+			'and goods added after it are exempt by it',
+			`${after.status} ${JSON.stringify(exempt)}`
+		);
+		const own = await add({
+			taxable: 'true',
+			tax_override_reason: 'For their own use: their purchase order says taxable'
+		});
+		const ownRow = own.body?.id ? await rowOf(own.body.id) : null;
+		expect(
+			own.status === 200 &&
+				ownRow?.taxable === true &&
+				ownRow?.tax_source === 'site' &&
+				ownRow?.exemption === null,
+			'goods taxed by hand, saying why, are the exception to it',
+			`${own.status} ${JSON.stringify(ownRow)}`
+		);
+		const anyway = await add({ taxable: 'false', tax_override_reason: 'Exempt' });
+		expect(
+			anyway.status === 400 && Boolean(anyway.body?.errors?.taxable),
+			'and not taxed by hand is refused: they are not taxed anyway',
+			`${anyway.status} ${JSON.stringify(anyway.body?.errors)}`
+		);
+		await check('the exemption is ended today', 'POST', `${exemptions}/${xid}/end`, undefined, 204);
+		const again = before.body?.id ? await rowOf(before.body.id) : null;
+		const kept = own.body?.id ? await rowOf(own.body.id) : null;
+		expect(
+			again?.taxable === true &&
+				again?.tax_source === 'site' &&
+				again?.exemption === null &&
+				again?.pieces === true &&
+				kept?.reason !== null,
+			'ended, what it untaxed on the draft is taxed again, and what was set by hand stays',
+			`${JSON.stringify(again)} ${JSON.stringify(kept)}`
+		);
+		await check(
+			'ending it again is what was asked',
+			'POST',
+			`${exemptions}/${xid}/end`,
+			undefined,
+			204
+		);
+		await check(
+			'and it is taken off, nothing having gone out',
+			'DELETE',
+			`${exemptions}/${xid}`,
+			undefined,
+			204
+		);
+		await check('and is gone', 'DELETE', `${exemptions}/${xid}`, undefined, 404);
+		for (const line of [before, after, own])
+			if (line.body?.id) await call('DELETE', `/api/lines/${line.body.id}?force=1`);
+
+		// One an invoice that went out was untaxed by stays with it, and is ended.
+		const federal = await call('POST', exemptions, {
+			fields: { state: 'CA', reason: 'federal_government', supported_by: `PO-${stamp}` },
+			kinds: null
+		});
+		const sent = await call('POST', '/api/drafts', {
+			client_uuid: crypto.randomUUID(),
+			entity_id: placed.client
+		});
+		const billed = sent.body?.id
+			? await lineForm('POST', '/api/lines', {
+					...goods,
+					client_uuid: crypto.randomUUID(),
+					invoice_id: sent.body.id
+				})
+			: null;
+		await call('POST', `/api/invoices/${sent.body?.id}/send`);
+		await check(
+			'an exemption an invoice that went out was untaxed by is not taken off',
+			'DELETE',
+			`${exemptions}/${federal.body?.id}`,
+			undefined,
+			(r) => r.status === 400 && Boolean(r.body?.errors?.exemption) && billed?.status === 200
+		);
+		await check(
+			'it is ended instead',
+			'POST',
+			`${exemptions}/${federal.body?.id}/end`,
+			undefined,
+			204
 		);
 	}
 	await check('the service is taken away', 'DELETE', service, undefined, 200);

@@ -55,13 +55,21 @@ export type Taxes = Record<string, readonly string[]>;
 /**
  * A site's tax: its state, and where the business collects there and the site
  * has been placed in an area, the area's rate on every kind the state taxes
- * and what its pieces for one kind alone add, by kind.
+ * and what its pieces for one kind alone add, by kind; and its client's
+ * exemptions in force in its state, oldest first.
  */
 export type SiteTax = {
 	state: string;
 	ratePct: string | null;
 	kindRates: Readonly<Record<string, string>>;
+	exempt: readonly InForce[];
 };
+
+/**
+ * A client's exemption in force in a state (#lib/server/exemptions): which,
+ * and the kinds of sale it covers, or null for every kind.
+ */
+export type InForce = { id: string; kinds: readonly string[] | null };
 
 /**
  * The rate a line of `kind` taxed at the site's rate is taxed at: the area's
@@ -146,10 +154,17 @@ export function fromStock(line: FromStock, terms: Omit<Terms, 'purchaseMarkupPct
  * names none, or the site's area, where its state or an area of it taxes the
  * kind and the site has not been placed there.
  *
+ * Its client exempt there from its kind, it is not taxed, and names the
+ * exemption: the oldest in force at the site's state that covers the kind,
+ * where the line would be taxed as its kind or the site's area is needed to
+ * know. An exempt sale's tax is nothing wherever in the state it is, so the
+ * site need not be placed for it.
+ *
  * Or, where the line's tax was set by hand (`byHand`), that: not taxed, or
- * taxed at the site's rate or at another, where the line went. A tax set by
- * hand that would change nothing is refused, so no line keeps a reason for
- * being taxed as its kind is anyway.
+ * taxed at the site's rate or at another, where the line went -- for a client
+ * exempt there, the exception the reason explains. A tax set by hand that
+ * would change nothing is refused, so no line keeps a reason for being taxed
+ * as its kind is anyway.
  */
 function taxedAt(
 	kind: string | null,
@@ -171,18 +186,25 @@ function taxedAt(
 				: Decimal.from((kind !== null && site.kindRates[kind]) || '0')
 			: null;
 	const charged = rate !== null && !rate.isZero();
+	const exemption =
+		site !== null && kind !== null && (charged || (there && rate === null))
+			? (site.exempt.find((x) => x.kinds === null || x.kinds.includes(kind)) ?? null)
+			: null;
+	const taxed = charged && exemption === null;
 	const asItsKind = {
 		/** The kind of sale it was sold as, which the line keeps. */
 		soldAs: kind,
-		taxable: charged,
-		taxRatePct: charged ? rate.toString() : '0',
-		taxSource: charged ? ('site' as const) : ('none' as const),
+		taxable: taxed,
+		taxRatePct: taxed ? rate.toString() : '0',
+		taxSource: exemption ? ('exempt' as const) : taxed ? ('site' as const) : ('none' as const),
+		/** The client's exemption it is untaxed by, where it is. */
+		taxExemption: exemption?.id ?? null,
 		/** Whether its tax was set by hand, rather than its kind's. */
 		byHand: false,
 		/** Taxed somewhere the business collects, and the line names no site. */
 		needsASite: due && site === null,
 		/** Taxed in the site's state or an area of it, and the site is in no area there yet. */
-		needsPlacing: there && rate === null,
+		needsPlacing: there && rate === null && exemption === null,
 		/** Why its tax cannot be set by hand as it was, by the box that says so. */
 		refused: null as Record<string, string> | null
 	};
@@ -195,6 +217,8 @@ function taxedAt(
 	});
 
 	if (!byHand.taxed) {
+		if (exemption)
+			return refuse('taxable', 'It is not taxed there anyway: the client is exempt there.');
 		if (!charged && !asItsKind.needsASite && !asItsKind.needsPlacing)
 			return refuse('taxable', 'It is not taxed there anyway, as its kind is.');
 		return {
@@ -202,6 +226,7 @@ function taxedAt(
 			taxable: false,
 			taxRatePct: '0',
 			taxSource: 'none' as const,
+			taxExemption: null,
 			byHand: true,
 			needsASite: false,
 			needsPlacing: false
@@ -210,7 +235,13 @@ function taxedAt(
 
 	// Taxed, it is owed where it went: a site, in a state the business collects
 	// in, in an area there.
-	const taxedThere = { ...asItsKind, byHand: true, needsASite: false, needsPlacing: false };
+	const taxedThere = {
+		...asItsKind,
+		taxExemption: null,
+		byHand: true,
+		needsASite: false,
+		needsPlacing: false
+	};
 	if (site === null) return { ...taxedThere, needsASite: true };
 	if (!(site.state in terms.taxes))
 		return refuse(
@@ -220,7 +251,7 @@ function taxedAt(
 	const siteRate = siteRateFor(site, kind);
 	if (siteRate === null) return { ...taxedThere, needsPlacing: true };
 	if (byHand.ratePct === null) {
-		if (charged && everyKind)
+		if (taxed && everyKind)
 			return refuse('taxable', 'It is taxed at the site’s rate anyway, as its kind is.');
 		if (siteRate.isZero()) return refuse('taxable', 'The site’s rate is nothing.');
 		return {
@@ -233,7 +264,7 @@ function taxedAt(
 	const typed = Decimal.from(byHand.ratePct);
 	if (typed.eq(siteRate))
 		return refuse('tax_rate_pct', 'That is the site’s rate: choose taxed at the site’s rate.');
-	if (charged && typed.eq(rate))
+	if (taxed && typed.eq(rate))
 		return refuse('tax_rate_pct', 'It is taxed at that rate there anyway, as its kind is.');
 	return {
 		...taxedThere,

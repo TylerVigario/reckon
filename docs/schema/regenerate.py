@@ -150,10 +150,14 @@ def write(filename, title, cells, w=1600, h=1100):
 
 T = {}
 T["entity"] = [("PK","id","uuid"),("UK","slug","text · in the URL"),("","name","text"),("","terms_days","int"),
-    ("","payment_method","text"),
-    ("","tax_exempt","bool"),("","exemption_certificate","text"),
-    ("","exemption_expires_on","date"),("","active","bool"),
+    ("","payment_method","text"),("","active","bool"),
     ("","created_at","timestamptz")]
+T["tax_exemption"] = [("PK","id","uuid"),("FK","entity_id","uuid · the client"),
+    ("","state","text · claimed in, two letters"),("","reason","exemption_reason · F0003's"),
+    ("","explanation","text · as the certificate says"),
+    ("","supported_by","text · its number, or what else"),
+    ("","sale_kind_ids","uuid[] · the kinds it covers, null = every"),
+    ("","ended_on","date · in force until then"),("","created_at","timestamptz")]
 T["site"] = [("PK","id","uuid"),("FK","entity_id","uuid · one client"),
     ("UK","slug","text · in the URL, per client"),
     ("","label","text · this client's name for it"),("","display","text · generated"),
@@ -222,7 +226,7 @@ T["pay_rule"] = [("PK","id","uuid"),("FK","service_id","uuid"),
     ("","method","per_hour|percent|fixed|nothing"),("","amount","numeric · none for nothing"),
     ("","effective_from","date"),("","created_at","timestamptz")]
 T["sale_kind"] = [("PK","id","uuid"),
-    ("UK","code","goods|installation|repair|travel · reckon's own"),
+    ("UK","code","reckon_kind · reckon's own"),
     ("UK","name","text · the business's word"),("","active","bool · offered for an item"),
     ("","created_at","timestamptz")]
 T["taxability"] = [("PK","id","uuid"),("UK","state","text · a state collected in"),
@@ -335,6 +339,7 @@ T["invoice_line"] = [("PK","id","uuid"),("UK","client_uuid","uuid · from the ph
     ("","tax_jurisdiction","text · its area, as taxed"),
     ("","tax_state","text · its state, as taxed"),
     ("","tax_pieces","jsonb · who levied what"),
+    ("FK","tax_exemption_id","uuid · the client's, where exempt"),
     ("","tax_override_reason","text · why, set by hand"),("","ex_tax_cost","numeric · snapshot"),
     ("","tax_paid","numeric · snapshot"),("","amount","numeric"),
     ("FK","time_entry_id","uuid"),("FK","trip_leg_id","uuid"),
@@ -495,12 +500,15 @@ c += [note("n1", "Nothing flows backwards. A sent invoice never reaches back "
 files.append(write("01-overview.drawio", "Overview", c, 1100, 580))
 
 # 02 -- who and where
-c = at("entity",40,60) + at("site",800,60) \
+c = at("entity",40,60) + at("tax_exemption",40,340) + at("site",800,60) \
   + at("contact",800,650) + at("entity_contact",440,240) \
   + at("site_contact",440,460) \
   + at("site_placement",1200,60) + at("tax_remittance",1200,340) \
   + at("tax_area",1200,640) + at("tax_piece",1200,900)
 c += [edge("e22","entity","entity_contact","is reached via"),
+      edge("e21","entity","tax_exemption","is exempt by",
+           S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=1")
+                 .replace("entryX=0;entryY=0.5","entryX=0.5;entryY=0")),
       edge("e23","contact","entity_contact","acts for",
            S_EDGE.replace("exitX=1","exitX=0").replace("entryX=0","entryX=1")),
       edge("e26","entity_contact","site_contact","is named at"),
@@ -566,7 +574,13 @@ c += [note("n2", "One building can host two businesses and one person can act fo
                  "site_contact carries the client so two foreign keys can agree: the "
                  "site is that client’s and the person is that client’s contact.\n\n"
                  "A site belongs to exactly one client; two clients at one address are "
-                 "two sites.",
+                 "two sites.\n\n"
+                 "A client is exempt in a state, under its law: tax_exemption is one "
+                 "certificate's claim there, for a reason from the Streamlined certificate's "
+                 "list, with what supports it -- its number, or for the United States its "
+                 "purchase orders -- and the kinds of sale it covers, or every kind. It stands "
+                 "as recorded until it ends, and a line it untaxed names it, so the invoice "
+                 "keeps why it carried no tax.",
            40, 1130, 1480, 300)]
 files.append(write("02-who-and-where.drawio", "Who and where", c, 1560, 1470))
 
@@ -780,7 +794,7 @@ files.append(write("06-agreements.drawio", "Agreements", c, 1620, 1060))
 
 # 07 -- money out
 c = at("invoice",40,60) + at("invoice_line",440,60) + at("credit_note",880,60) \
-  + at("credit_application",880,300) + at("entity",40,430) + at("site",440,800) \
+  + at("credit_application",880,300) + at("entity",40,430) + at("site",440,840) \
   + at("stock_draw",880,860) + at("material_lot",1240,860)
 c += [edge("e60","invoice","invoice_line","is made of"),
       edge("e65","invoice_line","stock_draw","drew"),

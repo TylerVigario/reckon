@@ -155,7 +155,9 @@ async function disagreements(pool) {
 					);
 				continue;
 			}
-			const type = SHORT[c.data_type] ?? c.data_type;
+			// An array as Postgres writes it: uuid[], its element's name and brackets.
+			const type =
+				c.data_type === 'ARRAY' ? `${c.udt_name.slice(1)}[]` : (SHORT[c.data_type] ?? c.data_type);
 			// A whole number may be said as the range its check allows: 1–12.
 			const range = /^\d+–\d+$/.test(said) && ['int', 'smallint', 'bigint'].includes(type);
 			if (said !== type && !range) out.push(`${table}.${name}: is ${type}, said as '${said}'`);

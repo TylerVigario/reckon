@@ -1,7 +1,7 @@
 import { error, redirect } from '@sveltejs/kit';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { siteKindRates, siteRate } from '#lib/server/tax-registrations.ts';
+import { siteExemptions, siteKindRates, siteRate } from '#lib/server/tax-registrations.ts';
 import { formTerms } from '#lib/server/lines.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
@@ -46,7 +46,9 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 				'display as label',
 				// Its state, and where the business collects there and the site has
 				// been placed, its area's rate today on every kind the state taxes and
-				// what its pieces for one kind alone add (#lib/server/tax-registrations).
+				// what its pieces for one kind alone add; and its client's exemptions in
+				// force there, each with the kinds it covers and nothing of why
+				// (#lib/server/tax-registrations).
 				'region as state',
 				siteRate(
 					{ region: eb.ref('site.region'), area: eb.ref('site.tax_area_id') },
@@ -55,7 +57,10 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 				siteKindRates(
 					{ region: eb.ref('site.region'), area: eb.ref('site.tax_area_id') },
 					businessToday()
-				).as('kind_rates')
+				).as('kind_rates'),
+				siteExemptions({ entity: eb.ref('site.entity_id'), region: eb.ref('site.region') }).as(
+					'exempt'
+				)
 			])
 			.where('entity_id', '=', draft.entity_id)
 			.where('active', '=', true)
