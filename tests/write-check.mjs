@@ -2978,24 +2978,26 @@ console.log('\n  kinds of sale — added, answered, given, retired, and let go')
 // state's added up, as the report has it.
 {
 	console.log('\nSales tax handed over');
-	const cents = (/** @type {string | undefined} */ v) =>
-		!v?.trim() ? NaN : Math.round(Number(v.replace('−', '-').replace(/[^0-9.-]/g, '')) * 100);
+	// An amount as a page shows it, in cents: its sign, then its digits, read
+	// out of the markup around them -- "$0.50", "-$41.50".
+	const cents = (/** @type {string | undefined} */ v) => {
+		const m = /([-−])?[^\d\s<>]*([\d,]+(?:\.\d+)?)/.exec(v ?? '');
+		return m ? (m[1] ? -1 : 1) * Math.round(Number(m[2].replaceAll(',', '')) * 100) : NaN;
+	};
 	const page = async (/** @type {string} */ path) =>
 		(await fetch(base + path, { headers: { cookie, ...PROXY } })).text();
 	// A figure as the page shows it, after a label: its class is scoped, and its
 	// text may sit between Svelte's markers.
 	const figureAfter = (/** @type {string} */ label) =>
 		new RegExp(`${label}[\\s\\S]*?class="v[^"]*">([\\s\\S]*?)</span>`, 'g');
-	const said = (/** @type {string} */ html) => html.replace(/<!--[\s\S]*?-->/g, '');
-	const heldHome = async () =>
-		cents(said(figureAfter('Sales tax held').exec(await page('/'))?.[1] ?? ''));
+	const heldHome = async () => cents(figureAfter('Sales tax held').exec(await page('/'))?.[1]);
 	// Each state's: still held, or handed over beyond what was collected there.
 	const heldEach = async () =>
 		[
 			...(await page('/reports/sales-tax')).matchAll(
 				figureAfter('(Still held|Handed over beyond what was collected)')
 			)
-		].map((m) => (m[1] === 'Still held' ? 1 : -1) * cents(said(m[2])));
+		].map((m) => (m[1] === 'Still held' ? 1 : -1) * cents(m[2]));
 	const agree = async (/** @type {string} */ label) => {
 		const [home, each] = [await heldHome(), await heldEach()];
 		const ok = each.length > 0 && home === each.reduce((a, b) => a + b, 0);
