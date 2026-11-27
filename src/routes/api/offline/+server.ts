@@ -10,8 +10,9 @@ import type { RequestHandler } from './$types';
  * signal (src/service-worker): the invoices list, New draft and the screens for
  * a draft started on the phone, and each draft with its Add a line and the
  * lines added to it by hand, so a line can be added, changed or taken off on
- * any draft on site. Only drafts: an invoice that has gone out
- * takes no lines, and is shown only with a signal.
+ * any draft on site. Only drafts: an invoice that has gone out takes no lines,
+ * and is shown only with a signal. A line refused for one is fixed from
+ * Invoices on the phone's own screen for it, which is kept too.
  *
  * Trips too: the list, New trip, and each trip the person drove whose miles
  * are neither billed nor paid, with its Change, so a trip is recorded or put
@@ -89,8 +90,10 @@ export const GET: RequestHandler = async ({ locals }) => {
 		{
 			screens: [
 				'/invoices',
-				// A draft started with no signal, and lines added to it before it arrives.
-				...(field ? [] : ['/invoices/new', '/invoices/on-phone', '/invoices/on-phone/add']),
+				// A draft started with no signal, and lines added to it before it
+				// arrives; and a line fixed for a draft that has since gone out.
+				...(field ? [] : ['/invoices/new', '/invoices/on-phone']),
+				'/invoices/on-phone/add',
 				...drafts.flatMap((d) => [`/invoices/${d.id}`, `/invoices/${d.id}/add`]),
 				...lines.flatMap((l) => [
 					`/invoices/${l.invoice_id}/lines/${l.id}`,

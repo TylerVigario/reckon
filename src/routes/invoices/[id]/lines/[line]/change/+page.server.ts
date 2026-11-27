@@ -106,7 +106,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			client_uuid: line.client_uuid,
 			number: line.number,
 			who: line.who,
-			status: line.status
+			entity_id: line.entity_id
 		},
 		editing: {
 			id: line.id,

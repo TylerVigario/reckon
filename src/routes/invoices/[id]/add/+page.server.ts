@@ -17,11 +17,13 @@ import type { PageServerLoad } from './$types';
  * line itself is written on the phone and sent by the queue (#lib/queue), so
  * there is no form action.
  *
- * Someone with Field adds only to a draft, as the draft's own page says
- * (#lib/access): an invoice that has gone out is not found for them, ?fix or
- * not, so its number and client stay with Full.
+ * Only a draft takes a line. An invoice that has gone out opens as itself for
+ * Full, and is not found for someone with Field, as its own page is not
+ * (#lib/access), so its number and client stay with Full. A line refused for
+ * one that has since gone out is fixed on the phone's own screen for it
+ * (/invoices/on-phone/add), from Invoices, to go on the client's next draft.
  */
-export const load: PageServerLoad = async ({ params, url, locals, route, request }) => {
+export const load: PageServerLoad = async ({ params, locals, route, request }) => {
 	if (!UUID.test(params.id)) error(404, 'no such invoice');
 	const draft = await db
 		.selectFrom('invoice as i')
@@ -30,14 +32,11 @@ export const load: PageServerLoad = async ({ params, url, locals, route, request
 		.where('i.id', '=', params.id)
 		.executeTakeFirst();
 	if (!draft) error(404, 'no such invoice');
-	if (fieldOnly(locals) && draft.status !== 'draft') {
+	if (draft.status !== 'draft') {
+		if (!fieldOnly(locals)) redirect(303, `/invoices/${draft.id}`);
 		await refusedForAccess({ locals, route, request });
 		error(404, 'no such invoice');
 	}
-	// A draft that has gone out takes no lines -- except one being fixed after
-	// the server refused it, which on arrival starts a new draft for the client.
-	if (draft.status !== 'draft' && !url.searchParams.has('fix'))
-		redirect(303, `/invoices/${draft.id}`);
 	const [sites, terms] = await Promise.all([
 		db
 			.selectFrom('site')

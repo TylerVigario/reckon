@@ -57,6 +57,7 @@ describe('who reaches a route', () => {
 				'/invoices/[id]/lines/[line]',
 				'/invoices/[id]/lines/[line]/change',
 				'/invoices/[id]/lines/[line]/receipt',
+				'/invoices/on-phone/add',
 				'/api/lines',
 				'/api/lines/[id]',
 				'/api/lines/[id]/restore',

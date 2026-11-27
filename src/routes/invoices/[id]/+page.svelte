@@ -98,6 +98,13 @@
 	});
 	const pending = $derived(onPhone.filter((q) => !q.refused));
 	const kept = $derived(onPhone.filter((q) => q.refused));
+	// A refused line is fixed on the draft's Add a line while it is one, and,
+	// once it has gone out, on the phone's own screen for it, from which it goes
+	// on the client's next draft.
+	const fixAt = (uuid: string) =>
+		i.status === 'draft'
+			? resolve(`/invoices/[id]/add?fix=${encodeURIComponent(uuid)}`, { id: i.id })
+			: resolve(`/invoices/on-phone/add?fix=${encodeURIComponent(uuid)}`);
 
 	// Letting go of a refused line is it gone for good, so it takes a second
 	// tap, and the first one says so.
@@ -328,12 +335,7 @@
 						Refused: {q.refused?.detail} It is kept on this phone until it is fixed or let go.
 					</p>
 					<div class="acts">
-						<a
-							class="btn sm pri"
-							href={resolve(`/invoices/[id]/add?fix=${encodeURIComponent(q.line.client_uuid)}`, {
-								id: i.id
-							})}>Fix</a
-						>
+						<a class="btn sm pri" href={fixAt(q.line.client_uuid)}>Fix</a>
 						<button class="btn sm" onclick={() => letGo(q.line.client_uuid)}>
 							{confirming === q.line.client_uuid ? 'Tap again to discard' : 'Discard'}
 						</button>

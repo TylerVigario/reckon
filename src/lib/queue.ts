@@ -759,6 +759,15 @@ export function flush(): Promise<Flushed> {
 }
 
 /**
+ * The draft something here was made on, as its screen showed it: its number,
+ * where it had one yet, and its client. Kept with it so it still says what it
+ * was for once the draft has gone out, when no screen this phone opens shows
+ * that draft -- and a line, that it was the phone's own entry for this client,
+ * not anything the server told it.
+ */
+export type ShownDraft = { number: string | null; who: string };
+
+/**
  * A line added to a draft, waiting to be sent: which draft, its fields as the
  * Add a line form names them -- which is how the server reads them
  * (#lib/line-fields) -- and its receipt, as this phone shrank it.
@@ -766,6 +775,12 @@ export function flush(): Promise<Flushed> {
 export type LineEntry = {
 	client_uuid: string;
 	invoice_id: string;
+	/**
+	 * The draft as the form showed it, and its client: so a line refused once
+	 * its draft has gone out is still found, and fixed with that client's sites
+	 * (/invoices/on-phone/add), to go on their next draft.
+	 */
+	draft: ShownDraft & { entity_id: string };
 	fields: Record<string, string>;
 	receipt?: Blob | null;
 	/** When it was added, on this phone. */
@@ -910,6 +925,8 @@ export async function discardDraft(client_uuid: string): Promise<void> {
 export type ChangeEntry = {
 	line_id: string;
 	invoice_id: string;
+	/** The draft the line is on, as its screen showed it. */
+	draft: ShownDraft;
 	act: 'change' | 'remove' | 'restore';
 	version: number;
 	base: Record<string, string>;

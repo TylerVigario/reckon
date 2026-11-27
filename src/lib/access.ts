@@ -97,6 +97,10 @@ export const REACH = {
 	'/invoices/[id]/lines/[line]': 'field',
 	'/invoices/[id]/lines/[line]/change': 'field',
 	'/invoices/[id]/lines/[line]/receipt': 'field',
+	// And a line of theirs refused for a draft that has since gone out, fixed
+	// on the phone's own screen for it: the line is theirs, and the draft's
+	// number and client what they typed it for.
+	'/invoices/on-phone/add': 'field',
 	'/api/lines': 'field',
 	'/api/lines/[id]': 'field',
 	'/api/lines/[id]/restore': 'field',
@@ -120,7 +124,6 @@ export const REACH = {
 	// Everything else: billing, pay, prices, the catalogue, people and settings.
 	'/invoices/new': 'full',
 	'/invoices/on-phone': 'full',
-	'/invoices/on-phone/add': 'full',
 	'/invoices/ready': 'full',
 	'/invoices/[id]/send': 'full',
 	'/invoices/[id]/lines/[line]/history': 'full',
