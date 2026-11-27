@@ -16,13 +16,13 @@ import { problem } from '#lib/server/problem.ts';
  */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.passkey))
-		return problem('notFound', 404, 'No such passkey.');
+		return problem('notFound', 'No such passkey.');
 	const me = locals.user!;
 	if (params.id === me.id) return refuse({ passkey: 'Your own passkeys are on Your profile.' });
 
 	return asUser(me.id, async (tx) => {
 		const ended = await endPasskey(tx, params.id, params.passkey);
-		if (!ended) return problem('notFound', 404, 'They have no such passkey.');
+		if (!ended) return problem('notFound', 'They have no such passkey.');
 		await tell(tx, params.id, (them, business) =>
 			passkeyEnded(them, business, { ...ended, at: new Date(), by: me.name })
 		);

@@ -12,12 +12,11 @@ import type { RequestHandler } from './$types';
  * period's return, after it, or before it as a prepayment.
  */
 export const POST: RequestHandler = async ({ params, request, locals }) => {
-	if (!isState(params.state)) return problem('notFound', 404, 'No such state.');
+	if (!isState(params.state)) return problem('notFound', 'No such state.');
 	const body = (await readJson(request).catch(() => null)) as Record<string, unknown> | null;
 	if (!body || typeof body !== 'object')
 		return problem(
 			'malformed',
-			400,
 			'Expected { period_start, period_end, paid_on, tax, penalty_and_interest, reference }.'
 		);
 	const { value, errors } = parsePayment(body);
@@ -28,7 +27,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	} catch (e) {
 		if (e instanceof Refused)
 			return e.field === 'state'
-				? problem('notFound', 404, `${stateName(params.state)} has no tax to pay.`)
+				? problem('notFound', `${stateName(params.state)} has no tax to pay.`)
 				: refuse({ [e.field]: e.message });
 		throw e;
 	}

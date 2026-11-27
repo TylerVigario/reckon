@@ -20,7 +20,6 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	if (!(await typesAreasIn(db, params.state)))
 		return problem(
 			'notFound',
-			404,
 			`${stateName(params.state)}'s areas are not typed here: the business does not collect tax there, or its authority places each site.`
 		);
 	const body = (await readJson(request).catch(() => null)) as {
@@ -28,7 +27,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		pieces?: unknown;
 	} | null;
 	if (!body?.fields || typeof body.fields !== 'object')
-		return problem('malformed', 400, 'Expected { fields: { name, code, from }, pieces: [...] }.');
+		return problem('malformed', 'Expected { fields: { name, code, from }, pieces: [...] }.');
 
 	const { values, errors } = parseAll(AREA_FIELDS, body.fields);
 	const from = parseFrom(typeof body.fields.from === 'string' ? body.fields.from : '');

@@ -1,13 +1,13 @@
 import { PROBLEM, PROBLEM_MEDIA_TYPE, type ProblemBody, type ProblemKind } from '#lib/problem.ts';
 
 /**
- * A problem document as an HTTP response. The shape it builds, and the kinds
- * it may be, are in #lib/problem so the screens that read one share them.
+ * A problem document as an HTTP response, sent with its kind's one status. The
+ * shape it builds, and the kinds it may be, are in #lib/problem so the screens
+ * that read one share them.
  */
 
 export function problem(
 	kind: ProblemKind,
-	status: number,
 	detail?: string,
 	extra?: {
 		errors?: Record<string, string>;
@@ -17,9 +17,10 @@ export function problem(
 		members?: Record<string, unknown>;
 	}
 ) {
+	const { status, ...named } = PROBLEM[kind];
 	const body: ProblemBody & Record<string, unknown> = {
 		...(extra?.members ?? {}),
-		...PROBLEM[kind],
+		...named,
 		status,
 		...(detail ? { detail } : {}),
 		...(extra?.instance ? { instance: extra.instance } : {}),

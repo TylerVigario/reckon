@@ -29,7 +29,10 @@ async function find(countId: string, materialId: string) {
 	return { count, m };
 }
 const applied = () =>
-	problem('conflict', 409, 'That count has been applied: what was counted on it stays as it was.');
+	problem(
+		'notAsThingsStand',
+		'That count has been applied: what was counted on it stays as it was.'
+	);
 
 /**
  * One material counted (#lib/count-fields): how many are there, kept with what
@@ -42,13 +45,13 @@ const applied = () =>
  */
 export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.material))
-		return problem('notFound', 404, 'No such count, or no such material.');
+		return problem('notFound', 'No such count, or no such material.');
 	const body = await readBody(request);
 	const fields = body?.fields;
 	if (!fields || typeof fields !== 'object' || Array.isArray(fields))
-		return problem('malformed', 400, 'Expected { fields: { counted, cost_each, on_hand } }.');
+		return problem('malformed', 'Expected { fields: { counted, cost_each, on_hand } }.');
 	const { count, m } = await find(params.id, params.material);
-	if (!count || !m) return problem('notFound', 404, 'No such count, or no such material.');
+	if (!count || !m) return problem('notFound', 'No such count, or no such material.');
 	if (count.applied) return applied();
 	const { values, errors } = readCountLine(fields as Record<string, unknown>, m.places);
 	if (Object.keys(errors).length > 0) return refuse(errors);
@@ -90,7 +93,7 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 /** One material no longer counted: the count leaves it as it is. */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.material))
-		return problem('notFound', 404, 'No such count, or no such material.');
+		return problem('notFound', 'No such count, or no such material.');
 	try {
 		await asUser(locals.user!.id, (tx) =>
 			tx

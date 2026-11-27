@@ -12,7 +12,7 @@ import type { RequestHandler } from './$types';
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const body = await readBody(request);
-	if (!body) return problem('malformed', 400, 'Expected a JSON object.');
+	if (!body) return problem('malformed', 'Expected a JSON object.');
 	const clientUuid = typeof body.client_uuid === 'string' ? body.client_uuid : '';
 	if (!UUID.test(clientUuid)) return refuse({ client_uuid: 'The uuid the phone made for it.' });
 	const entityId = typeof body.entity_id === 'string' ? body.entity_id : '';
@@ -27,6 +27,6 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 	const clientUuid = url.searchParams.get('client_uuid') ?? '';
 	if (!UUID.test(clientUuid)) return refuse({ client_uuid: 'The uuid the phone made for it.' });
 	const had = await startedOnPhone(clientUuid, locals.user!.id);
-	if (!had) return problem('notFound', 404, 'No draft has arrived with that uuid.');
+	if (!had) return problem('notFound', 'No draft has arrived with that uuid.');
 	return Response.json(had, { headers: { 'cache-control': 'no-store' } });
 };

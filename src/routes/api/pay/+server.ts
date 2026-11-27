@@ -33,7 +33,7 @@ const PAID_AS = everyWord<PaidAs>()(['guaranteed_payment', 'wages', 'fee', 'reim
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const body = await readBody(request);
-	if (!body) return problem('malformed', 400, 'Expected a payment.');
+	if (!body) return problem('malformed', 'Expected a payment.');
 	const errors: Record<string, string> = {};
 	const no = (field: string, why: string) => ((errors[field] ??= why), null);
 
@@ -96,8 +96,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const items = asked.map((a) => theirs.find((o) => o.kind === a.kind && o.id === a.id));
 	if (items.some((i) => !i || i.amount === null || i.paidAs === null))
 		return problem(
-			'conflict',
-			409,
+			'changedMeanwhile',
 			'Something it covers is paid already, no rule pays it, or their role does not say what it is paid as. Open the page again.'
 		);
 	const total = sum(items.map((i) => i!.amount)).add(correction?.amount ?? Decimal.ZERO);
@@ -184,8 +183,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		// Two people recording the same work at once: the second finds it paid.
 		if (pgError(err).code === '23505')
 			return problem(
-				'conflict',
-				409,
+				'changedMeanwhile',
 				'Something it covers was paid just now. Open the page again.'
 			);
 		throw err;

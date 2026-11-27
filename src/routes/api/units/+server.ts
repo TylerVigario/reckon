@@ -9,7 +9,7 @@ import { readFields } from '#lib/json.ts';
 /** Adds a unit to the operator's own list. A name already on it is refused. */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
 	const { values, errors } = parseAll(UNIT_FIELDS, fields);
 	if (Object.keys(errors).length > 0) return refuse(errors);
 	try {

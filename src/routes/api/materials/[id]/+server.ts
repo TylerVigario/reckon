@@ -51,11 +51,11 @@ async function lastChanged(id: string) {
  * field changed, and who changed it.
  */
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No material with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No material with that id.');
 	const body = await readBody(request);
 	const fields = body?.fields;
 	if (!fields || typeof fields !== 'object' || Array.isArray(fields))
-		return problem('malformed', 400, 'Expected { fields: { name: value }, version, base }.');
+		return problem('malformed', 'Expected { fields: { name: value }, version, base }.');
 	const began = body?.version;
 	if (typeof began !== 'number' || !Number.isInteger(began) || began < 1)
 		return refuse({ version: 'The save it began from.' });
@@ -64,9 +64,9 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		return refuse({ base: 'What each field said when the change began.' });
 
 	const names = Object.keys(fields);
-	if (names.length === 0) return problem('malformed', 400, 'No fields given.');
+	if (names.length === 0) return problem('malformed', 'No fields given.');
 	if (names.length > MOST_AT_ONCE)
-		return problem('malformed', 400, `At most ${MOST_AT_ONCE} fields at once.`);
+		return problem('malformed', `At most ${MOST_AT_ONCE} fields at once.`);
 	const row: Updateable<Material> = {};
 	const sent: Partial<Record<Field, string>> = {};
 	const errors: Record<string, string> = {};
@@ -90,7 +90,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		.selectAll()
 		.where('id', '=', params.id)
 		.executeTakeFirst();
-	if (!m) return problem('notFound', 404, 'No material with that id.');
+	if (!m) return problem('notFound', 'No material with that id.');
 	// Into a kind of sale that is offered, unless it is that kind already.
 	if (row.sale_kind_id !== undefined && row.sale_kind_id !== m.sale_kind_id) {
 		const why = await refusedKind(db, String(row.sale_kind_id));
@@ -106,8 +106,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 			if (now !== was && now !== sent[name]) {
 				const last = await lastChanged(m.id);
 				return problem(
-					'conflict',
-					409,
+					'changedMeanwhile',
 					`${last.by ?? 'Someone'} changed ${MATERIAL_WORDS[name].toLowerCase()} meanwhile. Save puts yours over it; Cancel keeps theirs.`,
 					{ members: { conflict: { field: name, theirs: now, ...last, version: m.version } } }
 				);

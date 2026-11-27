@@ -24,13 +24,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!fields)
 		return problem(
 			'malformed',
-			400,
 			`Expected { fields: { ${Object.keys(NEW_PERSON_FIELDS).join(', ')} } }.`
 		);
 	const { values, errors } = parseAll(NEW_PERSON_FIELDS, fields);
 	if (Object.keys(errors).length > 0) return refuse(errors);
 	const missing = cannotSend();
-	if (missing) return problem('emailUnset', 409, unsentBecause(missing));
+	if (missing) return problem('emailUnset', unsentBecause(missing));
 
 	const me = locals.user!;
 	try {

@@ -32,12 +32,12 @@ function began(form: FormData) {
  * Someone with Field changes only a line they added (#lib/access).
  */
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No line with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No line with that id.');
 	let form: FormData;
 	try {
 		form = await request.formData();
 	} catch {
-		return problem('malformed', 400, 'Expected form data.');
+		return problem('malformed', 'Expected form data.');
 	}
 	const fields: Record<string, string> = {};
 	for (const [k, v] of form.entries())
@@ -62,7 +62,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
  * save it was taken off at: one changed since is asked about, unless force.
  */
 export const DELETE: RequestHandler = async ({ params, url, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No line with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No line with that id.');
 	const v = url.searchParams.get('version');
 	return answer(
 		await removeLine({

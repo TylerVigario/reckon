@@ -31,16 +31,16 @@ export const PATCH: RequestHandler = async (event) => {
 	// slug, and an endpoint that only answers to the primary key makes the
 	// caller hold two names for one thing.
 	const found = await lookUpClient(params.id);
-	if (!found) return problem('notFound', 404, 'No client by that name or id.');
+	if (!found) return problem('notFound', 'No client by that name or id.');
 	const id = found.id;
 
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
 
 	const names = Object.keys(fields);
-	if (names.length === 0) return problem('malformed', 400, 'No fields given.');
+	if (names.length === 0) return problem('malformed', 'No fields given.');
 	if (names.length > MOST_AT_ONCE)
-		return problem('malformed', 400, `At most ${MOST_AT_ONCE} fields at once.`);
+		return problem('malformed', `At most ${MOST_AT_ONCE} fields at once.`);
 
 	const row: Record<string, string | number | boolean | null> = {};
 	const errors: Record<string, string> = {};

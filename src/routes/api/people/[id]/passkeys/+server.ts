@@ -1,5 +1,5 @@
 import { asUser } from '#lib/server/db/index.ts';
-import { refuse } from '#lib/server/field-errors.ts';
+import { refuse, refuseAsThingsStand } from '#lib/server/field-errors.ts';
 import { tell } from '#lib/server/email.ts';
 import { endPasskeys } from '#lib/server/passkeys.ts';
 import { passkeysEnded } from '#lib/server/notices.js';
@@ -15,7 +15,7 @@ import { problem } from '#lib/server/problem.ts';
  * link (../link). Not one's own, which are on Your profile, one at a time.
  */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No person with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No person with that id.');
 	const me = locals.user!;
 	if (params.id === me.id) return refuse({ passkeys: 'Your own passkeys are on Your profile.' });
 
@@ -26,14 +26,14 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 			.where('id', '=', params.id)
 			.forUpdate()
 			.executeTakeFirst();
-		if (!person) return problem('notFound', 404, 'No person with that id.');
+		if (!person) return problem('notFound', 'No person with that id.');
 		const keyed = await tx
 			.selectFrom('passkey')
 			.select('id')
 			.where('user_id', '=', person.id)
 			.limit(1)
 			.executeTakeFirst();
-		if (!keyed) return refuse({ passkeys: 'They have no passkey to end.' }, 409);
+		if (!keyed) return refuseAsThingsStand({ passkeys: 'They have no passkey to end.' });
 		const ended = await endPasskeys(tx, person.id);
 		await tell(tx, person.id, (them, business) =>
 			passkeysEnded(them, business, { at: new Date(), by: me.name })

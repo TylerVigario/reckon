@@ -273,7 +273,7 @@ const app: Handle = async ({ event, resolve }) => {
 	if (event.locals.user && !reaches(event.locals.user.access, need)) {
 		await refusedForAccess(event);
 		if (path.startsWith('/api/'))
-			return secured(event.url, problem('beyondAccess', 403, 'That needs Full access.'));
+			return secured(event.url, problem('beyondAccess', 'That needs Full access.'));
 		redirect(303, '/refused');
 	}
 

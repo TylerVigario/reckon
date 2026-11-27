@@ -18,10 +18,10 @@ import { readFields } from '#lib/json.ts';
  */
 export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.service))
-		return problem('notFound', 404, 'No such agreement or service.');
+		return problem('notFound', 'No such agreement or service.');
 
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
 	const { values, errors } = readCoverage(fields);
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
@@ -33,7 +33,7 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 			.executeTakeFirst(),
 		db.selectFrom('service').select('id').where('id', '=', params.service).executeTakeFirst()
 	]);
-	if (!isAgreement || !isService) return problem('notFound', 404, 'No such agreement or service.');
+	if (!isAgreement || !isService) return problem('notFound', 'No such agreement or service.');
 
 	try {
 		const allotment = {
@@ -74,7 +74,7 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 
 export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.service))
-		return problem('notFound', 404, 'No such agreement or service.');
+		return problem('notFound', 'No such agreement or service.');
 	const gone = await asUser(locals.user!.id, (tx) =>
 		tx
 			.deleteFrom('agreement_service')
@@ -83,7 +83,6 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 			.returning('id')
 			.execute()
 	);
-	if (gone.length === 0)
-		return problem('notFound', 404, 'The agreement does not cover that service.');
+	if (gone.length === 0) return problem('notFound', 'The agreement does not cover that service.');
 	return Response.json({ removed: params.service });
 };

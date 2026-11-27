@@ -34,11 +34,11 @@ class Answer extends Error {
  * so it is applied once and no draw slips in between reading and writing.
  */
 export const POST: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No count with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No count with that id.');
 	const body = await readBody(request);
 	const asked = body?.keep;
 	if (asked !== undefined && !KEEPS.includes(asked as Keep))
-		return problem('malformed', 400, 'keep is "counted" or "difference", or not said.');
+		return problem('malformed', 'keep is "counted" or "difference", or not said.');
 	const keep = asked as Keep | undefined;
 	const userId = locals.user!.id;
 
@@ -50,9 +50,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				.where('id', '=', params.id)
 				.forUpdate()
 				.executeTakeFirst();
-			if (!count) throw new Answer(problem('notFound', 404, 'No count with that id.'));
+			if (!count) throw new Answer(problem('notFound', 'No count with that id.'));
 			if (count.applied_at)
-				throw new Answer(problem('conflict', 409, 'That count has been applied already.'));
+				throw new Answer(problem('notAsThingsStand', 'That count has been applied already.'));
 			const lines = await tx
 				.selectFrom('stock_count_line as l')
 				.innerJoin('material as m', 'm.id', 'l.material_id')
@@ -70,7 +70,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				.orderBy('m.name')
 				.execute();
 			if (lines.length === 0)
-				throw new Answer(problem('malformed', 400, 'Nothing has been counted on it yet.'));
+				throw new Answer(problem('malformed', 'Nothing has been counted on it yet.'));
 
 			const ids = lines.map((l) => l.material);
 			await lockMaterials(tx, ids);
@@ -82,8 +82,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			if (outdated.length > 0 && !keep)
 				throw new Answer(
 					problem(
-						'conflict',
-						409,
+						'changedMeanwhile',
 						`${outdated.length === 1 ? `${outdated[0].name} has` : `${outdated.length} of what was counted have`} moved since it was counted. Say what to keep.`,
 						{
 							members: {
@@ -107,8 +106,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				if (after === null)
 					throw new Answer(
 						problem(
-							'conflict',
-							409,
+							'notAsThingsStand',
 							`Keeping the difference found would leave less than none of ${l.name}: ${quantity(now(l.material))} ${unit} is on the shelf now. Keep what was counted instead.`
 						)
 					);
@@ -140,7 +138,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	} catch (e) {
 		if (e instanceof Answer) return e.response;
 		if (e instanceof ShelfRefused)
-			return problem('invalidField', 400, e.why, { errors: { [e.field]: e.why } });
+			return problem('invalidField', e.why, { errors: { [e.field]: e.why } });
 		throw e;
 	}
 };

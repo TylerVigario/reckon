@@ -16,7 +16,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	try {
 		form = await request.formData();
 	} catch {
-		return problem('malformed', 400, 'Expected form data.');
+		return problem('malformed', 'Expected form data.');
 	}
 	const when = form.get('made_at');
 	const done = await receive(form, locals.user!.id, madeAt(typeof when === 'string' ? when : ''));

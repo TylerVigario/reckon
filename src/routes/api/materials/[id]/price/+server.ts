@@ -26,11 +26,11 @@ import type { RequestHandler } from './$types';
  * says the day it was set there (from), no later than today, and when.
  */
 export const POST: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No material with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No material with that id.');
 	const body = await readBody(request);
 	const fields = body?.fields;
 	if (!fields || typeof fields !== 'object' || Array.isArray(fields))
-		return problem('malformed', 400, 'Expected { fields: { by, markup_pct, price } }.');
+		return problem('malformed', 'Expected { fields: { by, markup_pct, price } }.');
 	const { values, errors } = readPricing(fields as Record<string, unknown>);
 	if (Object.keys(errors).length > 0) return refuse(errors);
 
@@ -39,7 +39,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		.select(['id', 'markup_pct as markup'])
 		.where('id', '=', params.id)
 		.executeTakeFirst();
-	if (!m) return problem('notFound', 404, 'No material with that id.');
+	if (!m) return problem('notFound', 'No material with that id.');
 
 	const today = businessToday();
 	const said = typeof body.from === 'string' ? isoDate(body.from) : null;
@@ -63,8 +63,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		const was = pricedBy({ markup_pct: base.markup_pct || null, listed: base.price || null });
 		if (!samePricing(now, was) && !samePricing(now, mine))
 			return problem(
-				'conflict',
-				409,
+				'changedMeanwhile',
 				'What it sells at was changed meanwhile. Save puts yours over it; Cancel keeps theirs.',
 				{ members: { conflict: { field: 'pricing', theirs: now } } }
 			);

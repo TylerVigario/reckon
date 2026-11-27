@@ -74,6 +74,17 @@ const check = async (label, method, path, payload, want) => {
 	return r;
 };
 
+/**
+ * A refusal of its kind: what a client branches on is the type, and each is
+ * sent with its one status (#lib/problem).
+ */
+const RACED = '/problems/changed-meanwhile';
+const AS_IT_STANDS = '/problems/not-as-things-stand';
+const refused =
+	(/** @type {string} */ type, /** @type {number} */ status = 409) =>
+	/** @param {{ status: number; body: any }} r */ (r) =>
+		r.status === status && r.body?.type === type;
+
 // ---------------------------------------------------------------------------
 // What the app already has to work with.
 
@@ -328,7 +339,7 @@ if (serviceId) {
 			at,
 			{ ...base, note: 'from an old copy', version: 1, base },
 			(r) =>
-				r.status === 409 &&
+				refused(RACED)(r) &&
 				r.body?.conflict?.what === 'collided' &&
 				r.body.conflict.collided?.join() === 'note' &&
 				r.body.conflict.version === 3 &&
@@ -368,7 +379,7 @@ if (serviceId) {
 			'DELETE',
 			`${at}?version=1`,
 			undefined,
-			(r) => r.status === 409 && r.body?.conflict?.what === 'changed'
+			(r) => refused(RACED)(r) && r.body?.conflict?.what === 'changed'
 		);
 		await check(
 			'and removed anyway, once decided',
@@ -383,7 +394,7 @@ if (serviceId) {
 			'PATCH',
 			at,
 			{ ...changed, version: 3, base },
-			(r) => r.status === 409 && r.body?.conflict?.what === 'removed' && !!r.body.conflict.at
+			(r) => refused(RACED)(r) && r.body?.conflict?.what === 'removed' && !!r.body.conflict.at
 		);
 		await check(
 			'and one never there is not found',
@@ -421,7 +432,8 @@ if (serviceId) {
 				`/api/time/${row.id}`,
 				{ ...was, version: 1, base: {} },
 				(r) =>
-					r.status === 409 && /draft|Credit the invoice|next payment/.test(r.body?.detail ?? '')
+					refused(AS_IT_STANDS)(r) &&
+					/draft|Credit the invoice|next payment/.test(r.body?.detail ?? '')
 			);
 		else console.log(`  · no ${what} in this business to try`);
 }
@@ -658,7 +670,7 @@ console.log('\n  one save must not erase another');
 
 		// The second still holds the version from before A wrote.
 		const b = await conditioned('35', version);
-		const okB = b.status === 412;
+		const okB = refused('/problems/saved-since-read', 412)(b);
 		if (okB) passed++;
 		else failures.push(`a stale save was accepted: ${b.status}`);
 		console.log(`  ${okB ? '✓' : '✗'} the second is refused rather than overwriting it`);
@@ -1116,7 +1128,13 @@ if (sid) {
 		client_uuid: crypto.randomUUID()
 	});
 	if (hour.body?.id) {
-		await check('a service with time recorded is not removed', 'DELETE', at, undefined, 409);
+		await check(
+			'a service with time recorded is not removed, as things stand',
+			'DELETE',
+			at,
+			undefined,
+			refused(AS_IT_STANDS)
+		);
 		await check('its entry goes', 'DELETE', `/api/time/${hour.body.id}?version=1`, undefined, 200);
 	}
 	await check('a service nothing used is removed', 'DELETE', at, undefined, 200);

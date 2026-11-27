@@ -13,7 +13,7 @@ import type { RequestHandler } from './$types';
  */
 export const POST: RequestHandler = async ({ request }) => {
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
 	const raw = fields.google_place_id;
 	const parsed = parseSiteField('google_place_id', typeof raw === 'string' ? raw : '');
 	if (!parsed.ok) return refuse({ google_place_id: parsed.why });

@@ -15,7 +15,7 @@ import type { RequestHandler } from './$types';
  */
 export const GET: RequestHandler = async ({ url, locals }) => {
 	const uuid = url.searchParams.get('client_uuid') ?? '';
-	if (!UUID.test(uuid)) return problem('malformed', 400, 'Expected ?client_uuid=.');
+	if (!UUID.test(uuid)) return problem('malformed', 'Expected ?client_uuid=.');
 	const found = await db
 		.selectFrom('trip')
 		.select('id')
@@ -25,7 +25,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 		.executeTakeFirst();
 	return found
 		? Response.json({ id: found.id })
-		: problem('notFound', 404, 'No trip has arrived with that id.');
+		: problem('notFound', 'No trip has arrived with that id.');
 };
 
 /**

@@ -16,14 +16,14 @@ export const POST: RequestHandler = async ({ request }) => {
 	const body = await readBody(request);
 	const raw = Array.isArray(body?.stops) ? (body.stops as unknown[]) : null;
 	if (!raw || raw.length === 0 || raw.length > 25)
-		return problem('malformed', 400, 'Expected { stops: [{ site_id or address }] }.');
+		return problem('malformed', 'Expected { stops: [{ site_id or address }] }.');
 	const stops = raw.map((s) => {
 		const x = (s && typeof s === 'object' ? s : {}) as Record<string, unknown>;
 		const siteId = typeof x.site_id === 'string' && UUID.test(x.site_id) ? x.site_id : null;
 		return { siteId, address: siteId ? null : text(x.address) };
 	});
 	if (stops.some((s) => !s.siteId && !s.address))
-		return problem('malformed', 400, 'Each stop is a site or an address.');
+		return problem('malformed', 'Each stop is a site or an address.');
 	const points = await waypointsOf({
 		startAddress: text(body?.start_address),
 		endAddress: text(body?.end_address),

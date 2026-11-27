@@ -13,10 +13,10 @@ import { problem } from '#lib/server/problem.ts';
  * new link is sent instead (../link).
  */
 export const POST: RequestHandler = async ({ params, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No person with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No person with that id.');
 	const me = locals.user!;
 	const missing = cannotSend();
-	if (missing) return problem('emailUnset', 409, unsentBecause(missing));
+	if (missing) return problem('emailUnset', unsentBecause(missing));
 
 	return asUser(me.id, async (tx) => {
 		const person = await tx
@@ -25,7 +25,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 			.where('id', '=', params.id)
 			.forUpdate()
 			.executeTakeFirst();
-		if (!person) return problem('notFound', 404, 'No person with that id.');
+		if (!person) return problem('notFound', 'No person with that id.');
 		if (!person.active)
 			return refuse({ invitation: 'They’re deactivated. Reactivate them first.' });
 		const held = await tx

@@ -2,7 +2,12 @@ import { sql, type Updateable } from 'kysely';
 import { businessToday } from '#lib/server/calendar.ts';
 import type { Operator } from '#lib/server/db/database.ts';
 import { asUser, db } from '#lib/server/db/index.ts';
-import { type Errors, refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
+import {
+	type Errors,
+	refuse,
+	refuseAsThingsStand,
+	refuseIfTheDatabaseSaidSo
+} from '#lib/server/field-errors.ts';
 import { parseField } from '#lib/settings-fields.ts';
 import { confirmPlace } from '#lib/server/verify-place.ts';
 import { measureEverySite } from '#lib/server/site-drive.ts';
@@ -47,12 +52,12 @@ const MOST_AT_ONCE = 8;
 
 export const PATCH: RequestHandler = async ({ request, locals }) => {
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
 
 	const names = Object.keys(fields);
-	if (names.length === 0) return problem('malformed', 400, 'No fields given.');
+	if (names.length === 0) return problem('malformed', 'No fields given.');
 	if (names.length > MOST_AT_ONCE)
-		return problem('malformed', 400, `At most ${MOST_AT_ONCE} fields at once.`);
+		return problem('malformed', `At most ${MOST_AT_ONCE} fields at once.`);
 
 	// Everything is parsed before anything is written. The column written is
 	// the key from the registry, never the name off the request.
@@ -148,9 +153,8 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 			// trading name is the one that has to arrive first -- the same thing
 			// the logo upload says when it is asked to run on an empty table.
 			if (!('trading_name' in row))
-				return refuse(
-					Object.fromEntries(names.map((n) => [n, 'Set the trading name first.'])),
-					409
+				return refuseAsThingsStand(
+					Object.fromEntries(names.map((n) => [n, 'Set the trading name first.']))
 				);
 			await db
 				.insertInto('operator')

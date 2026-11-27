@@ -13,11 +13,11 @@ import { readFields } from '#lib/json.ts';
  * its own.
  */
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No unit with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No unit with that id.');
 	const fields = await readFields(request);
 	const names = fields ? Object.keys(fields) : [];
 	if (!fields || names.length === 0 || names.some((n) => !(n in UNIT_FIELDS)))
-		return problem('malformed', 400, 'Expected { fields: { name, short or places: value } }.');
+		return problem('malformed', 'Expected { fields: { name, short or places: value } }.');
 
 	const row: Record<string, string | number | null> = {};
 	const errors: Record<string, string> = {};
@@ -45,7 +45,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 				.returning('id')
 				.execute()
 		);
-		if (changed.length === 0) return problem('notFound', 404, 'No unit with that id.');
+		if (changed.length === 0) return problem('notFound', 'No unit with that id.');
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, names, 'unit');
 		if (refused) return refused;
@@ -59,17 +59,16 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
  * the answer says why: what was counted in it would be counted in nothing.
  */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No unit with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No unit with that id.');
 	try {
 		const gone = await asUser(locals.user!.id, (tx) =>
 			tx.deleteFrom('unit').where('id', '=', params.id).returning('id').execute()
 		);
-		if (gone.length === 0) return problem('notFound', 404, 'No unit with that id.');
+		if (gone.length === 0) return problem('notFound', 'No unit with that id.');
 	} catch (e) {
 		if (stillReferenced(e))
 			return problem(
-				'conflict',
-				409,
+				'notAsThingsStand',
 				'Materials are counted in this unit. Count them in another first.'
 			);
 		throw e;

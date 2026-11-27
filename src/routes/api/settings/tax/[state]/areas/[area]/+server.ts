@@ -16,11 +16,11 @@ const NOT_FOUND = 'No such area of that state is typed here.';
 
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	const area = await findTypedArea(db, params.state, params.area);
-	if (!area) return problem('notFound', 404, NOT_FOUND);
+	if (!area) return problem('notFound', NOT_FOUND);
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
 	const names = Object.keys(fields);
-	if (names.length === 0) return problem('malformed', 400, 'No fields given.');
+	if (names.length === 0) return problem('malformed', 'No fields given.');
 
 	const set: { name?: string; code?: string | null } = {};
 	const errors: Record<string, string> = {};
@@ -48,12 +48,12 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 
 export const DELETE: RequestHandler = async ({ params, locals }) => {
 	const area = await findTypedArea(db, params.state, params.area);
-	if (!area) return problem('notFound', 404, NOT_FOUND);
+	if (!area) return problem('notFound', NOT_FOUND);
 	try {
 		await asUser(locals.user!.id, (tx) => removeArea(tx, area.id));
 		return new Response(null, { status: 204 });
 	} catch (e) {
-		if (e instanceof Refused) return problem('conflict', 409, e.message);
+		if (e instanceof Refused) return problem('notAsThingsStand', e.message);
 		throw e;
 	}
 };

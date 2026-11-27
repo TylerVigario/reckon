@@ -12,8 +12,7 @@ import { readFields } from '#lib/json.ts';
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const fields = await readFields(request);
-	if (!fields)
-		return problem('malformed', 400, 'Expected { fields: { name: value, pays_as: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value, pays_as: value } }.');
 	const { values, errors } = parseAll(ROLE_FIELDS, fields);
 	if (Object.keys(errors).length > 0) return refuse(errors);
 	try {
