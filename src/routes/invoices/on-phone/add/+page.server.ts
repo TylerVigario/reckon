@@ -5,10 +5,13 @@ import { formTerms } from '#lib/server/lines.ts';
 import type { PageServerLoad } from './$types';
 
 /**
- * Add a line to a draft started on this phone, before it has arrived. The
- * draft is the phone's to know (#lib/queue), so this is one screen for all of
- * them, kept for no signal, with every client's sites: the page shows the
- * draft's client's.
+ * A line on this phone, for a draft the server cannot open for it: one started
+ * here that has not arrived yet, to add to, or one that has gone out, to fix a
+ * line it refused, which then goes on the client's next draft. Each is the
+ * phone's to know (#lib/queue), so this is one screen for all of them, kept for
+ * no signal, with every client's sites -- as Clients shows them, and the kinds
+ * each client is exempt from at each, without why -- and the page shows its
+ * client's.
  */
 export const load: PageServerLoad = async () => {
 	const [sites, terms] = await Promise.all([

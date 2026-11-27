@@ -211,7 +211,8 @@ for (const tab of ['', '/paid']) {
 		'an invoice that has gone out does not open for Field',
 		opened.map((r) => r.status).join(', ')
 	);
-	// Nor through the page that adds a line, fixing a refused one or not.
+	// Nor through the page that adds a line, fixing a refused one or not: only a
+	// draft takes a line, and Full is sent to the invoice itself.
 	const adding = await Promise.all(
 		sent.flatMap((id) => [asField(`/invoices/${id}/add`), asField(`/invoices/${id}/add?fix=1`)])
 	);
@@ -221,7 +222,19 @@ for (const tab of ['', '/paid']) {
 		adding.map((r) => r.status).join(', ')
 	);
 	const fixing = await asFull(`/invoices/${sent[0]}/add?fix=1`);
-	check(fixing.status === 200, 'Full still opens it to fix a refused line', String(fixing.status));
+	check(
+		fixing.status === 303 && fixing.headers.get('location') === `/invoices/${sent[0]}`,
+		'and for Full it opens as the invoice',
+		`${fixing.status} ${fixing.headers.get('location')}`
+	);
+	// A line refused for one is fixed on the phone's own screen for it, which
+	// knows no invoice: every client's sites, and nothing of an invoice.
+	const own = await asField('/invoices/on-phone/add');
+	check(
+		own.status === 200,
+		'Field opens the screen a line refused for one is fixed on',
+		String(own.status)
+	);
 }
 
 // Trips: the ones they drove, this month and the two before it.

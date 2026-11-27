@@ -41,7 +41,9 @@
  *            open to be fixed, and gone only when discarded by hand. INV-0212
  *            went out meanwhile, so the permit starts a new draft for the
  *            client, with its receipt, and both say so; the raceway is refused
- *            and kept the same way, on INV-0212. The draft started on the phone
+ *            and kept the same way, on INV-0212 and on Invoices, for INV-0212
+ *            and its client, where Fix opens it to go on the client's next
+ *            draft. The draft started on the phone
  *            arrives numbered, with its hire. The jacks' description and
  *            supplier merge, and their cost -- changed in two places -- is
  *            picked from every value it has held; the permit, taken off
@@ -246,6 +248,8 @@ const pick = (/** @type {string} */ text) =>
 const OFFLINE = ['/', '/timesheet', '/timesheet/start', '/timesheet/manual'];
 /** The demo's draft, INV-0212 for a homeowner, and an invoice that has gone out. */
 const DRAFT = '/invoices/6f444d02-b482-4506-98fe-ee23f45d26c5';
+/** Its client, Marisol Vega. */
+const VEGA = '426f8d3b-fc9a-4cf9-a82f-6caf96c90a8f';
 const SENT = '/invoices/2858d54a-2fa4-4a88-b35e-b9f0a1fbe27a';
 /** The demo's raceway, of which 60 ft is on the shelf. */
 const RACEWAY = 'b144a78b-750a-4bd2-a84e-7d1551328565';
@@ -716,6 +720,7 @@ if (phase === 'offline') {
 			line: {
 				client_uuid: crypto.randomUUID(),
 				invoice_id: ${JSON.stringify(DRAFT.split('/').pop())},
+				draft: { number: 'INV-0212', who: 'Marisol Vega', entity_id: ${JSON.stringify(VEGA)} },
 				fields: {
 					kind: 'material',
 					material_id: ${JSON.stringify(RACEWAY)},
@@ -1432,24 +1437,44 @@ if (phase === 'back') {
 		'the permit is on it, moved from INV-0212, with its receipt'
 	);
 
+	// Invoices shows it too, for the draft and client it was added for: for
+	// someone with Field, whom INV-0212 no longer opens for, the one place it is.
+	await go('/invoices');
+	await settle(1500);
+	check(
+		/Not added.*Raceway · Surface · 3\/4 in.*INV-0212 · Marisol Vega.*Refused: Only \d+ ft.*Fixed, it goes on Marisol Vega’s next draft\./.test(
+			/** @type {string} */ (await text())
+		),
+		'Invoices shows it as not added, for INV-0212 and Marisol Vega, with the reason and where it goes once fixed'
+	);
+	/** What Fix opens, from the screen open now. */
+	const fixOpens = async () => {
+		await evaluate(
+			`[...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'Fix')?.click()`
+		);
+		await settle(2000);
+		return evaluate(`({
+			path: location.pathname,
+			heading: document.querySelector('h1')?.textContent?.trim() ?? '',
+			qty: document.querySelector('#l-qty')?.value ?? '',
+			why: [...document.querySelectorAll('.why')].map((w) => w.textContent.replace(/\\s+/g, ' ').trim())
+		})`);
+	};
+	const fixes = [await fixOpens()];
 	await go(DRAFT);
 	await settle(1000);
-	await evaluate(
-		`[...document.querySelectorAll('a')].find((a) => a.textContent.trim() === 'Fix')?.click()`
-	);
-	await settle(2000);
-	const fix = await evaluate(`({
-		heading: document.querySelector('h1')?.textContent?.trim() ?? '',
-		qty: document.querySelector('#l-qty')?.value ?? '',
-		why: [...document.querySelectorAll('.why')].map((w) => w.textContent.replace(/\\s+/g, ' ').trim())
-	})`);
+	fixes.push(await fixOpens());
 	check(
-		fix.heading.startsWith('Add a line') &&
-			fix.qty === '1000' &&
-			fix.why[0]?.startsWith('Refused: Only ') &&
-			fix.why[1] ===
-				'INV-0212 has gone out, so this line will start a new draft for Marisol Vega when it reaches the server.',
-		`Fix opens it filled in, with the reason and where it will go${fix.qty === '1000' ? '' : ` (${JSON.stringify(fix)})`}`
+		fixes.every(
+			(fix) =>
+				fix.path === '/invoices/on-phone/add' &&
+				fix.heading.startsWith('Add a line') &&
+				fix.qty === '1000' &&
+				fix.why[0]?.startsWith('Refused: Only ') &&
+				fix.why[1] ===
+					'INV-0212 has gone out, so this goes on Marisol Vega’s next draft when it reaches the server.'
+		),
+		`Fix opens it filled in on the phone's own screen for it, from Invoices and from INV-0212, with the reason and where it will go${fixes.every((f) => f.qty === '1000') ? '' : ` (${JSON.stringify(fixes)})`}`
 	);
 	await go(DRAFT);
 	await settle(1000);

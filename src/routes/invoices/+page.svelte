@@ -1,9 +1,28 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { refreshAll } from '$app/navigation';
 	import Top from '#lib/Top.svelte';
 	import OfflineBanner from '#lib/OfflineBanner.svelte';
-	import { draftsHeld, linesHeld, waitingCount, type QueuedDraft } from '#lib/queue.ts';
-	import { count, day } from '#lib/format.ts';
+	import Octicon from '#lib/Octicon.svelte';
+	import {
+		QUEUE_CHANGED,
+		changesHeld,
+		discardChange,
+		discardLine,
+		draftsHeld,
+		enqueueChange,
+		flush,
+		linesHeld,
+		notKept,
+		waitingCount,
+		type ChangeEntry,
+		type QueuedChange,
+		type QueuedDraft,
+		type QueuedLine,
+		type ShownDraft
+	} from '#lib/queue.ts';
+	import { clock, count, day } from '#lib/format.ts';
+	import { personalZone } from '#lib/zone.svelte.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
@@ -23,26 +42,96 @@
 			: `${money(data.totals.owed)} out · ${money(data.totals.drafted)} in draft`
 	);
 
-	// What is on this phone, waiting to send: drafts started here, lines by the
-	// draft they are for -- its id, or the uuid it was started with on a phone
-	// -- and everything for the banner. The server cannot know them yet.
-	let onPhone = $state<Record<string, number>>({});
+	// What is on this phone, waiting to send or refused: drafts started here,
+	// lines by the draft they are for -- its id, or the uuid it was started with
+	// on a phone -- changes to lines the server has, and everything for the
+	// banner. The server cannot know them yet. Read again whenever the queue
+	// sends, or something is kept or let go.
+	let held = $state<QueuedLine[]>([]);
+	let changes = $state<QueuedChange[]>([]);
 	let started = $state<QueuedDraft[]>([]);
 	let waiting = $state(0);
+	async function read() {
+		try {
+			[held, changes, started, waiting] = await Promise.all([
+				linesHeld(),
+				changesHeld(),
+				draftsHeld(),
+				waitingCount()
+			]);
+		} catch {
+			/* a phone that will not open its queue shows the server's drafts alone */
+		}
+	}
 	onMount(() => {
-		void Promise.all([linesHeld(), draftsHeld(), waitingCount()]).then(
-			([lines, drafts, count]) => {
-				const by: Record<string, number> = {};
-				for (const q of lines) by[q.line.invoice_id] = (by[q.line.invoice_id] ?? 0) + 1;
-				onPhone = by;
-				started = drafts;
-				waiting = count;
-			},
-			() => {}
-		);
+		void read();
+		const again = () => void read();
+		addEventListener(QUEUE_CHANGED, again);
+		return () => removeEventListener(QUEUE_CHANGED, again);
+	});
+	const onPhone = $derived.by(() => {
+		const by: Record<string, number> = {};
+		for (const q of held) by[q.line.invoice_id] = (by[q.line.invoice_id] ?? 0) + 1;
+		return by;
 	});
 	const lines = (i: { id: string; client_uuid: string | null }) =>
 		(onPhone[i.id] ?? 0) + (i.client_uuid ? (onPhone[i.client_uuid] ?? 0) : 0);
+
+	// NOT ADDED: what is on this phone for a draft not listed here -- one that
+	// has gone out, as a rule. Its own page does not open for someone with Field
+	// (#lib/access), so this is where each is seen, for which draft and client,
+	// as the phone kept them when it was made. A line refused for it is fixed,
+	// to go on the client's next draft, or let go; one fixed waits here until it
+	// goes. A change refused for one of its lines is let go -- the line is as it
+	// was sent -- or, where the line was taken off meanwhile, put back with it,
+	// which goes on the client's next draft too.
+	const listed = $derived(
+		new Set([
+			...data.drafts.flatMap((d) => (d.client_uuid ? [d.id, d.client_uuid] : [d.id])),
+			...started.map((q) => q.draft.client_uuid)
+		])
+	);
+	const strayLines = $derived(held.filter((q) => !listed.has(q.line.invoice_id)));
+	const strayChanges = $derived(
+		changes.filter((q) => q.refused && !listed.has(q.change.invoice_id))
+	);
+	const named = (d: ShownDraft) => `${d.number ?? 'A draft started on this phone'} · ${d.who}`;
+	const DONE: Record<ChangeEntry['act'], string> = {
+		change: 'Changed on this phone',
+		remove: 'Taken off on this phone',
+		restore: 'Put back on this phone'
+	};
+
+	// Letting go of a refused line is it gone for good, so it takes a second
+	// tap, and the first one says so.
+	let confirming = $state<string | null>(null);
+	async function letGo(id: string) {
+		if (confirming !== id) {
+			confirming = id;
+			setTimeout(() => {
+				if (confirming === id) confirming = null;
+			}, 4000);
+			return;
+		}
+		confirming = null;
+		await discardLine(id).catch(() => {});
+	}
+	async function letChangeGo(q: QueuedChange) {
+		await discardChange(q.change.line_id).catch(() => {});
+	}
+	let stored = $state('');
+	async function restore(q: QueuedChange) {
+		// A plain copy: what is kept in state is a proxy, which the phone's
+		// database cannot store.
+		try {
+			await enqueueChange({ ...$state.snapshot(q.change), act: 'restore' }, true);
+		} catch (e) {
+			stored = notKept(e, 'This phone would not save that, so the line is not put back yet.');
+			return;
+		}
+		const sent = await flush().catch(() => null);
+		if (sent && sent.sent > 0) await refreshAll();
+	}
 </script>
 
 <Top title="Invoices" {sub}>
@@ -54,6 +143,13 @@
 <OfflineBanner asOf={data.as_of} {waiting} />
 
 <div class="pad">
+	{#if stored}
+		<div class="banner crit" role="alert">
+			<Octicon name="alert" />
+			<div class="banner-m"><p class="banner-t why">{stored}</p></div>
+		</div>
+	{/if}
+
 	{#if !field && data.totals && data.totals.overdueCount > 0}
 		<div class="state">
 			<span class="lab crit">
@@ -61,6 +157,76 @@
 				{data.totals.overdueCount === 1 ? 'invoice' : 'invoices'}
 			</span>
 		</div>
+	{/if}
+
+	{#if strayLines.length || strayChanges.length}
+		<section class="box" aria-labelledby="kept-h">
+			<div class="box-h"><h2 class="box-t" id="kept-h">Not added</h2></div>
+			{#each strayLines as q (q.line.client_uuid)}
+				{@const l = q.line.shown}
+				<div class="box-row held">
+					<span class="n">{l.description}</span>
+					<span class="sub">{named(q.line.draft)}</span>
+					<span class="sub">{l.detail} · {money(l.amount)}</span>
+					{#if !q.refused}
+						<span class="labs"><span class="lab acc">Waiting to send</span></span>
+						<p class="said">
+							It goes on {q.line.draft.who}’s next draft when it reaches the server.
+						</p>
+					{:else if q.refused.status === 404}
+						<!-- Its draft is gone: there is no client to put it with. -->
+						<p class="refusal">
+							Refused: {q.refused.detail} It is kept on this phone until it is let go.
+						</p>
+						<div class="acts">
+							<button class="btn sm" onclick={() => letGo(q.line.client_uuid)}>
+								{confirming === q.line.client_uuid ? 'Tap again to discard' : 'Discard'}
+							</button>
+						</div>
+					{:else}
+						<p class="refusal">
+							Refused: {q.refused.detail} Fixed, it goes on {q.line.draft.who}’s next draft.
+						</p>
+						<div class="acts">
+							<a
+								class="btn sm pri"
+								href={resolve(
+									`/invoices/on-phone/add?fix=${encodeURIComponent(q.line.client_uuid)}`
+								)}>Fix</a
+							>
+							<button class="btn sm" onclick={() => letGo(q.line.client_uuid)}>
+								{confirming === q.line.client_uuid ? 'Tap again to discard' : 'Discard'}
+							</button>
+						</div>
+					{/if}
+				</div>
+			{/each}
+			{#each strayChanges as q (q.change.line_id)}
+				{@const gone = q.refused?.conflict}
+				<div class="box-row held">
+					<span class="n">{q.change.shown.description}</span>
+					<span class="sub">{named(q.change.draft)}</span>
+					<span class="sub">{DONE[q.change.act]}</span>
+					{#if gone?.what === 'removed'}
+						<p class="refusal">
+							{gone.by ?? 'Someone'} took it off at {clock(gone.at, personalZone())}. Your change to
+							it waits on this phone. Put back, it goes on {q.change.draft.who}’s next draft.
+						</p>
+						<div class="acts">
+							<button class="btn sm pri" onclick={() => restore(q)}
+								>Put it back, with your change</button
+							>
+							<button class="btn sm" onclick={() => letChangeGo(q)}>Let your change go</button>
+						</div>
+					{:else}
+						<p class="refusal">Refused: {q.refused?.detail}</p>
+						<div class="acts">
+							<button class="btn sm" onclick={() => letChangeGo(q)}>Let your change go</button>
+						</div>
+					{/if}
+				</div>
+			{/each}
+		</section>
 	{/if}
 
 	{#if data.drafts.length || started.length}
@@ -217,5 +383,28 @@
 	}
 	.tot {
 		background: var(--bgColor-muted);
+	}
+	.held {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 4px;
+		overflow-wrap: anywhere;
+	}
+	.refusal,
+	.said {
+		margin: 0;
+	}
+	.refusal {
+		color: var(--fgColor-danger);
+	}
+	.said {
+		color: var(--fgColor-muted);
+	}
+	.acts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-top: 6px;
 	}
 </style>

@@ -46,7 +46,8 @@
 	 * paid on the client's behalf, saved on this phone and sent by the queue
 	 * (#lib/queue). For a draft the server has, and for one started on this
 	 * phone that has not arrived yet: the form is the same, and only where it
-	 * came from differs.
+	 * came from differs. And for a line refused for a draft that has since gone
+	 * out, fixed to go on the client's next draft.
 	 */
 	type Props = {
 		data: {
@@ -58,8 +59,13 @@
 				/** Its number, or null until it arrives. */
 				number: string | null;
 				who: string;
-				/** Where it has gone out, a line added now starts a new draft (#lib/server/lines). */
-				status?: string;
+				/** Its client. */
+				entity_id: string;
+				/**
+				 * Gone out, so the line being fixed for it goes on the client's next
+				 * draft (#lib/server/lines target).
+				 */
+				gone?: boolean;
 			};
 			/**
 			 * Each with its state, and where the business collects there and the
@@ -127,7 +133,11 @@
 	};
 	let { data, back, editing }: Props = $props();
 	const named = $derived(
-		data.draft.number ? `Draft ${data.draft.number}` : `New draft, on this phone`
+		data.draft.gone
+			? (data.draft.number ?? 'A draft started on this phone')
+			: data.draft.number
+				? `Draft ${data.draft.number}`
+				: `New draft, on this phone`
 	);
 
 	// Stock first, where there is any, as the mock has it.
@@ -167,10 +177,10 @@
 	let errors = $state<Record<string, string>>({});
 	let waiting = $state(0);
 
-	// A line the server refused, opened from the draft to be fixed: its fields
-	// as they were, its receipt kept unless another is chosen, and the server's
-	// reason. Saving it queues it again under its own uuid, which clears the
-	// refusal.
+	// A line the server refused, opened from its draft or from Invoices to be
+	// fixed: its fields as they were, its receipt kept unless another is chosen,
+	// and the server's reason. Saving it queues it again under its own uuid,
+	// which clears the refusal.
 	let fixing = $state<QueuedLine | null>(null);
 	// Stock received on this phone and not yet sent is on the shelf here too,
 	// something new on it included (#lib/stock-held).
@@ -476,6 +486,7 @@
 			await enqueueLine({
 				client_uuid: fixing?.line.client_uuid ?? crypto.randomUUID(),
 				invoice_id: data.draft.id,
+				draft: { number: data.draft.number, who: data.draft.who, entity_id: data.draft.entity_id },
 				fields,
 				made_at: new Date().toISOString(),
 				receipt: stock ? null : receipt,
@@ -516,6 +527,7 @@
 			await enqueueChange({
 				line_id: editing!.id,
 				invoice_id: data.draft.id,
+				draft: { number: data.draft.number, who: data.draft.who },
 				act: 'change',
 				version: editing!.version,
 				base: editing!.fields,
@@ -658,7 +670,11 @@
 	title={editing ? 'Change the line' : 'Add a line'}
 	sub={`${named} · ${data.draft.who}`}
 	{back}
-	backLabel={editing ? 'The line' : (data.draft.number ?? 'The draft')}
+	backLabel={editing
+		? 'The line'
+		: data.draft.gone
+			? 'Invoices'
+			: (data.draft.number ?? 'The draft')}
 />
 
 <OfflineBanner asOf={data.as_of} {waiting} />
@@ -669,18 +685,21 @@
 			<Octicon name="alert" />
 			<div class="banner-m">
 				<p class="banner-t why">
-					Refused: {fixing.refused.detail} Fix it and add it again, or discard it from the draft.
+					Refused: {fixing.refused.detail} Fix it and add it again, or discard it from {data.draft
+						.gone
+						? 'Invoices'
+						: 'the draft'}.
 				</p>
 			</div>
 		</div>
 	{/if}
-	{#if data.draft.status && data.draft.status !== 'draft'}
+	{#if data.draft.gone}
 		<div class="banner warn" role="status">
 			<Octicon name="alert" />
 			<div class="banner-m">
 				<p class="banner-t why">
-					{data.draft.number} has gone out, so this line will start a new draft for {data.draft.who}
-					when it reaches the server.
+					{data.draft.number ?? 'The draft it was for'} has gone out, so this goes on {data.draft
+						.who}’s next draft when it reaches the server.
 				</p>
 			</div>
 		</div>

@@ -233,6 +233,7 @@ describe('moving from localStorage', () => {
 const line = (client_uuid: string, extra: Partial<LineEntry> = {}): LineEntry => ({
 	client_uuid,
 	invoice_id: 'd',
+	draft: { number: 'INV-0212', who: 'Marisol Vega', entity_id: 'marisol' },
 	fields: { kind: 'paid_for', description: 'Low-voltage permit', ex_tax_cost: '35.00' },
 	shown: {
 		kind: 'paid_for',
@@ -376,6 +377,7 @@ describe('a change to a line the server has', () => {
 	const change = (extra: Partial<ChangeEntry> = {}): ChangeEntry => ({
 		line_id: 'cable',
 		invoice_id: 'd',
+		draft: { number: 'INV-0212', who: 'Marisol Vega' },
 		act: 'change',
 		version: 2,
 		base: { qty: '147' },
@@ -606,6 +608,7 @@ describe('a trip recorded or changed on the phone', () => {
 		await q.enqueueChange({
 			line_id: 'cable',
 			invoice_id: 'd',
+			draft: { number: 'INV-0212', who: 'Marisol Vega' },
 			act: 'change',
 			version: 2,
 			base: {},
@@ -657,6 +660,7 @@ describe('whose it is', () => {
 	const change = (line_id: string): ChangeEntry => ({
 		line_id,
 		invoice_id: 'd',
+		draft: { number: 'INV-0212', who: 'Marisol Vega' },
 		act: 'change',
 		version: 1,
 		base: { description: 'Low-voltage permit' },

@@ -199,6 +199,7 @@
 			await enqueueChange({
 				line_id: l.id,
 				invoice_id: l.invoice_id,
+				draft: { number: l.number, who: l.who },
 				act: 'remove',
 				version: l.version,
 				base: data.fields,
