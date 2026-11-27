@@ -1200,38 +1200,138 @@ BEGIN
 END $$;
 DELETE FROM site WHERE id = 'c5000000-0000-4000-8000-0000000000fc';
 
--- WHAT WAS HANDED OVER IS RECORDED, NOT DERIVED. Nothing in the invoices can
--- say whether a return was actually paid.
+-- WHAT WAS HANDED OVER IS RECORDED, NOT DERIVED (#203). Nothing in the
+-- invoices can say whether a return was filed, or paid. A return and a payment
+-- are apart, each for one period of a state's, standing as recorded; a return
+-- filed again for its period amends it, and a state's periods do not overlap.
 SELECT must_fail($$
-  INSERT INTO tax_remittance (state, period_start, period_end, amount, created_by)
-  VALUES ('CA','2026-09-30','2026-07-01', 100.00, 'a0a0a0a0-0000-4000-8000-0000000000a1')
-$$, 'a filing period that ends before it starts');
-
-SELECT must_pass($$
-  INSERT INTO tax_remittance (state, period_start, period_end, filed_on, paid_on, amount, created_by)
-  VALUES ('CA','2026-07-01','2026-09-30','2026-10-20','2026-10-20', 4.42,
-          'a0a0a0a0-0000-4000-8000-0000000000a1')
-$$, 'a return filed and paid');
+  INSERT INTO tax_return (state, period_start, period_end, filed_on, tax)
+  VALUES ('CA','2026-09-30','2026-07-01','2026-10-20', 4.42)
+$$, 'a return for a period that ends before it starts');
 
 SELECT must_fail($$
-  INSERT INTO tax_remittance (state, period_start, period_end, amount, created_by)
-  VALUES ('CA','2026-07-01','2026-09-30', 4.42, 'a0a0a0a0-0000-4000-8000-0000000000a1')
-$$, 'a second filing for the same period');
+  INSERT INTO tax_return (state, period_start, period_end, filed_on, tax)
+  VALUES ('CA','2026-07-01','2026-09-30','2026-09-29', 4.42)
+$$, 'a return filed before its period ends');
+
+SELECT must_fail($$
+  INSERT INTO tax_return (state, period_start, period_end, filed_on, tax, kept)
+  VALUES ('CA','2026-07-01','2026-09-30','2026-10-20', 4.42, 4.43)
+$$, 'a return keeping more than its tax');
+
+SELECT must_fail($$
+  INSERT INTO tax_return (period_start, period_end, filed_on, tax)
+  VALUES ('2026-07-01','2026-09-30','2026-10-20', 4.42)
+$$, 'a return filed with no state');
+
+SELECT must_fail($$
+  INSERT INTO tax_return (state, period_start, period_end, filed_on, tax)
+  VALUES ('CA','2026-07-01','2026-09-30','2026-10-20', -1.00)
+$$, 'a return owing a negative amount');
 
 SELECT must_pass($$
-  INSERT INTO tax_remittance (state, period_start, period_end, amount, created_by)
-  VALUES ('NV','2026-07-01','2026-09-30', 1.10, 'a0a0a0a0-0000-4000-8000-0000000000a1')
+  INSERT INTO tax_return (id, state, period_start, period_end, filed_on, tax, reference)
+  VALUES ('f2030000-0000-4000-8000-000000000001','CA','2026-07-01','2026-09-30','2026-10-20', 4.42,
+          '0-123-456-789')
+$$, 'a return filed');
+
+SELECT must_fail($$
+  INSERT INTO tax_return (state, period_start, period_end, filed_on, tax)
+  VALUES ('CA','2026-07-01','2026-09-30','2026-11-02', 5.00)
+$$, 'a second return for the same period, not amending the first');
+
+SELECT must_pass($$
+  INSERT INTO tax_return (id, state, period_start, period_end, filed_on, tax, amends)
+  VALUES ('f2030000-0000-4000-8000-000000000002','CA','2026-07-01','2026-09-30','2026-11-02', 5.00,
+          'f2030000-0000-4000-8000-000000000001')
+$$, 'the period''s amended return');
+
+SELECT must_fail($$
+  INSERT INTO tax_return (state, period_start, period_end, filed_on, tax, amends)
+  VALUES ('CA','2026-07-01','2026-09-30','2026-11-03', 5.10, 'f2030000-0000-4000-8000-000000000001')
+$$, 'a return amended twice');
+
+SELECT must_fail($$
+  INSERT INTO tax_return (state, period_start, period_end, filed_on, tax, amends)
+  VALUES ('CA','2026-10-01','2026-12-31','2027-01-20', 1.00, 'f2030000-0000-4000-8000-000000000002')
+$$, 'an amended return for another period than its return''s');
+
+SELECT must_fail($$
+  INSERT INTO tax_return (state, period_start, period_end, filed_on, tax)
+  VALUES ('CA','2026-09-01','2026-09-30','2026-10-20', 1.00)
+$$, 'a return for a month inside a quarter already filed');
+
+SELECT must_pass($$
+  INSERT INTO tax_return (state, period_start, period_end, filed_on, tax)
+  VALUES ('NV','2026-07-01','2026-09-30','2026-10-20', 1.10)
 $$, 'the same period filed with another state');
 
 SELECT must_fail($$
-  INSERT INTO tax_remittance (period_start, period_end, amount, created_by)
-  VALUES ('2026-10-01','2026-12-31', 4.42, 'a0a0a0a0-0000-4000-8000-0000000000a1')
-$$, 'a filing to no state');
+  UPDATE tax_return SET tax = 4.40 WHERE id = 'f2030000-0000-4000-8000-000000000001'
+$$, 'a return changed once recorded');
 
 SELECT must_fail($$
-  INSERT INTO tax_remittance (state, period_start, period_end, amount, created_by)
-  VALUES ('CA','2026-10-01','2026-12-31', -1.00, 'a0a0a0a0-0000-4000-8000-0000000000a1')
-$$, 'handing over a negative amount');
+  DELETE FROM tax_return WHERE id = 'f2030000-0000-4000-8000-000000000001'
+$$, 'a return taken off while its amended return corrects it');
+
+SELECT must_pass($$
+  INSERT INTO tax_payment (state, period_start, period_end, paid_on, tax, reference)
+  VALUES ('CA','2026-07-01','2026-09-30','2026-10-20', 4.42, '0-123-456-789')
+$$, 'a payment with its return');
+
+SELECT must_pass($$
+  INSERT INTO tax_payment (id, state, period_start, period_end, paid_on, tax)
+  VALUES ('f2030000-0000-4000-8000-000000000011','CA','2026-10-01','2026-12-31','2026-11-24', 300.00)
+$$, 'a prepayment, before its period ends');
+
+SELECT must_fail($$
+  INSERT INTO tax_payment (state, period_start, period_end, paid_on, tax)
+  VALUES ('CA','2026-10-01','2026-10-31','2026-11-24', 100.00)
+$$, 'a payment for a month inside a quarter already paid towards');
+
+SELECT must_fail($$
+  INSERT INTO tax_return (state, period_start, period_end, filed_on, tax)
+  VALUES ('CA','2026-11-01','2026-11-30','2026-12-20', 1.00)
+$$, 'a return for a month inside a quarter already paid towards');
+
+SELECT must_fail($$
+  INSERT INTO tax_payment (state, period_start, period_end, paid_on, tax, penalty_and_interest)
+  VALUES ('CA','2026-07-01','2026-09-30','2026-11-02', 0, 0)
+$$, 'a payment of nothing');
+
+SELECT must_pass($$
+  INSERT INTO tax_payment (state, period_start, period_end, paid_on, tax, penalty_and_interest)
+  VALUES ('CA','2026-07-01','2026-09-30','2026-11-02', 0.58, 0.07)
+$$, 'the rest of an amended return''s tax, with its penalty and interest');
+
+SELECT must_fail($$
+  INSERT INTO tax_payment (state, period_start, period_end, paid_on, tax, penalty_and_interest)
+  VALUES ('CA','2026-07-01','2026-09-30','2026-11-02', -0.58, 1.00)
+$$, 'tax handed back as a payment');
+
+SELECT must_fail($$
+  UPDATE tax_payment SET tax = 299.00 WHERE id = 'f2030000-0000-4000-8000-000000000011'
+$$, 'a payment changed once recorded');
+
+-- Taken off by mistake, each goes against whoever took it off, and its history
+-- keeps what it was.
+DO $$
+BEGIN
+  PERFORM set_config('reckon.user_id', 'a0a0a0a0-0000-4000-8000-0000000000a1', true);
+  DELETE FROM tax_payment WHERE id = 'f2030000-0000-4000-8000-000000000011';
+  DELETE FROM tax_return WHERE id = 'f2030000-0000-4000-8000-000000000002';
+  IF (SELECT count(*) FROM record_history
+       WHERE row_id IN ('f2030000-0000-4000-8000-000000000011', 'f2030000-0000-4000-8000-000000000002')
+         AND field = '(deleted)' AND changed_by = 'a0a0a0a0-0000-4000-8000-0000000000a1'
+         AND old_value IS NOT NULL) <> 2 THEN
+    RAISE EXCEPTION 'GUARD MISSING: a return or payment taken off left no history';
+  END IF;
+  PERFORM set_config('reckon.user_id', '', true);
+  RAISE NOTICE '  recorded  a return and a payment taken off, against whoever did it';
+END $$;
+DELETE FROM tax_payment;
+DELETE FROM tax_return WHERE amends IS NOT NULL;
+DELETE FROM tax_return;
 
 -- A CLIENT AND A SITE ARE NAMEABLE IN A URL, and the name is set once rather
 -- than following the record. Renaming must not move a link somebody kept.

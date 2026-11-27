@@ -188,7 +188,7 @@
 				<span class="fig"><span class="v">{money(data.totals?.owed)}</span></span>
 			</a>
 			{@render runningRow()}
-			<a class="box-row line" href={resolve('/reports/schedule-a')}>
+			<a class="box-row line" href={resolve('/reports/sales-tax')}>
 				<span class="what">
 					<span class="n">Sales tax held</span>
 					<span class="sub">Collected, not yet handed over</span>

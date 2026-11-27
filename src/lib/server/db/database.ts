@@ -671,6 +671,18 @@ export interface TaxExemption {
   supported_by: string;
 }
 
+export interface TaxPayment {
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  paid_on: string;
+  penalty_and_interest: Generated<NumericColumn>;
+  period_end: string;
+  period_start: string;
+  reference: string | null;
+  state: string;
+  tax: NumericColumn;
+}
+
 export interface TaxPiece {
   area_id: string;
   code: string | null;
@@ -693,18 +705,17 @@ export interface TaxRegistration {
   state: string;
 }
 
-export interface TaxRemittance {
-  amount: NumericColumn;
+export interface TaxReturn {
+  amends: string | null;
   created_at: Generated<Timestamp>;
-  created_by: string;
-  filed_on: string | null;
+  filed_on: string;
   id: Generated<string>;
-  note: string | null;
-  paid_on: string | null;
+  kept: Generated<NumericColumn>;
   period_end: string;
   period_start: string;
   reference: string | null;
   state: string;
+  tax: NumericColumn;
 }
 
 export interface TimeEntry {
@@ -868,9 +879,10 @@ export interface DB {
   stock_take: StockTake;
   tax_area: TaxArea;
   tax_exemption: TaxExemption;
+  tax_payment: TaxPayment;
   tax_piece: TaxPiece;
   tax_registration: TaxRegistration;
-  tax_remittance: TaxRemittance;
+  tax_return: TaxReturn;
   taxability: Taxability;
   time_entry: TimeEntry;
   time_entry_crew: TimeEntryCrew;

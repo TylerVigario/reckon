@@ -1,6 +1,6 @@
 {
  "counted": {
-  "tables": "62",
+  "tables": "63",
   "clusters": "ten",
   "files": "11"
  },
@@ -329,66 +329,6 @@
      ]
     },
     {
-     "name": "tax_remittance",
-     "rows": [
-      [
-       "PK",
-       "id",
-       "uuid"
-      ],
-      [
-       "",
-       "state",
-       "text · to whom"
-      ],
-      [
-       "",
-       "period_start",
-       "date"
-      ],
-      [
-       "",
-       "period_end",
-       "date"
-      ],
-      [
-       "",
-       "filed_on",
-       "date"
-      ],
-      [
-       "",
-       "paid_on",
-       "date"
-      ],
-      [
-       "",
-       "amount",
-       "numeric"
-      ],
-      [
-       "",
-       "reference",
-       "text"
-      ],
-      [
-       "FK",
-       "created_by",
-       "uuid"
-      ],
-      [
-       "",
-       "note",
-       "text"
-      ],
-      [
-       "",
-       "created_at",
-       "timestamptz"
-      ]
-     ]
-    },
-    {
      "name": "tax_area",
      "rows": [
       [
@@ -490,7 +430,7 @@
     }
    ],
    "notes": [
-    "One building can host two businesses and one person can act for several clients, so both joins are many-to-many.  A rate belongs to a place, not to a site: a tax_area is one place with one combination of jurisdictions, named as its authority names it -- CDTFA’s area and TAC -- never by a postal city, and its rate is its pieces, who levies what, federal, state and local, in dated sets, the newest on or before a day in force then. A site is in a state, region, and in an area of it only where the business collects there; in California, the area CDTFA’s API placed its address in, on the day it was asked. Nothing in the application can author CDTFA’s rate. Where no authority answers for an address, a person types the state’s areas from its own table, typed_by, and confirms them each quarter, confirmed_by; a site there is placed by a person choosing its area. A typed piece can fall on one kind of sale alone, sale_kind_id, whether or not the state taxes that kind; every other piece falls on every kind its state taxes. site_placement keeps every time a site was placed, and an area every rate it has had, so a rate that moved can be explained against the invoices billed at the old one. A second copy of a published rate goes stale without telling anyone, and is then charged at addresses it was never true for.  A site’s address is chosen from Google’s suggestions, never typed: street, city, region and postcode are Google’s parts for the place chosen, stored with google_place_id once Google confirms it, and moved only together. A suite or unit is in the label. The google_ figures are Google’s route there and back from the business, measured whenever the place is chosen and whenever the business moves; the typed_ ones are typed over them where somebody knows better, and kept beside them so Google’s stays in view. round_trip_miles and drive_minutes are generated: the typed figure, or Google’s where none is. A site that moves where Google cannot say keeps neither, and what was typed goes with the move.  CDTFA’s published rate layer carries StateRate, CountyRate and CityRate beside the total, keyed by the same TAC the rate API returns — StateRate is one value for every jurisdiction in the state, so the statewide rate is read rather than assumed, and State+County+City = RATE on every record. That split is what lets tax collected post to the right obligation: it is not income, it is somebody else’s money held briefly. tax_remittance records what was actually handed over, because no invoice knows that. County and city fold into one district share, because CDTFA-105 is a list of districts and names no other kind.  Every site is in an area from the API, so the address and the area are NOT NULL together: the lookup takes street, city and postcode or answers nothing, and a place with no rate cannot be billed from — so it is not a site. Creating one is a lookup, not a form that can be half-filled.  A contact is named per client and per site, and a person is shared: one contact acts for several clients, which is why contact has no owner. What is per client is entity_contact, and what is per site is site_contact — several people at a site, one of them answering first, and a site naming nobody falling back to the client’s primary. site_contact carries the client so two foreign keys can agree: the site is that client’s and the person is that client’s contact.  A site belongs to exactly one client; two clients at one address are two sites.  A client is exempt in a state, under its law: tax_exemption is one certificate's claim there, for a reason from the Streamlined certificate's list, with what supports it -- its number, or for the United States its purchase orders -- and the kinds of sale it covers, or every kind. It stands as recorded until it ends, and a line it untaxed names it, so the invoice keeps why it carried no tax."
+    "One building can host two businesses and one person can act for several clients, so both joins are many-to-many.  A rate belongs to a place, not to a site: a tax_area is one place with one combination of jurisdictions, named as its authority names it -- CDTFA’s area and TAC -- never by a postal city, and its rate is its pieces, who levies what, federal, state and local, in dated sets, the newest on or before a day in force then. A site is in a state, region, and in an area of it only where the business collects there; in California, the area CDTFA’s API placed its address in, on the day it was asked. Nothing in the application can author CDTFA’s rate. Where no authority answers for an address, a person types the state’s areas from its own table, typed_by, and confirms them each quarter, confirmed_by; a site there is placed by a person choosing its area. A typed piece can fall on one kind of sale alone, sale_kind_id, whether or not the state taxes that kind; every other piece falls on every kind its state taxes. site_placement keeps every time a site was placed, and an area every rate it has had, so a rate that moved can be explained against the invoices billed at the old one. A second copy of a published rate goes stale without telling anyone, and is then charged at addresses it was never true for.  A site’s address is chosen from Google’s suggestions, never typed: street, city, region and postcode are Google’s parts for the place chosen, stored with google_place_id once Google confirms it, and moved only together. A suite or unit is in the label. The google_ figures are Google’s route there and back from the business, measured whenever the place is chosen and whenever the business moves; the typed_ ones are typed over them where somebody knows better, and kept beside them so Google’s stays in view. round_trip_miles and drive_minutes are generated: the typed figure, or Google’s where none is. A site that moves where Google cannot say keeps neither, and what was typed goes with the move.  CDTFA’s published rate layer carries StateRate, CountyRate and CityRate beside the total, keyed by the same TAC the rate API returns — StateRate is one value for every jurisdiction in the state, so the statewide rate is read rather than assumed, and State+County+City = RATE on every record. That split is what lets tax collected post to the right obligation: it is not income, it is somebody else’s money held briefly. tax_return and tax_payment record what was actually filed and handed over, because no invoice knows that. County and city fold into one district share, because CDTFA-105 is a list of districts and names no other kind.  Every site is in an area from the API, so the address and the area are NOT NULL together: the lookup takes street, city and postcode or answers nothing, and a place with no rate cannot be billed from — so it is not a site. Creating one is a lookup, not a form that can be half-filled.  A contact is named per client and per site, and a person is shared: one contact acts for several clients, which is why contact has no owner. What is per client is entity_contact, and what is per site is site_contact — several people at a site, one of them answering first, and a site naming nobody falling back to the client’s primary. site_contact carries the client so two foreign keys can agree: the site is that client’s and the person is that client’s contact.  A site belongs to exactly one client; two clients at one address are two sites.  A client is exempt in a state, under its law: tax_exemption is one certificate's claim there, for a reason from the Streamlined certificate's list, with what supports it -- its number, or for the United States its purchase orders -- and the kinds of sale it covers, or every kind. It stands as recorded until it ends, and a line it untaxed names it, so the invoice keeps why it carried no tax."
    ]
   },
   {
@@ -3079,10 +3019,115 @@
        "timestamptz"
       ]
      ]
+    },
+    {
+     "name": "tax_return",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "",
+       "state",
+       "text · filed with"
+      ],
+      [
+       "",
+       "period_start",
+       "date"
+      ],
+      [
+       "",
+       "period_end",
+       "date"
+      ],
+      [
+       "",
+       "filed_on",
+       "date"
+      ],
+      [
+       "",
+       "tax",
+       "numeric · what the period owes"
+      ],
+      [
+       "",
+       "kept",
+       "numeric · for filing on time"
+      ],
+      [
+       "",
+       "reference",
+       "text · its confirmation"
+      ],
+      [
+       "FK",
+       "amends",
+       "uuid · the return it corrects"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ]
+     ]
+    },
+    {
+     "name": "tax_payment",
+     "rows": [
+      [
+       "PK",
+       "id",
+       "uuid"
+      ],
+      [
+       "",
+       "state",
+       "text · paid to"
+      ],
+      [
+       "",
+       "period_start",
+       "date"
+      ],
+      [
+       "",
+       "period_end",
+       "date"
+      ],
+      [
+       "",
+       "paid_on",
+       "date"
+      ],
+      [
+       "",
+       "tax",
+       "numeric · handed over"
+      ],
+      [
+       "",
+       "penalty_and_interest",
+       "numeric · not tax"
+      ],
+      [
+       "",
+       "reference",
+       "text · its confirmation"
+      ],
+      [
+       "",
+       "created_at",
+       "timestamptz"
+      ]
+     ]
     }
    ],
    "notes": [
-    "Everything that identifies the business is the operator's to supply: logo is nullable and the interface renders trading_name in its place.  It collects tax in each state it is registered in, tax_registration: what it holds there and from whom, and how often it files. Collecting nowhere is having none. Its fiscal year is its own, not a state's.  An included-hours figure is a client's, on their agreement, and what is paid to whoever answers is a dated pay_rule.  record_history is append-only and exists to explain a figure, not to police one. An invoice line is followed from its birth: what it was when added, each field changed, and what it was when taken off. A receipt is described rather than copied while its row holds it, and kept whole once the history is the only place it is: replaced, or taken off with its line. made_at is when a change was made on a phone, beside changed_at, when it arrived, and xact is the save it was in, so a change is read with what went with it.  Which migrations a database has seen is Kysely's record, in kysely.kysely_migration, so bringing it up to date again applies only what is new."
+    "Everything that identifies the business is the operator's to supply: logo is nullable and the interface renders trading_name in its place.  It collects tax in each state it is registered in, tax_registration: what it holds there and from whom, and how often it files. Collecting nowhere is having none. Its fiscal year is its own, not a state's.  What it files and pays are apart, as the agencies keep them: a tax_return for one period of a state's, saying what the period owes and what was kept for filing on time, and a tax_payment for one period, with the return, after it, or before it as a prepayment, its penalty and interest apart from the tax. A return filed again amends the one before. A state's periods are each one period: two that overlap are the same. Neither names the registration, so a state no longer collected in keeps what was filed there.  An included-hours figure is a client's, on their agreement, and what is paid to whoever answers is a dated pay_rule.  record_history is append-only and exists to explain a figure, not to police one. An invoice line is followed from its birth: what it was when added, each field changed, and what it was when taken off. A receipt is described rather than copied while its row holds it, and kept whole once the history is the only place it is: replaced, or taken off with its line. made_at is when a change was made on a phone, beside changed_at, when it arrived, and xact is the save it was in, so a change is read with what went with it.  Which migrations a database has seen is Kysely's record, in kysely.kysely_migration, so bringing it up to date again applies only what is new."
    ]
   }
  ]

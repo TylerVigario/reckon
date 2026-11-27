@@ -60,13 +60,14 @@ export const clientOpens = (slug: string, access: Access | null | undefined) =>
 
 /**
  * The reports, by how often each is wanted: pay every pay period, the
- * retainers and the time given away every month, Schedule A once a year --
- * where there is one, the business collecting tax in California. No counts:
- * four labels and a count fill a phone.
+ * retainers and the time given away every month, and sales tax as each return
+ * is filed -- where there is a state with tax to say anything of. Schedule A,
+ * California's return by district, is a page of Sales tax's. No counts: four
+ * labels and a count fill a phone.
  */
 export const reportTabs = (
-	here: 'pay' | 'retainers' | 'non-billable' | 'schedule-a',
-	scheduleA: boolean
+	here: 'pay' | 'retainers' | 'non-billable' | 'sales-tax',
+	has: { salesTax: boolean }
 ): Tab[] => [
 	{ href: resolve('/reports/pay'), label: 'Pay', current: here === 'pay' },
 	{ href: resolve('/reports/retainers'), label: 'Retainers', current: here === 'retainers' },
@@ -75,12 +76,12 @@ export const reportTabs = (
 		label: 'Non-billable',
 		current: here === 'non-billable'
 	},
-	...(scheduleA
+	...(has.salesTax
 		? [
 				{
-					href: resolve('/reports/schedule-a'),
-					label: 'Schedule A',
-					current: here === 'schedule-a'
+					href: resolve('/reports/sales-tax'),
+					label: 'Sales tax',
+					current: here === 'sales-tax'
 				}
 			]
 		: [])
