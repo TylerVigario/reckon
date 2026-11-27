@@ -40,7 +40,7 @@ export function preconditionOf(event: RequestEvent): Precondition {
 	if (header.startsWith('W/')) {
 		return {
 			ok: false,
-			response: problem('malformed', 400, 'If-Match needs a strong validator.')
+			response: problem('malformed', 'If-Match needs a strong validator.')
 		};
 	}
 	if (header.trim() === '*') return { ok: true, version: null };
@@ -49,7 +49,7 @@ export function preconditionOf(event: RequestEvent): Precondition {
 	if (!/^\d+$/.test(version)) {
 		return {
 			ok: false,
-			response: problem('malformed', 400, 'If-Match is not a version this issued.')
+			response: problem('malformed', 'If-Match is not a version this issued.')
 		};
 	}
 	return { ok: true, version };
@@ -61,8 +61,7 @@ export function preconditionOf(event: RequestEvent): Precondition {
  */
 export const staleRead = (what: string, instance?: string) =>
 	problem(
-		'conflict',
-		412,
+		'savedSinceRead',
 		`Somebody saved ${what} since this screen read it. Save puts yours over theirs; Cancel keeps theirs.`,
 		{ instance }
 	);

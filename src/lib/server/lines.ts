@@ -216,16 +216,15 @@ const GONE: Record<string, [field: string, why: string]> = {
  */
 export function answer(r: Added) {
 	if (r.ok) return Response.json({ id: r.id }, { status: 200 });
-	if (r.status === 404) return problem('notFound', 404, r.detail);
-	if (r.status === 403) return problem('notYours', 403, r.detail);
+	if (r.status === 404) return problem('notFound', r.detail);
+	if (r.status === 403) return problem('notYours', r.detail);
+	// One that ran into a change made meanwhile says what it ran into; one whose
+	// draft has gone out is refused as things stand.
 	if (r.status === 409)
-		return problem(
-			'conflict',
-			409,
-			r.detail,
-			r.conflict ? { members: { conflict: r.conflict } } : {}
-		);
-	return problem('invalidField', 400, r.detail, { errors: r.errors });
+		return r.conflict
+			? problem('changedMeanwhile', r.detail, { members: { conflict: r.conflict } })
+			: problem('notAsThingsStand', r.detail);
+	return problem('invalidField', r.detail, { errors: r.errors });
 }
 
 /** A line's fields, read so they can be put as Add a line puts them (formFieldsOf). */

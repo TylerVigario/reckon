@@ -26,11 +26,11 @@ import { problem } from '#lib/server/problem.ts';
  * first, whose invitation is sent again instead (../invitation).
  */
 export const POST: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No person with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No person with that id.');
 	const me = locals.user!;
 	if (params.id === me.id) return refuse({ link: 'Your own passkeys are on Your profile.' });
 	const missing = cannotSend();
-	if (missing) return problem('emailUnset', 409, unsentBecause(missing));
+	if (missing) return problem('emailUnset', unsentBecause(missing));
 	const lost = (await readBody(request))?.lost;
 	if (typeof lost !== 'boolean')
 		return refuse({ lost: 'Say whether a phone or computer of theirs is lost or stolen.' });
@@ -42,7 +42,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			.where('id', '=', params.id)
 			.forUpdate()
 			.executeTakeFirst();
-		if (!person) return problem('notFound', 404, 'No person with that id.');
+		if (!person) return problem('notFound', 'No person with that id.');
 		if (!person.active) return refuse({ link: 'They’re deactivated. Reactivate them first.' });
 		const keyed = await tx
 			.selectFrom('passkey')

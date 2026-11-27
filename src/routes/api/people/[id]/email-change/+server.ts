@@ -16,10 +16,10 @@ import { problem } from '#lib/server/problem.ts';
  * was told when the change was asked for, and is not told again.
  */
 export const POST: RequestHandler = async ({ params, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No person with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No person with that id.');
 	const me = locals.user!;
 	const missing = cannotSend();
-	if (missing) return problem('emailUnset', 409, unsentBecause(missing));
+	if (missing) return problem('emailUnset', unsentBecause(missing));
 
 	return asUser(me.id, async (tx) => {
 		const person = await tx
@@ -28,7 +28,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 			.where('id', '=', params.id)
 			.forUpdate()
 			.executeTakeFirst();
-		if (!person) return problem('notFound', 404, 'No person with that id.');
+		if (!person) return problem('notFound', 'No person with that id.');
 		const waiting = await tx
 			.selectFrom('email_link')
 			.select('sent_to')
@@ -38,7 +38,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 			.orderBy('created_at', 'desc')
 			.limit(1)
 			.executeTakeFirst();
-		if (!waiting) return problem('notFound', 404, 'They have no change of email waiting.');
+		if (!waiting) return problem('notFound', 'They have no change of email waiting.');
 		if (!person.active) return refuse({ change: 'They’re deactivated. Reactivate them first.' });
 		const taken = await tx
 			.selectFrom('user')
@@ -64,8 +64,8 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 
 /** DELETE cancels it: they keep the address they have, and its link stops working. */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No person with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No person with that id.');
 	const ended = await asUser(locals.user!.id, (tx) => endChange(tx, params.id));
-	if (!ended) return problem('notFound', 404, 'They have no change of email waiting.');
+	if (!ended) return problem('notFound', 'They have no change of email waiting.');
 	return new Response(null, { status: 204 });
 };

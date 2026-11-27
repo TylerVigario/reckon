@@ -34,9 +34,9 @@ import type { RequestHandler } from './$types';
  */
 export const POST: RequestHandler = async ({ params, locals }) => {
 	const client = await lookUpClient(params.id);
-	if (!client) return problem('notFound', 404, 'No client by that name or id.');
+	if (!client) return problem('notFound', 'No client by that name or id.');
 	const found = await lookUpSite(client.id, params.site);
-	if (!found) return problem('notFound', 404, 'That client has no such site.');
+	if (!found) return problem('notFound', 'That client has no such site.');
 
 	const was = await db
 		.selectFrom('site')
@@ -56,8 +56,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 		.executeTakeFirstOrThrow();
 	if (!(await asksCdtfa(db, was.region)))
 		return problem(
-			'conflict',
-			409,
+			'notAsThingsStand',
 			was.region === 'CA'
 				? 'The business does not collect tax in California, so CDTFA is not asked.'
 				: 'CDTFA answers for California, and this site is not there.'
@@ -67,11 +66,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 	try {
 		answer = await priceAddress(was, businessToday());
 	} catch (e) {
-		return problem(
-			'upstream',
-			502,
-			e instanceof NoAnswer ? e.message : 'CDTFA could not be reached.'
-		);
+		return problem('upstream', e instanceof NoAnswer ? e.message : 'CDTFA could not be reached.');
 	}
 	const changed = was.rate === null || !Decimal.from(answer.rate).eq(was.rate);
 	const today = businessToday();
@@ -99,8 +94,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 	});
 	if (!saved)
 		return problem(
-			'conflict',
-			409,
+			'changedMeanwhile',
 			'The site moved while CDTFA was being asked, so the answer was not kept. Ask again.'
 		);
 
@@ -123,11 +117,11 @@ export const POST: RequestHandler = async ({ params, locals }) => {
  */
 export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	const client = await lookUpClient(params.id);
-	if (!client) return problem('notFound', 404, 'No client by that name or id.');
+	if (!client) return problem('notFound', 'No client by that name or id.');
 	const found = await lookUpSite(client.id, params.site);
-	if (!found) return problem('notFound', 404, 'That client has no such site.');
+	if (!found) return problem('notFound', 'That client has no such site.');
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { area } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { area } }.');
 
 	const site = await db
 		.selectFrom('site')
@@ -136,8 +130,7 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 		.executeTakeFirstOrThrow();
 	if (!(await typesAreasIn(db, site.region)))
 		return problem(
-			'conflict',
-			409,
+			'notAsThingsStand',
 			site.region === 'CA'
 				? 'CDTFA says which area a California site is in.'
 				: `The business does not collect tax in ${stateName(site.region)}, so its sites are in no area.`
@@ -164,7 +157,7 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 		return row;
 	});
 	if (!saved)
-		return problem('conflict', 409, 'The site moved to another state meanwhile. Choose again.');
+		return problem('changedMeanwhile', 'The site moved to another state meanwhile. Choose again.');
 	return Response.json({
 		area: area.id,
 		name: area.name,

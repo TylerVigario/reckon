@@ -23,7 +23,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	try {
 		form = await request.formData();
 	} catch {
-		return problem('malformed', 400, 'Expected form data.');
+		return problem('malformed', 'Expected form data.');
 	}
 	const text = (k: string) => {
 		const v = form.get(k);

@@ -18,14 +18,14 @@ import { readFields } from '#lib/json.ts';
 const MOST_AT_ONCE = 4;
 
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No agreement with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No agreement with that id.');
 
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
 	const names = Object.keys(fields);
-	if (names.length === 0) return problem('malformed', 400, 'No fields given.');
+	if (names.length === 0) return problem('malformed', 'No fields given.');
 	if (names.length > MOST_AT_ONCE)
-		return problem('malformed', 400, `At most ${MOST_AT_ONCE} fields at once.`);
+		return problem('malformed', `At most ${MOST_AT_ONCE} fields at once.`);
 
 	const row: Record<string, string | number | boolean | null> = {};
 	const errors: Record<string, string> = {};
@@ -46,7 +46,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		.select(['entity_id', 'starts_on', 'ends_on'])
 		.where('id', '=', params.id)
 		.executeTakeFirst();
-	if (!agreement) return problem('notFound', 404, 'No agreement with that id.');
+	if (!agreement) return problem('notFound', 'No agreement with that id.');
 
 	// Said in words before the schema says it in a constraint name.
 	const starts = 'starts_on' in row ? String(row.starts_on) : agreement.starts_on;
@@ -97,17 +97,16 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
  * end it instead: what it charged stays charged under it.
  */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No agreement with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No agreement with that id.');
 	try {
 		const gone = await asUser(locals.user!.id, (tx) =>
 			tx.deleteFrom('agreement').where('id', '=', params.id).returning('id').execute()
 		);
-		if (gone.length === 0) return problem('notFound', 404, 'No agreement with that id.');
+		if (gone.length === 0) return problem('notFound', 'No agreement with that id.');
 	} catch (e) {
 		if (stillReferenced(e))
 			return problem(
-				'conflict',
-				409,
+				'notAsThingsStand',
 				'A period has been charged under this agreement. End it instead: what it charged stays charged under it.'
 			);
 		throw e;

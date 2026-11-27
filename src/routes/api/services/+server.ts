@@ -43,7 +43,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const body = await readBody(request);
 	const fields = body?.fields;
 	if (!fields || typeof fields !== 'object' || Array.isArray(fields))
-		return problem('malformed', 400, 'Expected { fields: { name: value }, client_uuid }.');
+		return problem('malformed', 'Expected { fields: { name: value }, client_uuid }.');
 	const clientUuid = typeof body.client_uuid === 'string' ? body.client_uuid : '';
 	if (!UUID.test(clientUuid)) return refuse({ client_uuid: 'The uuid it was added with.' });
 	const had = await madeWith(clientUuid);

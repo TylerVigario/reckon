@@ -21,7 +21,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		taxed?: unknown;
 	} | null;
 	if (!body?.fields || typeof body.fields !== 'object')
-		return problem('malformed', 400, 'Expected { fields: { name }, taxed: { [state]: true } }.');
+		return problem('malformed', 'Expected { fields: { name }, taxed: { [state]: true } }.');
 
 	const { values, errors } = parseAll({ name: KIND_FIELDS.name }, body.fields);
 	const states = await collecting(db);

@@ -16,13 +16,12 @@ type Field = keyof typeof CONTACT_FIELDS;
  * every client and site they act for has, and the one their invoices go to.
  */
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No contact with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No contact with that id.');
 	const fields = await readFields(request);
 	const names = fields ? Object.keys(fields) : [];
 	if (!fields || names.length !== 1 || !(names[0] in CONTACT_FIELDS))
 		return problem(
 			'malformed',
-			400,
 			`Expected { fields: { one of ${Object.keys(CONTACT_FIELDS).join(', ')}: value } }.`
 		);
 	const name = names[0] as Field;
@@ -40,7 +39,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 				.returning('id')
 				.executeTakeFirst()
 		);
-		if (!changed) return problem('notFound', 404, 'No contact with that id.');
+		if (!changed) return problem('notFound', 'No contact with that id.');
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, [name], 'contact');
 		if (refused) return refused;

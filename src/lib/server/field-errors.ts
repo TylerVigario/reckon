@@ -20,8 +20,14 @@ export type Errors = Record<string, string>;
  * caller that knows nothing about this app still gets a type, a title and a
  * status it can act on.
  */
-export const refuse = (errors: Errors, status = 400) =>
-	problem('invalidField', status, only(errors), { errors });
+export const refuse = (errors: Errors) => problem('invalidField', only(errors), { errors });
+
+/**
+ * A refusal of what the boxes say as things stand, keyed to them all the same:
+ * the values are right, but what is there now refuses them.
+ */
+export const refuseAsThingsStand = (errors: Errors) =>
+	problem('notAsThingsStand', only(errors), { errors });
 
 /** The one message, when there is only one -- so `detail` is not empty. */
 const only = (errors: Errors) => {

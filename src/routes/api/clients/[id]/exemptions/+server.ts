@@ -14,7 +14,7 @@ import type { RequestHandler } from './$types';
  */
 export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const found = await lookUpClient(params.id);
-	if (!found) return problem('notFound', 404, 'No client by that name or id.');
+	if (!found) return problem('notFound', 'No client by that name or id.');
 	const body = (await readJson(request).catch(() => null)) as {
 		fields?: Record<string, unknown>;
 		kinds?: unknown;
@@ -22,7 +22,6 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	if (!body?.fields || typeof body.fields !== 'object' || !('kinds' in body))
 		return problem(
 			'malformed',
-			400,
 			'Expected { fields: { state, reason, explanation, supported_by }, kinds: null or [...] }.'
 		);
 	const { value, errors } = parseExemption(body.fields, body.kinds);

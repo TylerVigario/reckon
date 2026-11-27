@@ -9,7 +9,7 @@ import { readFields } from '#lib/json.ts';
 /** Adds a vehicle: what it is called, and whose it is -- a person, or the business. */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
 	const { values, errors } = parseAll(VEHICLE_FIELDS, fields);
 	if (Object.keys(errors).length > 0) return refuse(errors);
 	try {

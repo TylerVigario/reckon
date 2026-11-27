@@ -19,11 +19,11 @@ const NOT_FOUND = 'No such area of that state is typed here.';
 
 export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	const area = await findTypedArea(db, params.state, params.area);
-	if (!area) return problem('notFound', 404, NOT_FOUND);
+	if (!area) return problem('notFound', NOT_FOUND);
 	const from = parseFrom(params.from);
 	if (!from.ok) return refuse({ from: from.why });
 	const body = (await readJson(request).catch(() => null)) as { pieces?: unknown } | null;
-	if (!body) return problem('malformed', 400, 'Expected { pieces: [...] }.');
+	if (!body) return problem('malformed', 'Expected { pieces: [...] }.');
 	const rate = parsePieces(body.pieces, params.state as State);
 	if (Object.keys(rate.errors).length) return refuse(rate.errors);
 
@@ -40,17 +40,17 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 
 export const DELETE: RequestHandler = async ({ params, locals }) => {
 	const area = await findTypedArea(db, params.state, params.area);
-	if (!area) return problem('notFound', 404, NOT_FOUND);
+	if (!area) return problem('notFound', NOT_FOUND);
 	const from = parseFrom(params.from);
-	if (!from.ok) return problem('notFound', 404, 'No rate from that day.');
+	if (!from.ok) return problem('notFound', 'No rate from that day.');
 	try {
 		const gone = await asUser(locals.user!.id, (tx) =>
 			removeRate(tx, area.id, params.from, businessToday())
 		);
-		if (!gone) return problem('notFound', 404, 'No rate from that day.');
+		if (!gone) return problem('notFound', 'No rate from that day.');
 		return new Response(null, { status: 204 });
 	} catch (e) {
-		if (e instanceof Refused) return problem('conflict', 409, e.message);
+		if (e instanceof Refused) return problem('notAsThingsStand', e.message);
 		throw e;
 	}
 };

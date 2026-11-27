@@ -23,7 +23,7 @@ import type { RequestHandler } from './$types';
  * trip they drove and recorded, and it stays theirs (#lib/access).
  */
 export const PUT: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No trip with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No trip with that id.');
 	const read = readTrip(await readBody(request));
 	if (!read.ok) return refuse(read.errors);
 	const trip = read.trip;
@@ -53,10 +53,10 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 			await writeStops(tx, params.id, trip, worked.legs, worked.serviceId);
 			return 'changed' as const;
 		});
-		if (outcome === 'gone') return problem('notFound', 404, 'No trip with that id.');
+		if (outcome === 'gone') return problem('notFound', 'No trip with that id.');
 		if (outcome === 'notYours')
-			return problem('notYours', 403, 'Whoever recorded it, or someone with Full, changes it.');
-		if (outcome !== 'changed') return problem('conflict', 409, SETTLED[outcome]);
+			return problem('notYours', 'Whoever recorded it, or someone with Full, changes it.');
+		if (outcome !== 'changed') return problem('notAsThingsStand', SETTLED[outcome]);
 		return Response.json({ id: params.id });
 	} catch (err) {
 		const refused = refuseTrip(err);
@@ -71,7 +71,7 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
  * Someone with Field removes only a trip they recorded.
  */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No trip with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No trip with that id.');
 	if (fieldOnly(locals)) {
 		const had = await db
 			.selectFrom('trip')
@@ -79,20 +79,20 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 			.where('id', '=', params.id)
 			.executeTakeFirst();
 		if (!had || had.drivenBy !== locals.user!.id)
-			return problem('notFound', 404, 'No trip with that id.');
+			return problem('notFound', 'No trip with that id.');
 		if (had.createdBy !== locals.user!.id)
-			return problem('notYours', 403, 'Whoever recorded it, or someone with Full, removes it.');
+			return problem('notYours', 'Whoever recorded it, or someone with Full, removes it.');
 	}
 	const done = await settled(db, params.id);
-	if (done) return problem('conflict', 409, SETTLED[done]);
+	if (done) return problem('notAsThingsStand', SETTLED[done]);
 	try {
 		const gone = await asUser(locals.user!.id, (tx) =>
 			tx.deleteFrom('trip').where('id', '=', params.id).returning('id').execute()
 		);
-		if (gone.length === 0) return problem('notFound', 404, 'No trip with that id.');
+		if (gone.length === 0) return problem('notFound', 'No trip with that id.');
 	} catch (e) {
 		// Settled between the question and the delete.
-		if (stillReferenced(e)) return problem('conflict', 409, SETTLED.billed);
+		if (stillReferenced(e)) return problem('notAsThingsStand', SETTLED.billed);
 		throw e;
 	}
 	return Response.json({ removed: params.id });

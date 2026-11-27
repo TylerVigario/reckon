@@ -63,7 +63,7 @@ export const GONE: Record<string, [field: string, why: string]> = {
 
 /** A refusal naming its field. */
 const refuse = (field: string, why: string) =>
-	problem('invalidField', 400, `${field}: ${why}`, { errors: { [field]: why } });
+	problem('invalidField', `${field}: ${why}`, { errors: { [field]: why } });
 
 /**
  * Reads a time entry from `body`, for the person signed in: the entry, or the

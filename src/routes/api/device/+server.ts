@@ -19,7 +19,6 @@ export const PATCH: RequestHandler = async ({ request, cookies }) => {
 	if (!fields || names.length !== 1 || !(names[0] in DEVICE_FIELDS))
 		return problem(
 			'malformed',
-			400,
 			`Expected { fields: { one of ${Object.keys(DEVICE_FIELDS).join(', ')}: value } }.`
 		);
 

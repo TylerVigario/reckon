@@ -28,7 +28,7 @@ const collectable = (s: string): s is State => (COLLECTABLE as readonly string[]
 
 export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	if (!collectable(params.state))
-		return problem('notFound', 404, `Tax cannot be collected in ${stateName(params.state)} here.`);
+		return problem('notFound', `Tax cannot be collected in ${stateName(params.state)} here.`);
 	const body = (await readJson(request).catch(() => null)) as { taxed?: unknown } | null;
 	const kinds = await db.selectFrom('sale_kind').select(['id', 'name']).execute();
 	const name = new Map(kinds.map((k) => [k.id, k.name]));
@@ -67,9 +67,9 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
 	const names = Object.keys(fields);
-	if (names.length === 0) return problem('malformed', 400, 'No fields given.');
+	if (names.length === 0) return problem('malformed', 'No fields given.');
 
 	const row: Record<string, string | boolean | null> = {};
 	const errors: Errors = {};
@@ -102,7 +102,6 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		if (!saved)
 			return problem(
 				'notFound',
-				404,
 				`The business does not collect tax in ${stateName(params.state)}.`
 			);
 		return Response.json({ saved });
@@ -118,10 +117,6 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 		tx.deleteFrom('tax_registration').where('state', '=', params.state).executeTakeFirst()
 	);
 	if (!gone.numDeletedRows)
-		return problem(
-			'notFound',
-			404,
-			`The business does not collect tax in ${stateName(params.state)}.`
-		);
+		return problem('notFound', `The business does not collect tax in ${stateName(params.state)}.`);
 	return new Response(null, { status: 204 });
 };

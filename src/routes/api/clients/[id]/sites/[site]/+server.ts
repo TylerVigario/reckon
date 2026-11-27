@@ -56,18 +56,18 @@ export const PATCH: RequestHandler = async (event) => {
 	// which is exactly what this path supplies -- two clients each having a
 	// "suite-210" resolves correctly because the client comes first.
 	const client = await lookUpClient(params.id);
-	if (!client) return problem('notFound', 404, 'No client by that name or id.');
+	if (!client) return problem('notFound', 'No client by that name or id.');
 	const found = await lookUpSite(client.id, params.site);
-	if (!found) return problem('notFound', 404, 'That client has no such site.');
+	if (!found) return problem('notFound', 'That client has no such site.');
 	const id = found.id;
 
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
 
 	const names = Object.keys(fields);
-	if (names.length === 0) return problem('malformed', 400, 'No fields given.');
+	if (names.length === 0) return problem('malformed', 'No fields given.');
 	if (names.length > MOST_AT_ONCE)
-		return problem('malformed', 400, `At most ${MOST_AT_ONCE} fields at once.`);
+		return problem('malformed', `At most ${MOST_AT_ONCE} fields at once.`);
 
 	const row: Record<string, string | number | boolean | null> = {};
 	const errors: Record<string, string> = {};
@@ -193,9 +193,9 @@ export const PATCH: RequestHandler = async (event) => {
  */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
 	const client = await lookUpClient(params.id);
-	if (!client) return problem('notFound', 404, 'No client by that name or id.');
+	if (!client) return problem('notFound', 'No client by that name or id.');
 	const found = await lookUpSite(client.id, params.site);
-	if (!found) return problem('notFound', 404, 'That client has no such site.');
+	if (!found) return problem('notFound', 'That client has no such site.');
 	await asUser(locals.user!.id, (tx) =>
 		tx.updateTable('site').set({ active: false }).where('id', '=', found.id).execute()
 	);

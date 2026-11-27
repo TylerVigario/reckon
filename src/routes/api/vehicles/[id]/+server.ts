@@ -13,11 +13,11 @@ import { readFields } from '#lib/json.ts';
  * again, so the trips already driven in it pay who they paid.
  */
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No vehicle with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No vehicle with that id.');
 	const fields = await readFields(request);
 	const names = fields ? Object.keys(fields) : [];
 	if (!fields || names.length === 0 || names.some((n) => !(n in VEHICLE_CHANGES)))
-		return problem('malformed', 400, 'Expected { fields: { name or retired: value } }.');
+		return problem('malformed', 'Expected { fields: { name or retired: value } }.');
 
 	const row: Record<string, string | boolean | null> = {};
 	const errors: Record<string, string> = {};
@@ -53,7 +53,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 				.returning('id')
 				.execute()
 		);
-		if (changed.length === 0) return problem('notFound', 404, 'No vehicle with that id.');
+		if (changed.length === 0) return problem('notFound', 'No vehicle with that id.');
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, names, 'vehicle');
 		if (refused) return refused;
@@ -67,15 +67,15 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
  * trips keep it, and the schema refuses to take it from them.
  */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No vehicle with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No vehicle with that id.');
 	try {
 		const gone = await asUser(locals.user!.id, (tx) =>
 			tx.deleteFrom('vehicle').where('id', '=', params.id).returning('id').execute()
 		);
-		if (gone.length === 0) return problem('notFound', 404, 'No vehicle with that id.');
+		if (gone.length === 0) return problem('notFound', 'No vehicle with that id.');
 	} catch (e) {
 		if (stillReferenced(e))
-			return problem('conflict', 409, 'Trips were driven in this vehicle. Retire it instead.');
+			return problem('notAsThingsStand', 'Trips were driven in this vehicle. Retire it instead.');
 		throw e;
 	}
 	return Response.json({ removed: params.id });

@@ -22,7 +22,7 @@ import type { RequestHandler } from './$types';
  * already sent answers with its link, so a send that is tapped twice is one.
  */
 export const POST: RequestHandler = async ({ params, locals, url }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No invoice with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No invoice with that id.');
 	const places = await moneyPlaces();
 	const today = businessToday();
 
@@ -91,8 +91,8 @@ export const POST: RequestHandler = async ({ params, locals, url }) => {
 		return { token, repeat: false };
 	});
 
-	if (done === 'missing') return problem('notFound', 404, 'No invoice with that id.');
-	if (done === 'void') return problem('conflict', 409, 'It was voided, and cannot be sent.');
+	if (done === 'missing') return problem('notFound', 'No invoice with that id.');
+	if (done === 'void') return problem('notAsThingsStand', 'It was voided, and cannot be sent.');
 	if (done === 'empty') return refuse({ invoice: 'There is nothing on it to send.' });
 	if (done === 'negative')
 		return refuse({ invoice: 'It comes to less than nothing. That is a credit note.' });

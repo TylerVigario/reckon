@@ -16,7 +16,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (!validationIsLive()) return Response.json({ verdict: null, reason: 'no server key' });
 
 	const body = await readBody(request);
-	if (!body) return problem('malformed', 400, 'Expected an address.');
+	if (!body) return problem('malformed', 'Expected an address.');
 
 	const address = {
 		street: textField(body, 'street') || null,
@@ -35,6 +35,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		// look like. Only NoVerdict's own sentence is sent: what Google said is
 		// in the server's log, and anything else is a fault here, a 500.
 		if (!(e instanceof NoVerdict)) throw e;
-		return problem('upstream', 502, `Could not validate: ${e.message}`);
+		return problem('upstream', `Could not validate: ${e.message}`);
 	}
 };

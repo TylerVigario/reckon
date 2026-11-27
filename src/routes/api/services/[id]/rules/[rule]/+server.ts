@@ -10,8 +10,7 @@ import { problem } from '#lib/server/problem.ts';
  * from another day instead.
  */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	if (!UUID.test(params.id) || !UUID.test(params.rule))
-		return problem('notFound', 404, 'No such rule.');
+	if (!UUID.test(params.id) || !UUID.test(params.rule)) return problem('notFound', 'No such rule.');
 
 	const gone = await asUser(locals.user!.id, (tx) =>
 		tx
@@ -24,8 +23,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	);
 	if (gone.length === 0)
 		return problem(
-			'conflict',
-			409,
+			'notAsThingsStand',
 			'That rule is not here, or its day has passed. A rule that has been in force stays on the history; change it with a rule from another day.'
 		);
 	return Response.json({ removed: params.rule });

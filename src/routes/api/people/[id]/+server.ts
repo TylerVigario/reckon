@@ -50,22 +50,20 @@ type Field = keyof typeof PERSON_FIELDS;
  * spells it, and only if Intl can write in it.
  */
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No person with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No person with that id.');
 	const body = await readBody(request);
 	const fields = await readFields({ json: () => Promise.resolve(body) });
 	const names = fields ? Object.keys(fields) : [];
 	if (!fields || names.length !== 1 || !(names[0] in PERSON_FIELDS))
 		return problem(
 			'malformed',
-			400,
 			`Expected { fields: { one of ${Object.keys(PERSON_FIELDS).join(', ')}: value } }.`
 		);
 	const name = names[0] as Field;
 	const own = (OWN_FIELDS as readonly string[]).includes(name);
 	if (own && params.id !== locals.user!.id)
-		return problem('notYours', 403, 'Only they can change that, in their own profile.');
-	if (!own && fieldOnly(locals))
-		return problem('beyondAccess', 403, 'Someone with Full changes that.');
+		return problem('notYours', 'Only they can change that, in their own profile.');
+	if (!own && fieldOnly(locals)) return problem('beyondAccess', 'Someone with Full changes that.');
 
 	const raw = fields[name];
 	const parsed = parsePersonField(name, typeof raw === 'string' ? raw : '');
@@ -112,7 +110,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 				await signedOutEverywhere(tx, params.id, 'they were made inactive');
 			return rows;
 		});
-		if (changed.length === 0) return problem('notFound', 404, 'No person with that id.');
+		if (changed.length === 0) return problem('notFound', 'No person with that id.');
 	} catch (e) {
 		const { constraint } = pgError(e);
 		if (constraint === 'someone_keeps_full')
@@ -231,7 +229,7 @@ async function changeEmail(
 				.where('id', '=', id)
 				.forUpdate()
 				.executeTakeFirst();
-			if (!person) return problem('notFound', 404, 'No person with that id.');
+			if (!person) return problem('notFound', 'No person with that id.');
 			if (person.email === to) return Response.json({ saved: { email: to } });
 
 			const canSignIn = person.active && (person.last_signed_in_at !== null || person.held);

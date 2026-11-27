@@ -13,12 +13,11 @@ import type { RequestHandler } from './$types';
  * amended return.
  */
 export const POST: RequestHandler = async ({ params, request, locals }) => {
-	if (!isState(params.state)) return problem('notFound', 404, 'No such state.');
+	if (!isState(params.state)) return problem('notFound', 'No such state.');
 	const body = (await readJson(request).catch(() => null)) as Record<string, unknown> | null;
 	if (!body || typeof body !== 'object')
 		return problem(
 			'malformed',
-			400,
 			'Expected { period_start, period_end, filed_on, tax, kept, paid, reference }.'
 		);
 	const { value, errors } = parseReturn(body);
@@ -29,7 +28,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	} catch (e) {
 		if (e instanceof Refused)
 			return e.field === 'state'
-				? problem('notFound', 404, `${stateName(params.state)} has no tax to file for.`)
+				? problem('notFound', `${stateName(params.state)} has no tax to file for.`)
 				: refuse({ [e.field]: e.message });
 		throw e;
 	}

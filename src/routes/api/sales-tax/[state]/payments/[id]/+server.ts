@@ -7,8 +7,8 @@ import type { RequestHandler } from './$types';
 /** Takes off a payment recorded by mistake (#lib/server/sales-tax): its history keeps what it was. */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (!isState(params.state) || !UUID.test(params.id))
-		return problem('notFound', 404, 'No such payment.');
+		return problem('notFound', 'No such payment.');
 	const gone = await removePayment(locals.user!.id, params.state, params.id);
-	if (!gone) return problem('notFound', 404, 'No such payment.');
+	if (!gone) return problem('notFound', 'No such payment.');
 	return new Response(null, { status: 204 });
 };

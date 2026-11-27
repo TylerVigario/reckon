@@ -26,11 +26,11 @@ import type { RequestHandler } from './$types';
  * it arrives is a refusal the phone keeps, to be fixed or let go.
  */
 export const POST: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No material with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No material with that id.');
 	const body = await readBody(request);
 	const fields = body?.fields;
 	if (!fields || typeof fields !== 'object' || Array.isArray(fields))
-		return problem('malformed', 400, 'Expected { fields: { name: value }, client_uuid }.');
+		return problem('malformed', 'Expected { fields: { name: value }, client_uuid }.');
 	const clientUuid = typeof body.client_uuid === 'string' ? body.client_uuid : '';
 	if (!UUID.test(clientUuid)) return refuse({ client_uuid: 'The uuid it was made with.' });
 	const userId = locals.user!.id;
@@ -43,7 +43,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		.select(['m.id', 'm.name', 'u.places', 'u.short', 'u.name as unit'])
 		.where('m.id', '=', params.id)
 		.executeTakeFirst();
-	if (!m) return problem('notFound', 404, 'No material with that id.');
+	if (!m) return problem('notFound', 'No material with that id.');
 
 	const { values, errors } = readAdjustment(fields as Record<string, unknown>, m.places);
 	if (typeof values.made_on === 'string' && values.made_on > personalToday())

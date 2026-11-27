@@ -17,7 +17,7 @@ import { readBody } from '#lib/json.ts';
  */
 export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const client = await lookUpClient(params.id);
-	if (!client) return problem('notFound', 404, 'No client by that name or id.');
+	if (!client) return problem('notFound', 'No client by that name or id.');
 
 	const body = await readBody(request);
 	const person = await personFrom(body);

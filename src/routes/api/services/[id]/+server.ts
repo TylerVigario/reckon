@@ -28,15 +28,15 @@ import { readFields } from '#lib/json.ts';
 const MOST_AT_ONCE = 4;
 
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No service with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No service with that id.');
 
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
 
 	const names = Object.keys(fields);
-	if (names.length === 0) return problem('malformed', 400, 'No fields given.');
+	if (names.length === 0) return problem('malformed', 'No fields given.');
 	if (names.length > MOST_AT_ONCE)
-		return problem('malformed', 400, `At most ${MOST_AT_ONCE} fields at once.`);
+		return problem('malformed', `At most ${MOST_AT_ONCE} fields at once.`);
 
 	const row: Record<string, string | number | boolean | null> = {};
 	const errors: Record<string, string> = {};
@@ -57,7 +57,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		.select(['unit', 'bill_to_nearest_seconds', 'sale_kind_id'])
 		.where('id', '=', params.id)
 		.executeTakeFirst();
-	if (!service) return problem('notFound', 404, 'No service with that id.');
+	if (!service) return problem('notFound', 'No service with that id.');
 	// Into a kind of sale that is offered, unless it is that kind already.
 	if ('sale_kind_id' in row && row.sale_kind_id !== service.sale_kind_id) {
 		const why = await refusedKind(db, String(row.sale_kind_id));
@@ -103,17 +103,16 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
  * prices and pay rules go with it.
  */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No service with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No service with that id.');
 	try {
 		const gone = await asUser(locals.user!.id, (tx) =>
 			tx.deleteFrom('service').where('id', '=', params.id).returning('id').execute()
 		);
-		if (gone.length === 0) return problem('notFound', 404, 'No service with that id.');
+		if (gone.length === 0) return problem('notFound', 'No service with that id.');
 	} catch (e) {
 		if (stillReferenced(e))
 			return problem(
-				'conflict',
-				409,
+				'notAsThingsStand',
 				'Work has been recorded under this service, or an agreement covers it. Retire it instead: what it billed stays billed under its name.'
 			);
 		throw e;

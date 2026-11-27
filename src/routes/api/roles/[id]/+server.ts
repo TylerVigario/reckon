@@ -12,13 +12,12 @@ import { readFields } from '#lib/json.ts';
  * what a payment already recorded stays as it was paid.
  */
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No role with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No role with that id.');
 	const fields = await readFields(request);
 	const [field] = Object.keys(fields ?? {});
 	if (!fields || Object.keys(fields).length !== 1 || !(field in ROLE_FIELDS))
 		return problem(
 			'malformed',
-			400,
 			'Expected { fields: { name: value } } or { fields: { pays_as: value } }.'
 		);
 	const raw = fields[field];
@@ -37,7 +36,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 				.returning('id')
 				.execute()
 		);
-		if (changed.length === 0) return problem('notFound', 404, 'No role with that id.');
+		if (changed.length === 0) return problem('notFound', 'No role with that id.');
 	} catch (e) {
 		const refused = refuseIfTheDatabaseSaidSo(e, ['name'], 'role');
 		if (refused) return refused;
@@ -52,17 +51,16 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
  * by nothing, or rules paying nobody.
  */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No role with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No role with that id.');
 	try {
 		const gone = await asUser(locals.user!.id, (tx) =>
 			tx.deleteFrom('role').where('id', '=', params.id).returning('id').execute()
 		);
-		if (gone.length === 0) return problem('notFound', 404, 'No role with that id.');
+		if (gone.length === 0) return problem('notFound', 'No role with that id.');
 	} catch (e) {
 		if (stillReferenced(e))
 			return problem(
-				'conflict',
-				409,
+				'notAsThingsStand',
 				'Somebody holds this role, or a pay rule is written against it. Move them, or change the rule, first.'
 			);
 		throw e;

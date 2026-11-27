@@ -51,11 +51,11 @@ import { readFields } from '#lib/json.ts';
  */
 export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const client = await lookUpClient(params.id);
-	if (!client) return problem('notFound', 404, 'No client by that name or id.');
+	if (!client) return problem('notFound', 'No client by that name or id.');
 	const entity_id = client.id;
 
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
 
 	const row: Record<string, string | number | boolean | null> = {};
 	const errors: Record<string, string> = {};

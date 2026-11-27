@@ -17,7 +17,7 @@ import type { RequestHandler } from './$types';
  */
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { taxed } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { taxed } }.');
 	const raw = fields.taxed;
 	const parsed = parseAnswerField('taxed', typeof raw === 'string' ? raw : '');
 	if (!parsed.ok) return refuse({ taxed: parsed.why });
@@ -36,7 +36,6 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	if (!saved)
 		return problem(
 			'notFound',
-			404,
 			`The business does not collect tax in ${stateName(params.state)}, or there is no such kind of sale.`
 		);
 	return Response.json({ saved: { taxed: String(saved.taxed) } });

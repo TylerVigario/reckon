@@ -21,10 +21,10 @@ import { readFields } from '#lib/json.ts';
  * history, and the change is a price from another day.
  */
 export const POST: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No service with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No service with that id.');
 
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
 
 	const { values, errors } = readPrice(fields);
 	if (Object.keys(errors).length > 0) return refuse(errors);
@@ -34,7 +34,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		.select('id')
 		.where('id', '=', params.id)
 		.executeTakeFirst();
-	if (!found) return problem('notFound', 404, 'No service with that id.');
+	if (!found) return problem('notFound', 'No service with that id.');
 
 	const entityId = values.entity_id === null ? null : String(values.entity_id);
 	const effectiveFrom = String(values.effective_from);

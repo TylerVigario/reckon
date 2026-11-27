@@ -19,10 +19,10 @@ import { readFields } from '#lib/json.ts';
  * given -- a change of role was true before anybody entered it.
  */
 export const POST: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No service with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No service with that id.');
 
 	const fields = await readFields(request);
-	if (!fields) return problem('malformed', 400, 'Expected { fields: { name: value } }.');
+	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
 
 	const { values, errors } = readRule(fields);
 	if (Object.keys(errors).length > 0) return refuse(errors);
@@ -32,7 +32,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		.select('id')
 		.where('id', '=', params.id)
 		.executeTakeFirst();
-	if (!found) return problem('notFound', 404, 'No service with that id.');
+	if (!found) return problem('notFound', 'No service with that id.');
 
 	const idOrNull = (v: string | number | boolean | null) => (v === null ? null : String(v));
 	const scope = {

@@ -22,9 +22,9 @@ import { readBody, textField } from '#lib/json.ts';
  */
 export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const client = await lookUpClient(params.id);
-	if (!client) return problem('notFound', 404, 'No client by that name or id.');
+	if (!client) return problem('notFound', 'No client by that name or id.');
 	const found = await lookUpSite(client.id, params.site);
-	if (!found) return problem('notFound', 404, 'That client has no such site.');
+	if (!found) return problem('notFound', 'That client has no such site.');
 
 	const body = await readBody(request);
 	const site = await db
@@ -84,9 +84,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 /** Takes somebody off this site. They stay the client's contact. */
 export const DELETE: RequestHandler = async ({ params, request, locals }) => {
 	const client = await lookUpClient(params.id);
-	if (!client) return problem('notFound', 404, 'No client by that name or id.');
+	if (!client) return problem('notFound', 'No client by that name or id.');
 	const found = await lookUpSite(client.id, params.site);
-	if (!found) return problem('notFound', 404, 'That client has no such site.');
+	if (!found) return problem('notFound', 'That client has no such site.');
 	const id = found.id;
 	const body = await readBody(request);
 	const contactId = textField(body, 'contact_id');

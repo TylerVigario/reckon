@@ -78,16 +78,14 @@ type Found = NonNullable<Awaited<ReturnType<typeof found>>>;
 function inUse(entry: Found, what: string) {
 	if (entry.status)
 		return problem(
-			'conflict',
-			409,
+			'notAsThingsStand',
 			entry.status === 'draft'
 				? `That hour is on ${entry.number ? `draft ${entry.number}` : 'a draft'}. Take it off the draft to ${what} it.`
 				: `That hour is on invoice ${entry.number}. Credit the invoice instead.`
 		);
 	if (entry.paidTo.length)
 		return problem(
-			'conflict',
-			409,
+			'notAsThingsStand',
 			`That hour is in ${entry.paidTo.length === 1 ? 'a payment' : 'payments'} to ${names(entry.paidTo)}. A correction goes on their next payment.`
 		);
 	return null;
@@ -137,11 +135,11 @@ async function lastChanged(id: string) {
 
 /** What a change ran into, as the phone keeps it (#lib/entry-merge EntryConflict). */
 const conflict = (detail: string, c: EntryConflict) =>
-	problem('conflict', 409, detail, { members: { conflict: c } });
+	problem('changedMeanwhile', detail, { members: { conflict: c } });
 
 /** Whoever entered it, or someone with Full, changes or removes it. */
 const notYours = (what: string) =>
-	problem('notYours', 403, `Whoever entered it, or someone with Full, ${what} it.`);
+	problem('notYours', `Whoever entered it, or someone with Full, ${what} it.`);
 
 /** An entry gone before the request reached it: removed, as its history says, or never there. */
 async function gone(id: string, locals: App.Locals) {
@@ -175,9 +173,9 @@ function fieldsIn(v: unknown): EntryFields | null {
  * loses it. History keeps every field changed, and who changed it.
  */
 export const PATCH: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No entry with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No entry with that id.');
 	const body = await readBody(request);
-	if (!body) return problem('malformed', 400, 'Expected a JSON object.');
+	if (!body) return problem('malformed', 'Expected a JSON object.');
 	const began = body.version;
 	if (typeof began !== 'number' || !Number.isInteger(began) || began < 1)
 		return refuse({ version: 'The save it began from.' });
@@ -195,7 +193,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 						by: was.by,
 						at: was.at
 					})
-				: problem('notFound', 404, 'No entry with that id.');
+				: problem('notFound', 'No entry with that id.');
 		}
 		if (fieldOnly(locals) && entry.createdBy !== locals.user!.id) return notYours('changes');
 		const used = inUse(entry, 'change');
@@ -283,8 +281,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 			if (err instanceof Stale) {
 				if (attempt < 2) return change(attempt + 1);
 				return problem(
-					'conflict',
-					409,
+					'changedMeanwhile',
 					'This entry kept changing while it was saved. Nothing was changed; try again.'
 				);
 			}
@@ -294,8 +291,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 			// Billed or paid between the look above and the save.
 			if (pg.code === '23000')
 				return problem(
-					'conflict',
-					409,
+					'notAsThingsStand',
 					'That hour was billed or paid meanwhile, so it stays as it was.'
 				);
 			const refused = refuseIfTheDatabaseSaidSo(err, TIME_FIELDS, 'time_entry');
@@ -317,14 +313,14 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
  * to "where did that hour go" is in record_history rather than a backup.
  */
 export const DELETE: RequestHandler = async ({ params, url, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No entry with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No entry with that id.');
 	const v = url.searchParams.get('version');
 	if (!v || !/^[1-9]\d*$/.test(v)) return refuse({ version: 'The save it was removed at.' });
 	const entry = await found(params.id);
 	if (!entry)
 		return (await gone(params.id, locals))
 			? Response.json({ deleted: params.id })
-			: problem('notFound', 404, 'No entry with that id.');
+			: problem('notFound', 'No entry with that id.');
 	if (fieldOnly(locals) && entry.createdBy !== locals.user!.id) return notYours('removes');
 	const used = inUse(entry, 'remove');
 	if (used) return used;

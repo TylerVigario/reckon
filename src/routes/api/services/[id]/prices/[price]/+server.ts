@@ -11,7 +11,7 @@ import { problem } from '#lib/server/problem.ts';
  */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.price))
-		return problem('notFound', 404, 'No such price.');
+		return problem('notFound', 'No such price.');
 
 	const gone = await asUser(locals.user!.id, (tx) =>
 		tx
@@ -24,8 +24,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	);
 	if (gone.length === 0)
 		return problem(
-			'conflict',
-			409,
+			'notAsThingsStand',
 			'That price is not here, or its day has passed. A price that has been in force stays on the history; change it with a price from another day.'
 		);
 	return Response.json({ removed: params.price });

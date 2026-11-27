@@ -8,7 +8,7 @@ import type { RequestHandler } from './$types';
  * applied stays as it was: what it put right names it.
  */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No count with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No count with that id.');
 	const gone = await asUser(locals.user!.id, (tx) =>
 		tx
 			.deleteFrom('stock_count')
@@ -18,6 +18,6 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 			.execute()
 	);
 	if (gone.length === 0)
-		return problem('conflict', 409, 'That count has been applied, or is gone already.');
+		return problem('notAsThingsStand', 'That count has been applied, or is gone already.');
 	return new Response(null, { status: 204 });
 };

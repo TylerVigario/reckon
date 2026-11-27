@@ -29,10 +29,10 @@ import { GONE, readTimeEntry, TIME_FIELDS } from '#lib/server/time-input.ts';
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const body = await readBody(request);
-	if (!body) return problem('malformed', 400, 'Expected a JSON object.');
+	if (!body) return problem('malformed', 'Expected a JSON object.');
 
 	if (typeof body.client_uuid !== 'string')
-		return problem('invalidField', 400, 'client_uuid: Required.', {
+		return problem('invalidField', 'client_uuid: Required.', {
 			errors: { client_uuid: 'Required.' }
 		});
 	const client_uuid = body.client_uuid;

@@ -11,12 +11,12 @@ import type { RequestHandler } from './$types';
  * them, and a receipt where there is a new one.
  */
 export const POST: RequestHandler = async ({ params, request, locals }) => {
-	if (!UUID.test(params.id)) return problem('notFound', 404, 'No line with that id.');
+	if (!UUID.test(params.id)) return problem('notFound', 'No line with that id.');
 	let form: FormData;
 	try {
 		form = await request.formData();
 	} catch {
-		return problem('malformed', 400, 'Expected form data.');
+		return problem('malformed', 'Expected form data.');
 	}
 	const fields: Record<string, string> = {};
 	for (const [k, v] of form.entries())

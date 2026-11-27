@@ -11,10 +11,10 @@ import type { RequestHandler } from './$types';
  */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
 	if (!isState(params.state) || !UUID.test(params.id))
-		return problem('notFound', 404, 'No such return.');
+		return problem('notFound', 'No such return.');
 	try {
 		const gone = await removeReturn(locals.user!.id, params.state, params.id);
-		if (!gone) return problem('notFound', 404, 'No such return.');
+		if (!gone) return problem('notFound', 'No such return.');
 		return new Response(null, { status: 204 });
 	} catch (e) {
 		if (e instanceof Refused) return refuse({ [e.field]: e.message });
