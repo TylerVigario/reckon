@@ -2972,6 +2972,188 @@ console.log('\n  kinds of sale — added, answered, given, retired, and let go')
 	await check('a kind nothing is sold as is taken away', 'DELETE', at, undefined, 204);
 	await check('and is gone', 'PATCH', at, { fields: { name: 'Back' } }, 404);
 }
+
+// Sales tax handed over (#203): a return, and what is paid for its period,
+// bring what is held down, a state at a time; the home page's figure is every
+// state's added up, as the report has it.
+{
+	console.log('\nSales tax handed over');
+	const cents = (/** @type {string | undefined} */ v) =>
+		!v?.trim() ? NaN : Math.round(Number(v.replace('−', '-').replace(/[^0-9.-]/g, '')) * 100);
+	const page = async (/** @type {string} */ path) =>
+		(await fetch(base + path, { headers: { cookie, ...PROXY } })).text();
+	// A figure as the page shows it, after a label: its class is scoped, and its
+	// text may sit between Svelte's markers.
+	const figureAfter = (/** @type {string} */ label) =>
+		new RegExp(`${label}[\\s\\S]*?class="v[^"]*">([\\s\\S]*?)</span>`, 'g');
+	const said = (/** @type {string} */ html) => html.replace(/<!--[\s\S]*?-->/g, '');
+	const heldHome = async () =>
+		cents(said(figureAfter('Sales tax held').exec(await page('/'))?.[1] ?? ''));
+	// Each state's: still held, or handed over beyond what was collected there.
+	const heldEach = async () =>
+		[
+			...(await page('/reports/sales-tax')).matchAll(
+				figureAfter('(Still held|Handed over beyond what was collected)')
+			)
+		].map((m) => (m[1] === 'Still held' ? 1 : -1) * cents(said(m[2])));
+	const agree = async (/** @type {string} */ label) => {
+		const [home, each] = [await heldHome(), await heldEach()];
+		const ok = each.length > 0 && home === each.reduce((a, b) => a + b, 0);
+		if (ok) passed++;
+		else failures.push(`${label}: home ${home}, states ${each.join(' + ')}`);
+		console.log(`  ${ok ? '✓' : '✗'} ${label}`);
+		return home;
+	};
+	const ref = `W-${stamp}`;
+	const returns = '/api/sales-tax/CA/returns';
+	const payments = '/api/sales-tax/CA/payments';
+	const quarter = { period_start: '2020-01-01', period_end: '2020-03-31' };
+	const before = await agree(
+		'the home page’s Sales tax held is every state’s still held, added up'
+	);
+
+	await check(
+		'a return filed before its period ends is refused',
+		'POST',
+		returns,
+		{ ...quarter, filed_on: '2020-03-30', tax: '1.23' },
+		(r) => r.status === 400 && Boolean(r.body?.errors?.filed_on)
+	);
+	await check(
+		'a return keeping more than its tax is refused',
+		'POST',
+		returns,
+		{ ...quarter, filed_on: '2020-04-20', tax: '1.23', kept: '1.24' },
+		(r) => r.status === 400 && Boolean(r.body?.errors?.kept)
+	);
+	await check(
+		'a return for a state with no tax there is not found',
+		'POST',
+		'/api/sales-tax/WY/returns',
+		{ ...quarter, filed_on: '2020-04-20', tax: '1.23' },
+		404
+	);
+	await check(
+		'nor for what is not a state',
+		'POST',
+		'/api/sales-tax/ZZ/payments',
+		{ ...quarter, paid_on: '2020-04-20', tax: '1.23' },
+		404
+	);
+
+	const first = await check(
+		'a return is recorded, with what was paid with it',
+		'POST',
+		returns,
+		{ ...quarter, filed_on: '2020-04-20', tax: '1.23', paid: '1.23', reference: ref },
+		201
+	);
+	const rows = async () =>
+		(
+			await kindsDb.query(
+				`select r.id, r.tax::text, r.amends, (select coalesce(sum(p.tax), 0)::text from tax_payment p
+			   where p.state = r.state and p.period_start = r.period_start and p.period_end = r.period_end) as paid
+			   from tax_return r where r.state = 'CA' and r.period_start = '2020-01-01' order by r.filed_on`
+			)
+		).rows;
+	{
+		const [r] = await rows();
+		const ok = r?.tax === '1.230' && r?.paid === '1.230' && r?.amends === null;
+		if (ok) passed++;
+		else failures.push(`the return and its payment: ${JSON.stringify(r)}`);
+		console.log(`  ${ok ? '✓' : '✗'} what was paid with it is a payment of its own, on the day`);
+	}
+	const after = await agree('and still agrees once a return is paid');
+	{
+		const ok = before - after === 123;
+		if (ok) passed++;
+		else failures.push(`held went from ${before} to ${after}, not down by 123`);
+		console.log(`  ${ok ? '✓' : '✗'} what is held comes down by the tax handed over`);
+	}
+	const report = await page('/reports/sales-tax');
+	{
+		const ok = report.includes(ref) && report.includes('Returns and payments');
+		if (ok) passed++;
+		else failures.push('the report does not show the return');
+		console.log(`  ${ok ? '✓' : '✗'} the report shows the return, by its confirmation`);
+	}
+
+	const amended = await check(
+		'a return filed again for its period is its amended return',
+		'POST',
+		returns,
+		{ ...quarter, filed_on: '2020-05-02', tax: '2.00', paid: '0.77' },
+		201
+	);
+	{
+		const [was, is] = await rows();
+		const ok = is?.amends === was?.id && is?.paid === '2.000';
+		if (ok) passed++;
+		else failures.push(`the amended return: ${JSON.stringify(is)}`);
+		console.log(`  ${ok ? '✓' : '✗'} it amends the one before, and both payments count towards it`);
+	}
+	await check(
+		'a payment for a month inside that quarter is refused',
+		'POST',
+		payments,
+		{ period_start: '2020-02-01', period_end: '2020-02-29', paid_on: '2020-03-24', tax: '1.00' },
+		(r) => r.status === 400 && Boolean(r.body?.errors?.period_start)
+	);
+	await check(
+		'a payment of nothing is refused',
+		'POST',
+		payments,
+		{ ...quarter, paid_on: '2020-06-01' },
+		(r) => r.status === 400 && Boolean(r.body?.errors?.tax)
+	);
+	const late = await check(
+		'penalty and interest are paid alone',
+		'POST',
+		payments,
+		{ ...quarter, paid_on: '2020-06-01', penalty_and_interest: '0.15' },
+		201
+	);
+	{
+		const now = await agree('and it still agrees');
+		const ok = after - now === 77;
+		if (ok) passed++;
+		else failures.push(`held went from ${after} to ${now}, not down by 77`);
+		console.log(`  ${ok ? '✓' : '✗'} penalty and interest bring nothing down`);
+	}
+
+	await check(
+		'a return an amended return corrects is not taken off',
+		'DELETE',
+		`${returns}/${first.body?.id}`,
+		undefined,
+		(r) => r.status === 400 && Boolean(r.body?.errors?.return)
+	);
+	await check(
+		'the amended return is taken off',
+		'DELETE',
+		`${returns}/${amended.body?.id}`,
+		undefined,
+		204
+	);
+	await check(
+		'then the one it corrected',
+		'DELETE',
+		`${returns}/${first.body?.id}`,
+		undefined,
+		204
+	);
+	await check('and is gone', 'DELETE', `${returns}/${first.body?.id}`, undefined, 404);
+	await check('a payment is taken off', 'DELETE', `${payments}/${late.body?.id}`, undefined, 204);
+	await kindsDb.query(
+		`delete from tax_payment where state = 'CA' and period_start = '2020-01-01' and period_end = '2020-03-31'`
+	);
+	{
+		const ok = (await heldHome()) === before;
+		if (ok) passed++;
+		else failures.push('held is not back where it was');
+		console.log(`  ${ok ? '✓' : '✗'} with them gone, what is held is back where it was`);
+	}
+}
 await kindsDb.end();
 
 console.log('');

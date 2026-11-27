@@ -94,6 +94,44 @@ export function taxes(rounding: TaxRounding, places: number) {
 }
 
 /**
+ * Each invoice's tax by the state that levied it, as a subquery with the
+ * columns invoice_id, state and tax: its lines taxed in that state, rounded as
+ * `taxes` rounds them. What each state is owed of an invoice that has lines in
+ * two (#lib/server/sales-tax).
+ */
+export function stateTaxes(rounding: TaxRounding, places: number) {
+	const eb = expressionBuilder<DB>();
+	const line = expressionBuilder<DB, 'invoice_line'>();
+	const exact = sql<NumericString>`${line.ref('invoice_line.amount')} * ${line.ref('invoice_line.tax_rate_pct')} / 100`;
+	const taxed = eb.selectFrom('invoice_line').where('invoice_line.tax_state', 'is not', null);
+	if (rounding.scope === 'line')
+		return taxed
+			.select([
+				'invoice_line.invoice_id',
+				'invoice_line.tax_state as state',
+				sql<NumericString>`sum(${roundSql(exact, rounding.method, places)})`.as('tax')
+			])
+			.groupBy(['invoice_line.invoice_id', 'invoice_line.tax_state']);
+	return eb
+		.selectFrom(
+			taxed
+				.select([
+					'invoice_line.invoice_id',
+					'invoice_line.tax_state as state',
+					roundSql(sql`sum(${exact})`, rounding.method, places).as('tax')
+				])
+				.groupBy(['invoice_line.invoice_id', 'invoice_line.tax_state', 'invoice_line.tax_rate_pct'])
+				.as('by_rate')
+		)
+		.select((eb) => [
+			'by_rate.invoice_id',
+			'by_rate.state',
+			sql<NumericString>`sum(${eb.ref('by_rate.tax')})`.as('tax')
+		])
+		.groupBy(['by_rate.invoice_id', 'by_rate.state']);
+}
+
+/**
  * One invoice's tax as a single value over `lines` -- invoice_line, filtered to
  * the lines it is over -- each line's tax before rounding being `exact`, an
  * expression over invoice_line. For a figure that is not the invoice's own

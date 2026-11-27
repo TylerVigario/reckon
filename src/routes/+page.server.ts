@@ -9,7 +9,8 @@ import { moneyPlaces } from '#lib/server/business.ts';
 import { TAX_ROUNDING } from '#lib/server/tax-rules.ts';
 import { count, dated } from '#lib/format.ts';
 import { stateName } from '#lib/us-states.ts';
-import { claimsResold, collectsIn } from '#lib/server/tax-registrations.ts';
+import { collectsIn } from '#lib/server/tax-registrations.ts';
+import { taxHeld } from '#lib/server/sales-tax.ts';
 import { ageOf, type Age } from '#lib/ageing.ts';
 import { crewNames } from '#lib/server/choices.ts';
 import { fieldOnly, theirWork } from '#lib/server/mine.ts';
@@ -152,7 +153,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		};
 	}
 
-	const totals = await db
+	// Collected on somebody else's behalf, so the figure worth seeing is what is
+	// STILL HELD, every state's: the report it opens works it out, and this adds
+	// it up (#lib/server/sales-tax).
+	const counting = db
 		.selectFrom(owing.as('b'))
 		.select((eb) => {
 			const sent = eb('b.status', '=', 'sent');
@@ -160,27 +164,6 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			const at = (v: Expression<unknown>) => sql<string>`round(${v}, ${places}::int)::text`;
 			const total = (figure: 'b.owed' | 'b.gross' | 'b.tax', where: Expression<SqlBool>) =>
 				eb.fn.coalesce(eb.fn.sum<NumericString>(figure).filterWhere(where), eb.lit(0));
-			const resold = eb
-				.selectFrom('invoice_line as il')
-				.innerJoin('invoice as i', 'i.id', 'il.invoice_id')
-				.select((eb) =>
-					eb.fn
-						.coalesce(
-							sql<NumericString>`sum(${eb.ref('il.ex_tax_cost')} * ${eb.ref('il.tax_rate_pct')} / 100)`,
-							eb.lit(0)
-						)
-						.as('resold')
-				)
-				.where('il.taxable', '=', true)
-				.where('i.status', '=', 'sent')
-				.where((eb) => claimsResold(eb.ref('il.tax_state')))
-				.$asScalar();
-			const remitted = eb
-				.selectFrom('tax_remittance')
-				.select((eb) =>
-					eb.fn.coalesce(eb.fn.sum<NumericString>('amount'), eb.lit(0)).as('remitted')
-				)
-				.$asScalar();
 			return [
 				at(total('b.owed', sent)).as('owed'),
 				eb
@@ -190,19 +173,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 					)
 					.as('owed_count'),
 				at(total('b.gross', draft)).as('drafts'),
-				eb.cast<string>(eb.fn.countAll().filterWhere(draft), 'text').as('draft_count'),
-				// Collected on somebody else's behalf, so the figure worth seeing is
-				// what is STILL HELD: charged on what has gone out, less the Reg 1701
-				// credit that comes off the return, less what has been handed to
-				// CDTFA. Whether a return was paid is a fact about the world, not
-				// something the invoices know, which is why it is subtracted from a
-				// table rather than inferred.
-				at(sql`${total('b.tax', sent)} - ${resold} - ${remitted}`).as('tax_held')
+				eb.cast<string>(eb.fn.countAll().filterWhere(draft), 'text').as('draft_count')
 			];
 		})
 		.where('b.status', '=', (eb) => eb.fn.any(eb.val(['sent', 'draft'] as const)))
 		// An aggregate: always one row.
 		.executeTakeFirstOrThrow();
+	const [counted, held] = await Promise.all([counting, taxHeld()]);
+	const totals = { ...counted, tax_held: held };
 
 	// Anything that cannot proceed until somebody decides. An invoice out past
 	// the operator's own chase-after figure, which opens the invoice, and a

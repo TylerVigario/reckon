@@ -203,10 +203,15 @@ T["tax_registration"] = [("PK","id","uuid"),("UK","state","text · two letters")
     ("","filing_basis","annual|quarterly|monthly"),
     ("","claims_tax_paid_purchases_resold","bool · California's alone"),
     ("","created_at","timestamptz")]
-T["tax_remittance"] = [("PK","id","uuid"),("","state","text · to whom"),("","period_start","date"),
-    ("","period_end","date"),("","filed_on","date"),("","paid_on","date"),
-    ("","amount","numeric"),("","reference","text"),("FK","created_by","uuid"),
-    ("","note","text"),("","created_at","timestamptz")]
+T["tax_return"] = [("PK","id","uuid"),("","state","text · filed with"),
+    ("","period_start","date"),("","period_end","date"),("","filed_on","date"),
+    ("","tax","numeric · what the period owes"),("","kept","numeric · for filing on time"),
+    ("","reference","text · its confirmation"),("FK","amends","uuid · the return it corrects"),
+    ("","created_at","timestamptz")]
+T["tax_payment"] = [("PK","id","uuid"),("","state","text · paid to"),
+    ("","period_start","date"),("","period_end","date"),("","paid_on","date"),
+    ("","tax","numeric · handed over"),("","penalty_and_interest","numeric · not tax"),
+    ("","reference","text · its confirmation"),("","created_at","timestamptz")]
 
 T["integration"] = [("PK","name","stripe|beancount|press|email"),
     ("","connected","bool"),("","detail","text"),("","checked_at","timestamptz")]
@@ -503,8 +508,8 @@ files.append(write("01-overview.drawio", "Overview", c, 1100, 580))
 c = at("entity",40,60) + at("tax_exemption",40,340) + at("site",800,60) \
   + at("contact",800,650) + at("entity_contact",440,240) \
   + at("site_contact",440,460) \
-  + at("site_placement",1200,60) + at("tax_remittance",1200,340) \
-  + at("tax_area",1200,640) + at("tax_piece",1200,900)
+  + at("site_placement",1200,60) \
+  + at("tax_area",1200,340) + at("tax_piece",1200,600)
 c += [edge("e22","entity","entity_contact","is reached via"),
       edge("e21","entity","tax_exemption","is exempt by",
            S_EDGE.replace("exitX=1;exitY=0.5","exitX=0.5;exitY=1")
@@ -557,8 +562,9 @@ c += [note("n2", "One building can host two businesses and one person can act fo
                  "statewide rate is read rather than assumed, and "
                  "State+County+City = RATE on every record. That split is what lets tax "
                  "collected post to the right obligation: it is not income, it is "
-                 "somebody else’s money held briefly. tax_remittance records what was "
-                 "actually handed over, because no invoice knows that. County and city "
+                 "somebody else’s money held briefly. tax_return and tax_payment record "
+                 "what was actually filed and handed over, because no invoice knows "
+                 "that. County and city "
                  "fold into one district share, because CDTFA-105 is a list of districts"
                  " and names no other kind.\n\n"
                  "Every site is in an area from the API, so the address and the area are "
@@ -961,7 +967,8 @@ files.append(write("10-people-and-signing-in.drawio", "People, and signing in", 
 
 # 11 -- the operator and the record
 c = at("operator",40,60) + at("account_map",440,60) + at("ledger_export",440,180) \
-  + at("integration",440,400) + at("record_history",440,560) + at("tax_registration",840,520)
+  + at("integration",440,400) + at("record_history",440,560) + at("tax_registration",840,520) \
+  + at("tax_return",840,740) + at("tax_payment",1220,740)
 c += [edge("e110","operator","account_map","maps")]
 c += [note("n11", "Everything that identifies the business is the operator's to supply: "
                   "logo is nullable and the interface renders trading_name in its "
@@ -969,6 +976,14 @@ c += [note("n11", "Everything that identifies the business is the operator's to 
                   "It collects tax in each state it is registered in, tax_registration: "
                   "what it holds there and from whom, and how often it files. Collecting "
                   "nowhere is having none. Its fiscal year is its own, not a state's.\n\n"
+                  "What it files and pays are apart, as the agencies keep them: a "
+                  "tax_return for one period of a state's, saying what the period owes "
+                  "and what was kept for filing on time, and a tax_payment for one "
+                  "period, with the return, after it, or before it as a prepayment, its "
+                  "penalty and interest apart from the tax. A return filed again amends "
+                  "the one before. A state's periods are each one period: two that "
+                  "overlap are the same. Neither names the registration, so a state no "
+                  "longer collected in keeps what was filed there.\n\n"
                   "An included-hours figure is a client's, on their agreement, "
                   "and what is paid to whoever answers is a dated pay_rule.\n\n"
                   "record_history is append-only and exists to explain a figure,"
@@ -983,7 +998,7 @@ c += [note("n11", "Everything that identifies the business is the operator's to 
                   "kysely.kysely_migration, so bringing it up to date again applies only "
                   "what is new.",
            840, 60, 540, 420)]
-files.append(write("11-operator-and-record.drawio", "The operator, and the record", c, 1420, 1000))
+files.append(write("11-operator-and-record.drawio", "The operator, and the record", c, 1600, 1010))
 
 for f in files:
     print(f"  {f}")

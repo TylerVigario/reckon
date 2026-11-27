@@ -9,16 +9,14 @@ import {
 	entryColumns,
 	loadAgreements,
 	loadCatalogue,
-	taxOfInvoices,
 	valueEntries,
 	valueLegs
 } from './valuation/load.ts';
 import { billedAmount, jobRate, priceOn } from './valuation/pricing.ts';
 import { ruleOn, timePay } from './valuation/pay.ts';
 import { lastConfirmed, rateIsStale } from './stale.ts';
-import type { TaxLevel } from './db/database.ts';
 import type { TaxPiece } from './db/tax-pieces.ts';
-import { inLevelOrder } from './valuation/tax.ts';
+import { chargedOn, type Collected } from './sales-tax.ts';
 import { dated, daysAgo, names } from '#lib/format.ts';
 import { crewNames } from './choices.ts';
 import { townsOf } from './trips.ts';
@@ -222,85 +220,27 @@ export async function scheduleA(p: Period): Promise<ScheduleA> {
 	};
 }
 
-export type Obligation = {
-	charged: string;
-	/** Who levied what was charged: federal, then state, then local, each by name. */
-	levied: { level: TaxLevel; jurisdiction: string; amount: string }[];
-	remitted: string;
-	outstanding: string;
-	filings: {
-		id: string;
-		period_start: string;
-		period_end: string;
-		filed_on: string | null;
-		paid_on: string | null;
-		amount: string;
-		reference: string | null;
-	}[];
-};
-
 /**
- * What was collected on somebody else's behalf in one state, what has been
- * handed over to it, and the difference.
- *
- * TAX CHARGED IS NOT INCOME. It is held briefly and then passed on, so the
- * only figure that means anything is what is still held -- and that cannot be
- * derived from invoices alone, because whether a return was paid is a fact
- * about the world. tax_remittance records it; this subtracts.
+ * What was collected on somebody else's behalf in one state over a period, and
+ * who levied it (#lib/server/sales-tax chargedOn). What has been handed over,
+ * and what is still held, are each state's whole, not a period's.
  *
  * ACCRUAL, not cash: the obligation arises when the invoice is raised, not
  * when the client pays. That is the basis a sent invoice already implies, and
  * billing a client for tax while claiming not to owe it yet is the position
  * that goes wrong under audit.
  */
-export async function taxObligation(p: Period, state: string): Promise<Obligation> {
-	const places = await moneyPlaces();
+export async function collectedIn(p: Period, state: string): Promise<Collected> {
 	const raised = await db
 		.selectFrom('invoice')
 		.select('id')
 		.where('status', '=', 'sent')
 		.where((eb) => eb.between('issued_on', p.start, p.end))
 		.execute();
-	const taxes = [
-		...(
-			await taxOfInvoices(
-				db,
-				raised.map((r) => r.id),
-				state
-			)
-		).values()
-	];
-
-	const filings = await db
-		.selectFrom('tax_remittance')
-		.select(['id', 'period_start', 'period_end', 'filed_on', 'paid_on', 'amount', 'reference'])
-		.where('state', '=', state)
-		.where('period_start', '<=', p.end)
-		.where('period_end', '>=', p.start)
-		.orderBy('period_start')
-		.execute();
-
-	const charged = sum(taxes.map((x) => x.tax));
-	const remitted = sum(filings.map((f) => f.amount));
-	return {
-		charged: charged.toFixed(places),
-		levied: [
-			...Map.groupBy(
-				taxes.flatMap((x) => x.levied),
-				(p) => `${p.level} ${p.jurisdiction} ${p.kind ?? ''}`
-			).values()
-		]
-			.map((ps) => ({
-				level: ps[0].level,
-				jurisdiction: ps[0].jurisdiction,
-				kind: ps[0].kind,
-				amount: sum(ps.map((p) => p.tax)).toFixed(places)
-			}))
-			.sort(inLevelOrder),
-		remitted: remitted.toFixed(places),
-		outstanding: charged.sub(remitted).toFixed(places),
-		filings
-	};
+	return chargedOn(
+		raised.map((r) => r.id),
+		state
+	);
 }
 
 /** Who was paid for a job or a trip, and the day (0026). */

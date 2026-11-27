@@ -2,10 +2,8 @@
 	import { Decimal } from '#lib/decimal.ts';
 	import { currencyPlaces } from '#lib/currency.ts';
 	import Top from '#lib/Top.svelte';
-	import UnderlineNav from '#lib/UnderlineNav.svelte';
 	import Segmented from '#lib/Segmented.svelte';
 	import { page } from '$app/state';
-	import { reportTabs } from '#lib/section-tabs.ts';
 	import { levied, pct } from '#lib/format.ts';
 	import type { TaxPiece } from '#lib/server/db/tax-pieces.ts';
 	import { money } from '#lib/money.svelte.ts';
@@ -15,8 +13,8 @@
 
 	/**
 	 * Schedule A for the filing year, seen two ways (#lib/Segmented): the
-	 * return -- what was collected for somebody else, what is owed on it and
-	 * what is still held, then what each district is owed -- and what to look
+	 * return -- what was collected for somebody else and what is owed on it,
+	 * then what each district is owed -- and what to look
 	 * at before filing it: rates CDTFA was last asked about long ago, and lines
 	 * taxed at a rate other than their site's.
 	 */
@@ -30,26 +28,8 @@
 	// that were then resold -- and showing the two figures without it side by
 	// side reads as an error rather than a rule.
 	const credit = $derived(
-		data.fy ? Decimal.from(data.owed.charged).sub(data.due).toFixed(currencyPlaces()) : null
+		data.fy ? Decimal.from(data.collected.charged).sub(data.due).toFixed(currencyPlaces()) : null
 	);
-	const stillHeld = $derived(
-		data.fy ? Decimal.from(data.due).sub(data.owed.remitted).toFixed(currencyPlaces()) : null
-	);
-
-	const filing = (f: {
-		period_start: string;
-		period_end: string;
-		filed_on: string | null;
-		paid_on: string | null;
-		reference: string | null;
-	}) =>
-		[
-			`${f.period_start} to ${f.period_end}`,
-			f.paid_on ? `paid ${f.paid_on}` : f.filed_on ? `filed ${f.filed_on}, not yet paid` : null,
-			f.reference
-		]
-			.filter(Boolean)
-			.join(' · ');
 
 	// Who the money is owed to, as each line kept who levied its rate. A place
 	// where nobody but the state levies anything has no piece of its own to
@@ -73,11 +53,14 @@
 			.join(' ') + ` · ${d.sites} ${d.sites === 1 ? 'site' : 'sites'}`;
 </script>
 
-<Top title="Reports" back={resolve('/more')} backLabel="More" />
+<Top
+	title="Schedule A"
+	sub="California"
+	back={resolve('/reports/sales-tax')}
+	backLabel="Sales tax"
+/>
 
 <div class="pad">
-	<UnderlineNav label="Reports" items={reportTabs('schedule-a', data.scheduleA)} />
-
 	{#if !data.fy}
 		<div class="banner warn" role="status">
 			<Octicon name="alert" />
@@ -110,9 +93,9 @@
 				<div class="box-row line">
 					<span class="what">
 						<span class="n">Collected from clients</span>
-						<span class="sub">{shares(data.owed)}</span>
+						<span class="sub">{shares(data.collected)}</span>
 					</span>
-					<span class="v">{money(data.owed.charged)}</span>
+					<span class="v">{money(data.collected.charged)}</span>
 				</div>
 				{#if Number(credit) > 0}
 					<div class="box-row line">
@@ -123,38 +106,18 @@
 						<span class="v muted">−{money(credit)}</span>
 					</div>
 				{/if}
-				<div class="box-row line">
+				<div class="box-row line tot">
 					<span class="what">
 						<span class="n">Owed on the return</span>
 						<span class="sub">What the districts come to</span>
 					</span>
 					<span class="v">{money(data.due)}</span>
 				</div>
-				{#each data.owed.filings as f (f.id)}
-					<div class="box-row line">
-						<span class="what">
-							<span class="n">Handed to CDTFA</span>
-							<span class="sub">{filing(f)}</span>
-						</span>
-						<span class="v muted">−{money(f.amount)}</span>
-					</div>
-				{:else}
-					<div class="box-row line">
-						<span class="what">
-							<span class="n">Nothing handed over yet</span>
-							<span class="sub">No return recorded as filed for this year</span>
-						</span>
-						<span class="v muted">{money(0)}</span>
-					</div>
-				{/each}
-				<div class="box-row line tot">
-					<span class="what">
-						<span class="n">Still held</span>
-						<span class="sub">Not the business’s money to spend</span>
-					</span>
-					<span class="v">{money(stillHeld)}</span>
-				</div>
 			</section>
+			<p class="note">
+				What has been filed and handed over, and what is still held, is on
+				<a href={resolve('/reports/sales-tax')}>Sales tax</a>.
+			</p>
 
 			<section class="box" aria-labelledby="dist-h">
 				<div class="box-h"><h2 class="box-t" id="dist-h">By district</h2></div>
