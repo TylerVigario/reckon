@@ -6,12 +6,15 @@
  * and a correction to the payment going on the next one. And that pay is
  * separated by what it is (0027): each role says what it is paid as, the pay
  * report groups people by it, and a payment keeps wages apart from what it paid
- * back for the vehicle.
+ * back for the vehicle. And that last month by job counts every piece of work a
+ * rule pays, the business's own among it, and says the month's pay is not known
+ * once a piece of it is, rather than counting it as nothing.
  *
  *   node tests/pay-check.mjs <base-url> <email>
  *
  * Pays Sam on the demo: everything Sam is owed, the trip in the Corolla among
- * it. Runs after offline-check, which changes that trip with no signal.
+ * it. Runs after offline-check, which changes that trip with no signal. Enters
+ * internal work for Jordan last month, which no rule pays a contractor for.
  *
  * Uses the browser on 9222, as console-check does.
  */
@@ -157,6 +160,93 @@ check(
 	),
 	`each role says what it is paid as (${paysAs.join(', ')})`
 );
+
+// Last month by job: every piece of work a rule pays, the business's own among
+// it, and pay nobody can say read as not known, never as nothing.
+/** The month's rows and its total, each as it reads: its name, its text, paid and kept. */
+const byJob = async () => {
+	await go('/reports/pay?by=job');
+	return /** @type {{ month: string, rows: { n: string, text: string, v: string, kept: string }[] }} */ (
+		await run(() => {
+			const box = document.querySelector('section[aria-labelledby="month-h"]');
+			const read = (/** @type {Element} */ r) => ({
+				n: r.querySelector('.n')?.textContent?.trim() ?? '',
+				text: r.textContent?.replace(/\s+/g, ' ') ?? '',
+				v: r.querySelector('.fig .v')?.textContent?.trim() ?? '',
+				kept: r.querySelector('.fig .sub')?.textContent?.trim() ?? ''
+			});
+			return {
+				month: box?.querySelector('#month-h')?.textContent?.trim() ?? '',
+				rows: [...(box?.querySelectorAll('.box-row.line') ?? [])].map(read)
+			};
+		})
+	);
+};
+/** A figure as it reads, "-$20.00", in cents. */
+const cents = (/** @type {string} */ s) => Math.round(Number(s.replace(/[^0-9.-]/g, '')) * 100);
+{
+	const { month, rows } = await byJob();
+	const total = rows.find((r) => r.n === 'Pay due');
+	const work = rows.filter((r) => r !== total);
+	const own = work.filter((r) => r.n.startsWith('Internal ·'));
+	check(
+		own.length > 0 &&
+			own.every((r) => r.text.includes('Not billable') && cents(r.kept) === -cents(r.v)),
+		`${month} by job counts the business's own work, not billable, kept at minus what it paid (${own.map((r) => `${r.n} ${r.v} ${r.kept}`).join('; ')})`
+	);
+	check(
+		!!total && cents(total.v) === work.reduce((n, r) => n + cents(r.v), 0),
+		`its pay due is what its jobs and trips paid, added up (${total?.v})`
+	);
+
+	// Jordan, a contractor, paid for field work alone, on the business's own.
+	const jordan = (await go('/reports/pay'), await linkTo('Jordan Pike'))?.split('/').pop();
+	await go('/timesheet/manual');
+	const internal = await run(
+		() =>
+			[...document.querySelectorAll('#m-service option')]
+				.find((o) => o.textContent?.trim() === 'Internal projects')
+				?.getAttribute('value') ?? null
+	);
+	const [name, year] = month.split(' ');
+	const status = await run(
+		async (/** @type {Record<string, unknown>} */ body) =>
+			(
+				await fetch('/api/time', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify(body)
+				})
+			).status,
+		{
+			client_uuid: crypto.randomUUID(),
+			worked_on: new Date(`${name} 15, ${year} 12:00 UTC`).toISOString().slice(0, 10),
+			minutes: 30,
+			crew: 'one',
+			worked_by: jordan,
+			billable: false,
+			entity_id: null,
+			service_id: internal,
+			note: 'Entered by pay-check: no rule pays Jordan for it'
+		}
+	);
+	const after = await byJob();
+	const unpaid = after.rows.find(
+		(r) => r.n.startsWith('Internal ·') && r.text.includes('Jordan Pike')
+	);
+	const due = after.rows.find((r) => r.n === 'Pay due');
+	check(
+		status === 200 && !!unpaid && unpaid.text.includes('No rule pays it') && unpaid.v === '—',
+		`work no rule pays is listed as that, at no figure (${status}: ${unpaid?.text})`
+	);
+	check(
+		!!due &&
+			due.v === '—' &&
+			due.kept === 'kept —' &&
+			due.text.includes('No rule pays 1 of these, so it is not known'),
+		`and the month's pay due is not known, saying why, rather than counted as nothing (${due?.text})`
+	);
+}
 
 await go('/reports/pay');
 const sams = await linkTo('Sam Ortega');

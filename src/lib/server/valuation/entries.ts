@@ -174,11 +174,18 @@ export type Worth = {
 	rate: Decimal | null;
 	coveredSeconds: number | null;
 	billedSeconds: number | null;
-	/** What the uncovered seconds bill. Null when unknown: no price, or a pool not yet drawable. */
+	/**
+	 * What the uncovered seconds bill -- for work not billable, what they would
+	 * have: what time given away is worth. Null when unknown: no price, or a pool
+	 * not yet drawable.
+	 */
 	billed: Decimal | null;
 	/** The covered seconds' part of the retainer's charge, for everyone on the entry. */
 	coveredShare: Decimal | null;
-	/** Billed plus the covered share: what the work brought in. */
+	/**
+	 * What the work brought in: billed plus the covered share, and nothing at all
+	 * for work not billable, which is charged to nobody.
+	 */
 	earned: Decimal | null;
 	/** Everyone's pay added up, leaving out anyone whose pay is not known. Null when nobody's is. */
 	paid: Decimal | null;
@@ -269,7 +276,8 @@ export function worth(entries: readonly Entry[], ctx: Context): Map<string, Wort
 
 		const coveredShare = shareEach ? shareEach.mul(heads).round(places) : null;
 		let earned: Decimal | null = null;
-		if (billed !== null) {
+		if (!e.billable) earned = zero;
+		else if (billed !== null) {
 			if (!c.coveredSeconds || c.coveredSeconds <= 0) earned = billed;
 			else if (shareEach) earned = shareEach.mul(heads).add(billed).round(places);
 		}

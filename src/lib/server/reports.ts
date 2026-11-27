@@ -250,6 +250,8 @@ export type PayJob = {
 	job: string;
 	worked_on: string;
 	crew: string;
+	/** Charged to the client; not, for work given or the business's own. */
+	billable: boolean;
 	who: string | null;
 	heads: number;
 	hours: string;
@@ -299,10 +301,14 @@ export type PayOwed = {
 	trips: PayTrip[];
 	/** What payments recorded, of what is due. */
 	recorded: string;
-	due: string;
-	/** `due`, by what it pays; null for pay whose role has not said. */
+	/** Null when any job's or trip's pay is not known: see `unknown`. */
+	due: string | null;
+	/** `due`, by what it pays; null for pay whose role has not said. Empty when `due` is not known. */
 	due_as: { paid_as: PaidAs | null; amount: string }[];
-	kept: string;
+	/** Null when any job's or trip's is not known. */
+	kept: string | null;
+	/** How many jobs and trips no rule pays: owed, at a figure nobody can say. */
+	unknown: number;
 	rates: HourNow[];
 };
 
@@ -313,7 +319,18 @@ const sumKnown = (xs: (Decimal | null)[]) => {
 };
 
 /**
+ * Added up, or null when any part is not known: a sum that quietly counts an
+ * unknown as nothing understates what it adds up.
+ */
+const sumAll = (xs: readonly (Decimal | string | null)[]) =>
+	xs.every((x) => x !== null) ? sum(xs) : null;
+
+/**
  * What the business owes its people for a month's work, resolved per job per day.
+ *
+ * Every piece of work a rule pays is in it: billable, not billable, and the
+ * business's own, with no client -- what each person is owed counts them all
+ * (#lib/server/pay owed), so the month does too.
  *
  * Every figure is the valuation's: each entry priced and paid by the price and
  * the rules in force ON THE DAY it was worked, not today's. Re-pricing August
@@ -322,23 +339,26 @@ const sumKnown = (xs: (Decimal | null)[]) => {
  *
  * What a job EARNED is what it bills by the hour plus, for hours a retainer
  * covered, its share of what the retainer charged -- so a covered job is not a
- * job that brought in nothing. Pay is per head: a team entry pays everybody on
- * it, each by their own rule, so subtracting it gives what the business keeps.
+ * job that brought in nothing -- and nothing for work not billable. Pay is per
+ * head: a team entry pays everybody on it, each by their own rule, so
+ * subtracting it gives what the business keeps.
+ *
+ * Pay nobody can say is not known, never $0.00: a job where anyone on it has
+ * no rule, and the month's pay due and what it kept once any job or trip is.
  */
 export async function payOwed(p: Period): Promise<PayOwed> {
 	const places = await moneyPlaces();
 	const entries = await db
 		.selectFrom('time_entry')
-		.innerJoin('entity', 'entity.id', 'time_entry.entity_id')
+		.leftJoin('entity', 'entity.id', 'time_entry.entity_id')
 		.leftJoin('site', 'site.id', 'time_entry.site_id')
 		.leftJoin('user', 'user.id', 'time_entry.worked_by')
 		.select((eb) => [
 			...entryColumns,
-			eb.fn.coalesce('site.display', 'entity.name').as('place'),
+			eb.fn.coalesce('site.display', 'entity.name', eb.val('Internal')).as('place'),
 			'user.name as who',
 			crewNames(eb.ref('time_entry.id')).as('teamNames')
 		])
-		.where('time_entry.billable', '=', true)
 		.where((eb) => eb.between('time_entry.worked_on', p.start, p.end))
 		// In the order the work was done, so jobs of one day and place keep it.
 		.orderBy('time_entry.worked_on')
@@ -369,9 +389,9 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 		v && !v.isZero() && dueAs.set(as, (dueAs.get(as) ?? Decimal.ZERO).add(v));
 
 	// One row per job per day. What makes it one job is everything that prices
-	// it: the client, the place, the service, and who worked it -- one person, or
-	// the crew a team entry names. Two of those differing is two jobs, however
-	// near each other they happened.
+	// it: the client, the place, the service, whether it is billed, and who
+	// worked it -- one person, or the crew a team entry names. Two of those
+	// differing is two jobs, however near each other they happened.
 	const groups = new Map<string, typeof entries>();
 	for (const e of entries) {
 		const key = [
@@ -382,13 +402,14 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 			e.who,
 			e.serviceId,
 			e.entityId,
+			e.billable,
 			e.workedBy
 		].join('\u0000');
 		groups.set(key, [...(groups.get(key) ?? []), e]);
 	}
 	const jobs: PayJob[] = [...groups.values()].map((es) => {
 		const w = es.map((e) => worth.get(e.id)!);
-		const earned = sumKnown(w.map((x) => x.earned));
+		const earned = sumAll(w.map((x) => x.earned));
 		// Each person's pay on each entry: as a payment recorded it, or as it
 		// works out now.
 		const shares = es.flatMap((e) =>
@@ -400,12 +421,13 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 		);
 		for (const x of shares)
 			owe(x.kept?.paidAs ?? paysAs.get(x.userId) ?? null, x.kept?.amount ?? x.live);
-		const paid = sumKnown(shares.map((x) => x.kept?.amount ?? x.live));
+		const paid = sumAll(shares.map((x) => x.kept?.amount ?? x.live));
 		const kept = shares.filter((x) => x.kept).map((x) => x.kept!);
 		return {
 			job: es[0].place,
 			worked_on: es[0].workedOn,
 			crew: es[0].crew,
+			billable: es[0].billable,
 			who: es[0].crew === 'team' ? names(es[0].teamNames) : es[0].who,
 			heads: Math.max(...w.map((x) => x.heads)),
 			hours: Ratio.of(es.reduce((n, e) => n + e.seconds, 0))
@@ -414,7 +436,7 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 				.toString(),
 			earned: earned?.toFixed(places) ?? null,
 			paid: paid?.toFixed(places) ?? null,
-			kept: earned && paid ? earned.sub(paid).toFixed(places) : null,
+			kept: earned !== null && paid !== null ? earned.sub(paid).toFixed(places) : null,
 			recorded: kept.length ? sum(kept.map((k) => k.amount)).toFixed(places) : null,
 			paid_by: paidBy(kept, first)
 		};
@@ -422,26 +444,27 @@ export async function payOwed(p: Period): Promise<PayOwed> {
 	jobs.sort((a, b) => a.worked_on.localeCompare(b.worked_on) || a.job.localeCompare(b.job));
 	const trips = await tripsPaid(p, places, first);
 	for (const x of trips) owe('reimbursement', x.paid === null ? null : Decimal.from(x.paid));
+	const all = [...jobs, ...trips];
+	const due = sumAll(all.map((j) => j.paid));
+	const kept = sumAll(all.map((j) => j.kept));
 
 	return {
 		people: await peopleOwed(places),
 		jobs,
 		trips,
 		recorded: sumMoney(
-			[...jobs, ...trips].map((j) => j.recorded),
+			all.map((j) => j.recorded),
 			places
 		),
-		due: sumMoney(
-			[...jobs, ...trips].map((j) => j.paid),
-			places
-		),
-		kept: sumMoney(
-			[...jobs, ...trips].map((j) => j.kept),
-			places
-		),
-		due_as: [...dueAs]
-			.sort(([a], [b]) => orderOf(a) - orderOf(b))
-			.map(([paid_as, v]) => ({ paid_as, amount: v.toFixed(places) })),
+		due: due?.toFixed(places) ?? null,
+		due_as:
+			due === null
+				? []
+				: [...dueAs]
+						.sort(([a], [b]) => orderOf(a) - orderOf(b))
+						.map(([paid_as, v]) => ({ paid_as, amount: v.toFixed(places) })),
+		kept: kept?.toFixed(places) ?? null,
+		unknown: all.filter((j) => j.paid === null).length,
 		rates: await anHourNow()
 	};
 }
@@ -507,7 +530,11 @@ async function tripsPaid(
 	);
 	return found.map((f) => {
 		const mine = legs.filter((l) => l.tripId === f.id);
-		const earned = sumKnown(mine.map((l) => worth.get(l.id)?.billed ?? null));
+		// A leg nobody caused bills nothing, as the trip's own form counts it
+		// (#lib/server/trip-worth).
+		const earned = sumAll(
+			mine.map((l) => (l.entityId ? (worth.get(l.id)?.billed ?? null) : Decimal.ZERO))
+		);
 		const pays = mine.map((l) => worth.get(l.id)?.paid ?? null);
 		// As a payment recorded it, or as it works out now.
 		const kept = f.owner_id ? recorded.get(`${f.owner_id}:${f.id}`) : undefined;
@@ -525,7 +552,7 @@ async function tripsPaid(
 			miles: sum(mine.map((l) => l.miles)).toFixed(2),
 			earned: earned?.toFixed(places) ?? null,
 			paid: paid?.toFixed(places) ?? null,
-			kept: earned && paid ? earned.sub(paid).toFixed(places) : null,
+			kept: earned !== null && paid !== null ? earned.sub(paid).toFixed(places) : null,
 			recorded: kept ? kept.amount.toFixed(places) : null,
 			paid_by: paidBy(kept ? [kept] : [], first)
 		};

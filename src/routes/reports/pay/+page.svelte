@@ -13,8 +13,9 @@
 	/**
 	 * Pay, the first of the reports, seen one of three ways (#lib/Segmented):
 	 * by person, what each is owed, grouped by what their pay is; by job, last
-	 * month's jobs and trips, what each paid out and what the business kept;
-	 * and by hour, what an hour of each service bills and pays each person now.
+	 * month's jobs and trips -- billed or not, and the business's own -- what
+	 * each paid out and what the business kept; and by hour, what an hour of
+	 * each service bills and pays each person now.
 	 */
 	let { data }: PageProps = $props();
 	const by = $derived(
@@ -167,10 +168,14 @@
 						{:else}
 							<span class="sub">{drove(r)}</span>
 						{/if}
-						{#if r.paid_by.length}<span class="labs">{@render paidBy(r.paid_by)}</span>{/if}
+						{#if (r.kind === 'job' && !r.billable) || r.paid_by.length}
+							<span class="labs">
+								{#if r.kind === 'job' && !r.billable}<span class="lab">Not billable</span>{/if}
+								{@render paidBy(r.paid_by)}
+							</span>
+						{/if}
 					</span>
-					{#if r.kind === 'trip' && r.paid === null}<span class="lab warn">No rule pays it</span
-						>{/if}
+					{#if r.paid === null}<span class="lab warn">No rule pays it</span>{/if}
 					<span class="fig">
 						<span class="v">{money(r.paid)}</span>
 						<span class="sub">kept {money(r.kept)}</span>
@@ -178,13 +183,16 @@
 				</div>
 			{:else}
 				<p class="box-row muted">
-					Nothing worked: no billable hours or trips were recorded in {data.month.label}.
+					Nothing worked: no hours or trips were recorded in {data.month.label}.
 				</p>
 			{/each}
 			{#if days.length}
 				<div class="box-row line tot">
 					<span class="what">
 						<span class="n">Pay due</span>
+						{#if data.due === null}
+							<span class="sub warn">No rule pays {data.unknown} of these, so it is not known</span>
+						{/if}
 						{#if dueSaid}<span class="sub">{dueSaid}</span>{/if}
 					</span>
 					<span class="fig">

@@ -657,6 +657,50 @@ describe("a site's own agreement comes before the client's", () => {
 	});
 });
 
+describe('work not billed earns nothing, and pays by its rule', () => {
+	const ctx: Context = {
+		services: new Map([
+			['field', hourly('field')],
+			['internal', hourly('internal')]
+		]),
+		// Internal work has no price: nobody is ever billed for it.
+		prices: [price('field', '95.00')],
+		rules: [
+			rule({ serviceId: 'field', roleId: 'r-partner', method: 'per_hour', amount: '45' }),
+			rule({ serviceId: 'internal', roleId: 'r-partner', method: 'per_hour', amount: '30' })
+		],
+		people: PEOPLE,
+		agreements: [],
+		places: CENTS
+	};
+	it('a free visit is worth what it would have billed, and earned nothing', () => {
+		const e = entry({
+			entityId: ALDER,
+			serviceId: 'field',
+			workedOn: '2026-10-14',
+			seconds: 45 * 60,
+			billable: false
+		});
+		const w = worth([e], ctx).get(e.id)!;
+		expect(money(w.billed)).toBe('71.25');
+		expect(money(w.earned)).toBe('0.00');
+		expect(money(w.paid)).toBe('33.75');
+	});
+	it('internal work, with no client and no price, earned nothing all the same', () => {
+		const e = entry({
+			entityId: null,
+			serviceId: 'internal',
+			workedOn: '2026-10-17',
+			seconds: 40 * 60,
+			billable: false
+		});
+		const w = worth([e], ctx).get(e.id)!;
+		expect(w.billed).toBeNull();
+		expect(money(w.earned)).toBe('0.00');
+		expect(money(w.paid)).toBe('20.00');
+	});
+});
+
 describe('tax collected is split by who levied each piece of it', () => {
 	const woodland = [
 		{ level: 'state' as const, jurisdiction: 'CALIFORNIA', rate: '7.2500' },
