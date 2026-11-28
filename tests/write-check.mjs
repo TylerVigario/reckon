@@ -1377,16 +1377,19 @@ if (person)
 
 console.log('\n  retainers — metered over a period of their own');
 {
-	/** The text of a page's row that names `who`, its markup gone. */
+	/** The text of some markup: what lies between its tags, one space apart. */
+	const textOf = (/** @type {string} */ html) =>
+		[...html.matchAll(/>([^<]*)/g)]
+			.map((m) => m[1])
+			.join(' ')
+			.replace(/\s+/g, ' ');
+	/** The text of a page's row that names `who`. */
 	const rowOf = async (/** @type {string} */ path, /** @type {string} */ who) =>
-		(
+		textOf(
 			(await (await fetch(`${base}${path}`, { headers: { cookie } })).text())
 				.split('class="box-row')
 				.find((r) => r.includes(who)) ?? ''
-		)
-			.replace(/<!--[\s\S]*?-->/g, '')
-			.replace(/<[^>]+>/g, ' ')
-			.replace(/\s+/g, ' ');
+		);
 	const form = await (
 		await fetch(`${base}/catalogue/agreements/new`, { headers: { cookie } })
 	).text();
@@ -1473,9 +1476,9 @@ console.log('\n  retainers — metered over a period of their own');
 		said(
 			listed.includes('Help desk · 2.50 hr used this quarter of 6.00 hr') &&
 				listed.includes('$300.00 a quarter') &&
-				/\$300\.00\s*(<[^>]+>\s*)*a quarter/.test(head),
+				textOf(head).includes('$300.00 a quarter'),
 			'the catalogue says the quarter’s use, and counts its charge as a quarter’s',
-			`${listed} | ${head.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')}`
+			`${listed} | ${textOf(head)}`
 		);
 		const overview = await rowOf('/clients/pinecrest-insurance', '$300.00');
 		said(
