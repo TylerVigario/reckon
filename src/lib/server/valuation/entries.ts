@@ -33,8 +33,11 @@ export type Agreement = Terms & {
 	siteId: string | null;
 	services: {
 		serviceId: string;
+		/** What the service is charged by, which is what a cap of it counts. */
+		unit: ServiceTerms['unit'];
 		allotment: 'capped' | 'unlimited';
-		includedHours: string | null;
+		/** Hours, or how many of a service charged each. */
+		included: string | null;
 		overage: 'bill' | 'no_charge' | 'deny' | null;
 	}[];
 	periods: { id: string; periodStart: string; periodEnd: string; amount: string; given: boolean }[];
@@ -91,6 +94,11 @@ export function agreementFor(
  * How much of each entry a retainer covers. A capped pool is drawn in the order
  * the work was done, within the charged period, so `entries` must hold every
  * entry of every period any of them falls in -- load.ts makes sure of it.
+ *
+ * A pool is counted as its service is charged. Hours of one charged by time:
+ * an entry takes what is left, and what it could not is billed. How many of
+ * one charged each, whose flat charge an hour of says nothing of: an entry is
+ * one, covered whole while one is left and billed whole once none is.
  */
 export function coverage(
 	entries: readonly Entry[],
@@ -131,15 +139,18 @@ export function coverage(
 				x.e.createdAt.getTime() - y.e.createdAt.getTime() ||
 				(x.e.id < y.e.id ? -1 : x.e.id > y.e.id ? 1 : 0)
 		);
+		// What was drawn before, in the pool's own count: seconds, or entries.
 		let before = 0;
 		for (const { e, s, c } of drawn) {
-			const pool = Number(
-				Decimal.from(s.includedHours ?? '0')
-					.mul(3600)
-					.toBigInt()
-			);
-			c.coveredSeconds = Math.max(Math.min(e.seconds, pool - before), 0);
-			before += e.seconds;
+			const included = Decimal.from(s.included ?? '0');
+			if (s.unit === 'each') {
+				c.coveredSeconds = included.cmp(before) > 0 ? e.seconds : 0;
+				before += 1;
+			} else {
+				const pool = Number(included.mul(3600).toBigInt());
+				c.coveredSeconds = Math.max(Math.min(e.seconds, pool - before), 0);
+				before += e.seconds;
+			}
 		}
 	}
 	return found;

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { hours, percent, periodSaid } from '#lib/format.ts';
+	import { allotted, hours, percent, periodSaid } from '#lib/format.ts';
 	import { PERIOD_WORD } from '#lib/agreement-periods.ts';
 	import Top from '#lib/Top.svelte';
 	import UnderlineNav from '#lib/UnderlineNav.svelte';
@@ -16,18 +16,15 @@
 	 */
 	let { data }: PageProps = $props();
 
-	/** Usage, read against what the allotment allows. */
-	const usage = (m: {
-		allotment: string;
-		cap_hours: string | null;
-		hours_used: string;
-		hours_left: string | null;
-	}) =>
-		m.allotment === 'unlimited'
-			? `${hours(m.hours_used, 'allotted')} used of unlimited`
+	/** Usage, read against what the allotment allows, as its service is counted. */
+	const usage = (m: (typeof data.rows)[number]['services'][number]) => {
+		const of = (v: string | null) => allotted(v, m.unit);
+		return m.allotment === 'unlimited'
+			? `${of(m.used)} used of unlimited`
 			: m.allotment === 'capped'
-				? `${hours(m.hours_used, 'allotted')} used of ${hours(m.cap_hours, 'allotted')} · ${hours(m.hours_left, 'allotted')} left`
-				: `${hours(m.hours_used, 'allotted')} used, nothing included`;
+				? `${of(m.used)} used of ${of(m.cap)} · ${of(m.left)} left`
+				: `${of(m.used)} used, nothing included`;
+	};
 </script>
 
 <Top title="Reports" back={resolve('/more')} backLabel="More" />

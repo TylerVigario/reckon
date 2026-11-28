@@ -40,7 +40,6 @@ export const load: PageServerLoad = async () => {
 				'e.name as who',
 				's.display as site',
 				'c.allotment',
-				'c.included_hours as hours',
 				'c.overage'
 			])
 			.where((eb) => eb.or([eb('a.ends_on', 'is', null), eb('a.ends_on', '>=', businessToday())]))

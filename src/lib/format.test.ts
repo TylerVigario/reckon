@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+	allotted,
 	clock,
 	clockSample,
 	dated,
@@ -191,6 +192,20 @@ describe('hours', () => {
 
 	it('closed up for a count beside a menu item', () => {
 		expect(hoursBadge(9000)).toBe('3h');
+	});
+});
+
+describe('allotted', () => {
+	it('is hours to two places for a service charged by time', () => {
+		expect(allotted('2.5', 'hour')).toBe('2.50 hr');
+		expect(allotted('6', 'mile')).toBe('6.00 hr');
+	});
+
+	it('is how many times for one charged each, one being one', () => {
+		expect(allotted('1', 'each')).toBe('1 time');
+		expect(allotted('2.00', 'each')).toBe('2 times');
+		expect(allotted('0', 'each')).toBe('0 times');
+		expect(allotted(null, 'each')).toBe(ABSENT);
 	});
 });
 

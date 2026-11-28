@@ -321,7 +321,7 @@ T["agreement"] = [("","billing_interval","weekly|monthly|quarterly|annually"),
     ("","starts_on","date"),("","ends_on","date")]
 T["agreement_service"] = [("PK","id","uuid"),("FK","agreement_id","uuid"),
     ("FK","service_id","uuid · once per agreement"),("","allotment","capped | unlimited"),
-    ("","included_hours","numeric · capped only"),
+    ("","included","numeric · capped only"),
     ("","overage","bill|no_charge|deny · capped only")]
 T["agreement_period"] = [("PK","id","uuid"),("FK","agreement_id","uuid"),
     ("","period_start","date"),("","period_end","date"),
@@ -781,20 +781,22 @@ c += [note("n6", "With site_id empty the agreement is the client's; with it set,
                  "that started later covers an hour, so a renewal takes over from its "
                  "first day; two starting the same day may not cover the same service, "
                  "which would leave nothing to choose between them.\n\n"
-                 "No allotment is assumed: each agreement states its own, and the hours "
-                 "are shared by every site the agreement reaches, so the meter belongs "
-                 "to the agreement.\n\n"
+                 "No allotment is assumed: each agreement states its own, and what it "
+                 "includes is shared by every site the agreement reaches, so the meter "
+                 "belongs to the agreement.\n\n"
                  "Past the allotment an hour bills at the going rate, to the service's "
                  "increment, or is not charged, or is refused.\n\n"
-                 "A retainer meters its hours, and an unlimited one shows no cap.\n\n"
+                 "A retainer meters its use, and an unlimited one shows no cap.\n\n"
                  "A period is charged when it begins, and can be given: covered, charged"
                  " nothing, on purpose.\n\n"
                  "agreement_service lists what an agreement covers, service by service, "
                  "each with its own allotment. Any service can be put on a retainer, "
                  "and one the agreement does not list bills as usual.\n\n"
-                 "A capped pool is drawn in the order hours were worked, within"
-                 " an agreement_period — a charged period. Hours it covers bill nothing "
-                 "by the hour and are paid as a share of that period's charge.",
+                 "A capped pool is counted as its service is charged: hours, or how many"
+                 " of one charged each, every entry one and covered or billed whole. It "
+                 "is drawn in the order the work was done, within an agreement_period —"
+                 " a charged period. What it covers bills nothing and is paid as a share"
+                 " of that period's charge.",
            880, 470, 700, 560)]
 files.append(write("06-agreements.drawio", "Agreements", c, 1620, 1060))
 

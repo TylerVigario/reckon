@@ -499,7 +499,7 @@ INSERT INTO agreement (id, entity_id, site_id, price, starts_on, billing_anchor_
    260.00, '2026-09-01', 1),
   ('bbbbbbbb-0000-4000-8000-000000000006','bbbbbbbb-0000-4000-8000-000000000003',
    'c5000000-0000-4000-8000-000000000003', 85.00, '2026-09-12', 12);
-INSERT INTO agreement_service (agreement_id, service_id, allotment, included_hours, overage) VALUES
+INSERT INTO agreement_service (agreement_id, service_id, allotment, included, overage) VALUES
   ('bbbbbbbb-0000-4000-8000-000000000004','b5000000-0000-4000-8000-000000000056','capped', 2.50, 'bill'),
   ('bbbbbbbb-0000-4000-8000-000000000006','b5000000-0000-4000-8000-000000000056','capped', 1.00, 'bill');
 SELECT must_fail($$
@@ -1567,7 +1567,7 @@ SELECT must_fail($$
 $$, 'capped with no hours to cap it at');
 
 SELECT must_fail($$
-  INSERT INTO agreement_service (agreement_id, service_id, allotment, included_hours)
+  INSERT INTO agreement_service (agreement_id, service_id, allotment, included)
   VALUES ('bbbbbbbb-0000-4000-8000-000000000004','b5000000-0000-4000-8000-000000000055',
           'capped', 2.00)
 $$, 'capped hours with no rule for exceeding them');
@@ -4306,5 +4306,70 @@ $$, 'a kind a client''s exemption covers, removed');
 DELETE FROM invoice_line WHERE invoice_id = '59595959-0000-4000-8000-0000000000c1' AND seq >= 70;
 DELETE FROM tax_exemption;
 DELETE FROM sale_kind WHERE id = 'e6200000-0000-4000-8000-0000000000f1';
+
+\echo ''
+\echo '=== 60. a cap counts what its service charges by ==='
+-- A cap of a service charged by time is hours; of one charged each, how many,
+-- a whole number, each entry covered whole or billed whole. A fraction is
+-- refused for one charged each, and a service holding one in a cap is refused
+-- the move to each. Hours of one charged by time stay hours.
+CREATE FUNCTION must_be_whole(stmt text, label text) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE c text;
+BEGIN
+  BEGIN
+    EXECUTE stmt;
+  EXCEPTION WHEN check_violation THEN
+    GET STACKED DIAGNOSTICS c = CONSTRAINT_NAME;
+    IF c = 'a_count_is_whole' THEN
+      RAISE NOTICE '  refused   %', label;
+      RETURN;
+    END IF;
+    RAISE EXCEPTION 'GUARD WRONG: % was refused by %, not a_count_is_whole', label, c;
+  END;
+  RAISE EXCEPTION 'GUARD MISSING: % was allowed', label;
+END $$;
+
+INSERT INTO service (id, code, name, unit, sale_kind_id) VALUES
+  ('b5000000-0000-4000-8000-0000000000e1','visit','Site visit','each', sold_as('repair')),
+  ('b5000000-0000-4000-8000-0000000000e2','consult','Consulting','hour', sold_as('repair'));
+INSERT INTO agreement (id, entity_id, site_id, price, starts_on, billing_anchor_day) VALUES
+  ('bbbbbbbb-0000-4000-8000-000000000e01','bbbbbbbb-0000-4000-8000-000000000003', NULL,
+   150.00, '2026-10-05', 5);
+
+SELECT must_pass($q$
+  INSERT INTO agreement_service (agreement_id, service_id, allotment, included, overage)
+  VALUES ('bbbbbbbb-0000-4000-8000-000000000e01','b5000000-0000-4000-8000-0000000000e1',
+          'capped', 2, 'bill')
+$q$, 'two of a service charged each');
+SELECT must_be_whole($q$
+  UPDATE agreement_service SET included = 2.5
+   WHERE agreement_id = 'bbbbbbbb-0000-4000-8000-000000000e01'
+     AND service_id = 'b5000000-0000-4000-8000-0000000000e1'
+$q$, 'two and a half of a service charged each');
+SELECT must_pass($q$
+  INSERT INTO agreement_service (agreement_id, service_id, allotment, included, overage)
+  VALUES ('bbbbbbbb-0000-4000-8000-000000000e01','b5000000-0000-4000-8000-0000000000e2',
+          'capped', 1.5, 'bill')
+$q$, 'an hour and a half of a service charged by the hour');
+SELECT must_be_whole($q$
+  UPDATE service SET unit = 'each', bill_to_nearest_seconds = NULL
+   WHERE id = 'b5000000-0000-4000-8000-0000000000e2'
+$q$, 'a service capped at an hour and a half, moved to each');
+SELECT must_pass($q$
+  UPDATE agreement_service SET included = 2
+   WHERE agreement_id = 'bbbbbbbb-0000-4000-8000-000000000e01'
+     AND service_id = 'b5000000-0000-4000-8000-0000000000e2'
+$q$, 'its cap made two hours');
+SELECT must_pass($q$
+  UPDATE service SET unit = 'each', bill_to_nearest_seconds = NULL
+   WHERE id = 'b5000000-0000-4000-8000-0000000000e2'
+$q$, 'and then moved to each, the two its count');
+SELECT must_pass($q$
+  UPDATE service SET unit = 'hour', bill_to_nearest_seconds = 60
+   WHERE id = 'b5000000-0000-4000-8000-0000000000e1'
+$q$, 'a service charged each moved to the hour, its two now hours');
+DELETE FROM agreement WHERE id = 'bbbbbbbb-0000-4000-8000-000000000e01';
+DELETE FROM service
+ WHERE id IN ('b5000000-0000-4000-8000-0000000000e1','b5000000-0000-4000-8000-0000000000e2');
 
 \echo 'All guards hold.'

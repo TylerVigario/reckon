@@ -142,7 +142,7 @@ export interface AgreementService {
   agreement_id: string;
   allotment: Allotment;
   id: Generated<string>;
-  included_hours: NumericColumn | null;
+  included: NumericColumn | null;
   overage: Overage | null;
   service_id: string;
 }

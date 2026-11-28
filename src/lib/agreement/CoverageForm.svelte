@@ -3,16 +3,18 @@
 	import { readCoverage } from '#lib/agreement-fields.ts';
 	import { readProblem } from '#lib/json.ts';
 	import Octicon from '#lib/Octicon.svelte';
+	import type { ServiceUnit } from '#lib/server/db/database.ts';
 
 	/**
-	 * A service on an agreement and its allotment: no limit, or a number of
-	 * hours each period and a rule for the hours after them. The hours belong to
-	 * the agreement, whether that is one site's or the whole client's. All of it
-	 * saves together.
+	 * A service on an agreement and its allotment: no limit, or so much each
+	 * period and a rule for past it -- hours, or for a service charged each, a
+	 * number of times, each covered whole or billed whole. What it includes
+	 * belongs to the agreement, whether that is one site's or the whole
+	 * client's. All of it saves together.
 	 *
-	 * There is no default allotment, so the hours box starts empty. Drawn as a
-	 * Primer form in a dialog, each choice a radio; the dialog's button sends
-	 * it (save).
+	 * There is no default allotment, so the box starts empty. Drawn as a Primer
+	 * form in a dialog, each choice a radio; the dialog's button sends it
+	 * (save).
 	 */
 	let {
 		agreementId,
@@ -22,13 +24,14 @@
 		onsaving
 	}: {
 		agreementId: string;
-		/** What can be chosen. A change keeps its service; a new one picks. */
-		services: { id: string; name: string }[];
+		/** What can be chosen, and what each is charged by. A change keeps its service; a new one picks. */
+		services: { id: string; name: string; unit: ServiceUnit }[];
 		preset?: {
 			service_id: string;
 			service: string;
+			unit: ServiceUnit;
 			allotment: string;
-			included_hours: string | null;
+			included: string | null;
 			overage: string | null;
 		} | null;
 		onsaved: () => void;
@@ -39,10 +42,15 @@
 	const was = untrack(() => preset);
 	let serviceId = $state<string | null>(was?.service_id ?? null);
 	let allotment = $state(was?.allotment ?? '');
-	let hours = $state(was?.included_hours ? String(Number(was.included_hours)) : '');
+	let included = $state(was?.included ? String(Number(was.included)) : '');
 	let overage = $state(was?.overage ?? '');
 	let errors = $state<Record<string, string>>({});
 	let saying = $state('');
+	// What a cap of it counts: hours until a service charged each is chosen.
+	const unit = $derived<ServiceUnit>(
+		was?.unit ?? services.find((s) => s.id === serviceId)?.unit ?? 'hour'
+	);
+	const times = $derived(unit === 'each');
 
 	/** Sent from the dialog it is in: its own button, not one of the form's. */
 	let sending = false;
@@ -50,10 +58,10 @@
 		if (sending) return;
 		const fields = {
 			allotment,
-			included_hours: allotment === 'capped' ? hours : '',
+			included: allotment === 'capped' ? included : '',
 			overage: allotment === 'capped' ? overage : ''
 		};
-		errors = readCoverage(fields).errors;
+		errors = readCoverage(fields, unit).errors;
 		if (!allotment) errors = { ...errors, allotment: 'Unlimited, or capped?' };
 		if (allotment === 'capped' && !overage)
 			errors = { ...errors, overage: 'What happens past the hours?' };
@@ -118,7 +126,9 @@
 		<label class="rad">
 			<input type="radio" name="c-allotment" value="capped" bind:group={allotment} />
 			<span
-				><span class="rad-t">Capped</span><span class="rad-c">So many hours a period.</span></span
+				><span class="rad-t">Capped</span><span class="rad-c"
+					>So many {times ? 'times' : 'hours'} a period.</span
+				></span
 			>
 		</label>
 		{@render wrong('allotment')}
@@ -126,20 +136,20 @@
 
 	{#if allotment === 'capped'}
 		<div class="fc">
-			<label class="fc-l" for="c-hours">Hours</label>
+			<label class="fc-l" for="c-included">{times ? 'Times' : 'Hours'}</label>
 			<span class="tv">
 				<input
-					id="c-hours"
+					id="c-included"
 					class="ti"
-					inputmode="decimal"
+					inputmode={times ? 'numeric' : 'decimal'}
 					autocomplete="off"
-					bind:value={hours}
-					aria-invalid={errors.included_hours ? 'true' : undefined}
-					aria-describedby={errors.included_hours ? 'c-included_hours-e' : undefined}
+					bind:value={included}
+					aria-invalid={errors.included ? 'true' : undefined}
+					aria-describedby={errors.included ? 'c-included-e' : undefined}
 				/>
 				<span class="tv-v" aria-hidden="true">a period</span>
 			</span>
-			{@render wrong('included_hours')}
+			{@render wrong('included')}
 		</div>
 		<fieldset class="fc">
 			<legend class="fc-l">Past the cap</legend>

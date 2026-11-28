@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Dialog from '#lib/Dialog.svelte';
 	import CoverageForm from '#lib/agreement/CoverageForm.svelte';
-	import { hours } from '#lib/format.ts';
+	import { allotted } from '#lib/format.ts';
 	import { PERIOD_WORD } from '#lib/agreement-periods.ts';
 	import { readProblem } from '#lib/json.ts';
 	import { refreshAll } from '$app/navigation';
@@ -9,9 +9,10 @@
 
 	/**
 	 * An agreement's Covers tab: each service it covers, its allotment and how
-	 * much of it its period under way has used (#lib/agreement-periods). A service is covered, or its terms
-	 * changed, in a dialog (#lib/agreement/CoverageForm); no longer covering one
-	 * asks first, since its unbilled work goes back to being billed by the hour.
+	 * much of it its period under way has used (#lib/agreement-periods), in
+	 * hours or, for a service charged each, times. A service is covered, or its
+	 * terms changed, in a dialog (#lib/agreement/CoverageForm); no longer
+	 * covering one asks first, since its unbilled work goes back to being billed.
 	 */
 	let { data }: PageProps = $props();
 	const a = $derived(data.agreement);
@@ -27,7 +28,7 @@
 				: c.overage === 'no_charge'
 					? 'then free'
 					: 'then refused';
-		return `${Number(c.included_hours)} hours a ${period}${a.site ? '' : ' across its sites'}, ${past}`;
+		return `${allotted(c.included, c.unit)} a ${period}${a.site ? '' : ' across its sites'}, ${past}`;
 	}
 
 	let editing = $state<{ preset: Cover | null } | null>(null);
@@ -75,12 +76,14 @@
 				<span class="sub"
 					>{allotment(c)}{c.used === null
 						? ''
-						: ` · ${hours(c.used, 'allotted')} used this ${period}`}</span
+						: ` · ${allotted(c.used, c.unit)} used this ${period}`}</span
 				>
 			</span>
 			<span class="fig">
 				<span class="v">{c.allotment === 'unlimited' ? 'Unlimited' : c.pooled}</span>
-				{#if c.allotment !== 'unlimited'}<span class="sub">hours</span>{/if}
+				{#if c.allotment !== 'unlimited'}<span class="sub"
+						>{c.unit !== 'each' ? 'hours' : c.pooled === '1' ? 'time' : 'times'}</span
+					>{/if}
 			</span>
 			<span class="acts">
 				<button type="button" class="btn sm" onclick={() => (editing = { preset: c })}
@@ -131,8 +134,10 @@
 >
 	{#if uncovering}
 		<p>
-			Its work under this agreement that is not yet billed, {hours(uncovering.used, 'allotted')} this
-			month and any from before, is billed by the hour instead, and no longer pays as covered time.
+			Its work under this agreement that is not yet billed{uncovering.used === null
+				? ''
+				: `, ${allotted(uncovering.used, uncovering.unit)} this ${period} and any from before,`} is billed
+			instead, and no longer pays as covered time.
 		</p>
 		<p>
 			Its terms, {allotment(uncovering).toLowerCase()}, aren’t kept: covering it again means

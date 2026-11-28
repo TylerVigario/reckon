@@ -1630,7 +1630,7 @@
       ],
       [
        "",
-       "included_hours",
+       "included",
        "numeric · capped only"
       ],
       [
@@ -1642,7 +1642,7 @@
     }
    ],
    "notes": [
-    "With site_id empty the agreement is the client's; with it set, it is that site's and comes first for work there. A client may hold one of its own, one per site, or both. Of two for the same place, the one that started later covers an hour, so a renewal takes over from its first day; two starting the same day may not cover the same service, which would leave nothing to choose between them.  No allotment is assumed: each agreement states its own, and the hours are shared by every site the agreement reaches, so the meter belongs to the agreement.  Past the allotment an hour bills at the going rate, to the service's increment, or is not charged, or is refused.  A retainer meters its hours, and an unlimited one shows no cap.  A period is charged when it begins, and can be given: covered, charged nothing, on purpose.  agreement_service lists what an agreement covers, service by service, each with its own allotment. Any service can be put on a retainer, and one the agreement does not list bills as usual.  A capped pool is drawn in the order hours were worked, within an agreement_period — a charged period. Hours it covers bill nothing by the hour and are paid as a share of that period's charge."
+    "With site_id empty the agreement is the client's; with it set, it is that site's and comes first for work there. A client may hold one of its own, one per site, or both. Of two for the same place, the one that started later covers an hour, so a renewal takes over from its first day; two starting the same day may not cover the same service, which would leave nothing to choose between them.  No allotment is assumed: each agreement states its own, and what it includes is shared by every site the agreement reaches, so the meter belongs to the agreement.  Past the allotment an hour bills at the going rate, to the service's increment, or is not charged, or is refused.  A retainer meters its use, and an unlimited one shows no cap.  A period is charged when it begins, and can be given: covered, charged nothing, on purpose.  agreement_service lists what an agreement covers, service by service, each with its own allotment. Any service can be put on a retainer, and one the agreement does not list bills as usual.  A capped pool is counted as its service is charged: hours, or how many of one charged each, every entry one and covered or billed whole. It is drawn in the order the work was done, within an agreement_period — a charged period. What it covers bills nothing and is paid as a share of that period's charge."
    ]
   },
   {

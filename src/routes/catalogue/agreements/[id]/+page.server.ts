@@ -1,16 +1,17 @@
 import { Decimal } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { loadAgreements, usedThisPeriod } from '#lib/server/valuation/load.ts';
-import { hoursOf } from '#lib/server/valuation/misc.ts';
+import { loadAgreements, usedOf, usedThisPeriod } from '#lib/server/valuation/load.ts';
 import type { PageServerLoad } from './$types';
 
 /**
- * An agreement's Covers tab: each service it covers, its allotment, and the
- * hours of its period under way that fell under it (#lib/agreement-periods)
- * -- at its site, or for a client's agreement, anywhere a site's own does not
- * reach -- and the services it could cover besides. Without a period under
- * way, ended or not started, there are no hours to say.
+ * An agreement's Covers tab: each service it covers, its allotment, and what
+ * of its period under way fell under it (#lib/agreement-periods) -- at its
+ * site, or for a client's agreement, anywhere a site's own does not reach --
+ * counted as the service is charged: hours, or how many of one charged each.
+ * And the services it could cover besides, with what each is charged by, which
+ * is what a cap of it counts. Without a period under way, ended or not
+ * started, there is no use to say.
  */
 export const load: PageServerLoad = async ({ parent }) => {
 	const { agreement } = await parent();
@@ -18,7 +19,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 		loadAgreements(db, [agreement.entity_id]),
 		db
 			.selectFrom('service')
-			.select(['id', 'name'])
+			.select(['id', 'name', 'unit'])
 			.where('active', '=', true)
 			.orderBy('name')
 			.execute()
@@ -38,11 +39,15 @@ export const load: PageServerLoad = async ({ parent }) => {
 		.map((s) => ({
 			service_id: s.serviceId,
 			service: names.get(s.serviceId) ?? '',
+			unit: s.unit,
 			allotment: s.allotment,
-			included_hours: s.includedHours,
+			included: s.included,
 			overage: s.overage,
-			pooled: s.allotment === 'capped' ? Decimal.from(s.includedHours ?? '0').toFixed(2) : null,
-			used: used ? hoursOf(used.get(s.serviceId) ?? 0) : null
+			pooled:
+				s.allotment === 'capped'
+					? Decimal.from(s.included ?? '0').toFixed(s.unit === 'each' ? 0 : 2)
+					: null,
+			used: used ? usedOf(used.get(s.serviceId), s.unit) : null
 		}))
 		.sort((x, y) => (x.service < y.service ? -1 : x.service > y.service ? 1 : 0));
 	return {

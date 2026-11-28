@@ -282,7 +282,13 @@ describe('a retainer pays a share of itself, split by the hours each spent', () 
 			interval: 'monthly',
 			anchorDay: 1,
 			services: [
-				{ serviceId: 'retained', allotment: 'unlimited', includedHours: null, overage: null }
+				{
+					serviceId: 'retained',
+					unit: 'hour',
+					allotment: 'unlimited',
+					included: null,
+					overage: null
+				}
 			],
 			periods: [
 				{
@@ -303,7 +309,13 @@ describe('a retainer pays a share of itself, split by the hours each spent', () 
 			interval: 'monthly',
 			anchorDay: 1,
 			services: [
-				{ serviceId: 'retained', allotment: 'capped', includedHours: '1.5', overage: 'bill' }
+				{
+					serviceId: 'retained',
+					unit: 'hour',
+					allotment: 'capped',
+					included: '1.5',
+					overage: 'bill'
+				}
 			],
 			periods: [
 				{
@@ -324,7 +336,13 @@ describe('a retainer pays a share of itself, split by the hours each spent', () 
 			interval: 'monthly',
 			anchorDay: 1,
 			services: [
-				{ serviceId: 'helpdesk', allotment: 'unlimited', includedHours: null, overage: null }
+				{
+					serviceId: 'helpdesk',
+					unit: 'hour',
+					allotment: 'unlimited',
+					included: null,
+					overage: null
+				}
 			],
 			periods: [
 				{
@@ -572,7 +590,13 @@ describe("a site's own agreement comes before the client's", () => {
 			interval: 'monthly',
 			anchorDay: 1,
 			services: [
-				{ serviceId: 'helpdesk', allotment: 'capped', includedHours: '2.50', overage: 'bill' }
+				{
+					serviceId: 'helpdesk',
+					unit: 'hour',
+					allotment: 'capped',
+					included: '2.50',
+					overage: 'bill'
+				}
 			],
 			periods: []
 		},
@@ -585,7 +609,13 @@ describe("a site's own agreement comes before the client's", () => {
 			interval: 'monthly',
 			anchorDay: 12,
 			services: [
-				{ serviceId: 'helpdesk', allotment: 'capped', includedHours: '1.00', overage: 'bill' }
+				{
+					serviceId: 'helpdesk',
+					unit: 'hour',
+					allotment: 'capped',
+					included: '1.00',
+					overage: 'bill'
+				}
 			],
 			periods: []
 		}
@@ -652,6 +682,108 @@ describe("a site's own agreement comes before the client's", () => {
 				agreements
 			)
 		).toBeNull();
+	});
+});
+
+describe('a cap counts what its service charges by', () => {
+	// A network assessment is a flat $180 however long it takes, so its cap is
+	// how many: two a period. Help desk on the same agreement is by the hour.
+	const CLIENT = 'e-flat';
+	const agreements: Agreement[] = [
+		{
+			id: 'a-flat',
+			entityId: CLIENT,
+			siteId: null,
+			startsOn: '2026-10-01',
+			endsOn: null,
+			interval: 'monthly',
+			anchorDay: 1,
+			services: [
+				{
+					serviceId: 'assessment',
+					unit: 'each',
+					allotment: 'capped',
+					included: '2',
+					overage: 'bill'
+				},
+				{
+					serviceId: 'helpdesk',
+					unit: 'hour',
+					allotment: 'capped',
+					included: '1.00',
+					overage: 'bill'
+				}
+			],
+			periods: [
+				{
+					id: 'p-flat-oct',
+					periodStart: '2026-10-01',
+					periodEnd: '2026-10-31',
+					amount: '300.00',
+					given: false
+				}
+			]
+		}
+	];
+	const ctx: Context = {
+		services: new Map([
+			['assessment', hourly('assessment', { unit: 'each', billToNearestSeconds: null })],
+			['helpdesk', hourly('helpdesk')]
+		]),
+		prices: [price('assessment', '180.00'), price('helpdesk', '60.00')],
+		rules: [],
+		people: PEOPLE,
+		agreements,
+		places: CENTS
+	};
+	const visit = (workedOn: string, minutes: number, over: Partial<Entry> = {}) =>
+		entry({ entityId: CLIENT, serviceId: 'assessment', workedOn, seconds: minutes * 60, ...over });
+
+	it('covers each entry whole while one is left, and bills each whole after', () => {
+		const es = [visit('2026-10-02', 90), visit('2026-10-09', 45), visit('2026-10-16', 60)];
+		const w = worth(es, ctx);
+		expect(es.map((e) => w.get(e.id)!.coveredSeconds)).toEqual([90 * 60, 45 * 60, 0]);
+		expect(es.map((e) => money(w.get(e.id)!.billed))).toEqual(['0.00', '0.00', '180.00']);
+	});
+
+	it('never covers part of one: what is left of the hours does not come into it', () => {
+		// Counted in hours, a 61-minute visit took the 60 minutes left and was
+		// billed whole besides. Counted by how many, it is the one left.
+		const one: Agreement[] = [
+			{ ...agreements[0], services: [{ ...agreements[0].services[0], included: '1' }] }
+		];
+		const es = [visit('2026-10-02', 61), visit('2026-10-03', 1)];
+		const w = worth(es, { ...ctx, agreements: one });
+		expect(es.map((e) => w.get(e.id)!.coveredSeconds)).toEqual([61 * 60, 0]);
+		expect(es.map((e) => money(w.get(e.id)!.billed))).toEqual(['0.00', '180.00']);
+	});
+
+	it('a team visit is one visit', () => {
+		const es = [
+			visit('2026-10-02', 30, { crew: 'team', workedBy: null }),
+			visit('2026-10-03', 30),
+			visit('2026-10-04', 30)
+		];
+		expect(es.map((e) => worth(es, ctx).get(e.id)!.coveredSeconds)).toEqual([30 * 60, 30 * 60, 0]);
+	});
+
+	it('a visit not billable takes none of them', () => {
+		const es = [
+			visit('2026-10-02', 30, { billable: false }),
+			visit('2026-10-03', 30),
+			visit('2026-10-04', 30)
+		];
+		const c = coverage(es, agreements);
+		expect(es.map((e) => c.get(e.id)!.coveredSeconds)).toEqual([0, 30 * 60, 30 * 60]);
+	});
+
+	it('hours of a service charged by time still draw by the second beside it', () => {
+		const desk = (workedOn: string, minutes: number) =>
+			entry({ entityId: CLIENT, serviceId: 'helpdesk', workedOn, seconds: minutes * 60 });
+		const es = [visit('2026-10-02', 90), desk('2026-10-03', 45), desk('2026-10-04', 30)];
+		const w = worth(es, ctx);
+		expect(w.get(es[2].id)!.coveredSeconds).toBe(15 * 60);
+		expect(money(w.get(es[2].id)!.billed)).toBe('15.00');
 	});
 });
 
