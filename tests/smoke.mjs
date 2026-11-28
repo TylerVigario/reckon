@@ -127,7 +127,7 @@ const ROUTES = [
 	'/reports/pay?by=job',
 	'/reports/pay?by=hour',
 	'/reports/retainers',
-	'/reports/retainers?month=last',
+	'/reports/retainers?period=last',
 	'/reports/non-billable',
 	'/team',
 	'/team/roles',

@@ -25,6 +25,7 @@ import {
 	names,
 	pct,
 	percent,
+	periodSaid,
 	quantity,
 	levied,
 	readLocaleFrom,
@@ -270,6 +271,16 @@ describe('the dates, in British English', () => {
 		// A range's dash sits between thin spaces, as Intl writes one.
 		expect(span('2026-10-01', '2026-10-04')).toBe('1\u2009–\u20094 Oct 2026');
 		expect(span('2025-07-01', '2026-06-30')).toBe('1 Jul 2025\u2009–\u200930 Jun 2026');
+	});
+
+	it('says a run of days by its month where it is one, and otherwise by its days', () => {
+		expect(periodSaid({ start: '2026-09-01', end: '2026-09-30' })).toBe('September 2026');
+		expect(periodSaid({ start: '2026-07-01', end: '2026-09-30' })).toBe(
+			'1 Jul\u2009–\u200930 Sept 2026'
+		);
+		expect(periodSaid({ start: '2026-09-15', end: '2026-10-14' })).toBe(
+			'15 Sept\u2009–\u200914 Oct 2026'
+		);
 	});
 
 	it('names a day of the week', () => {

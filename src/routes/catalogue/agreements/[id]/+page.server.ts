@@ -1,15 +1,16 @@
 import { Decimal } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { loadAgreements, usedThisMonth } from '#lib/server/valuation/load.ts';
+import { loadAgreements, usedThisPeriod } from '#lib/server/valuation/load.ts';
 import { hoursOf } from '#lib/server/valuation/misc.ts';
 import type { PageServerLoad } from './$types';
 
 /**
  * An agreement's Covers tab: each service it covers, its allotment, and the
- * hours this month that fell under it -- at its site, or for a client's
- * agreement, anywhere a site's own does not reach -- and the services it
- * could cover besides.
+ * hours of its period under way that fell under it (#lib/agreement-periods)
+ * -- at its site, or for a client's agreement, anywhere a site's own does not
+ * reach -- and the services it could cover besides. Without a period under
+ * way, ended or not started, there are no hours to say.
  */
 export const load: PageServerLoad = async ({ parent }) => {
 	const { agreement } = await parent();
@@ -22,7 +23,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 			.orderBy('name')
 			.execute()
 	]);
-	const used = await usedThisMonth(db, theirs, businessToday());
+	const used = (await usedThisPeriod(db, theirs, businessToday())).get(agreement.id);
 	const names = new Map(services.map((s) => [s.id, s.name]));
 	const mine = theirs.find((a) => a.id === agreement.id)!;
 	const missing = mine.services.filter((s) => !names.has(s.serviceId)).map((s) => s.serviceId);
@@ -41,7 +42,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 			included_hours: s.includedHours,
 			overage: s.overage,
 			pooled: s.allotment === 'capped' ? Decimal.from(s.includedHours ?? '0').toFixed(2) : null,
-			used: hoursOf(used.get(`${agreement.id}:${s.serviceId}`) ?? 0)
+			used: used ? hoursOf(used.get(s.serviceId) ?? 0) : null
 		}))
 		.sort((x, y) => (x.service < y.service ? -1 : x.service > y.service ? 1 : 0));
 	return {

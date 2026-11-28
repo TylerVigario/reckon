@@ -7,6 +7,7 @@
  * a figure, and not on the way.
  */
 import { Decimal, Ratio } from '#lib/decimal.ts';
+import type { Terms } from '#lib/agreement-periods.ts';
 import { billedAmount, jobRate, priceOn, type Price, type ServiceTerms } from './pricing.ts';
 import { coveredPay, ruleOn, timePay, type Payee, type PayRule } from './pay.ts';
 
@@ -26,12 +27,10 @@ export type Entry = {
 	createdAt: Date;
 };
 
-export type Agreement = {
+export type Agreement = Terms & {
 	id: string;
 	entityId: string;
 	siteId: string | null;
-	startsOn: string;
-	endsOn: string | null;
 	services: {
 		serviceId: string;
 		allotment: 'capped' | 'unlimited';

@@ -4,9 +4,10 @@ import { db } from './db/index.ts';
 import { businessToday } from './calendar.ts';
 import { moneyPlaces } from './business.ts';
 import type { Period } from './periods.ts';
-import { agreementFor, team } from './valuation/entries.ts';
+import { team, type Agreement } from './valuation/entries.ts';
 import {
 	entryColumns,
+	fellUnder,
 	loadAgreements,
 	loadCatalogue,
 	valueEntries,
@@ -23,6 +24,8 @@ import { townsOf } from './trips.ts';
 import { owed, recordedFor } from './pay.ts';
 import { PAID_AS_ORDER, type PaidAs } from '#lib/pay-words.ts';
 import { Ratio } from '#lib/decimal.ts';
+import { lastClosed, periodOn, type AgreementPeriod } from '#lib/agreement-periods.ts';
+import type { BillingInterval } from './db/database.ts';
 
 /**
  * The three things somebody outside the business asks for, and the one thing
@@ -776,13 +779,17 @@ export type MeterRow = {
 	client: string;
 	// The one site the agreement is for, or null for the client as a whole.
 	site: string | null;
+	interval: BillingInterval;
+	// Its own period metered (#lib/agreement-periods): the one under way, or the
+	// one just closed.
+	period: { start: string; end: string };
 	services: MeteredService[];
 	responders: Responder[];
-	// The retainer's own charge for the month: made, given, or not made yet.
+	// The retainer's own charge for the period: made, given, or not made yet.
 	retainer: {
 		state: 'charged' | 'given' | 'uncharged';
 		amount: string;
-		// What it charges at its price -- what a given month was worth.
+		// What it charges at its price -- what a given period was worth.
 		charge: string;
 	};
 	charged: string;
@@ -797,9 +804,12 @@ export type RetainerMeter = {
 };
 
 /**
- * What each agreement covered in a month, and what it earned -- one row an
- * agreement, so a practice's own pool and one office's agreement are metered
- * apart, as they are agreed apart.
+ * What each agreement covered in a period of its own, and what it earned --
+ * one row an agreement, so a practice's own pool and one office's agreement
+ * are metered apart, as they are agreed apart. `which` is the period under way
+ * on the business's today, or the one just closed (#lib/agreement-periods): a
+ * quarter's charge is counted once and its hours read against the quarter's
+ * cap, and an agreement that bills on the 15th is metered from the 15th.
  *
  * A retainer meters even when it is unlimited. That is the whole point of the
  * screen: at a flat price, hours used is the only way to tell whether the
@@ -816,8 +826,9 @@ export type RetainerMeter = {
  * because it is what their pay was worked out from. Pay that depends on a
  * period not yet charged is not known, and says so rather than reading $0.
  */
-export async function retainerMeter(p: Period): Promise<RetainerMeter> {
-	const running = await db
+export async function retainerMeter(which: 'now' | 'last'): Promise<RetainerMeter> {
+	const today = businessToday();
+	const named = await db
 		.selectFrom('agreement')
 		.innerJoin('entity', 'entity.id', 'agreement.entity_id')
 		.leftJoin('site', 'site.id', 'agreement.site_id')
@@ -828,45 +839,31 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 			'entity.name as client',
 			'site.display as site'
 		])
-		.where('agreement.starts_on', '<=', p.end)
-		.where((eb) =>
-			eb.or([eb('agreement.ends_on', 'is', null), eb('agreement.ends_on', '>=', p.start)])
-		)
-		// A client's renewals at one place, newest first, as the rows keep them.
-		.orderBy('agreement.starts_on', 'desc')
-		.orderBy('agreement.id')
 		.execute();
-	if (!running.length) return { rows: [], charged: '0.00', paid: '0.00', kept: '0.00' };
+	const agreements = await loadAgreements(db, [...new Set(named.map((a) => a.entity_id))]);
+	const windows = new Map<string, AgreementPeriod<Agreement['periods'][number]>>();
+	for (const a of agreements) {
+		const p = which === 'now' ? periodOn(a, a.periods, today) : lastClosed(a, a.periods, today);
+		if (p) windows.set(a.id, p);
+	}
+	if (!windows.size) return { rows: [], charged: '0.00', paid: '0.00', kept: '0.00' };
 
-	const entityIds = [...new Set(running.map((r) => r.entity_id))];
-	const [agreements, entries, serviceNames, names, places] = await Promise.all([
-		loadAgreements(db, entityIds),
-		db
-			.selectFrom('time_entry')
-			.select(entryColumns)
-			.where('time_entry.entity_id', '=', (eb) => eb.fn.any(eb.val(entityIds)))
-			.where((eb) => eb.between('time_entry.worked_on', p.start, p.end))
-			.execute(),
+	const [fell, serviceNames, names, places] = await Promise.all([
+		fellUnder(db, agreements, windows),
 		db.selectFrom('service').select(['id', 'name']).execute(),
 		db.selectFrom('user').select(['id', 'name']).execute(),
 		moneyPlaces()
 	]);
 	const serviceName = new Map(serviceNames.map((s) => [s.id, s.name]));
 	const personName = new Map(names.map((u) => [u.id, u.name]));
-	const worth = await valueEntries(db, entries);
-
-	// The agreement each of the month's hours falls under, by the same rule the
-	// valuation covers it by: its site's first, then the client's.
-	const fell = new Map<string, typeof entries>();
-	for (const e of entries) {
-		const hit = agreementFor(e, agreements);
-		if (hit) fell.set(hit.a.id, [...(fell.get(hit.a.id) ?? []), e]);
-	}
+	const worth = await valueEntries(db, [...fell.values()].flat());
 
 	const rows: MeterRow[] = [];
-	for (const r of running) {
-		const a = agreements.find((x) => x.id === r.id)!;
-		const mine = fell.get(r.id) ?? [];
+	for (const a of agreements) {
+		const period = windows.get(a.id);
+		if (!period) continue;
+		const r = named.find((x) => x.id === a.id)!;
+		const mine = fell.get(a.id) ?? [];
 
 		const lines = a.services.map((s) => {
 			const es = mine.filter((e) => e.serviceId === s.serviceId);
@@ -890,12 +887,11 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 		});
 
 		// The agreement's own charge for the period, which is what the client
-		// pays whether they call or not. It is charged in advance, so a month
+		// pays whether they call or not. It is charged in advance, so a period
 		// under way already has one -- unless it was given, or nobody has charged
 		// it yet.
-		const periods = a.periods.filter((x) => x.periodStart <= p.end && x.periodEnd >= p.start);
-		const amount = sum(periods.map((x) => x.amount));
-		const given = periods.length > 0 && periods.every((x) => x.given);
+		const row = period.charged;
+		const amount = row ? Decimal.from(row.amount) : Decimal.ZERO;
 
 		// Everyone who worked covered time under it, and their share of it in
 		// person-hours: a team hour is one each.
@@ -924,13 +920,15 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 			}));
 
 		rows.push({
-			agreement_id: r.id,
+			agreement_id: a.id,
 			client: r.client,
 			site: r.site,
+			interval: a.interval,
+			period: { start: period.start, end: period.end },
 			services: lines.map((l) => l.metered).sort((x, y) => x.service.localeCompare(y.service)),
 			responders,
 			retainer: {
-				state: periods.length === 0 ? 'uncharged' : given ? 'given' : 'charged',
+				state: !row ? 'uncharged' : row.given ? 'given' : 'charged',
 				amount: amount.toFixed(places),
 				charge: Decimal.from(r.price).toFixed(places)
 			},
@@ -938,10 +936,19 @@ export async function retainerMeter(p: Period): Promise<RetainerMeter> {
 			paid: lines.some((l) => l.payUnknown) ? null : sum(lines.map((l) => l.paid)).toFixed(places)
 		});
 	}
+	// By client, the client's own before its sites', and a client's renewals
+	// at one place the newest first.
 	rows.sort(
 		(x, y) =>
 			x.client.localeCompare(y.client) ||
-			(x.site === null ? -1 : y.site === null ? 1 : x.site.localeCompare(y.site))
+			(x.site === null
+				? y.site === null
+					? 0
+					: -1
+				: y.site === null
+					? 1
+					: x.site.localeCompare(y.site)) ||
+			y.period.start.localeCompare(x.period.start)
 	);
 
 	const charged = sum(rows.map((r) => r.charged));

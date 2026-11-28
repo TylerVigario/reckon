@@ -59,9 +59,9 @@ export const clientOpens = (slug: string, access: Access | null | undefined) =>
 		: resolve('/clients/[id]/sites', { id: slug });
 
 /**
- * The reports, by how often each is wanted: pay every pay period, the
- * retainers and the time given away every month, and sales tax as each return
- * is filed -- where there is a state with tax to say anything of. Schedule A,
+ * The reports, by how often each is wanted: pay every pay period, each
+ * retainer every period it bills, the time given away every month, and sales
+ * tax as each return is filed -- where there is a state with tax to say anything of. Schedule A,
  * California's return by district, is a page of Sales tax's. No counts: four
  * labels and a count fill a phone.
  */

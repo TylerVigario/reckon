@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { periodKey, periodOf, periodSaid, periodsTo } from './filing-periods.ts';
+import { periodKey, periodOf, periodsTo } from './filing-periods.ts';
 
 describe('a state’s filing periods', () => {
 	it('finds the month, quarter or year a day falls in', () => {
@@ -44,10 +44,6 @@ describe('a state’s filing periods', () => {
 		]);
 	});
 
-	it('says a month by its name, and any other period by its days', () => {
-		expect(periodSaid({ start: '2026-09-01', end: '2026-09-30' })).toBe('September 2026');
-		expect(periodSaid({ start: '2026-07-01', end: '2026-09-30' })).not.toBe('July 2026');
-		expect(periodSaid({ start: '2026-07-01', end: '2026-09-30' })).toMatch(/Jul.*Sep/);
-		expect(periodKey({ start: '2026-07-01', end: '2026-09-30' })).toBe('2026-07-01/2026-09-30');
-	});
+	it('keys a period by its first and last day', () =>
+		expect(periodKey({ start: '2026-07-01', end: '2026-09-30' })).toBe('2026-07-01/2026-09-30'));
 });

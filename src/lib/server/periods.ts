@@ -20,8 +20,8 @@ export type Period = { start: string; end: string; label: string; spans: string 
  *
  * THE MONTH is the last COMPLETE one. Pay and usage are settled after a month
  * closes, and a report that includes a month still being worked reads as
- * finished when it is not -- which is why the one report that shows the month
- * in progress, the retainer meter, says "so far" in its label.
+ * finished when it is not. A retainer is metered over a period of its own
+ * instead (#lib/agreement-periods), and says "so far" of the one under way.
  */
 export async function fiscalYear(): Promise<Period | null> {
 	const today = sql<string>`${businessToday()}::date`;
@@ -70,22 +70,4 @@ export async function lastFullMonth(): Promise<Period> {
 		])
 		.executeTakeFirstOrThrow();
 	return { ...b, label: monthOf(b.start), spans: span(b.start, b.end) };
-}
-
-/**
- * THIS MONTH, SO FAR -- from the 1st to today. Not settled, and labelled so.
- *
- * A retainer is charged in advance for the month it covers, so its charge is
- * known on the 1st while its usage builds all month. Waiting for the month to
- * close to show that usage hides the only month that is still happening.
- */
-export async function thisMonth(): Promise<Period> {
-	const today = sql<string>`${businessToday()}::date`;
-	const b = await db
-		.selectNoFrom((eb) => [
-			sql<string>`date_trunc('month', ${today})::date::text`.as('start'),
-			eb.cast<string>(today, 'text').as('end')
-		])
-		.executeTakeFirstOrThrow();
-	return { ...b, label: `${monthOf(b.start)} so far`, spans: span(b.start, b.end) };
 }

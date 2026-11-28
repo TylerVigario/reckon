@@ -2,14 +2,16 @@ import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { Decimal, sum } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { loadAgreements, usedThisMonth } from '#lib/server/valuation/load.ts';
+import { loadAgreements, usedThisPeriod } from '#lib/server/valuation/load.ts';
+import { INTERVALS } from '#lib/agreement-fields.ts';
 import { hoursOf } from '#lib/server/valuation/misc.ts';
 import type { PageServerLoad } from './$types';
 
 /**
  * Recurring agreements, one row each, which open onto the agreement itself: a
- * client's, or one of its sites'; what it charges; what it covers, with this
- * month's use; and this month's charge.
+ * client's, or one of its sites'; what it charges; what it covers, with the
+ * use of its period under way (#lib/agreement-periods); and that period's
+ * charge.
  *
  * Hours used are derived from the entries themselves, never from a stored
  * counter -- a counter and the entries it counts eventually disagree, and the
@@ -73,11 +75,13 @@ export const load: PageServerLoad = async () => {
 			.execute()
 			.then((all) => loadAgreements(db, [...new Set(all.map((a) => a.entity_id))]))
 	]);
-	const used = await usedThisMonth(db, agreements, day);
+	const used = await usedThisPeriod(db, agreements, day);
 
 	const all = rows
 		.map((a) => {
 			const period = a.periods.find((p) => p.period_start <= day && day <= p.period_end);
+			// Null without a period under way: ended, or not started.
+			const usedNow = used.get(a.id);
 			return {
 				id: a.id,
 				who: a.who,
@@ -98,7 +102,7 @@ export const load: PageServerLoad = async () => {
 						allotment: s.allotment,
 						hours:
 							s.allotment === 'capped' ? Decimal.from(s.included_hours ?? '0').toFixed(2) : null,
-						used: hoursOf(used.get(`${a.id}:${s.service_id}`) ?? 0)
+						used: usedNow ? hoursOf(usedNow.get(s.service_id) ?? 0) : null
 					}))
 					.sort((x, y) => byText(x.service, y.service))
 			};
@@ -112,9 +116,12 @@ export const load: PageServerLoad = async () => {
 				byText(x.site ?? '', y.site ?? '')
 		);
 
-	const recurring = sum(
-		all.filter((a) => a.interval === 'monthly' && !a.ended).map((a) => a.price)
-	).toString();
+	// What the running ones charge, interval by interval: a quarter's charge
+	// comes in once a quarter, not a third of it each month.
+	const recurring = INTERVALS.flatMap((interval) => {
+		const of = all.filter((a) => a.interval === interval && !a.ended);
+		return of.length ? [{ interval, amount: sum(of.map((a) => a.price)).toString() }] : [];
+	});
 
 	return {
 		live: all.filter((a) => !a.ended),

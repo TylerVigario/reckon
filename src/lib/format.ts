@@ -347,6 +347,15 @@ export function span(from: string, to: string): string {
 	);
 }
 
+/** A run of days: "September 2026" for a calendar month, and otherwise its days: "1 Jul – 30 Sept 2026". */
+export function periodSaid(p: { start: string; end: string }): string {
+	const start = Temporal.PlainDate.from(p.start);
+	const whole =
+		start.day === 1 &&
+		start.add({ months: 1 }).subtract({ days: 1 }).equals(Temporal.PlainDate.from(p.end));
+	return whole ? monthOf(p.start) : span(p.start, p.end);
+}
+
 /**
  * A fiscal year by the days it runs: "FY2026" when it is one calendar year,
  * "FY2025–26" when it runs across two.

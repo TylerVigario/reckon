@@ -8,8 +8,7 @@
 	import Octicon from '#lib/Octicon.svelte';
 	import { reportTabs } from '#lib/section-tabs.ts';
 	import { Decimal } from '#lib/decimal.ts';
-	import { dated } from '#lib/format.ts';
-	import { periodSaid } from '#lib/filing-periods.ts';
+	import { dated, periodSaid } from '#lib/format.ts';
 	import { readProblem } from '#lib/json.ts';
 	import { money } from '#lib/money.svelte.ts';
 	import { stateName } from '#lib/us-states.ts';
