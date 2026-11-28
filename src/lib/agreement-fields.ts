@@ -13,7 +13,9 @@
  *                     agreement is, from the day it is made.
  *   NEW_AGREEMENT     what an agreement needs before it can exist.
  *   COVERAGE_FIELDS   one service it covers, and its allotment -- whole, so
- *                     saved together: agreement_service_cap_is_whole.
+ *                     saved together: agreement_service_cap_is_whole. What it
+ *                     includes is counted as its service is charged: hours,
+ *                     or how many of one charged each (a_count_is_whole).
  *
  * An agreement is a client's or one site's, and its price is what a period
  * charges: there is nothing to multiply by. There is no default allotment, so
@@ -37,7 +39,8 @@ import type {
 	Allotment,
 	BillingInterval,
 	FinalPeriodProration,
-	Overage
+	Overage,
+	ServiceUnit
 } from './server/db/database.ts';
 
 export const INTERVALS = everyWord<BillingInterval>()([
@@ -88,24 +91,31 @@ export function readNewAgreement(fields: Record<string, unknown>) {
 
 export const COVERAGE_FIELDS = {
 	allotment: oneOf(ALLOTMENTS),
-	// The agreement's own hours: its site's, or the client's across its sites.
-	included_hours: optional(decimal(8, 2)),
+	// The agreement's own: its site's, or the client's across its sites. Hours,
+	// or how many of a service charged each.
+	included: optional(decimal(8, 2)),
 	overage: optional(oneOf(OVERAGES))
 };
 
 /**
- * An allotment as a whole: a cap needs its hours and a rule for past them;
- * unlimited needs neither, and whatever was typed into them is dropped rather
- * than refused -- choosing unlimited is not a mistake about the hours box.
+ * An allotment as a whole, for a service charged by `unit`: a cap needs what
+ * it includes and a rule for past it; unlimited needs neither, and whatever
+ * was typed into them is dropped rather than refused -- choosing unlimited is
+ * not a mistake about the box. A service charged each is included by how
+ * many, so whole: each entry is covered whole or billed whole.
  */
-export function readCoverage(fields: Record<string, unknown>) {
+export function readCoverage(fields: Record<string, unknown>, unit: ServiceUnit) {
 	const { values, errors } = parseAll(COVERAGE_FIELDS, fields);
 	if (Object.keys(errors).length) return { values, errors };
 	if (values.allotment === 'capped') {
-		if (values.included_hours === null) errors.included_hours = 'How many hours it includes.';
+		if (values.included === null)
+			errors.included =
+				unit === 'each' ? 'How many times it includes.' : 'How many hours it includes.';
+		else if (unit === 'each' && !/^\d+(\.0+)?$/.test(String(values.included)))
+			errors.included = 'A whole number of times: each is covered whole or billed whole.';
 		if (values.overage === null) errors.overage = 'What happens once they are used.';
 	} else {
-		values.included_hours = null;
+		values.included = null;
 		values.overage = null;
 	}
 	return { values, errors };

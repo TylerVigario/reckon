@@ -5,8 +5,9 @@ import type { PageServerLoad } from './$types';
 
 /**
  * A service's prices: what is in force and what is scheduled, every client's
- * and each client's own, and the agreements that cover it instead. What was
- * is its History tab.
+ * and each client's own, and the agreements that cover it instead, with what
+ * each includes -- hours, or how many times of one charged each. What was is
+ * its History tab.
  */
 export const load: PageServerLoad = async ({ params }) => {
 	const [priced, covered, clients] = await Promise.all([
@@ -26,12 +27,12 @@ export const load: PageServerLoad = async ({ params }) => {
 				eb
 					.cast<string | null>(
 						eb.cast(
-							eb.case().when('c.allotment', '=', 'capped').then(eb.ref('c.included_hours')).end(),
+							eb.case().when('c.allotment', '=', 'capped').then(eb.ref('c.included')).end(),
 							'numeric(10, 2)'
 						),
 						'text'
 					)
-					.as('hours')
+					.as('included')
 			])
 			.where('c.service_id', '=', params.id)
 			.where((eb) => eb.or([eb('a.ends_on', 'is', null), eb('a.ends_on', '>=', businessToday())]))

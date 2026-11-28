@@ -1,4 +1,4 @@
-import { hours } from '#lib/format.ts';
+import { allotted } from '#lib/format.ts';
 import { error, redirect } from '@sveltejs/kit';
 import { resolve } from '$app/paths';
 import { sql, type NumericString } from 'kysely';
@@ -8,9 +8,8 @@ import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
 import { TAX_ROUNDING } from '#lib/server/tax-rules.ts';
 import { findClient } from '#lib/server/find.ts';
-import { loadAgreements, usedThisPeriod } from '#lib/server/valuation/load.ts';
+import { loadAgreements, usedOf, usedThisPeriod } from '#lib/server/valuation/load.ts';
 import { periodOn } from '#lib/agreement-periods.ts';
-import { hoursOf } from '#lib/server/valuation/misc.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
 
@@ -96,8 +95,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	]);
 
 	// Each running agreement -- the client's, and each site's -- with its period
-	// under way's use against what it covers (#lib/agreement-periods): "Help
-	// desk 1.25 h of unlimited". Every hour counts against the agreement it
+	// under way's use against what it covers (#lib/agreement-periods), counted
+	// as each service is charged: "Help desk 1.25 hr of unlimited", "Network
+	// assessment 1 time of 2 times". Every entry counts against the agreement it
 	// falls under, billable or not.
 	const [agreements, services] = await Promise.all([
 		loadAgreements(db, [id]),
@@ -110,10 +110,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		const mine = used.get(a.id);
 		const parts = a.services
 			.map((s) => {
-				const of =
-					s.allotment === 'unlimited' ? 'unlimited' : hours(s.includedHours ?? '0', 'allotted');
+				const of = s.allotment === 'unlimited' ? 'unlimited' : allotted(s.included ?? '0', s.unit);
 				const text = mine
-					? `${hours(hoursOf(mine.get(s.serviceId) ?? 0), 'allotted')} of ${of}`
+					? `${allotted(usedOf(mine.get(s.serviceId), s.unit), s.unit)} of ${of}`
 					: of;
 				return { name: nameOf.get(s.serviceId) ?? '', text };
 			})

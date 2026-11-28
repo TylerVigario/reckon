@@ -1,7 +1,7 @@
 import { asUser, db } from '#lib/server/db/index.ts';
 import type { Allotment, Overage } from '#lib/server/db/database.ts';
 import { isTie, placeOf, tiedWith } from '#lib/server/agreement-tie.ts';
-import { refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
+import { pgError, refuse, refuseIfTheDatabaseSaidSo } from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { COVERAGE_FIELDS, readCoverage } from '#lib/agreement-fields.ts';
 import type { RequestHandler } from './$types';
@@ -11,10 +11,12 @@ import { readFields } from '#lib/json.ts';
 /**
  * One service an agreement covers, and its allotment: PUT sets it whole --
  * covering the service if it was not, changing the allotment if it was --
- * and DELETE stops covering it, so its hours are billed again.
+ * and DELETE stops covering it, so its work is billed again.
  *
- * Whole, because the allotment is one decision: a cap is its hours and what
- * happens past them, or it is unlimited and has neither.
+ * Whole, because the allotment is one decision: a cap is what it includes and
+ * what happens past it, or it is unlimited and has neither. What it includes
+ * is counted as the service is charged -- hours, or how many of one charged
+ * each -- so the service is read first.
  */
 export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	if (!UUID.test(params.id) || !UUID.test(params.service))
@@ -22,8 +24,6 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 
 	const fields = await readFields(request);
 	if (!fields) return problem('malformed', 'Expected { fields: { name: value } }.');
-	const { values, errors } = readCoverage(fields);
-	if (Object.keys(errors).length > 0) return refuse(errors);
 
 	const [isAgreement, isService] = await Promise.all([
 		db
@@ -31,14 +31,20 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 			.select(['id', 'starts_on'])
 			.where('id', '=', params.id)
 			.executeTakeFirst(),
-		db.selectFrom('service').select('id').where('id', '=', params.service).executeTakeFirst()
+		db
+			.selectFrom('service')
+			.select(['id', 'unit'])
+			.where('id', '=', params.service)
+			.executeTakeFirst()
 	]);
 	if (!isAgreement || !isService) return problem('notFound', 'No such agreement or service.');
+	const { values, errors } = readCoverage(fields, isService.unit);
+	if (Object.keys(errors).length > 0) return refuse(errors);
 
 	try {
 		const allotment = {
 			allotment: String(values.allotment) as Allotment,
-			included_hours: values.included_hours === null ? null : String(values.included_hours),
+			included: values.included === null ? null : String(values.included),
 			overage: values.overage === null ? null : (String(values.overage) as Overage)
 		};
 		await asUser(locals.user!.id, (tx) =>
@@ -48,7 +54,7 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 				.onConflict((oc) =>
 					oc.columns(['agreement_id', 'service_id']).doUpdateSet((eb) => ({
 						allotment: eb.ref('excluded.allotment'),
-						included_hours: eb.ref('excluded.included_hours'),
+						included: eb.ref('excluded.included'),
 						overage: eb.ref('excluded.overage')
 					}))
 				)
@@ -65,6 +71,12 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 					: 'Another of this client’s agreements, for the same place and from the same day, covers it already.'
 			});
 		}
+		// Moved to charging each since it was read: a_count_is_whole.
+		if (pgError(e).constraint === 'a_count_is_whole')
+			return refuse({
+				included:
+					'It is charged each now: a whole number of times, each covered whole or billed whole.'
+			});
 		const refused = refuseIfTheDatabaseSaidSo(e, Object.keys(COVERAGE_FIELDS), 'agreement_service');
 		if (refused) return refused;
 		throw e;

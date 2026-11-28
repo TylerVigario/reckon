@@ -2,9 +2,8 @@ import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { Decimal, sum } from '#lib/decimal.ts';
 import { db } from '#lib/server/db/index.ts';
 import { businessToday } from '#lib/server/calendar.ts';
-import { loadAgreements, usedThisPeriod } from '#lib/server/valuation/load.ts';
+import { loadAgreements, usedOf, usedThisPeriod } from '#lib/server/valuation/load.ts';
 import { INTERVALS } from '#lib/agreement-fields.ts';
-import { hoursOf } from '#lib/server/valuation/misc.ts';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -13,10 +12,11 @@ import type { PageServerLoad } from './$types';
  * use of its period under way (#lib/agreement-periods); and that period's
  * charge.
  *
- * Hours used are derived from the entries themselves, never from a stored
+ * What was used is derived from the entries themselves, never from a stored
  * counter -- a counter and the entries it counts eventually disagree, and the
- * entries are the record. An hour counts against the agreement it fell under:
- * its site's, or the client's where the site has none of its own.
+ * entries are the record -- and counted as the service is charged: hours, or
+ * how many of one charged each. An entry counts against the agreement it fell
+ * under: its site's, or the client's where the site has none of its own.
  */
 export const load: PageServerLoad = async () => {
 	const day = businessToday();
@@ -48,8 +48,9 @@ export const load: PageServerLoad = async () => {
 						.select((eb) => [
 							'c.service_id',
 							'c.allotment',
-							eb.cast<string | null>('c.included_hours', 'text').as('included_hours'),
-							'sv.name as service'
+							eb.cast<string | null>('c.included', 'text').as('included'),
+							'sv.name as service',
+							'sv.unit'
 						])
 						.whereRef('c.agreement_id', '=', 'a.id')
 				).as('services'),
@@ -99,10 +100,10 @@ export const load: PageServerLoad = async () => {
 				covers: a.services
 					.map((s) => ({
 						service: s.service,
+						unit: s.unit,
 						allotment: s.allotment,
-						hours:
-							s.allotment === 'capped' ? Decimal.from(s.included_hours ?? '0').toFixed(2) : null,
-						used: usedNow ? hoursOf(usedNow.get(s.service_id) ?? 0) : null
+						included: s.allotment === 'capped' ? Decimal.from(s.included ?? '0').toFixed(2) : null,
+						used: usedNow ? usedOf(usedNow.get(s.service_id), s.unit) : null
 					}))
 					.sort((x, y) => byText(x.service, y.service))
 			};

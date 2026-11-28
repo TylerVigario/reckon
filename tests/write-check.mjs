@@ -1213,14 +1213,14 @@ if (aid) {
 			'a service is covered, unlimited',
 			'PUT',
 			cover,
-			{ fields: { allotment: 'unlimited', included_hours: '9' } },
-			(r) => r.status === 200 && r.body?.saved?.included_hours === null
+			{ fields: { allotment: 'unlimited', included: '9' } },
+			(r) => r.status === 200 && r.body?.saved?.included === null
 		);
 		await check(
 			'and changed to a cap, whole',
 			'PUT',
 			cover,
-			{ fields: { allotment: 'capped', included_hours: '6', overage: 'no_charge' } },
+			{ fields: { allotment: 'capped', included: '6', overage: 'no_charge' } },
 			200
 		);
 		// Another for the whole client, from the same day, would leave nothing to
@@ -1422,7 +1422,7 @@ console.log('\n  retainers — metered over a period of their own');
 			'covering six hours of help desk a quarter',
 			'PUT',
 			`/api/agreements/${quarter}/coverage/${helpDesk}`,
-			{ fields: { allotment: 'capped', included_hours: '6', overage: 'bill' } },
+			{ fields: { allotment: 'capped', included: '6', overage: 'bill' } },
 			200
 		);
 		for (const [worked_on, minutes] of /** @type {[string, number][]} */ ([
@@ -1488,6 +1488,132 @@ console.log('\n  retainers — metered over a period of their own');
 			overview
 		);
 		await check('the agreement is removed', 'DELETE', `/api/agreements/${quarter}`, undefined, 200);
+	}
+}
+
+console.log('\n  retainers — a cap counts what its service charges by');
+{
+	const textOf = (/** @type {string} */ html) =>
+		[...html.matchAll(/>([^<]*)/g)]
+			.map((m) => m[1])
+			.join(' ')
+			.replace(/\s+/g, ' ');
+	const rowOf = async (/** @type {string} */ path, /** @type {string} */ who) =>
+		textOf(
+			(await (await fetch(`${base}${path}`, { headers: { cookie } })).text())
+				.split('class="box-row')
+				.find((r) => r.includes(who)) ?? ''
+		);
+	const said = (
+		/** @type {boolean} */ ok,
+		/** @type {string} */ label,
+		/** @type {string} */ got
+	) => {
+		if (ok) passed++;
+		else failures.push(`${label}: ${got}`);
+		console.log(`  ${ok ? '✓' : '✗'} ${label}`);
+	};
+	const form = await (
+		await fetch(`${base}/catalogue/agreements/new`, { headers: { cookie } })
+	).text();
+	const today = /id="a-starts"[^>]*?value="(\d{4}-\d{2}-\d{2})"/.exec(form)?.[1];
+	// A client with no agreement of its own, so this one takes nothing from another.
+	const marisol = optionsOf(form, 'a-client').find((c) => c.label === 'Marisol Vega')?.id;
+	const services = optionsOf(manual, 'm-service');
+	const assessment = services.find((x) => x.label === 'Network assessment')?.id;
+	const field = services.find((x) => x.label === 'Field service')?.id;
+	if (!today || !marisol || !assessment || !field || !myId) {
+		failures.push(`a flat-rate cap: nothing to cap (${today} ${marisol} ${assessment} ${field})`);
+	} else {
+		const made = await check(
+			'a monthly agreement is made from the first of this month',
+			'POST',
+			'/api/agreements',
+			{
+				fields: {
+					entity_id: marisol,
+					price: '250.00',
+					billing_interval: 'monthly',
+					starts_on: `${today.slice(0, 8)}01`
+				}
+			},
+			201
+		);
+		const month = made.body?.id;
+		const cover = `/api/agreements/${month}/coverage`;
+		await check(
+			'a network assessment, a flat charge, cannot be capped at two and a half',
+			'PUT',
+			`${cover}/${assessment}`,
+			{ fields: { allotment: 'capped', included: '2.5', overage: 'bill' } },
+			(r) => r.status === 400 && /whole number of times/.test(r.body?.errors?.included ?? '')
+		);
+		await check(
+			'but at two',
+			'PUT',
+			`${cover}/${assessment}`,
+			{ fields: { allotment: 'capped', included: '2', overage: 'bill' } },
+			200
+		);
+		await check(
+			'field service, by the hour, at an hour and a half',
+			'PUT',
+			`${cover}/${field}`,
+			{ fields: { allotment: 'capped', included: '1.5', overage: 'bill' } },
+			200
+		);
+		const moved = await check(
+			'and so cannot be moved to a flat charge, which would be included by how many',
+			'PATCH',
+			`/api/services/${field}`,
+			{ fields: { unit: 'each' } },
+			(r) => r.status === 400 && /part of an hour/.test(r.body?.errors?.unit ?? '')
+		);
+		// Put back, should the move have gone through: the checks after are by the hour.
+		if (moved.status === 200)
+			await call('PATCH', `/api/services/${field}`, {
+				fields: { unit: 'hour', bill_to_nearest_seconds: '60' }
+			});
+		for (const minutes of [90, 45, 60])
+			await check(
+				`a ${minutes}-minute network assessment falls under it`,
+				'POST',
+				'/api/time',
+				{
+					...entry,
+					client_uuid: crypto.randomUUID(),
+					worked_on: today,
+					minutes,
+					billable: true,
+					worked_by: myId,
+					entity_id: marisol,
+					service_id: assessment,
+					note: 'write-check: a flat-rate cap'
+				},
+				200
+			);
+
+		const metered = await rowOf('/reports/retainers', 'Marisol Vega');
+		said(
+			metered.includes('Network assessment') &&
+				metered.includes('3 times used of 2 times · 0 times left'),
+			'the meter counts the assessments, not their hours',
+			metered
+		);
+		const listed = await rowOf('/catalogue/agreements', 'Marisol Vega');
+		said(
+			listed.includes('Network assessment · 3 times used this month of 2 times') &&
+				listed.includes('Field service · 0.00 hr used this month of 1.50 hr'),
+			'and so does the catalogue, field service still in hours',
+			listed
+		);
+		const overview = await rowOf('/clients/marisol-vega', '$250.00');
+		said(
+			overview.includes('Network assessment 3 times of 2 times'),
+			'and the client’s Overview',
+			overview
+		);
+		await check('the agreement is removed', 'DELETE', `/api/agreements/${month}`, undefined, 200);
 	}
 }
 

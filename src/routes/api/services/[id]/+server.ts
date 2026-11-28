@@ -1,7 +1,12 @@
 import type { Updateable } from 'kysely';
 import { asUser, db } from '#lib/server/db/index.ts';
 import type { Service } from '#lib/server/db/database.ts';
-import { refuse, refuseIfTheDatabaseSaidSo, stillReferenced } from '#lib/server/field-errors.ts';
+import {
+	pgError,
+	refuse,
+	refuseIfTheDatabaseSaidSo,
+	stillReferenced
+} from '#lib/server/field-errors.ts';
 import { UUID } from '#lib/field-rules.ts';
 import { parseServiceField } from '#lib/service-fields.ts';
 import { refusedKind } from '#lib/server/sale-kinds.ts';
@@ -20,7 +25,9 @@ import { readFields } from '#lib/json.ts';
  * bills to the nearest so many seconds, so moving one to miles or to each
  * clears the increment in the same write, and moving one to hours starts it at
  * the nearest minute, the going rate per minute. Both are
- * reported back, so the page can show what the row now says.
+ * reported back, so the page can show what the row now says. And an
+ * agreement's cap is counted as the service is charged, so one that includes
+ * part of an hour of it keeps it from moving to each (a_count_is_whole).
  *
  * Its prices and pay rules are not here: each is a dated decision of more than
  * one field, and each has its own endpoint beneath this one.
@@ -86,6 +93,10 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 				.execute()
 		);
 	} catch (e) {
+		if (pgError(e).constraint === 'a_count_is_whole')
+			return refuse({
+				unit: 'An agreement includes part of an hour of it, and charged each it would be included by how many. Make that a whole number first.'
+			});
 		const refused = refuseIfTheDatabaseSaidSo(e, names, 'service');
 		if (refused) return refused;
 		throw e;

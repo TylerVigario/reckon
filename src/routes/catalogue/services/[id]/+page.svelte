@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Dialog from '#lib/Dialog.svelte';
 	import PriceForm from '#lib/service/PriceForm.svelte';
-	import { dated } from '#lib/format.ts';
+	import { dated, fixed } from '#lib/format.ts';
 	import { unitPrice } from '#lib/money.svelte.ts';
 	import { readProblem } from '#lib/json.ts';
 	import { refreshAll } from '$app/navigation';
@@ -10,8 +10,8 @@
 
 	/**
 	 * A service's Prices tab: every client's price and each client's own, in
-	 * force or scheduled, and the agreements that cover it instead of an hourly
-	 * price. A price is added or changed in a dialog (#lib/service/PriceForm);
+	 * force or scheduled, and the agreements that cover it instead of a price,
+	 * with what each includes: hours, or times of one charged each. A price is added or changed in a dialog (#lib/service/PriceForm);
 	 * one in force since today asks before it is taken back.
 	 */
 	let { data }: PageProps = $props();
@@ -104,12 +104,26 @@
 		<a class="box-row line" href={resolve('/catalogue/agreements/[id]', { id: c.agreement_id })}>
 			<span class="what">
 				<span class="n">{c.who} · {c.site ?? 'the whole client'}</span>
-				<span class="sub">Covered by their agreement: not billed by the hour</span>
+				<span class="sub"
+					>Covered by their agreement: not billed {s.unit === 'hour'
+						? 'by the hour'
+						: s.unit === 'mile'
+							? 'by the mile'
+							: 'at its flat rate'}</span
+				>
 			</span>
 			<span class="lab acc">Retainer</span>
 			<span class="fig">
-				<span class="v">{c.allotment === 'unlimited' ? 'Unlimited' : c.hours}</span>
-				{#if c.allotment !== 'unlimited'}<span class="sub">hours</span>{/if}
+				<span class="v"
+					>{c.allotment === 'unlimited'
+						? 'Unlimited'
+						: s.unit === 'each'
+							? fixed(c.included, 0)
+							: c.included}</span
+				>
+				{#if c.allotment !== 'unlimited'}<span class="sub"
+						>{s.unit !== 'each' ? 'hours' : Number(c.included) === 1 ? 'time' : 'times'}</span
+					>{/if}
 			</span>
 		</a>
 	{/each}

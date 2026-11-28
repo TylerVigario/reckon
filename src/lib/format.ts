@@ -199,6 +199,18 @@ export function hoursBadge(seconds: number): string {
 	);
 }
 
+/**
+ * What an agreement includes of a service, or has used of it, counted as the
+ * service is charged: hours of one charged by time ("2.50 hr"), and of one
+ * charged each, how many times ("1 time", "3 times").
+ */
+export function allotted(v: Figure, unit: 'hour' | 'mile' | 'each'): string {
+	if (unit !== 'each') return hours(v, 'allotted');
+	if (absent(v)) return ABSENT;
+	const n = numbers({ maximumFractionDigits: 0 }).format(exact(v));
+	return `${n} ${Number(v) === 1 ? 'time' : 'times'}`;
+}
+
 /** Miles: driven, to the tenth ("57.0 mi"); a distance between places, to the mile ("64 mi"). */
 const MILES = { driven: 1, distance: 0 } as const;
 

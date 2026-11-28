@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { hours } from '#lib/format.ts';
+	import { allotted } from '#lib/format.ts';
 	import Top from '#lib/Top.svelte';
 	import UnderlineNav from '#lib/UnderlineNav.svelte';
 	import { catalogueTabs } from '#lib/section-tabs.ts';
@@ -16,8 +16,6 @@
 	 * the first. New agreement is the screen's action.
 	 */
 	let { data }: PageProps = $props();
-
-	const hrs = (v: string | null | undefined) => hours(v, 'allotted');
 </script>
 
 <Top title="Catalogue" sub="What can go on a line" back={resolve('/more')} backLabel="More">
@@ -50,12 +48,13 @@
 						<span class="what">
 							<span class="n">{a.who} · {a.site ?? 'the whole client'}</span>
 							{#each a.covers as c (c.service)}
-								{@const of = c.allotment === 'unlimited' ? 'unlimited' : hrs(c.hours)}
+								{@const of =
+									c.allotment === 'unlimited' ? 'unlimited' : allotted(c.included, c.unit)}
 								<span class="sub">
 									{c.service} ·
 									{c.used === null
 										? `${of}${c.allotment === 'unlimited' ? '' : ` a ${PERIOD_WORD[a.interval]}`}`
-										: `${hrs(c.used)} used this ${PERIOD_WORD[a.interval]} of ${of}`}
+										: `${allotted(c.used, c.unit)} used this ${PERIOD_WORD[a.interval]} of ${of}`}
 								</span>
 							{:else}
 								<span class="sub">Covers no service yet: everything is billed</span>

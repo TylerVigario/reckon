@@ -25,6 +25,7 @@ import * as aLinesTaxSetByHand from './20261120T2227Z_a_line_s_tax_set_by_hand.t
 import * as aPieceForOneKind from './20261121T1701Z_a_piece_for_one_kind.ts';
 import * as aClientIsExemptInAState from './20261125T0423Z_a_client_is_exempt_in_a_state.ts';
 import * as aReturnAndAPayment from './20261127T0216Z_a_return_and_a_payment.ts';
+import * as aCapCountsWhatItsServiceChargesBy from './20261128T1950Z_a_cap_counts_what_its_service_charges_by.ts';
 
 export const MIGRATIONS: Readonly<Record<string, Migration>> = {
 	'20261117T1405Z_the_schema_as_it_stands': theSchemaAsItStands,
@@ -39,5 +40,6 @@ export const MIGRATIONS: Readonly<Record<string, Migration>> = {
 	'20261120T2227Z_a_line_s_tax_set_by_hand': aLinesTaxSetByHand,
 	'20261121T1701Z_a_piece_for_one_kind': aPieceForOneKind,
 	'20261125T0423Z_a_client_is_exempt_in_a_state': aClientIsExemptInAState,
-	'20261127T0216Z_a_return_and_a_payment': aReturnAndAPayment
+	'20261127T0216Z_a_return_and_a_payment': aReturnAndAPayment,
+	'20261128T1950Z_a_cap_counts_what_its_service_charges_by': aCapCountsWhatItsServiceChargesBy
 };

@@ -759,12 +759,17 @@ export async function anHourNow(): Promise<HourNow[]> {
 	);
 }
 
+/**
+ * One service's use of an agreement in a period, counted as the service is
+ * charged: hours, or how many of one charged each (`unit`).
+ */
 export type MeteredService = {
 	service: string;
+	unit: Agreement['services'][number]['unit'];
 	allotment: string;
-	cap_hours: string | null;
-	hours_used: string;
-	hours_left: string | null;
+	cap: string | null;
+	used: string;
+	left: string | null;
 };
 
 export type Responder = {
@@ -808,8 +813,10 @@ export type RetainerMeter = {
  * one row an agreement, so a practice's own pool and one office's agreement
  * are metered apart, as they are agreed apart. `which` is the period under way
  * on the business's today, or the one just closed (#lib/agreement-periods): a
- * quarter's charge is counted once and its hours read against the quarter's
- * cap, and an agreement that bills on the 15th is metered from the 15th.
+ * quarter's charge is counted once and its use read against the quarter's
+ * cap, and an agreement that bills on the 15th is metered from the 15th. Use
+ * is counted as its service is charged: hours, or how many times of one
+ * charged each.
  *
  * A retainer meters even when it is unlimited. That is the whole point of the
  * screen: at a flat price, hours used is the only way to tell whether the
@@ -868,17 +875,22 @@ export async function retainerMeter(which: 'now' | 'last'): Promise<RetainerMete
 		const lines = a.services.map((s) => {
 			const es = mine.filter((e) => e.serviceId === s.serviceId);
 			const ws = es.map((e) => worth.get(e.id)!);
-			const hours = Ratio.of(es.reduce((n, e) => n + e.seconds, 0))
-				.div(3600)
-				.round(2);
-			const cap = s.allotment === 'capped' ? Decimal.from(s.includedHours ?? '0') : null;
+			const shown = s.unit === 'each' ? 0 : 2;
+			const used =
+				s.unit === 'each'
+					? Decimal.from(es.length)
+					: Ratio.of(es.reduce((n, e) => n + e.seconds, 0))
+							.div(3600)
+							.round(2);
+			const cap = s.allotment === 'capped' ? Decimal.from(s.included ?? '0') : null;
 			return {
 				metered: {
 					service: serviceName.get(s.serviceId) ?? '',
+					unit: s.unit,
 					allotment: s.allotment,
-					cap_hours: cap?.toFixed(2) ?? null,
-					hours_used: hours.toFixed(2),
-					hours_left: cap ? Decimal.max(cap.sub(hours), Decimal.ZERO).toFixed(2) : null
+					cap: cap?.toFixed(shown) ?? null,
+					used: used.toFixed(shown),
+					left: cap ? Decimal.max(cap.sub(used), Decimal.ZERO).toFixed(shown) : null
 				},
 				billed: sum(es.filter((e) => e.billable).map((e) => worth.get(e.id)!.billed)),
 				paid: sum(ws.map((w) => w.paid)),

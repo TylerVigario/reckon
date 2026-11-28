@@ -17,7 +17,7 @@ import {
 import type { ServiceTerms } from './pricing.ts';
 import type { Decimal } from '#lib/decimal.ts';
 import { periodOn, type AgreementPeriod } from '#lib/agreement-periods.ts';
-import { legVehiclePay, legWorth } from './misc.ts';
+import { hoursOf, legVehiclePay, legWorth } from './misc.ts';
 import { moneyPlaces } from '../business.ts';
 import { TAX_ROUNDING } from '../tax-rules.ts';
 import { invoiceTax, type InvoiceTax } from './tax.ts';
@@ -125,10 +125,12 @@ export async function loadAgreements(
 			jsonArrayFrom(
 				eb
 					.selectFrom('agreement_service as s')
+					.innerJoin('service as sv', 'sv.id', 's.service_id')
 					.select((eb) => [
 						's.service_id as serviceId',
+						'sv.unit',
 						's.allotment',
-						eb.cast<string | null>('s.included_hours', 'text').as('includedHours'),
+						eb.cast<string | null>('s.included', 'text').as('included'),
 						's.overage'
 					])
 					.whereRef('s.agreement_id', '=', 'agreement.id')
@@ -195,26 +197,42 @@ export async function fellUnder(
 }
 
 /**
- * Seconds worked in the period under way of each of these agreements
+ * What fell under an agreement of one service: its seconds, and how many
+ * entries -- what a cap of one charged each counts.
+ */
+export type Used = { seconds: number; entries: number };
+
+/**
+ * What was used, as a cap of the service counts it (#lib/format allotted):
+ * hours to the hundredth, or how many entries of one charged each.
+ */
+export const usedOf = (u: Used | undefined, unit: Agreement['services'][number]['unit']) =>
+	unit === 'each' ? String(u?.entries ?? 0) : hoursOf(u?.seconds ?? 0);
+
+/**
+ * What the period under way of each of these agreements has used
  * (#lib/agreement-periods), by agreement and then by service. An agreement
- * with no period under way -- ended, or not started -- has none. Every hour
+ * with no period under way -- ended, or not started -- has none. Every entry
  * counts, as fellUnder counts it.
  */
 export async function usedThisPeriod(
 	r: Reader,
 	agreements: readonly Agreement[],
 	today: string
-): Promise<Map<string, Map<string, number>>> {
+): Promise<Map<string, Map<string, Used>>> {
 	const windows = new Map<string, AgreementPeriod>();
 	for (const a of agreements) {
 		const p = periodOn(a, a.periods, today);
 		if (p) windows.set(a.id, p);
 	}
 	const fell = await fellUnder(r, agreements, windows);
-	const used = new Map<string, Map<string, number>>();
+	const used = new Map<string, Map<string, Used>>();
 	for (const id of windows.keys()) {
-		const by = new Map<string, number>();
-		for (const e of fell.get(id) ?? []) by.set(e.serviceId, (by.get(e.serviceId) ?? 0) + e.seconds);
+		const by = new Map<string, Used>();
+		for (const e of fell.get(id) ?? []) {
+			const u = by.get(e.serviceId) ?? { seconds: 0, entries: 0 };
+			by.set(e.serviceId, { seconds: u.seconds + e.seconds, entries: u.entries + 1 });
+		}
 		used.set(id, by);
 	}
 	return used;

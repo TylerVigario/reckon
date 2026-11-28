@@ -237,7 +237,7 @@ INSERT INTO agreement (id, entity_id, site_id, price, starts_on, billing_interva
    (date_trunc('month', current_date) - interval '1 month')::date, 'monthly', 1),
   ('b0f6e1ae-0c63-4ced-a9ac-2322e7b78445','46b1aaa1-0ade-4002-bfb5-9a80b547c2ed', NULL,
    120.00, date_trunc('month', current_date)::date, 'monthly', 1);
-INSERT INTO agreement_service (agreement_id, service_id, allotment, included_hours, overage) VALUES
+INSERT INTO agreement_service (agreement_id, service_id, allotment, included, overage) VALUES
   ('60a12ca8-e899-4f29-b217-973609008a19','f13e8550-7aec-431c-86e5-856cb36910d7','capped', 5.00, 'bill'),
   ('82459e79-c994-4907-9436-25d39ffb43d4','f13e8550-7aec-431c-86e5-856cb36910d7','unlimited', NULL, NULL),
   ('b0f6e1ae-0c63-4ced-a9ac-2322e7b78445','f13e8550-7aec-431c-86e5-856cb36910d7','capped', 3.00, 'no_charge');
