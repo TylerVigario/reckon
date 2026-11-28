@@ -3,17 +3,6 @@ import { unitCost, type Costing, type Shelf } from '#lib/stock-draw.ts';
 import { billedAmount, jobRate, priceOn, type Price, type ServiceTerms } from './pricing.ts';
 import { ruleOn, vehiclePay, type Payee, type PayRule } from './pay.ts';
 
-/**
- * The day in `month` that an agreement anchored on `anchorDay` bills: the
- * anchor, or the month's last day when the month is shorter. Computed fresh
- * each month, so a 31st anchor bills 28 February and 31 March, never drifting
- * onto the 28th.
- */
-export function billingDate(month: string, anchorDay: number): string {
-	// `with` keeps the day inside the month: the 31st of February is its last.
-	return Temporal.PlainDate.from(month).with({ day: anchorDay }).toString();
-}
-
 /** Seconds as hours to the hundredth: 4500 is "1.25". */
 export const hoursOf = (seconds: number) => Ratio.of(seconds).div(3600).round(2).toFixed(2);
 

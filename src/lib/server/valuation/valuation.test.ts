@@ -18,7 +18,7 @@ import {
 } from './entries.ts';
 import { invoiceTax, type InvoiceTax, type TaxLine } from './tax.ts';
 import { TAX_ROUNDING, type TaxRounding } from '../tax-rules.ts';
-import { billingDate, hoursOf, legVehiclePay, legWorth, materialWorth } from './misc.ts';
+import { hoursOf, legVehiclePay, legWorth, materialWorth } from './misc.ts';
 
 const AVERY = { id: 'u-avery', roleId: 'r-partner', active: true };
 const SAM = { id: 'u-sam', roleId: 'r-partner', active: true };
@@ -252,18 +252,6 @@ describe('covered time pays a share of the retainer', () => {
 	});
 });
 
-describe('the month-end rule does not drift', () => {
-	it('the 31st bills the last day of a short month and comes back', () => {
-		expect(billingDate('2026-01-01', 31)).toBe('2026-01-31');
-		expect(billingDate('2026-02-01', 31)).toBe('2026-02-28');
-		expect(billingDate('2026-03-01', 31)).toBe('2026-03-31');
-		expect(billingDate('2026-04-01', 31)).toBe('2026-04-30');
-		expect(billingDate('2028-02-01', 31)).toBe('2028-02-29');
-	});
-	it('a day every month has is never moved', () =>
-		expect(billingDate('2026-02-01', 12)).toBe('2026-02-12'));
-});
-
 // ------------------------------------------------------------ retainers --
 
 let n = 0;
@@ -291,6 +279,8 @@ describe('a retainer pays a share of itself, split by the hours each spent', () 
 			siteId: null,
 			startsOn: '2026-10-01',
 			endsOn: null,
+			interval: 'monthly',
+			anchorDay: 1,
 			services: [
 				{ serviceId: 'retained', allotment: 'unlimited', includedHours: null, overage: null }
 			],
@@ -310,6 +300,8 @@ describe('a retainer pays a share of itself, split by the hours each spent', () 
 			siteId: null,
 			startsOn: '2026-10-01',
 			endsOn: null,
+			interval: 'monthly',
+			anchorDay: 1,
 			services: [
 				{ serviceId: 'retained', allotment: 'capped', includedHours: '1.5', overage: 'bill' }
 			],
@@ -329,6 +321,8 @@ describe('a retainer pays a share of itself, split by the hours each spent', () 
 			siteId: null,
 			startsOn: '2026-08-01',
 			endsOn: null,
+			interval: 'monthly',
+			anchorDay: 1,
 			services: [
 				{ serviceId: 'helpdesk', allotment: 'unlimited', includedHours: null, overage: null }
 			],
@@ -575,6 +569,8 @@ describe("a site's own agreement comes before the client's", () => {
 			siteId: null,
 			startsOn: '2026-09-01',
 			endsOn: null,
+			interval: 'monthly',
+			anchorDay: 1,
 			services: [
 				{ serviceId: 'helpdesk', allotment: 'capped', includedHours: '2.50', overage: 'bill' }
 			],
@@ -586,6 +582,8 @@ describe("a site's own agreement comes before the client's", () => {
 			siteId: 's-two',
 			startsOn: '2026-09-12',
 			endsOn: null,
+			interval: 'monthly',
+			anchorDay: 12,
 			services: [
 				{ serviceId: 'helpdesk', allotment: 'capped', includedHours: '1.00', overage: 'bill' }
 			],

@@ -2,25 +2,20 @@
 	import Dialog from '#lib/Dialog.svelte';
 	import CoverageForm from '#lib/agreement/CoverageForm.svelte';
 	import { hours } from '#lib/format.ts';
+	import { PERIOD_WORD } from '#lib/agreement-periods.ts';
 	import { readProblem } from '#lib/json.ts';
 	import { refreshAll } from '$app/navigation';
 	import type { PageProps } from './$types';
 
 	/**
 	 * An agreement's Covers tab: each service it covers, its allotment and how
-	 * much of it this month has used. A service is covered, or its terms
+	 * much of it its period under way has used (#lib/agreement-periods). A service is covered, or its terms
 	 * changed, in a dialog (#lib/agreement/CoverageForm); no longer covering one
 	 * asks first, since its unbilled work goes back to being billed by the hour.
 	 */
 	let { data }: PageProps = $props();
 	const a = $derived(data.agreement);
-	const PERIOD: Record<string, string> = {
-		weekly: 'week',
-		monthly: 'month',
-		quarterly: 'quarter',
-		annually: 'year'
-	};
-	const period = $derived(PERIOD[a.billing_interval] ?? 'period');
+	const period = $derived(PERIOD_WORD[a.billing_interval]);
 
 	type Cover = (typeof data.covers)[number];
 	/** An allotment said the way it would be read out. */
@@ -77,7 +72,11 @@
 		<div class="box-row line">
 			<span class="what">
 				<span class="n">{c.service}</span>
-				<span class="sub">{allotment(c)} · {hours(c.used, 'allotted')} used this month</span>
+				<span class="sub"
+					>{allotment(c)}{c.used === null
+						? ''
+						: ` · ${hours(c.used, 'allotted')} used this ${period}`}</span
+				>
 			</span>
 			<span class="fig">
 				<span class="v">{c.allotment === 'unlimited' ? 'Unlimited' : c.pooled}</span>

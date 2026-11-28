@@ -16,6 +16,7 @@ import {
 } from './entries.ts';
 import type { ServiceTerms } from './pricing.ts';
 import type { Decimal } from '#lib/decimal.ts';
+import { periodOn, type AgreementPeriod } from '#lib/agreement-periods.ts';
 import { legVehiclePay, legWorth } from './misc.ts';
 import { moneyPlaces } from '../business.ts';
 import { TAX_ROUNDING } from '../tax-rules.ts';
@@ -118,6 +119,8 @@ export async function loadAgreements(
 			'agreement.site_id as siteId',
 			'agreement.starts_on as startsOn',
 			'agreement.ends_on as endsOn',
+			'agreement.billing_interval as interval',
+			'agreement.billing_anchor_day as anchorDay',
 			// Figures as text: a NUMERIC inside JSON would arrive as a JS number.
 			jsonArrayFrom(
 				eb
@@ -150,32 +153,69 @@ export async function loadAgreements(
 }
 
 /**
- * Seconds worked this month under each of these agreements, service by
- * service, keyed `agreementId:serviceId`. Every hour counts against the
- * agreement it falls under -- its site's, or its client's where the site has
- * none of its own -- billable or not: the meter shows use, not charge.
+ * The entries that fell under each agreement within its window, keyed by the
+ * agreement: an agreement given no window has none. Every hour counts against
+ * the agreement it falls under -- its site's, or its client's where the site
+ * has none of its own -- billable or not: a meter shows use, not charge.
  * `agreements` must hold all of their clients' agreements, so the site's can
  * win over the client's.
  */
-export async function usedThisMonth(
+export async function fellUnder(
 	r: Reader,
 	agreements: readonly Agreement[],
-	today: string
-): Promise<Map<string, number>> {
-	const used = new Map<string, number>();
-	const entityIds = [...new Set(agreements.map((a) => a.entityId))];
-	if (!entityIds.length) return used;
+	windows: ReadonlyMap<string, { start: string; end: string }>
+): Promise<Map<string, Entry[]>> {
+	const fell = new Map<string, Entry[]>();
+	const ranges = agreements.flatMap((a) => {
+		const w = windows.get(a.id);
+		return w ? [{ entityId: a.entityId, ...w }] : [];
+	});
+	if (!ranges.length) return fell;
 	const entries = await r
 		.selectFrom('time_entry')
 		.select(entryColumns)
-		.where('time_entry.entity_id', '=', (eb) => eb.fn.any(eb.val(entityIds)))
-		.where('time_entry.worked_on', '>=', `${today.slice(0, 8)}01`)
+		.where((eb) =>
+			eb.or(
+				ranges.map((x) =>
+					eb.and([
+						eb('time_entry.entity_id', '=', x.entityId),
+						eb.between('time_entry.worked_on', x.start, x.end)
+					])
+				)
+			)
+		)
 		.execute();
 	for (const e of entries) {
 		const hit = agreementFor(e, agreements);
-		if (!hit) continue;
-		const key = `${hit.a.id}:${e.serviceId}`;
-		used.set(key, (used.get(key) ?? 0) + e.seconds);
+		const w = hit ? windows.get(hit.a.id) : undefined;
+		if (!hit || !w || e.workedOn < w.start || e.workedOn > w.end) continue;
+		fell.set(hit.a.id, [...(fell.get(hit.a.id) ?? []), e]);
+	}
+	return fell;
+}
+
+/**
+ * Seconds worked in the period under way of each of these agreements
+ * (#lib/agreement-periods), by agreement and then by service. An agreement
+ * with no period under way -- ended, or not started -- has none. Every hour
+ * counts, as fellUnder counts it.
+ */
+export async function usedThisPeriod(
+	r: Reader,
+	agreements: readonly Agreement[],
+	today: string
+): Promise<Map<string, Map<string, number>>> {
+	const windows = new Map<string, AgreementPeriod>();
+	for (const a of agreements) {
+		const p = periodOn(a, a.periods, today);
+		if (p) windows.set(a.id, p);
+	}
+	const fell = await fellUnder(r, agreements, windows);
+	const used = new Map<string, Map<string, number>>();
+	for (const id of windows.keys()) {
+		const by = new Map<string, number>();
+		for (const e of fell.get(id) ?? []) by.set(e.serviceId, (by.get(e.serviceId) ?? 0) + e.seconds);
+		used.set(id, by);
 	}
 	return used;
 }

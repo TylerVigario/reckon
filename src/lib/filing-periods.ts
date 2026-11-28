@@ -8,7 +8,6 @@
  * sends them and Postgres writes them.
  */
 import type { FilingBasis } from './server/db/database.ts';
-import { monthOf, span } from './format.ts';
 
 export type FilingPeriod = { start: string; end: string };
 
@@ -53,14 +52,6 @@ export function periodsTo(
 		end = day(p.start).subtract({ days: 1 });
 	}
 	return out;
-}
-
-/** "September 2026" for a calendar month, and otherwise its days: "1 Jul – 30 Sept 2026". */
-export function periodSaid(p: FilingPeriod): string {
-	const start = day(p.start);
-	const whole =
-		start.day === 1 && start.add({ months: 1 }).subtract({ days: 1 }).equals(day(p.end));
-	return whole ? monthOf(p.start) : span(p.start, p.end);
 }
 
 /** A period as a key: its first and last day. */

@@ -1,18 +1,18 @@
 <script lang="ts">
-	import { day } from '#lib/format.ts';
+	import { dated, day } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
+	import { PERIOD_WORD } from '#lib/agreement-periods.ts';
 	import { resolve } from '$app/paths';
 	import type { PageProps } from './$types';
 
 	/**
 	 * A client's Overview, Full's alone (#lib/access): each agreement running
-	 * for them, the client's own or a site's, with what this month has used of
-	 * what it covers; their latest invoices; and the credit they have to spend
+	 * for them, the client's own or a site's, with what its period under way
+	 * has used of what it covers (#lib/agreement-periods); their latest invoices; and the credit they have to spend
 	 * against the next -- each a box of its own.
 	 */
 	let { data }: PageProps = $props();
 	const c = $derived(data.client);
-	const per = (interval: string) => (interval === 'monthly' ? 'a month' : interval);
 </script>
 
 <section class="box" aria-labelledby="ret-h">
@@ -25,12 +25,18 @@
 		<a class="box-row" href={resolve('/catalogue/agreements/[id]', { id: ag.id })}>
 			<span class="what">
 				<span class="n">{ag.site ?? 'The whole client'}</span>
-				<span class="sub">{ag.covers ? `This month: ${ag.covers}` : 'Covers no service yet'}</span>
+				<span class="sub"
+					>{!ag.covers
+						? 'Covers no service yet'
+						: ag.started
+							? `This ${PERIOD_WORD[ag.interval]}: ${ag.covers}`
+							: `From ${dated(ag.starts_on)}: ${ag.covers}`}</span
+				>
 			</span>
-			{#if ag.given}<span class="lab good">Given freely this month</span>{/if}
+			{#if ag.given}<span class="lab good">Given freely this {PERIOD_WORD[ag.interval]}</span>{/if}
 			<span class="fig">
 				<span class="v">{money(ag.price)}</span>
-				<span class="sub">{per(ag.interval)}</span>
+				<span class="sub">a {PERIOD_WORD[ag.interval]}</span>
 			</span>
 		</a>
 	{:else}

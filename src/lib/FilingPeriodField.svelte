@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { untrack, type Snippet } from 'svelte';
 	import Octicon from '#lib/Octicon.svelte';
-	import { periodKey, periodSaid, type FilingPeriod } from '#lib/filing-periods.ts';
+	import { periodKey, type FilingPeriod } from '#lib/filing-periods.ts';
+	import { periodSaid } from '#lib/format.ts';
 
 	/**
 	 * The period a return or a payment is for (#lib/filing-periods): one of the

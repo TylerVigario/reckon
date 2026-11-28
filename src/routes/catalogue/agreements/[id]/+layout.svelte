@@ -6,6 +6,7 @@
 	import RecordHead from '#lib/RecordHead.svelte';
 	import { dated } from '#lib/format.ts';
 	import { money } from '#lib/money.svelte.ts';
+	import { PERIOD_WORD } from '#lib/agreement-periods.ts';
 	import { readProblem } from '#lib/json.ts';
 	import { goto, refreshAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -22,13 +23,7 @@
 	let { data, children }: LayoutProps = $props();
 	const a = $derived(data.agreement);
 	const endpoint = $derived(`/api/agreements/${data.agreement.id}`);
-	const PERIOD: Record<string, string> = {
-		weekly: 'week',
-		monthly: 'month',
-		quarterly: 'quarter',
-		annually: 'year'
-	};
-	const period = $derived(PERIOD[a.billing_interval] ?? 'period');
+	const period = $derived(PERIOD_WORD[a.billing_interval]);
 
 	let problem = $state('');
 	let asking = $state<'idle' | 'delete' | 'end' | 'carry'>('idle');

@@ -4,26 +4,20 @@
 	import UnderlineNav from '#lib/UnderlineNav.svelte';
 	import { catalogueTabs } from '#lib/section-tabs.ts';
 	import { money } from '#lib/money.svelte.ts';
+	import { PERIOD_WORD } from '#lib/agreement-periods.ts';
 	import type { PageProps } from './$types';
 	import { resolve } from '$app/paths';
 
 	/**
 	 * Agreements: what clients pay for by the period, as Primer boxes --
 	 * running, then ended -- with a row each: the client and site, what it
-	 * covers and how much of it this month has used, and what it charges. What
-	 * all the running ones bring in a month heads the first. New agreement is
-	 * the screen's action.
+	 * covers and how much of it its period under way has used, and what it
+	 * charges. What the running ones charge, a total for each interval, heads
+	 * the first. New agreement is the screen's action.
 	 */
 	let { data }: PageProps = $props();
 
 	const hrs = (v: string | null | undefined) => hours(v, 'allotted');
-	const PERIOD: Record<string, string> = {
-		weekly: 'week',
-		monthly: 'month',
-		quarterly: 'quarter',
-		annually: 'year'
-	};
-	const per = (i: string) => `a ${PERIOD[i] ?? 'period'}`;
 </script>
 
 <Top title="Catalogue" sub="What can go on a line" back={resolve('/more')} backLabel="More">
@@ -41,7 +35,12 @@
 				<div class="box-h">
 					<h2 class="box-t" id="{group.key}-h">{group.head}</h2>
 					{#if group.key === 'running' && group.list.length}
-						<span class="sub"><span class="v">{money(data.recurring)}</span> a month</span>
+						<span class="sub">
+							{#each data.recurring as r, i (r.interval)}
+								{i ? ' · ' : ''}<span class="v">{money(r.amount)}</span>
+								a {PERIOD_WORD[r.interval]}
+							{/each}
+						</span>
 					{:else}
 						<span class="count">{group.list.length}</span>
 					{/if}
@@ -51,23 +50,25 @@
 						<span class="what">
 							<span class="n">{a.who} · {a.site ?? 'the whole client'}</span>
 							{#each a.covers as c (c.service)}
+								{@const of = c.allotment === 'unlimited' ? 'unlimited' : hrs(c.hours)}
 								<span class="sub">
-									{c.service} · {hrs(c.used)} used this month of {c.allotment === 'unlimited'
-										? 'unlimited'
-										: hrs(c.hours)}
+									{c.service} ·
+									{c.used === null
+										? `${of}${c.allotment === 'unlimited' ? '' : ` a ${PERIOD_WORD[a.interval]}`}`
+										: `${hrs(c.used)} used this ${PERIOD_WORD[a.interval]} of ${of}`}
 								</span>
 							{:else}
 								<span class="sub">Covers no service yet: everything is billed</span>
 							{/each}
 						</span>
 						{#if !a.ended && a.now.state === 'given'}
-							<span class="lab good">This {PERIOD[a.interval] ?? 'period'} given freely</span>
+							<span class="lab good">This {PERIOD_WORD[a.interval]} given freely</span>
 						{:else if !a.ended && a.now.state === 'uncharged'}
-							<span class="lab">Not charged yet this {PERIOD[a.interval] ?? 'period'}</span>
+							<span class="lab">Not charged yet this {PERIOD_WORD[a.interval]}</span>
 						{/if}
 						<span class="end-fig">
 							<span class="v">{money(a.price)}</span>
-							<span class="sub">{per(a.interval)}</span>
+							<span class="sub">a {PERIOD_WORD[a.interval]}</span>
 						</span>
 					</a>
 				{:else}

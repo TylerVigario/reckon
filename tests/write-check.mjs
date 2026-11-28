@@ -1375,6 +1375,119 @@ if (person)
 		400
 	);
 
+console.log('\n  retainers — metered over a period of their own');
+{
+	/** The text of a page's row that names `who`, its markup gone. */
+	const rowOf = async (/** @type {string} */ path, /** @type {string} */ who) =>
+		(
+			(await (await fetch(`${base}${path}`, { headers: { cookie } })).text())
+				.split('class="box-row')
+				.find((r) => r.includes(who)) ?? ''
+		)
+			.replace(/<!--[\s\S]*?-->/g, '')
+			.replace(/<[^>]+>/g, ' ')
+			.replace(/\s+/g, ' ');
+	const form = await (
+		await fetch(`${base}/catalogue/agreements/new`, { headers: { cookie } })
+	).text();
+	const today = /id="a-starts"[^>]*?value="(\d{4}-\d{2}-\d{2})"/.exec(form)?.[1];
+	// A client with no agreement of its own, so this one takes no hours from another.
+	const pinecrest = optionsOf(form, 'a-client').find((c) => c.label === 'Pinecrest Insurance')?.id;
+	const helpDesk = optionsOf(manual, 'm-service').find((x) => x.label === 'Help desk')?.id;
+	if (!today || !pinecrest || !helpDesk || !myId) {
+		failures.push(`retainers: nothing to meter with (${today} ${pinecrest} ${helpDesk} ${myId})`);
+	} else {
+		// A quarter from the first of last month: last month, this one, and the next.
+		const [y, m] = [Number(today.slice(0, 4)), Number(today.slice(5, 7))];
+		const lastMonth = new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 10);
+		const made = await check(
+			'a quarterly agreement is made from the first of last month',
+			'POST',
+			'/api/agreements',
+			{
+				fields: {
+					entity_id: pinecrest,
+					price: '300.00',
+					billing_interval: 'quarterly',
+					starts_on: lastMonth
+				}
+			},
+			201
+		);
+		const quarter = made.body?.id;
+		await check(
+			'covering six hours of help desk a quarter',
+			'PUT',
+			`/api/agreements/${quarter}/coverage/${helpDesk}`,
+			{ fields: { allotment: 'capped', included_hours: '6', overage: 'bill' } },
+			200
+		);
+		for (const [worked_on, minutes] of /** @type {[string, number][]} */ ([
+			[`${lastMonth.slice(0, 8)}15`, 60],
+			[`${today.slice(0, 8)}01`, 90]
+		]))
+			await check(
+				`${minutes} minutes of help desk on ${worked_on} falls under it`,
+				'POST',
+				'/api/time',
+				{
+					...entry,
+					client_uuid: crypto.randomUUID(),
+					worked_on,
+					minutes,
+					worked_by: myId,
+					entity_id: pinecrest,
+					service_id: helpDesk,
+					note: 'write-check: a quarter metered whole'
+				},
+				200
+			);
+
+		const metered = await rowOf('/reports/retainers', 'Pinecrest Insurance');
+		const said = (
+			/** @type {boolean} */ ok,
+			/** @type {string} */ label,
+			/** @type {string} */ got
+		) => {
+			if (ok) passed++;
+			else failures.push(`${label}: ${got}`);
+			console.log(`  ${ok ? '✓' : '✗'} ${label}`);
+		};
+		said(
+			metered.includes('2.50 hr used of 6.00 hr · 3.50 hr left') &&
+				metered.includes('so far') &&
+				metered.includes('Not charged yet'),
+			'the meter reads both months against the quarter’s six hours, so far, not charged yet',
+			metered
+		);
+		said(
+			!(await rowOf('/reports/retainers?period=last', 'Pinecrest Insurance')),
+			'and has no period just closed for it: its first is under way',
+			'a row for it under Last period'
+		);
+		const listed = await rowOf('/catalogue/agreements', 'Pinecrest Insurance');
+		const running = await (
+			await fetch(`${base}/catalogue/agreements`, { headers: { cookie } })
+		).text();
+		const head = (running.split('id="running-h"')[1] ?? '').split('class="box-row')[0];
+		said(
+			listed.includes('Help desk · 2.50 hr used this quarter of 6.00 hr') &&
+				listed.includes('$300.00 a quarter') &&
+				/\$300\.00\s*(<[^>]+>\s*)*a quarter/.test(head),
+			'the catalogue says the quarter’s use, and counts its charge as a quarter’s',
+			`${listed} | ${head.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')}`
+		);
+		const overview = await rowOf('/clients/pinecrest-insurance', '$300.00');
+		said(
+			overview.includes('This quarter: Help desk 2.50 hr of 6.00 hr') &&
+				overview.includes('a quarter'),
+			'and so does the client’s Overview',
+			overview
+		);
+		await check('the agreement is removed', 'DELETE', `/api/agreements/${quarter}`, undefined, 200);
+	}
+}
+
 console.log('\n  people — who they are, and whether they sign in');
 
 if (myId && otherId) {
@@ -1908,16 +2021,11 @@ const detailHeld = (/** @type {string} */ html, /** @type {string} */ name) =>
 			utc(from),
 			utc(to)
 		);
-	// This month so far, on the business's calendar: whichever zone's span the
-	// retainer meter is showing. The person reads it in British English, set below.
-	const businessDay = async () => {
-		const html = await page('/reports/retainers');
-		for (const zone of ['Pacific/Kiritimati', 'Pacific/Pago_Pago']) {
-			const d = zoneDay(zone);
-			if (html.includes(drawn('en-GB', `${d.slice(0, 8)}01`, d))) return d;
-		}
-		return null;
-	};
+	// The business's today: the day a new agreement starts unless it is changed.
+	const businessDay = async () =>
+		/id="a-starts"[^>]*?value="(\d{4}-\d{2}-\d{2})"/.exec(
+			await page('/catalogue/agreements/new')
+		)?.[1] ?? null;
 
 	// Who "me" is and somebody who is not, and what their settings were, to put
 	// back afterwards. Their zone and locale are in their own profile.

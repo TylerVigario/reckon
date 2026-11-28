@@ -8,7 +8,8 @@ import { balances } from '#lib/server/balances.ts';
 import { moneyPlaces } from '#lib/server/business.ts';
 import { TAX_ROUNDING } from '#lib/server/tax-rules.ts';
 import { findClient } from '#lib/server/find.ts';
-import { loadAgreements, usedThisMonth } from '#lib/server/valuation/load.ts';
+import { loadAgreements, usedThisPeriod } from '#lib/server/valuation/load.ts';
+import { periodOn } from '#lib/agreement-periods.ts';
 import { hoursOf } from '#lib/server/valuation/misc.ts';
 import { fieldOnly } from '#lib/server/mine.ts';
 import type { PageServerLoad } from './$types';
@@ -57,7 +58,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		db
 			.selectFrom('agreement as a')
 			.leftJoin('site as s', 's.id', 'a.site_id')
-			.select(['a.id', 's.display as site', 'a.price', 'a.billing_interval as interval'])
+			.select([
+				'a.id',
+				's.display as site',
+				'a.price',
+				'a.billing_interval as interval',
+				'a.starts_on'
+			])
 			.where('a.entity_id', '=', id)
 			.where((eb) =>
 				eb.or([
@@ -88,23 +95,27 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			.execute()
 	]);
 
-	// Each running agreement -- the client's, and each site's -- with this
-	// month's use against what it covers: "Help desk 1.25 h of unlimited". Every
-	// hour counts against the agreement it falls under, billable or not.
+	// Each running agreement -- the client's, and each site's -- with its period
+	// under way's use against what it covers (#lib/agreement-periods): "Help
+	// desk 1.25 h of unlimited". Every hour counts against the agreement it
+	// falls under, billable or not.
 	const [agreements, services] = await Promise.all([
 		loadAgreements(db, [id]),
 		db.selectFrom('service').select(['id', 'name']).execute()
 	]);
-	const minutes = await usedThisMonth(db, agreements, today);
+	const used = await usedThisPeriod(db, agreements, today);
 	const nameOf = new Map(services.map((s) => [s.id, s.name]));
 	const coverOf = (agreementId: string) => {
 		const a = agreements.find((x) => x.id === agreementId)!;
+		const mine = used.get(a.id);
 		const parts = a.services
 			.map((s) => {
-				const used = hours(hoursOf(minutes.get(`${a.id}:${s.serviceId}`) ?? 0), 'allotted');
 				const of =
 					s.allotment === 'unlimited' ? 'unlimited' : hours(s.includedHours ?? '0', 'allotted');
-				return { name: nameOf.get(s.serviceId) ?? '', text: `${used} of ${of}` };
+				const text = mine
+					? `${hours(hoursOf(mine.get(s.serviceId) ?? 0), 'allotted')} of ${of}`
+					: of;
+				return { name: nameOf.get(s.serviceId) ?? '', text };
 			})
 			.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
 		return parts.length ? parts.map((p) => `${p.name} ${p.text}`).join(', ') : null;
@@ -114,11 +125,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		client,
 		agreements: running.map((r) => {
 			const a = agreements.find((x) => x.id === r.id)!;
+			const now = periodOn(a, a.periods, today);
 			return {
 				...r,
 				covers: coverOf(r.id),
-				// Charged in advance, so this month either has its charge or was given.
-				given: a.periods.some((p) => p.given && p.periodStart <= today && today <= p.periodEnd)
+				// Not started yet: nothing under way to say the use of.
+				started: now !== null,
+				// Charged in advance, so the period under way has its charge or was given.
+				given: now?.charged?.given ?? false
 			};
 		}),
 		recent
